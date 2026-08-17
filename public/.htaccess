@@ -1,0 +1,33 @@
+# Hostinger / Apache Single Page Application (SPA) Rewrite Rules
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  
+  # Serve existing files, directories, and symlinks directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d [OR]
+  RewriteCond %{REQUEST_FILENAME} -l
+  RewriteRule ^ - [L]
+
+  # Route all other URLs to index.html for client-side routing (React / Vite)
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+# Set correct MIME types for modern web assets
+<IfModule mod_mime.c>
+  AddType application/javascript .js .mjs
+  AddType text/css .css
+  AddType image/svg+xml .svg
+  AddType application/json .json
+</IfModule>
+
+# Security & Cache headers for SPA
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  # Disable caching for index.html so updates are immediate
+  <FilesMatch "index\.html">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+  </FilesMatch>
+</IfModule>

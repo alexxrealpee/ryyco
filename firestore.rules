@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Check if the request is authenticated
+    function isAuth() {
+      return request.auth != null;
+    }
+    
+    // Check if the user owns the record
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // Check if the authenticated user is an administrator
+    function isAdmin() {
+      return isAuth() && (
+        request.auth.token.email == 'alexxrealpee@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+    
+    // Profiles collection rules (Read is public so pages load)
+    match /profiles/{profileId} {
+      allow read: if true;
+      allow write: if isOwner(profileId) || isAdmin();
+    }
+    
+    // Custom Links rules (Read is public, write is author-only)
+    match /links/{linkId} {
+      allow read: if true;
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Themes rules (Publicly readable, write is owner-only)
+    match /themes/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId);
+    }
+    
+    // Products rules (Public read, author writes)
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Leads Rules (Anyone can submit, author reads/manages)
+    match /leads/{leadId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+    
+    // Analytics & Click tracking collections
+    match /analytics/{docId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+    
+    match /clicks/{docId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+    
+    // Orders collection rules (Anyone can create/submit, owner, driver & admin can read/update/delete)
+    match /orders/{orderId} {
+      allow create: if true;
+      allow read: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // Drivers collection rules (Registration, profile management & admin approval)
+    match /drivers/{driverId} {
+      allow create: if true;
+      allow read: if true;
+      allow update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // Driver ratings rules
+    match /driver_ratings/{ratingId} {
+      allow create: if true;
+      allow read: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // Global System Settings rules (Public read for delivery fees, write is admin-only)
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Subscription payments collection rules (Merchants create and read theirs, administrators approve/reject)
+    match /subscription_payments/{paymentId} {
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuth() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
+      allow update, delete: if isAuth() && isAdmin();
+    }
+
+    // Content Creators collection rules (Public read for referral lookups & clicks, write management)
+    match /creators/{creatorId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Referral Commissions collection rules
+    match /referral_commissions/{commissionId} {
+      allow read, create, update, delete: if true;
+    }
+  }
+}

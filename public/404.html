@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>Ryyco</title>
+  <script type="text/javascript">
+    // SPA 404 Redirect Fallback for Hostinger and static web servers
+    var pathSegmentsToKeep = 0;
+    var l = window.location;
+    var redirectedPath = l.pathname.slice(1);
+    if (redirectedPath) {
+      var newUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
+        '/?/' + redirectedPath +
+        (l.search ? '&' + l.search.slice(1) : '') +
+        l.hash;
+      l.replace(newUrl);
+    } else {
+      l.replace('/');
+    }
+  </script>
+</head>
+<body>
+</body>
+</html>

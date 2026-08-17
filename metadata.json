@@ -1,0 +1,10 @@
+{
+  "name": "Ryyco",
+  "description": "Ryyco | Pide comida, descubre restaurantes y recibe recomendaciones. Plataforma gastronómica inteligente para descubrir restaurantes, explorar platos, recibir recomendaciones personalizadas y pedir comida a domicilio.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

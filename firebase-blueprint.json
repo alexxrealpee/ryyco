@@ -1,0 +1,182 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Represents the seller profiles and subscription parameters",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "username": { "type": "string" },
+        "displayName": { "type": "string" },
+        "bio": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "coverURL": { "type": "string" },
+        "role": { "type": "string" },
+        "plan": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "phone": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "location": { "type": "string" },
+        "currency": { "type": "string" },
+        "suspended": { "type": "boolean" },
+        "googleAnalyticsId": { "type": "string" },
+        "whatsappMessageTemplate": { "type": "string" },
+        "subscriptionPlan": { "type": "string", "enum": ["basico", "medio", "pro"] },
+        "subscriptionStatus": { "type": "string", "enum": ["trial", "active", "pending_payment", "under_review"] },
+        "subscriptionStartDate": { "type": "string" },
+        "subscriptionTrialExpires": { "type": "string" },
+        "subscriptionPaidUntil": { "type": "string" },
+        "bankAccounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "bankName": { "type": "string" },
+              "accountType": { "type": "string", "enum": ["Ahorros", "Corriente"] },
+              "accountNumber": { "type": "string" },
+              "qrCodeURL": { "type": "string" },
+              "instructions": { "type": "string" }
+            },
+            "required": ["id", "bankName", "accountType", "accountNumber"]
+          }
+        }
+      },
+      "required": ["uid", "email", "username", "displayName"]
+    },
+    "SubscriptionPayment": {
+      "title": "SubscriptionPayment",
+      "description": "Stores bank transfer payment receipts for monthly store subscriptions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "username": { "type": "string" },
+        "storeName": { "type": "string" },
+        "plan": { "type": "string", "enum": ["basico", "medio", "pro"] },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "review", "approved", "rejected"] },
+        "proofImage": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "resolvedAt": { "type": "string" },
+        "periodLabel": { "type": "string" }
+      },
+      "required": ["id", "userId", "userEmail", "plan", "amount", "status", "createdAt"]
+    },
+    "DriverProfile": {
+      "title": "DriverProfile",
+      "description": "Stores independent delivery driver registration and status details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "docType": { "type": "string" },
+        "docNumber": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "isAvailable": { "type": "boolean" },
+        "rating": { "type": "number" },
+        "completedDeliveriesCount": { "type": "number" },
+        "totalEarnings": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "uid", "email", "firstName", "lastName", "phone", "vehicleType", "status", "isAvailable"]
+    },
+    "DriverRating": {
+      "title": "DriverRating",
+      "description": "Stores customer ratings for delivery drivers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "stars": { "type": "number" },
+        "comment": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "driverId", "orderId", "stars", "createdAt"]
+    },
+    "CreatorReferral": {
+      "title": "CreatorReferral",
+      "description": "Stores content creator profiles, referral codes and commission settings",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "socialMedia": { "type": "string" },
+        "commissionType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "commissionValue": { "type": "number" },
+        "active": { "type": "boolean" },
+        "totalClicks": { "type": "number" },
+        "totalOrdersCount": { "type": "number" },
+        "totalSalesAmount": { "type": "number" },
+        "totalEarnings": { "type": "number" },
+        "totalPaid": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "code", "name", "commissionType", "commissionValue", "active"]
+    },
+    "ReferralCommission": {
+      "title": "ReferralCommission",
+      "description": "Stores commissions generated from customer orders linked to creator referrals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorCode": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "orderId": { "type": "string" },
+        "orderTotal": { "type": "number" },
+        "commissionAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "paid", "cancelled"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "creatorId", "creatorCode", "orderId", "orderTotal", "commissionAmount", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Private auth metadata details"
+    },
+    "/profiles/{profileId}": {
+      "schema": "UserProfile",
+      "description": "Public merchant store configurations"
+    },
+    "/subscription_payments/{paymentId}": {
+      "schema": "SubscriptionPayment",
+      "description": "Monthly bank transfer transaction details"
+    },
+    "/drivers/{driverId}": {
+      "schema": "DriverProfile",
+      "description": "Independent delivery driver accounts"
+    },
+    "/driver_ratings/{ratingId}": {
+      "schema": "DriverRating",
+      "description": "Ratings left by customers for delivery drivers"
+    },
+    "/creators/{creatorId}": {
+      "schema": "CreatorReferral",
+      "description": "Content creator accounts and referral statistics"
+    },
+    "/referral_commissions/{commissionId}": {
+      "schema": "ReferralCommission",
+      "description": "Commissions generated by creator referrals"
+    }
+  }
+}

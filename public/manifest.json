@@ -1,0 +1,24 @@
+{
+  "name": "Ryyco",
+  "short_name": "Ryyco",
+  "description": "Descubre restaurantes, explora platos, recibe recomendaciones personalizadas y pide comida a domicilio con Ryyco.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "background_color": "#090B12",
+  "theme_color": "#090B12",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
