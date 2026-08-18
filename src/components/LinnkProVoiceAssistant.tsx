@@ -1215,12 +1215,12 @@ export default function LinnkProVoiceAssistant({
                   </div>
 
                   {/* 1. Header Title */}
-                  <div className="flex flex-col items-center justify-center z-10 pt-2 text-center">
-                    <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm mx-auto">
+                    <h2 className="text-sm sm:text-base font-semibold text-white/95 tracking-normal leading-snug line-clamp-3">
                       {assistantState === 'listening' 
                         ? (transcript ? `"${transcript}"` : 'Escuchando... habla con libertad')
                         : assistantState === 'speaking' 
-                        ? 'IAMesero te está respondiendo...'
+                        ? (lastAssistantMessage?.text ? `"${lastAssistantMessage.text}"` : 'IAMesero te está respondiendo...')
                         : assistantState === 'processing'
                         ? 'Procesando tu solicitud...'
                         : 'En llamada con IAMesero'}
