@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import ChefCapSparkIcon from './ChefCapSparkIcon';
 import {
   Mic,
   MicOff,
@@ -1034,7 +1035,7 @@ export default function LinnkProVoiceAssistant({
             title="Abrir chat de iAmesero"
           >
             <div className="w-7 h-7 rounded-full bg-[#EF4444] flex items-center justify-center text-white relative shadow-sm">
-              <ChefHat className="w-4 h-4" />
+              <ChefCapSparkIcon size={16} fill="#ffffff" />
               <span className="w-2 h-2 rounded-full bg-emerald-400 border border-[#121722] absolute -top-0.5 -right-0.5 animate-pulse"></span>
             </div>
             <span className="text-xs font-bold tracking-tight pr-1 flex items-center gap-1">
@@ -1060,8 +1061,7 @@ export default function LinnkProVoiceAssistant({
               <span className="absolute -inset-2 rounded-full bg-red-600/10 blur-sm group-hover:bg-red-600/20 transition"></span>
 
               <div className="relative flex items-center justify-center">
-                <ChefHat className="w-7 h-7 text-white group-hover:text-red-400 transition stroke-[2]" />
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 absolute -top-1.5 -right-1.5 animate-pulse" />
+                <ChefCapSparkIcon size={28} fill="#ffffff" className="group-hover:scale-105 transition-transform" />
               </div>
             </button>
 
@@ -1117,7 +1117,7 @@ export default function LinnkProVoiceAssistant({
                 <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
                   {/* Chef Hat Circular Badge Avatar */}
                   <div className="w-10 h-10 rounded-full border-2 border-[#EF4444] bg-[#0E131F] flex items-center justify-center text-white shadow-md shadow-red-500/20 flex-shrink-0">
-                    <ChefHat className="w-5 h-5 text-white" />
+                    <ChefCapSparkIcon size={22} fill="#ffffff" />
                   </div>
                   
                   <div className="min-w-0">
@@ -1214,7 +1214,7 @@ export default function LinnkProVoiceAssistant({
                     }`}></div>
                   </div>
 
-                  {/* 1. Header Title & Mode Subtitle */}
+                  {/* 1. Header Title */}
                   <div className="flex flex-col items-center justify-center z-10 pt-2 text-center">
                     <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
                       {assistantState === 'listening' 
@@ -1225,16 +1225,6 @@ export default function LinnkProVoiceAssistant({
                         ? 'Procesando tu solicitud...'
                         : 'En llamada con IAMesero'}
                     </h2>
-
-                    <div className="flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-black/40 border border-white/10 text-xs">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                      </span>
-                      <span className="text-slate-300 font-medium">Micrófono continuo activo</span>
-                      <span className="text-slate-600">•</span>
-                      <span className="text-slate-400">Habla con libertad</span>
-                    </div>
                   </div>
 
                   {/* Mobile Mic Permission Notice if any */}
@@ -1252,30 +1242,20 @@ export default function LinnkProVoiceAssistant({
                     </div>
                   )}
 
-                  {/* 2. Central iAmesero Orb matching exact button design */}
+                  {/* 2. Central iAmesero Orb matching exact clean button design */}
                   <div className="flex flex-col items-center justify-center my-auto py-6 z-10">
                     <div className="relative flex items-center justify-center">
-                      {/* Concentric Ambient Glow Rings */}
-                      <div className="relative flex items-center justify-center">
-                        {/* Outermost ring */}
-                        <div className={`w-52 h-52 sm:w-60 sm:h-60 rounded-full border border-red-900/30 bg-red-950/10 flex items-center justify-center absolute transition-all duration-700 ${assistantState === 'listening' ? 'scale-110 opacity-80 animate-pulse' : 'scale-100 opacity-50'}`}></div>
-                        
-                        {/* Middle ring with soft red aura */}
-                        <div className={`w-40 h-40 sm:w-46 sm:h-46 rounded-full border border-red-800/40 bg-red-950/30 flex items-center justify-center absolute shadow-[0_0_50px_rgba(239,68,68,0.2)] transition-all duration-500 ${assistantState === 'listening' ? 'scale-105' : 'scale-100'}`}></div>
-
-                        {/* Central Circle Button matching exact design (Dark background + Red border + Chef Hat + Gold Sparkle) */}
-                        <button
-                          id="linnkpro-interactive-center-mic"
-                          onClick={handleCentralMicClick}
-                          className="w-28 h-28 sm:w-32 sm:h-32 rounded-full border-2 sm:border-[3px] border-[#EF4444] bg-[#0E131F]/95 flex items-center justify-center shadow-[0_0_35px_rgba(239,68,68,0.5)] hover:shadow-[0_0_45px_rgba(239,68,68,0.7)] relative z-10 active:scale-95 hover:scale-105 transition-all duration-200 cursor-pointer focus:outline-none group"
-                          title={assistantState === 'speaking' ? 'Toca para interrumpir' : transcript ? 'Toca para enviar' : 'iAmesero activo'}
-                        >
-                          <div className="relative flex items-center justify-center">
-                            <ChefHat className="w-13 h-13 sm:w-15 sm:h-15 text-white stroke-[2.2] group-hover:scale-105 transition-transform" />
-                            <Sparkles className="w-6 h-6 text-amber-400 absolute -top-2.5 -right-2.5 animate-pulse drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
-                          </div>
-                        </button>
-                      </div>
+                      {/* Central Circle Button (Clean dark background + Red border + Larger Icon) */}
+                      <button
+                        id="linnkpro-interactive-center-mic"
+                        onClick={handleCentralMicClick}
+                        className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border-2 sm:border-[3px] border-[#EF4444] bg-[#0E131F]/95 flex items-center justify-center shadow-[0_0_30px_rgba(239,68,68,0.4)] hover:shadow-[0_0_45px_rgba(239,68,68,0.65)] relative z-10 active:scale-95 hover:scale-105 transition-all duration-200 cursor-pointer focus:outline-none group"
+                        title={assistantState === 'speaking' ? 'Toca para interrumpir' : transcript ? 'Toca para enviar' : 'iAmesero activo'}
+                      >
+                        <div className="relative flex items-center justify-center">
+                          <ChefCapSparkIcon size={78} fill="#ffffff" className="group-hover:scale-105 transition-transform" />
+                        </div>
+                      </button>
                     </div>
                   </div>
 
@@ -1344,7 +1324,7 @@ export default function LinnkProVoiceAssistant({
                     <div className="bg-[#161D2B] border border-white/10 rounded-2xl p-4 shadow-md space-y-3">
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-full bg-[#EF4444] text-white flex items-center justify-center flex-shrink-0 shadow-sm">
-                          <ChefHat className="w-4 h-4" />
+                          <ChefCapSparkIcon size={18} fill="#ffffff" />
                         </div>
                         <div className="space-y-1">
                           <p className="text-white font-medium text-sm leading-relaxed">
@@ -1384,7 +1364,7 @@ export default function LinnkProVoiceAssistant({
                       <div className="flex items-start gap-2.5 max-w-[88%]">
                         {msg.sender === 'assistant' && (
                           <div className="w-7 h-7 rounded-full bg-[#EF4444] text-white flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
-                            <ChefHat className="w-3.5 h-3.5" />
+                            <ChefCapSparkIcon size={16} fill="#ffffff" />
                           </div>
                         )}
                         <div
