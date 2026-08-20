@@ -2920,6 +2920,24 @@ export async function markAllCreatorCommissionsAsPaid(creatorId: string): Promis
 
 export const REDEEMABLE_FOOD_REWARDS: RedeemableFoodReward[] = [
   {
+    id: 'reward-bono-1k',
+    title: 'Bono de Descuento $1.000 COP',
+    description: 'Descuento directo de $1.000 COP para usar en cualquier compra en la tienda.',
+    pointsCost: 1000,
+    iconName: 'Ticket',
+    valueEstCop: 1000,
+    category: 'discount'
+  },
+  {
+    id: 'reward-bono-2k',
+    title: 'Bono de Descuento $2.000 COP',
+    description: 'Descuento directo de $2.000 COP aplicado a tu pedido acumulando tus compras.',
+    pointsCost: 2000,
+    iconName: 'Ticket',
+    valueEstCop: 2000,
+    category: 'discount'
+  },
+  {
     id: 'reward-drink',
     title: 'Gaseosa / Bebida Refrescante 400ml',
     description: 'Canjeable por una bebida o gaseosa fría de tu preferencia en cualquier pedido.',
@@ -2927,6 +2945,15 @@ export const REDEEMABLE_FOOD_REWARDS: RedeemableFoodReward[] = [
     iconName: 'GlassWater',
     valueEstCop: 4000,
     category: 'drink'
+  },
+  {
+    id: 'reward-bono-5k',
+    title: 'Bono de Descuento $5.000 COP',
+    description: 'Descuento directo de $5.000 COP para pagar tu comida en la tienda.',
+    pointsCost: 5000,
+    iconName: 'Ticket',
+    valueEstCop: 5000,
+    category: 'discount'
   },
   {
     id: 'reward-fries',
@@ -3129,8 +3156,8 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
   const phone = sanitizeCustomerPhone(order.customerPhone);
   if (!phone || phone.length < 7) return null;
 
-  // Rule: 1 Punto = $1 COP. Customers earn 5% cashback of their order total in points (e.g. $30.000 order = 1.500 Pts = $1.500 COP)
-  const earnedPoints = Math.max(500, Math.round((order.totalAmount || 0) * 0.05));
+  // Rule: Por cada compra que realice un cliente se gana 500 puntos ($500 COP) que se van acumulando para comprar en la tienda
+  const earnedPoints = 500;
   const spinsAwarded = 1; // 1 spin per order for the Free Dish Wheel!
 
   let existing = await fetchCustomerProfileByPhone(phone);

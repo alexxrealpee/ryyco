@@ -1369,9 +1369,12 @@ export default function CustomerPortalModal({
                       </div>
                     </div>
 
-                    <div className="mt-3 bg-black/10 rounded-xl px-3 py-1.5 flex items-center justify-between text-[11px] font-bold">
-                      <span>💡 1 Punto = $1 COP</span>
-                      <span>1.000 pts = $1.000 COP</span>
+                    <div className="mt-3 bg-black/15 rounded-xl p-2.5 flex flex-col gap-1 text-[11px] font-bold">
+                      <div className="flex items-center justify-between">
+                        <span>⭐ Ganas 500 Pts ($500 COP) por cada compra</span>
+                        <span>1 Punto = $1 COP</span>
+                      </div>
+                      <span className="text-[10px] text-black/70 font-semibold">Tus puntos se van acumulando automáticamente para pagar compras y comida en la tienda.</span>
                     </div>
 
                     <div className="mt-3 pt-3 border-t border-black/10 flex justify-between items-center text-xs font-bold">

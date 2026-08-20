@@ -2623,12 +2623,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             
             {/* Loyalty Bonus Banner */}
             <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-amber-500/15 border border-amber-500/40 p-3 rounded-2xl text-left space-y-1.5 shadow-lg">
-              <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs">
-                <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
-                <span>¡Desbloqueaste 1 GIRO GRATIS!</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-xs">
+                  <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
+                  <span>¡Ganaste +500 Puntos ($500 COP)!</span>
+                </div>
+                <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">+1 Giro Gratis</span>
               </div>
               <p className="text-[10px] text-gray-300 font-semibold leading-relaxed">
-                Por tu compra acumulaste puntos en tu cuenta y ganaste una tirada en la ruleta de platos gratis.
+                Por tu compra sumaste <strong>500 Puntos ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
               </p>
               <button
                 type="button"
@@ -2640,7 +2643,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
               >
                 <Sparkles className="w-3.5 h-3.5 text-black" />
-                ¡Girar Ruleta de Platos Gratis Ahora!
+                ¡Girar Ruleta y Ver Mis Puntos Ahora!
               </button>
             </div>
 
