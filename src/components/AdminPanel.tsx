@@ -11,6 +11,7 @@ import {
   fetchAllOrders,
   fetchAdminOrdersBatch,
   fetchAdminSubscriptionsBatch,
+  fetchAllStoresMap,
   updateOrderStatus,
   deleteOrder,
   fetchSystemSettings,
@@ -24,7 +25,7 @@ import {
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
 import { checkIsTableOrder } from './Dashboard';
-import { SubscriptionPayment, OrderItem, SystemSettings } from '../types';
+import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile } from '../types';
 import { 
   Users, 
   Settings, 
@@ -107,6 +108,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
 
+  // Comprehensive Store Profiles Directory for accurate Store Name resolution
+  const [storesMap, setStoresMap] = useState<Record<string, UserProfile>>({});
+  const [allStoresList, setAllStoresList] = useState<{ uid: string; name: string; username: string; phone?: string; address?: string }[]>([]);
+
   // System Settings State
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     defaultDeliveryFee: 7000,
@@ -181,6 +186,29 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const loadAdminData = async () => {
     setLoading(true);
     try {
+      // 0. Load comprehensive store directory
+      try {
+        const stores = await fetchAllStoresMap();
+        setStoresMap(stores);
+
+        const storeMapUnique = new Map<string, { uid: string; name: string; username: string; phone?: string; address?: string }>();
+        (Object.values(stores) as UserProfile[]).forEach((p: UserProfile) => {
+          if (p && p.uid && !storeMapUnique.has(p.uid)) {
+            const sName = p.displayName || p.storeName || p.username || 'Tienda';
+            storeMapUnique.set(p.uid, {
+              uid: p.uid,
+              name: sName,
+              username: p.username || '',
+              phone: p.whatsapp || p.phone || '',
+              address: p.address || p.location || ''
+            });
+          }
+        });
+        setAllStoresList(Array.from(storeMapUnique.values()).sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (err) {
+        console.error("Error al cargar directorio de tiendas:", err);
+      }
+
       // 1. Load Stats
       const systemStats = await fetchAdminStats();
       setStats(systemStats);
@@ -644,13 +672,47 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
+  const getStoreNameForOrder = (order: OrderItem): string => {
+    if (order.storeName && order.storeName.trim() !== '' && order.storeName !== 'Tienda Linnk' && order.storeName !== 'Tienda en la plataforma') {
+      return order.storeName;
+    }
+    const storeProfile = storesMap[order.storeOwnerId];
+    if (storeProfile) {
+      return storeProfile.displayName || storeProfile.storeName || storeProfile.username || 'Tienda';
+    }
+    const userMatch = users.find(u => u.uid === order.storeOwnerId);
+    if (userMatch) {
+      return userMatch.storeName || userMatch.username || `@${userMatch.username}`;
+    }
+    return order.storeName || 'Tienda';
+  };
+
+  const getStoreUsernameForOrder = (order: OrderItem): string => {
+    const storeProfile = storesMap[order.storeOwnerId];
+    if (storeProfile && storeProfile.username) {
+      return storeProfile.username;
+    }
+    const userMatch = users.find(u => u.uid === order.storeOwnerId);
+    if (userMatch && userMatch.username) {
+      return userMatch.username;
+    }
+    return '';
+  };
+
   const storeNamesMap = useMemo(() => {
     const map: Record<string, string> = {};
+    (Object.values(storesMap) as UserProfile[]).forEach((p: UserProfile) => {
+      if (p && p.uid) {
+        map[p.uid] = p.displayName || p.storeName || p.username || `@${p.username}`;
+      }
+    });
     users.forEach(u => {
-      map[u.uid] = u.storeName || u.username || `@${u.username}`;
+      if (!map[u.uid]) {
+        map[u.uid] = u.storeName || u.username || `@${u.username}`;
+      }
     });
     return map;
-  }, [users]);
+  }, [users, storesMap]);
 
   const handleUpdateOrderStatus = async (orderId: string, storeOwnerId: string, newStatus: OrderItem['status']) => {
     try {
@@ -689,7 +751,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       if (selectedOrderStatusFilter !== 'all' && order.status !== selectedOrderStatusFilter) {
         return false;
       }
-      // 3. Search text (name, phone, email, notes, order number, or driver info)
+      // 3. Search text (name, phone, email, notes, order number, driver info, or store name/username)
       if (orderSearchQuery.trim()) {
         const query = orderSearchQuery.toLowerCase();
         const matchesName = order.customerName.toLowerCase().includes(query);
@@ -700,11 +762,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         const matchesDriverName = order.deliveryDriverName?.toLowerCase().includes(query) || false;
         const matchesDriverPhone = order.deliveryDriverPhone?.toLowerCase().includes(query) || false;
         const matchesDriverVehicle = order.deliveryVehicle?.toLowerCase().includes(query) || false;
-        return matchesName || matchesPhone || matchesEmail || matchesNumber || matchesNotes || matchesDriverName || matchesDriverPhone || matchesDriverVehicle;
+        const storeNameText = getStoreNameForOrder(order).toLowerCase();
+        const storeUsernameText = getStoreUsernameForOrder(order).toLowerCase();
+        const matchesStore = storeNameText.includes(query) || storeUsernameText.includes(query);
+        return matchesName || matchesPhone || matchesEmail || matchesNumber || matchesNotes || matchesDriverName || matchesDriverPhone || matchesDriverVehicle || matchesStore;
       }
       return true;
     });
-  }, [allOrders, selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery]);
+  }, [allOrders, selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery, storesMap, users]);
 
   const filteredUsers = users.filter(u => 
     u.email.toLowerCase().includes(search.toLowerCase()) || 
@@ -1142,12 +1207,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <select 
                     value={selectedStoreFilter}
                     onChange={(e) => setSelectedStoreFilter(e.target.value)}
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl py-1.5 px-3 text-xs outline-none"
+                    className="bg-gray-950 border border-gray-800 text-white rounded-xl py-1.5 px-3 text-xs outline-none cursor-pointer"
                   >
                     <option value="all">Todas las Tiendas</option>
-                    {users.filter(u => u.storeName || u.username).map(u => (
-                      <option key={u.uid} value={u.username}>{(u.storeName || u.username)}</option>
-                    ))}
+                    {allStoresList.length > 0 ? (
+                      allStoresList.map(s => (
+                        <option key={s.uid} value={s.username || s.uid}>
+                          {s.name} {s.username ? `(@${s.username})` : ''}
+                        </option>
+                      ))
+                    ) : (
+                      users.filter(u => u.storeName || u.username).map(u => (
+                        <option key={u.uid} value={u.username}>{(u.storeName || u.username)}</option>
+                      ))
+                    )}
                   </select>
                 </div>
               </div>
@@ -1662,12 +1735,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     onChange={(e) => setSelectedOrderStoreFilter(e.target.value)}
                     className="bg-transparent border-none text-white text-xs outline-none cursor-pointer pr-4 font-bold"
                   >
-                    <option value="all" className="bg-gray-950">Todas</option>
-                    {users.map(u => (
-                      <option key={u.uid} value={u.uid} className="bg-gray-950">
-                        {u.storeName || u.username}
-                      </option>
-                    ))}
+                    <option value="all" className="bg-gray-950">Todas ({allStoresList.length > 0 ? allStoresList.length : users.length})</option>
+                    {allStoresList.length > 0 ? (
+                      allStoresList.map(s => (
+                        <option key={s.uid} value={s.uid} className="bg-gray-950">
+                          {s.name} {s.username ? `(@${s.username})` : ''}
+                        </option>
+                      ))
+                    ) : (
+                      users.map(u => (
+                        <option key={u.uid} value={u.uid} className="bg-gray-950">
+                          {u.storeName || u.username}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -1719,12 +1800,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </span>
                           </td>
                           <td className="py-4 px-4">
-                            <span className="font-bold text-indigo-400 text-xs block">
-                              {storeNamesMap[order.storeOwnerId] || 'Tienda Linnk'}
-                            </span>
-                            <span className="text-[9px] text-gray-500 font-mono block">
-                              ID: {order.storeOwnerId.substring(0, 8)}...
-                            </span>
+                            <div className="flex items-start gap-2">
+                              <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                                <Store className="w-3.5 h-3.5 text-indigo-400" />
+                              </div>
+                              <div className="min-w-0">
+                                <span className="font-extrabold text-indigo-300 text-xs block truncate max-w-[170px]" title={getStoreNameForOrder(order)}>
+                                  {getStoreNameForOrder(order)}
+                                </span>
+                                {getStoreUsernameForOrder(order) && (
+                                  <span className="text-[10px] text-gray-400 font-mono block truncate max-w-[170px]">
+                                    @{getStoreUsernameForOrder(order)}
+                                  </span>
+                                )}
+                                <span className="text-[9px] text-gray-500 font-mono block">
+                                  ID: {order.storeOwnerId.substring(0, 8)}...
+                                </span>
+                              </div>
+                            </div>
                           </td>
                           <td className="py-4 px-4">
                             <div className="font-bold text-white text-xs">{order.customerName}</div>

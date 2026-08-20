@@ -718,7 +718,7 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
       if (storeDoc.exists()) {
         const storeData = storeDoc.data() as UserProfile;
         if (storeData.isClosed === true) {
-          const sName = storeData.displayName || storeData.username || 'El restaurante';
+          const sName = storeData.displayName || storeData.storeName || storeData.username || 'El restaurante';
           throw new Error(`No se puede procesar el pedido porque ${sName} se encuentra cerrado actualmente.`);
         }
       }
@@ -732,6 +732,23 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   const result = { ...order };
   const docRef = doc(collection(db, 'orders'));
   result.id = docRef.id;
+
+  // Auto-resolve store name and store contact details if not set or generic
+  if ((!result.storeName || result.storeName.trim() === '' || result.storeName === 'Tienda Linnk' || result.storeName === 'Tienda en la plataforma') && result.storeOwnerId && result.storeOwnerId !== 'store_general') {
+    try {
+      const storeDoc = await getDoc(doc(db, 'profiles', result.storeOwnerId));
+      if (storeDoc.exists()) {
+        const sData = storeDoc.data() as UserProfile;
+        result.storeName = sData.displayName || sData.storeName || sData.username || 'Mi Tienda';
+        if (!result.storeAddress && (sData.address || sData.location)) {
+          result.storeAddress = sData.address || sData.location;
+        }
+        if (!result.storePhone && (sData.whatsapp || sData.phone)) {
+          result.storePhone = sData.whatsapp || sData.phone;
+        }
+      }
+    } catch (e) {}
+  }
 
   // Check active referral code (valid for 3 days)
   const activeRef = getActiveReferralCode();
@@ -1759,6 +1776,62 @@ export async function fetchAllActiveProductsAndStores(): Promise<{ products: Pro
 }
 
 // Fetch orders in progressive batches (Lazy loading / Pagination for Admin)
+// Fetch comprehensive map of all store profiles (Remote Firestore + Local cached profiles)
+export async function fetchAllStoresMap(): Promise<Record<string, UserProfile>> {
+  const map: Record<string, UserProfile> = {};
+
+  // 1. Fetch remote profiles
+  try {
+    const snap = await getDocs(collection(db, 'profiles'));
+    snap.forEach(docSnap => {
+      const data = docSnap.data() as UserProfile;
+      const prof: UserProfile = {
+        ...data,
+        uid: data.uid || docSnap.id,
+        isClosed: data.isClosed === true
+      };
+      map[docSnap.id] = prof;
+      if (prof.uid) map[prof.uid] = prof;
+      if (prof.username) map[prof.username.toLowerCase()] = prof;
+    });
+  } catch (e) {
+    console.warn("Could not fetch remote profiles map:", e);
+  }
+
+  // 2. Fetch local storage cached profiles
+  try {
+    const rawLocal = localStorage.getItem('linnk_profiles');
+    if (rawLocal) {
+      const parsed = JSON.parse(rawLocal);
+      Object.keys(parsed).forEach(k => {
+        const p = parsed[k];
+        if (p) {
+          const prof = { ...p, uid: p.uid || k, isClosed: p.isClosed === true };
+          if (!map[k]) map[k] = prof;
+          if (prof.uid && !map[prof.uid]) map[prof.uid] = prof;
+          if (prof.username && !map[prof.username.toLowerCase()]) map[prof.username.toLowerCase()] = prof;
+        }
+      });
+    }
+    // Also read session keys
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('linnk_session_') || key.startsWith('linnk_profile_'))) {
+        try {
+          const sp = JSON.parse(localStorage.getItem(key) || '{}');
+          if (sp && sp.uid) {
+            const prof = { ...sp, isClosed: sp.isClosed === true };
+            if (!map[sp.uid]) map[sp.uid] = prof;
+            if (sp.username && !map[sp.username.toLowerCase()]) map[sp.username.toLowerCase()] = prof;
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
+  return map;
+}
+
 export interface PaginatedOrdersResult {
   orders: OrderItem[];
   lastDoc: QueryDocumentSnapshot | null;

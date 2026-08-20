@@ -964,6 +964,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       const newOrder: OrderItem = {
         id: `order_${Date.now()}`,
         storeOwnerId: profile.uid,
+        storeName: profile.displayName || profile.username,
+        storeAddress: profile.address || profile.location || '',
+        storePhone: profile.whatsapp || profile.phone || '',
         orderNumber: nextOrderNumber,
         orderType: isTableOrder ? 'table' : 'delivery',
         isTableOrder: isTableOrder,
@@ -1059,10 +1062,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <ShoppingBag className="w-5 h-5 text-black stroke-[2.5]" />
             </div>
             <div>
-              <h1 className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5">
+              <h1 className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5 flex-wrap">
                 {profile.displayName}
-                <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/10 px-1.5 py-0.5 rounded-full font-black tracking-widest uppercase shrink-0">
-                  VENDEDOR
+                <span className="text-[9.5px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-black tracking-wider uppercase shrink-0 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  MODO VENDEDOR
                 </span>
                 {(profile.suspended || profile.subscriptionStatus === 'suspended') && (
                   <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded-full font-black tracking-widest uppercase shrink-0 animate-pulse">
@@ -1070,7 +1074,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   </span>
                 )}
               </h1>
-              <p className="text-[10px] text-gray-500 font-mono">linnkpro.store/{profile.username}</p>
+              <p className="text-[10px] text-gray-400 font-mono flex items-center gap-2">
+                <span>linnkpro.store/{profile.username}</span>
+                <span className="text-gray-600">•</span>
+                <span className="text-emerald-400 font-sans font-semibold">Administración de Tienda</span>
+              </p>
             </div>
           </div>
 

@@ -181,43 +181,53 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const profile = await fetchProfileByUid(user.uid);
-        if (profile) {
-          setUserProfile(profile);
-          
-          // Only force redirect to dashboard if user is not looking at a public profile or auth routing explicitly
-          const activeUserProfileUrl = getUsernameFromUrl();
-          const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
-          const hashVal = window.location.hash.toLowerCase();
-          const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
-            ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
+        // Distinguish active authentication mode: 'seller' (vendor dashboard) vs 'customer' (buyer on store)
+        const authMode = localStorage.getItem('ryyco_auth_mode');
 
-          if (!activeUserProfileUrl && !isPublicRoute) {
-            setView(profile.suspended ? 'landing' : 'dashboard');
-          }
+        if (authMode === 'customer') {
+          // User is authenticated as a customer/buyer. Do not hijack view or set seller userProfile.
+          setUserProfile(null);
         } else {
-          // Setup a temporary user profile
-          const tempProfile: UserProfile = {
-            uid: user.uid,
-            email: user.email || '',
-            username: user.email?.split('@')[0] || `store_${Date.now().toString().substring(5)}`,
-            displayName: user?.displayName || 'Mi Tienda Online',
-            bio: '¡Bienvenido a nuestra tienda! Aquí encontrarás los mejores productos con envíos rápidos y seguros.',
-            role: 'user',
-            plan: 'free',
-            currency: '$',
-            createdAt: new Date().toISOString()
-          };
-          setUserProfile(tempProfile);
-          
-          const activeUserProfileUrl = getUsernameFromUrl();
-          const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
-          const hashVal = window.location.hash.toLowerCase();
-          const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
-            ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
+          // Seller mode (default for merchant login / admin)
+          localStorage.setItem('ryyco_auth_mode', 'seller');
+          const profile = await fetchProfileByUid(user.uid);
+          if (profile) {
+            setUserProfile(profile);
+            
+            // Only force redirect to dashboard if user is not looking at a public profile or public routing explicitly
+            const activeUserProfileUrl = getUsernameFromUrl();
+            const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
+            const hashVal = window.location.hash.toLowerCase();
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
 
-          if (!activeUserProfileUrl && !isPublicRoute) {
-            setView('dashboard');
+            if (!activeUserProfileUrl && !isPublicRoute) {
+              setView(profile.suspended ? 'landing' : 'dashboard');
+            }
+          } else {
+            // Setup a temporary user profile for seller
+            const tempProfile: UserProfile = {
+              uid: user.uid,
+              email: user.email || '',
+              username: user.email?.split('@')[0] || `store_${Date.now().toString().substring(5)}`,
+              displayName: user?.displayName || 'Mi Tienda Online',
+              bio: '¡Bienvenido a nuestra tienda! Aquí encontrarás los mejores productos con envíos rápidos y seguros.',
+              role: 'user',
+              plan: 'free',
+              currency: '$',
+              createdAt: new Date().toISOString()
+            };
+            setUserProfile(tempProfile);
+            
+            const activeUserProfileUrl = getUsernameFromUrl();
+            const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
+            const hashVal = window.location.hash.toLowerCase();
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
+
+            if (!activeUserProfileUrl && !isPublicRoute) {
+              setView('dashboard');
+            }
           }
         }
       } else {
@@ -238,6 +248,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      localStorage.removeItem('ryyco_auth_mode');
       await signOut(auth);
       setUserProfile(null);
       setView('landing');
@@ -259,6 +270,7 @@ export default function App() {
   };
 
   const handleAuthSuccess = (profile: UserProfile) => {
+    localStorage.setItem('ryyco_auth_mode', 'seller');
     setUserProfile(profile);
     setView('dashboard');
   };

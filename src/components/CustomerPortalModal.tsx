@@ -13,7 +13,7 @@ import {
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
   Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle
 } from 'lucide-react';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
   CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory 
 } from '../types';
@@ -183,12 +183,14 @@ export default function CustomerPortalModal({
     setAuthError('');
     setIsGoogleLoading(true);
     try {
+      localStorage.setItem('ryyco_auth_mode', 'customer');
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
       if (!user) {
         throw new Error("No se pudo obtener la información de Google.");
       }
 
+      localStorage.setItem('ryyco_auth_mode', 'customer');
       const gEmail = (user.email || '').toLowerCase().trim();
       const gName = user.displayName || 'Cliente Ryyco';
       const gAvatar = user.photoURL || '';
@@ -234,13 +236,14 @@ export default function CustomerPortalModal({
         setAddressInput(updated.address || '');
         setNotesInput(updated.notes || '');
         localStorage.setItem('ryyco_active_customer_phone', updated.phone);
+        localStorage.setItem('ryyco_auth_mode', 'customer');
         loadCustomerOrders(updated.phone);
 
         // If existing profile was missing address or name, open quick window to complete it, else welcome
         if (!updated.address) {
           setShowGoogleCompleteModal(true);
         } else {
-          setActionSuccessMsg(`¡Bienvenido de vuelta, ${updated.name}! Perfil cargado con Google 🎉`);
+          setActionSuccessMsg(`¡Bienvenido de vuelta, ${updated.name}! Perfil de Cliente cargado con Google 🎉`);
           setTimeout(() => setActionSuccessMsg(null), 4000);
         }
       } else {
@@ -280,6 +283,7 @@ export default function CustomerPortalModal({
     setLoading(true);
     setAuthError('');
     try {
+      localStorage.setItem('ryyco_auth_mode', 'customer');
       const created = await saveCustomerProfile({
         phone: cleanPhone,
         name: nameInput.trim(),
@@ -294,6 +298,7 @@ export default function CustomerPortalModal({
 
       setCustomer(created);
       localStorage.setItem('ryyco_active_customer_phone', cleanPhone);
+      localStorage.setItem('ryyco_auth_mode', 'customer');
       setShowGoogleCompleteModal(false);
       loadCustomerOrders(cleanPhone);
       setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 1.000 Puntos ($1.000 COP) y 1 Giro gratis 🎁`);
@@ -423,13 +428,19 @@ export default function CustomerPortalModal({
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem('ryyco_active_customer_phone');
+    localStorage.removeItem('ryyco_auth_mode');
+    try {
+      await signOut(auth);
+    } catch (e) {}
     setCustomer(null);
     setOrders([]);
     setIsRegisterMode(false);
     setPasswordInput('');
     setNewPasswordInput('');
+    setActionSuccessMsg("Has cerrado la sesión de cliente. Puedes volver a ingresar como cliente o entrar a tu panel de vendedor.");
+    setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
   // Spin the Free Dish Roulette Wheel
@@ -559,6 +570,9 @@ export default function CustomerPortalModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white tracking-tight">Club de Clientes Ryyco</h3>
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#E63946]/20 text-[#E63946] border border-[#E63946]/30 uppercase tracking-wider">
+                  MODO CLIENTE
+                </span>
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-400/10 text-amber-400 border border-amber-400/20 uppercase tracking-wider">VIP</span>
               </div>
               <p className="text-[11px] text-gray-400 font-medium">
@@ -651,28 +665,46 @@ export default function CustomerPortalModal({
             </div>
 
             {/* GOOGLE / GMAIL SIGN IN & REGISTER BUTTON */}
-            <div className="space-y-2">
+            <div className="space-y-3">
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={isGoogleLoading || loading}
-                className="w-full h-12 rounded-xl bg-white hover:bg-gray-100 active:scale-[0.99] text-gray-900 font-black text-xs transition flex items-center justify-center gap-2.5 shadow-md shadow-white/5 border border-white/20 cursor-pointer"
+                className="w-full min-h-[52px] py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 active:scale-[0.99] text-gray-900 font-black text-xs transition flex items-center gap-3 shadow-lg shadow-white/5 border border-white/20 cursor-pointer"
               >
                 {isGoogleLoading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-gray-700" />
+                  <div className="w-full flex items-center justify-center gap-2">
+                    <RefreshCw className="w-4 h-4 animate-spin text-gray-700" />
+                    <span className="text-gray-700">Conectando con Google...</span>
+                  </div>
                 ) : (
                   <>
                     <GoogleIcon />
-                    <span>{isRegisterMode ? 'Registrarme con Google / Gmail' : 'Ingresar con Google / Gmail'}</span>
+                    <div className="text-left flex-1">
+                      <div className="text-xs sm:text-sm font-black text-slate-900">
+                        {isRegisterMode ? 'Registrarme como Cliente con Google' : 'Ingresar como Cliente con Google'}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-semibold">
+                        Acceso a puntos, ruleta de premios y pedidos
+                      </div>
+                    </div>
                   </>
                 )}
               </button>
 
+              {/* Multi-role notice for clarity */}
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 text-[11px] text-amber-300 flex items-start gap-2">
+                <span className="text-sm shrink-0">💡</span>
+                <p className="leading-snug">
+                  <strong>¿Eres vendedor de una tienda?</strong> Puedes usar tu mismo correo de Google para comprar aquí como cliente. Este botón te identificará en <strong>Modo Cliente Comprador</strong>.
+                </p>
+              </div>
+
               {/* DIVIDER */}
-              <div className="relative flex py-2 items-center">
+              <div className="relative flex py-1 items-center">
                 <div className="flex-grow border-t border-gray-800"></div>
                 <span className="flex-shrink mx-3 text-[10px] uppercase font-black tracking-wider text-gray-500">
-                  {isRegisterMode ? 'O llena tus datos de registro' : 'O ingresa con tu número'}
+                  {isRegisterMode ? 'O llena tus datos con número celular' : 'O ingresa con tu celular y clave'}
                 </span>
                 <div className="flex-grow border-t border-gray-800"></div>
               </div>

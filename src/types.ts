@@ -76,6 +76,7 @@ export interface UserProfile {
   email: string;
   username: string; // Store Handle/Slug (e.g., "mi-tienda")
   displayName: string; // Store Name (e.g., "Boutique de Moda")
+  storeName?: string; // Optional Store Name Alias
   bio: string; // Store Slogan/Description
   photoURL?: string; // Store Logo
   coverURL?: string; // Store Cover Banner
