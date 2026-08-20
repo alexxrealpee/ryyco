@@ -278,7 +278,7 @@ Formatos válidos para:
       return;
     }
 
-    const safeContext = catalogContext || { products: [], stores: [], deliveryFee: 4000, cart: [] };
+    const safeContext = catalogContext || { products: [], stores: [], deliveryFee: 7000, cart: [] };
 
     try {
       const openai = getOpenAIClient();

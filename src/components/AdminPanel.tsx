@@ -213,7 +213,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       try {
         const settings = await fetchSystemSettings();
         setSystemSettings(settings);
-        setDeliveryFeeInput((settings.defaultDeliveryFee || 5000).toString());
+        setDeliveryFeeInput((settings.defaultDeliveryFee || 7000).toString());
       } catch (err) {
         console.error("Error al cargar configuración del sistema:", err);
       }

@@ -117,7 +117,7 @@ export default function LinnkProVoiceAssistant({
   // Catalog and system data cache with instant preloaded defaults
   const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>(DEFAULT_PLATFORM_PRODUCTS);
   const [catalogStores, setCatalogStores] = useState<Record<string, UserProfile>>(DEFAULT_PLATFORM_STORES);
-  const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(4000);
+  const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(7000);
   const [cart, setCart] = useState<GeneralCartItem[]>(getStoredCart());
   const [isOrdering, setIsOrdering] = useState(false);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
@@ -616,6 +616,10 @@ export default function LinnkProVoiceAssistant({
 
       const topItems = finalResults.slice(0, 3).map(p => `${p.name} por ${p.price.toLocaleString('es-CO')} pesos en ${stores[p.userId]?.displayName || 'el restaurante'}`).join(', ');
       responseText = `Encontré estas opciones deliciosas: ${topItems}. ¿Te gustaría que agregue alguna a tu carrito?`;
+    }
+    // 3.1 Delivery fee questions
+    else if (lower.includes('domicilio') || lower.includes('envio') || lower.includes('envío') || lower.includes('costo de envio') || lower.includes('costo de envío') || lower.includes('cuanto vale el domicilio') || lower.includes('cuánto vale el domicilio')) {
+      responseText = `El costo del domicilio equivale a ${deliveryFee.toLocaleString('es-CO')} pesos y la entrega suele tomar entre 30 y 45 minutos. ¿Deseas ordenar algún plato?`;
     }
     // 4. Confirm order request
     else if (lower.includes('confirm') || lower.includes('hacer pedido') || lower.includes('enviar pedido') || lower.includes('finalizar')) {
@@ -1222,7 +1226,7 @@ export default function LinnkProVoiceAssistant({
                         : assistantState === 'speaking' 
                         ? (lastAssistantMessage?.text ? `"${lastAssistantMessage.text}"` : 'IAMesero te está respondiendo...')
                         : assistantState === 'processing'
-                        ? 'Procesando tu solicitud...'
+                        ? 'Pensando...'
                         : 'En llamada con IAMesero'}
                     </h2>
                   </div>

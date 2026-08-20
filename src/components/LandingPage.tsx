@@ -995,25 +995,58 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </footer>
 
-      {/* Floating WhatsApp Customer Support Button */}
-      <motion.a
-        href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20linnkpro.store"
-        target="_blank"
-        rel="noopener noreferrer"
-        initial={{ opacity: 0, scale: 0.8, y: 50 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ delay: 1, duration: 0.5 }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-50 flex items-center gap-1.5 sm:gap-2 px-3 py-2 sm:px-4.5 sm:py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-[11px] sm:text-sm rounded-full shadow-2xl shadow-[#E63946]/20 transition-all border border-[#E63946]/30 active:scale-[0.98] cursor-pointer print:hidden"
-      >
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-        </span>
-        <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white stroke-[2.5]" />
-        <span>Atención al Cliente</span>
-      </motion.a>
+      {/* Floating WhatsApp Customer Support Button - Ultra Eye-catching & Animated */}
+      <div className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-50 pointer-events-auto print:hidden">
+        {/* Continuous Radiating Pulsing Glow Rings */}
+        <div className="absolute inset-0 rounded-full bg-[#E63946] opacity-40 animate-ping pointer-events-none" style={{ animationDuration: '3s' }}></div>
+        <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-[#FF4D4D] via-[#E63946] to-[#FF0055] opacity-50 blur-md animate-pulse pointer-events-none"></div>
+
+        <motion.a
+          href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20Ryyco"
+          target="_blank"
+          rel="noopener noreferrer"
+          initial={{ opacity: 0, scale: 0.8, y: 30 }}
+          animate={{ 
+            opacity: 1, 
+            scale: 1,
+            y: [0, -6, 0],
+          }}
+          transition={{
+            y: {
+              repeat: Infinity,
+              duration: 2.4,
+              ease: "easeInOut"
+            },
+            opacity: { duration: 0.4 },
+            scale: { duration: 0.4 }
+          }}
+          whileHover={{ scale: 1.08, y: -8 }}
+          whileTap={{ scale: 0.94 }}
+          className="relative flex items-center gap-2 sm:gap-2.5 px-3.5 py-2.5 sm:px-5 sm:py-3.5 bg-gradient-to-r from-[#FF334B] via-[#E63946] to-[#D62839] hover:from-[#FF4D61] hover:to-[#E63946] text-white font-black text-xs sm:text-sm rounded-full shadow-[0_10px_30px_rgba(230,57,70,0.55)] border-2 border-white/30 backdrop-blur-md cursor-pointer transition-all overflow-hidden group"
+        >
+          {/* Shimmer sweep light effect */}
+          <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-12 pointer-events-none" />
+
+          {/* Active status pulse indicator */}
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-90"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-white/60"></span>
+          </span>
+
+          {/* Animated WhatsApp / Chat Icon */}
+          <motion.div
+            animate={{ rotate: [0, -10, 10, -10, 0] }}
+            transition={{ repeat: Infinity, duration: 3, repeatDelay: 2 }}
+            className="flex items-center justify-center"
+          >
+            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white stroke-[2.8] drop-shadow" />
+          </motion.div>
+
+          <span className="tracking-wide drop-shadow-sm font-extrabold whitespace-nowrap">
+            Atención al Cliente
+          </span>
+        </motion.a>
+      </div>
 
       {/* Printable Presentation Letter Modal */}
       {isPrintModalOpen && (

@@ -36,7 +36,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory } from '../types';
 
 // Concrete public config from firebase-applet-config.json
 const firebaseConfig = {
@@ -800,6 +800,13 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
     const localAll = JSON.parse(localStorage.getItem(allKey) || '[]');
     localAll.push(result);
     localStorage.setItem(allKey, JSON.stringify(localAll));
+  } catch (e) {}
+
+  // Automatically award customer loyalty points & free dish wheel spin
+  try {
+    if (result.customerPhone) {
+      awardCustomerPointsAndSpin(result).catch(err => console.warn("Failed background customer points awarding:", err));
+    }
   } catch (e) {}
 
   return result;
@@ -2833,4 +2840,426 @@ export async function markAllCreatorCommissionsAsPaid(creatorId: string): Promis
 
   return totalPaidAmount;
 }
+
+// ==========================================
+// CUSTOMER ACCOUNTS, LOYALTY POINTS & REWARDS
+// ==========================================
+
+export const REDEEMABLE_FOOD_REWARDS: RedeemableFoodReward[] = [
+  {
+    id: 'reward-drink',
+    title: 'Gaseosa / Bebida Refrescante 400ml',
+    description: 'Canjeable por una bebida o gaseosa fría de tu preferencia en cualquier pedido.',
+    pointsCost: 4000,
+    iconName: 'GlassWater',
+    valueEstCop: 4000,
+    category: 'drink'
+  },
+  {
+    id: 'reward-fries',
+    title: 'Porción de Papas a la Francesa Crujientes',
+    description: 'Porción personal de papas fritas doradas con salsa especial.',
+    pointsCost: 7500,
+    iconName: 'UtensilsCrossed',
+    valueEstCop: 7500,
+    category: 'appetizer'
+  },
+  {
+    id: 'reward-dessert',
+    title: 'Postre Artesanal de la Casa',
+    description: 'Un delicioso postre del día para cerrar tu comida con broche de oro.',
+    pointsCost: 9000,
+    iconName: 'Cake',
+    valueEstCop: 9000,
+    category: 'dessert'
+  },
+  {
+    id: 'reward-bono-10k',
+    title: 'Bono de Descuento $10.000 COP',
+    description: 'Descuento directo de $10.000 COP aplicado al total de tu próximo pedido.',
+    pointsCost: 10000,
+    iconName: 'Ticket',
+    valueEstCop: 10000,
+    category: 'discount'
+  },
+  {
+    id: 'reward-burger-dish',
+    title: 'Plato Fuerte / Hamburguesa Especial Gratis',
+    description: '¡Comida gratis completa! 1 Plato fuerte o hamburguesa artesanal.',
+    pointsCost: 20000,
+    iconName: 'Sandwich',
+    valueEstCop: 20000,
+    category: 'main'
+  },
+  {
+    id: 'reward-combo-vip',
+    title: 'Combo VIP: Plato + Papas + Bebida Gratis',
+    description: 'El combo completo para disfrutar sin pagar un solo peso.',
+    pointsCost: 30000,
+    iconName: 'Crown',
+    valueEstCop: 30000,
+    category: 'combo'
+  }
+];
+
+export function sanitizeCustomerPhone(phone: string): string {
+  if (!phone) return '';
+  let cleaned = phone.replace(/[^0-9]/g, '');
+  if (cleaned.length === 12 && cleaned.startsWith('57')) {
+    cleaned = cleaned.substring(2);
+  }
+  return cleaned;
+}
+
+/**
+ * Fetch customer profile by their WhatsApp / Phone number
+ */
+export async function fetchCustomerProfileByPhone(rawPhone: string): Promise<CustomerProfile | null> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone || phone.length < 7) return null;
+
+  // 1. Check local cache first for instant responsiveness
+  try {
+    const cached = localStorage.getItem(`ryyco_customer_${phone}`);
+    if (cached) {
+      const parsed = JSON.parse(cached) as CustomerProfile;
+      // return parsed or proceed to refresh
+    }
+  } catch (e) {}
+
+  // 2. Fetch from Firestore
+  try {
+    const custDoc = await getDoc(doc(db, 'customers', phone));
+    if (custDoc.exists()) {
+      const data = custDoc.data() as CustomerProfile;
+      const fullCust: CustomerProfile = {
+        ...data,
+        id: phone,
+        phone,
+        wonPrizes: Array.isArray(data.wonPrizes) ? data.wonPrizes : []
+      };
+      try {
+        localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(fullCust));
+      } catch (e) {}
+      return fullCust;
+    }
+  } catch (err) {
+    console.warn("Error fetching customer from Firestore:", err);
+  }
+
+  // 3. Fallback to localStorage if exists
+  try {
+    const local = localStorage.getItem(`ryyco_customer_${phone}`);
+    if (local) return JSON.parse(local);
+  } catch (e) {}
+
+  return null;
+}
+
+/**
+ * Fetch customer profile by their email address
+ */
+export async function fetchCustomerProfileByEmail(rawEmail: string): Promise<CustomerProfile | null> {
+  const email = (rawEmail || '').trim().toLowerCase();
+  if (!email || !email.includes('@')) return null;
+
+  // 1. Check local cache
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('ryyco_customer_')) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          const parsed = JSON.parse(item) as CustomerProfile;
+          if (parsed.email && parsed.email.toLowerCase() === email) {
+            return parsed;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 2. Fetch from Firestore
+  try {
+    const q = query(collection(db, 'customers'), where('email', '==', email), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const data = snap.docs[0].data() as CustomerProfile;
+      const fullCust: CustomerProfile = {
+        ...data,
+        id: snap.docs[0].id,
+        phone: data.phone || snap.docs[0].id,
+        wonPrizes: Array.isArray(data.wonPrizes) ? data.wonPrizes : []
+      };
+      try {
+        localStorage.setItem(`ryyco_customer_${fullCust.phone}`, JSON.stringify(fullCust));
+      } catch (e) {}
+      return fullCust;
+    }
+  } catch (err) {
+    console.warn("Error querying customer by email:", err);
+  }
+
+  return null;
+}
+
+/**
+ * Create or update a customer profile in Firestore
+ */
+export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { phone: string; name: string }): Promise<CustomerProfile> {
+  const phone = sanitizeCustomerPhone(cust.phone);
+  if (!phone) throw new Error("Número de teléfono requerido para la cuenta de cliente");
+
+  const existing = await fetchCustomerProfileByPhone(phone);
+  const now = new Date().toISOString();
+
+  const customerData: CustomerProfile = {
+    id: phone,
+    phone,
+    name: cust.name || existing?.name || 'Cliente Ryyco',
+    password: cust.password !== undefined ? cust.password : (existing?.password || ''),
+    email: cust.email ?? existing?.email ?? '',
+    avatarUrl: cust.avatarUrl ?? existing?.avatarUrl ?? '',
+    authUid: cust.authUid ?? existing?.authUid ?? '',
+    address: cust.address ?? existing?.address ?? '',
+    notes: cust.notes ?? existing?.notes ?? '',
+    points: cust.points !== undefined ? cust.points : (existing?.points || 1000), // 1.000 bonus welcome points ($1.000 COP)!
+    totalOrdersCount: cust.totalOrdersCount !== undefined ? cust.totalOrdersCount : (existing?.totalOrdersCount || 0),
+    totalSpent: cust.totalSpent !== undefined ? cust.totalSpent : (existing?.totalSpent || 0),
+    spinsAvailable: cust.spinsAvailable !== undefined ? cust.spinsAvailable : (existing?.spinsAvailable !== undefined ? existing.spinsAvailable : 1), // 1 free welcome spin!
+    wonPrizes: cust.wonPrizes !== undefined ? cust.wonPrizes : (existing?.wonPrizes || []),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+
+  // Save to Firestore
+  try {
+    await setDoc(doc(db, 'customers', phone), cleanUndefined(customerData), { merge: true });
+  } catch (err) {
+    console.warn("Failed saving customer to Firestore, caching locally:", err);
+  }
+
+  // Cache in localStorage
+  try {
+    localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(customerData));
+    localStorage.setItem('ryyco_active_customer_phone', phone);
+  } catch (e) {}
+
+  return customerData;
+}
+
+/**
+ * Award points and free dish wheel spin when an order is completed/placed
+ */
+export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ earnedPoints: number; spinsAwarded: number; newTotalPoints: number } | null> {
+  if (!order.customerPhone) return null;
+  const phone = sanitizeCustomerPhone(order.customerPhone);
+  if (!phone || phone.length < 7) return null;
+
+  // Rule: 1 Punto = $1 COP. Customers earn 5% cashback of their order total in points (e.g. $30.000 order = 1.500 Pts = $1.500 COP)
+  const earnedPoints = Math.max(500, Math.round((order.totalAmount || 0) * 0.05));
+  const spinsAwarded = 1; // 1 spin per order for the Free Dish Wheel!
+
+  let existing = await fetchCustomerProfileByPhone(phone);
+  if (!existing) {
+    existing = await saveCustomerProfile({
+      phone,
+      name: order.customerName || 'Cliente Ryyco',
+      address: order.customerAddress || '',
+      points: 1000, // Welcome bonus (1.000 Pts = $1.000 COP)
+      spinsAvailable: 1
+    });
+  }
+
+  const updatedPoints = (existing.points || 0) + earnedPoints;
+  const updatedSpins = (existing.spinsAvailable || 0) + spinsAwarded;
+  const updatedOrders = (existing.totalOrdersCount || 0) + 1;
+  const updatedSpent = (existing.totalSpent || 0) + (order.totalAmount || 0);
+
+  const updatedCust: CustomerProfile = {
+    ...existing,
+    points: updatedPoints,
+    spinsAvailable: updatedSpins,
+    totalOrdersCount: updatedOrders,
+    totalSpent: updatedSpent,
+    address: order.customerAddress || existing.address,
+    updatedAt: new Date().toISOString()
+  };
+
+  await saveCustomerProfile(updatedCust);
+
+  return {
+    earnedPoints,
+    spinsAwarded,
+    newTotalPoints: updatedPoints
+  };
+}
+
+/**
+ * Fetch all orders placed by a specific customer phone number
+ */
+export async function fetchCustomerOrders(rawPhone: string): Promise<OrderItem[]> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone || phone.length < 7) return [];
+
+  let ordersList: OrderItem[] = [];
+
+  try {
+    // 1. Direct query on orders collection
+    const ordersCol = collection(db, 'orders');
+    const q1 = query(ordersCol, where('customerPhone', '==', phone));
+    const snap1 = await getDocs(q1);
+    snap1.forEach(docSnap => {
+      ordersList.push({ ...docSnap.data(), id: docSnap.id } as OrderItem);
+    });
+
+    // Also check for '57' + phone format
+    if (ordersList.length === 0 && phone.length === 10) {
+      const q2 = query(ordersCol, where('customerPhone', '==', `57${phone}`));
+      const snap2 = await getDocs(q2);
+      snap2.forEach(docSnap => {
+        ordersList.push({ ...docSnap.data(), id: docSnap.id } as OrderItem);
+      });
+    }
+  } catch (err) {
+    console.warn("Firestore customer orders query failed, checking cached orders:", err);
+  }
+
+  // 2. Also check all cached local orders
+  try {
+    const keys = Object.keys(localStorage);
+    keys.forEach(k => {
+      if (k.startsWith('linnk_orders_')) {
+        try {
+          const cachedOrders: OrderItem[] = JSON.parse(localStorage.getItem(k) || '[]');
+          cachedOrders.forEach(o => {
+            const oPhone = sanitizeCustomerPhone(o.customerPhone);
+            if (oPhone === phone || oPhone.includes(phone) || phone.includes(oPhone)) {
+              if (!ordersList.some(item => item.id === o.id)) {
+                ordersList.push(o);
+              }
+            }
+          });
+        } catch (e) {}
+      }
+    });
+  } catch (e) {}
+
+  // Sort descending by orderNumber or createdAt
+  ordersList.sort((a, b) => {
+    const timeA = new Date(a.createdAt || 0).getTime();
+    const timeB = new Date(b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
+
+  return ordersList;
+}
+
+/**
+ * Record a won prize from the Free Dish Wheel to the customer profile
+ */
+export async function addCustomerWonPrize(
+  rawPhone: string, 
+  prizeData: { title: string; category: PrizeCategory; description: string; discountAmount?: number }
+): Promise<CustomerPrize> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone) throw new Error("Teléfono requerido");
+
+  const customer = await fetchCustomerProfileByPhone(phone);
+  if (!customer) throw new Error("Perfil de cliente no encontrado");
+
+  // Deduct 1 spin
+  const newSpins = Math.max(0, (customer.spinsAvailable || 0) - 1);
+
+  // Random 6-char verification code
+  const code = 'RYY-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+  const newPrize: CustomerPrize = {
+    id: 'prz_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+    title: prizeData.title,
+    category: prizeData.category,
+    description: prizeData.description,
+    code,
+    discountAmount: prizeData.discountAmount,
+    isRedeemed: false,
+    wonAt: new Date().toISOString()
+  };
+
+  const wonPrizes = [newPrize, ...(customer.wonPrizes || [])];
+
+  // If prize is points, also credit them directly
+  let newPoints = customer.points || 0;
+  if (prizeData.category === 'points' && prizeData.discountAmount) {
+    newPoints += prizeData.discountAmount;
+  }
+
+  await saveCustomerProfile({
+    ...customer,
+    spinsAvailable: newSpins,
+    points: newPoints,
+    wonPrizes
+  });
+
+  return newPrize;
+}
+
+/**
+ * Redeem a customer prize voucher
+ */
+export async function redeemCustomerPrize(rawPhone: string, prizeId: string): Promise<boolean> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone) return false;
+
+  const customer = await fetchCustomerProfileByPhone(phone);
+  if (!customer || !customer.wonPrizes) return false;
+
+  const prizeIdx = customer.wonPrizes.findIndex(p => p.id === prizeId);
+  if (prizeIdx === -1) return false;
+
+  customer.wonPrizes[prizeIdx].isRedeemed = true;
+  customer.wonPrizes[prizeIdx].redeemedAt = new Date().toISOString();
+
+  await saveCustomerProfile(customer);
+  return true;
+}
+
+/**
+ * Exchange accumulated points for a food reward
+ */
+export async function exchangePointsForReward(rawPhone: string, reward: RedeemableFoodReward): Promise<CustomerPrize> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone) throw new Error("Teléfono requerido");
+
+  const customer = await fetchCustomerProfileByPhone(phone);
+  if (!customer) throw new Error("Cliente no encontrado");
+
+  if ((customer.points || 0) < reward.pointsCost) {
+    throw new Error(`Puntos insuficientes. Tienes ${customer.points || 0} pts y necesitas ${reward.pointsCost} pts.`);
+  }
+
+  const remainingPoints = customer.points - reward.pointsCost;
+  const code = 'CANJE-' + Math.random().toString(36).substring(2, 7).toUpperCase();
+
+  const newPrize: CustomerPrize = {
+    id: 'rw_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+    title: reward.title,
+    category: reward.category,
+    description: reward.description,
+    code,
+    discountAmount: reward.valueEstCop,
+    isRedeemed: false,
+    wonAt: new Date().toISOString()
+  };
+
+  const wonPrizes = [newPrize, ...(customer.wonPrizes || [])];
+
+  await saveCustomerProfile({
+    ...customer,
+    points: remainingPoints,
+    wonPrizes
+  });
+
+  return newPrize;
+}
+
 

@@ -312,3 +312,48 @@ export interface ClickAnalytic {
   linkTitle: string;
   timestamp: string;
 }
+
+export type PrizeCategory = 'dish' | 'drink' | 'dessert' | 'discount' | 'points' | 'combo' | 'appetizer' | 'main';
+
+export interface CustomerPrize {
+  id: string;
+  title: string;
+  category: PrizeCategory;
+  description: string;
+  code: string;
+  discountAmount?: number; // COP value
+  isRedeemed: boolean;
+  wonAt: string;
+  redeemedAt?: string;
+  expiresAt?: string;
+}
+
+export interface CustomerProfile {
+  id: string; // Phone number or unique ID
+  phone: string;
+  name: string;
+  password?: string;
+  email?: string;
+  avatarUrl?: string;
+  authUid?: string;
+  address?: string;
+  notes?: string;
+  points: number; // Puntos de fidelidad Ryyco
+  totalOrdersCount: number;
+  totalSpent: number;
+  spinsAvailable: number; // Tiros o giros disponibles en la ruleta de platos gratis
+  wonPrizes?: CustomerPrize[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RedeemableFoodReward {
+  id: string;
+  title: string;
+  description: string;
+  pointsCost: number;
+  iconName: string;
+  valueEstCop: number;
+  category: PrizeCategory;
+}
+

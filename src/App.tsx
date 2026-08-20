@@ -368,20 +368,22 @@ export default function App() {
         />
       )}
 
-      {/* LinnkPro AI Voice Assistant (Floating Button & Voice Shopping Modal) */}
-      <LinnkProVoiceAssistant 
-        activeUsername={targetUsername}
-        onNavigateToStore={(storeUsername) => {
-          window.history.pushState({}, '', '/' + storeUsername);
-          setTargetUsername(storeUsername);
-          setView('profile');
-        }}
-        onNavigateToTienda={() => {
-          window.history.pushState({}, '', '/tienda');
-          setTargetUsername(null);
-          setView('tienda');
-        }}
-      />
+      {/* LinnkPro AI Voice Assistant (Floating Button & Voice Shopping Modal) - Solo en página de inicio */}
+      {(view === 'tienda' || view === 'landing') && (
+        <LinnkProVoiceAssistant 
+          activeUsername={targetUsername}
+          onNavigateToStore={(storeUsername) => {
+            window.history.pushState({}, '', '/' + storeUsername);
+            setTargetUsername(storeUsername);
+            setView('profile');
+          }}
+          onNavigateToTienda={() => {
+            window.history.pushState({}, '', '/tienda');
+            setTargetUsername(null);
+            setView('tienda');
+          }}
+        />
+      )}
 
       {/* Progressive Web App (PWA) Installation Bottom Sheet Modal */}
       <PwaInstallModal />

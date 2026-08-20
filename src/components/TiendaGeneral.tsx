@@ -22,13 +22,18 @@ import {
   HelpCircle,
   Clock,
   Minus,
-  Plus
+  Plus,
+  Crown,
+  Gift,
+  Trophy,
+  Ticket
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem } from '../types';
 import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import PwaLoadingScreen from './PwaLoadingScreen';
 import LinnkProLogo from './LinnkProLogo';
+import CustomerPortalModal from './CustomerPortalModal';
 
 export const isFoodCategory = (cat?: string): boolean => {
   if (!cat || cat === 'all' || cat === 'Todos') return false;
@@ -180,6 +185,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [custAddress, setCustAddress] = useState('');
   const [custNotes, setCustNotes] = useState('');
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
+
+  // Customer Loyalty & Account Modal
+  const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
+  const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
   
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [submittedOrders, setSubmittedOrders] = useState<OrderItem[]>([]);
@@ -552,7 +561,18 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Right: Action Buttons */}
-          <div className="flex items-center gap-2.5 z-10">
+          <div className="flex items-center gap-2 sm:gap-2.5 z-10">
+            {/* Customer Loyalty & Roulette Modal Button */}
+            <button 
+              onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer relative"
+              title="Mi Cuenta, Puntos, Ruleta de Platos Gratis y Estado de Pedidos"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span className="hidden sm:inline">Mis Puntos & Pedidos</span>
+              <span className="sm:hidden">Puntos</span>
+            </button>
+
             {/* Historias Button in header for desktop */}
             <button
               onClick={() => {
@@ -1671,15 +1691,28 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
 
               {/* Close / Done action */}
-              <button
-                onClick={() => {
-                  setIsSuccessOpen(false);
-                  setSubmittedOrders([]);
-                }}
-                className="w-full py-3 bg-[#090B12] hover:bg-[#232B3A] border border-[#232B3A] text-white font-bold text-xs rounded-xl transition cursor-pointer"
-              >
-                Cerrar y Volver a la Vitrina
-              </button>
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setIsSuccessOpen(false);
+                    setCustomerPortalTab('wheel');
+                    setIsCustomerPortalOpen(true);
+                  }}
+                  className="w-full py-3 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                >
+                  <Crown className="w-4 h-4 text-black" />
+                  ¡Girar Ruleta de Platos Gratis & Rastrear Pedido!
+                </button>
+                <button
+                  onClick={() => {
+                    setIsSuccessOpen(false);
+                    setSubmittedOrders([]);
+                  }}
+                  className="w-full py-2.5 bg-[#090B12] hover:bg-[#232B3A] border border-[#232B3A] text-gray-400 hover:text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cerrar y Volver a la Vitrina
+                </button>
+              </div>
 
             </motion.div>
           </div>
@@ -1698,6 +1731,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </span>
         </button>
       )}
+
+      {/* CUSTOMER LOYALTY, ACCOUNT, ORDERS & LUCKY WHEEL PORTAL MODAL */}
+      <CustomerPortalModal
+        isOpen={isCustomerPortalOpen}
+        onClose={() => setIsCustomerPortalOpen(false)}
+        initialPhone={custPhone}
+        initialTab={customerPortalTab}
+      />
 
       {/* 6. Footer */}
       <footer className="border-t border-[#232B3A] py-12 px-4 sm:px-6 md:px-8 bg-[#090B12] text-[#A9B2C3] text-center text-xs mt-12 space-y-3">

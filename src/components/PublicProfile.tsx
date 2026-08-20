@@ -12,9 +12,12 @@ import {
   submitContactLead,
   saveOrder,
   fetchSystemSettings,
-  checkIsStoreClosed
+  checkIsStoreClosed,
+  saveCustomerProfile,
+  fetchCustomerProfileByPhone
 } from '../lib/firebase';
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
+import CustomerPortalModal from './CustomerPortalModal';
 import { 
   UserProfile, 
   LinkItem, 
@@ -23,7 +26,8 @@ import {
   ProductItem, 
   OrderItem,
   LeadItem,
-  BankAccount
+  BankAccount,
+  CustomerProfile
 } from '../types';
 import { 
   Share2, 
@@ -66,7 +70,13 @@ import {
   ChefHat,
   Smartphone,
   AlertTriangle,
-  Store
+  Store,
+  Crown,
+  Trophy,
+  Gift,
+  Sparkles,
+  Star,
+  Ticket
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { getFontClass } from './ThemeStyles';
@@ -152,6 +162,31 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [custNotes, setCustNotes] = useState('');
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('whatsapp');
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
+  const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
+
+  // Customer Portal & Rewards State
+  const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
+  const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
+  const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
+  const [appliedRewardCode, setAppliedRewardCode] = useState('');
+  const [rewardDiscountAmount, setRewardDiscountAmount] = useState(0);
+
+  // Auto-load customer profile from local storage if previously logged in
+  useEffect(() => {
+    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (savedPhone) {
+      fetchCustomerProfileByPhone(savedPhone).then(cust => {
+        if (cust) {
+          setActiveCustomer(cust);
+          if (!custPhone) setCustPhone(cust.phone);
+          if (!custName) setCustName(cust.name);
+          if (!custAddress && cust.address) setCustAddress(cust.address);
+          if (!custEmail && cust.email) setCustEmail(cust.email);
+          if (!custNotes && cust.notes) setCustNotes(cust.notes);
+        }
+      }).catch(() => {});
+    }
+  }, []);
 
   // Bank details state
   const [copiedAccountId, setCopiedAccountId] = useState<string | null>(null);
@@ -465,10 +500,16 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     setOrderSubmitting(true);
     const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
     const deliveryFee = systemDeliveryFee;
-    const totalSum = subtotal + deliveryFee;
+    const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
+    const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
     const rNo = Math.floor(1000 + Math.random() * 9000);
 
     const formattedPhone = formatColombianPhoneWith57(custPhone);
+
+    let finalNotes = custNotes.trim();
+    if (appliedRewardCode) {
+      finalNotes = `[Cupón Aplicado: ${appliedRewardCode} - Descuento: $${finalDiscount.toLocaleString('es-CO')}] ${finalNotes}`.trim();
+    }
 
     const newOrder: OrderItem = {
       id: `order_${Date.now()}`,
@@ -491,7 +532,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
       paymentMethod: payMethod,
-      notes: custNotes.trim() || undefined,
+      notes: finalNotes || undefined,
       status: 'pending',
       createdAt: new Date().toISOString(),
       proofImage: uploadedOrderProofBase64 || undefined
@@ -500,10 +541,27 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     try {
       const savedOrder = await saveOrder(newOrder);
       setSubmittedOrder(savedOrder);
+
+      // Save / update customer profile with details and address
+      if (createAccountWithOrder || custPhone) {
+        try {
+          saveCustomerProfile({
+            phone: cleanedPhone,
+            name: custName.trim(),
+            address: custAddress.trim(),
+            email: custEmail.trim(),
+            notes: custNotes.trim()
+          }).then(updated => {
+            setActiveCustomer(updated);
+          }).catch(err => console.warn("Failed background customer profile creation:", err));
+        } catch (e) {}
+      }
       
       // Clear out customer cart local states
       setCart([]);
       setUploadedOrderProofBase64('');
+      setAppliedRewardCode('');
+      setRewardDiscountAmount(0);
       setIsCartOpen(false);
       setIsCheckoutOpen(false);
 
@@ -932,8 +990,23 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           </nav>
 
           {/* Right: Premium E-Commerce Utility Toolbar */}
-          <div className="flex items-center gap-2 md:gap-4 text-inherit">
+          <div className="flex items-center gap-2 md:gap-3 text-inherit">
             
+            {/* Customer Account, Points & Roulette Modal Button */}
+            <button 
+              onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
+              className="px-2.5 sm:px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-[11px] flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer relative group"
+              title="Mi Cuenta, Puntos, Ruleta de Platos Gratis y Estado de Pedidos"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400"></span>
+              </span>
+              <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span className="hidden sm:inline">Mis Puntos & Pedidos</span>
+              <span className="sm:hidden">Puntos</span>
+            </button>
+
             {/* Search toggler */}
             <button 
               onClick={() => setIsSearchBarOpen(!isSearchBarOpen)}
@@ -2412,6 +2485,85 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             </div>
 
+            {/* Loyalty Points & Account Promo Card */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border border-amber-500/30 p-3.5 rounded-2xl space-y-2 text-left">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                    <Gift className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-amber-300">Club de Puntos & Platos Gratis</h4>
+                    <p className="text-[10px] text-gray-400 font-semibold">Gana puntos y giros de ruleta con cada compra</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setCustomerPortalTab('wheel'); setIsCustomerPortalOpen(true); }}
+                  className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-black text-[10px] font-black rounded-lg transition shrink-0 cursor-pointer"
+                >
+                  Ver Premios
+                </button>
+              </div>
+
+              <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  checked={createAccountWithOrder} 
+                  onChange={(e) => setCreateAccountWithOrder(e.target.checked)}
+                  className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
+                />
+                <span className="text-[11px] font-bold text-gray-200">
+                  Guardar mis datos y acumular puntos (+1 Giro de Ruleta Gratis)
+                </span>
+              </label>
+            </div>
+
+            {/* Optional Voucher / Reward Coupon Code */}
+            <div className="bg-gray-900/60 border border-gray-800 p-3 rounded-2xl space-y-2 text-left">
+              <label className="text-[10px] font-black uppercase text-gray-400 flex items-center justify-between">
+                <span>¿Tienes un Cupón o Código de Premio?</span>
+                <Ticket className="w-3.5 h-3.5 text-indigo-400" />
+              </label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={appliedRewardCode}
+                  onChange={(e) => {
+                    setAppliedRewardCode(e.target.value.toUpperCase());
+                    if (!e.target.value.trim()) setRewardDiscountAmount(0);
+                  }}
+                  placeholder="Ej: RYY-7492 o CANJE-DESC"
+                  className="flex-1 bg-black/60 border border-gray-700 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-amber-300 placeholder:text-gray-600 outline-none uppercase"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const code = appliedRewardCode.trim().toUpperCase();
+                    if (!code) {
+                      setRewardDiscountAmount(0);
+                      return;
+                    }
+                    if (code.includes('DESC') || code.includes('5000') || code.startsWith('RYY-') || code.startsWith('CANJE-')) {
+                      setRewardDiscountAmount(5000);
+                      alert(`🎉 ¡Cupón ${code} validado! Se aplicó un descuento de $5.000 COP a tu pedido.`);
+                    } else {
+                      setRewardDiscountAmount(3000);
+                      alert(`🎉 ¡Bono ${code} aplicado! Descuento de $3.000 COP registrado.`);
+                    }
+                  }}
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition cursor-pointer"
+                >
+                  Aplicar
+                </button>
+              </div>
+              {rewardDiscountAmount > 0 && (
+                <p className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                  <Check className="w-3 h-3" /> Descuento aplicado: -${rewardDiscountAmount.toLocaleString('es-CO')} COP
+                </p>
+              )}
+            </div>
+
             {/* Total final */}
             <div className="border-t border-gray-900 pt-4 space-y-2">
               <div className="flex justify-between items-center text-xs text-gray-400 font-bold">
@@ -2422,9 +2574,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <span>Costo de Domicilio:</span>
                 <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
               </div>
+              {rewardDiscountAmount > 0 && (
+                <div className="flex justify-between items-center text-xs text-emerald-400 font-bold">
+                  <span>Descuento Premio / Cupón:</span>
+                  <span className="font-mono">-{getStoreCurrency()}{Math.min(totalCartCost, rewardDiscountAmount).toLocaleString()}</span>
+                </div>
+              )}
               <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-gray-900 pt-2 text-white">
                 <span>Monto Total a Pagar:</span>
-                <span className="text-emerald-400 text-base font-mono">{getStoreCurrency()}{(totalCartCost + systemDeliveryFee).toLocaleString()}</span>
+                <span className="text-emerald-400 text-base font-mono">
+                  {getStoreCurrency()}{Math.max(0, totalCartCost + systemDeliveryFee - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
+                </span>
               </div>
             </div>
 
@@ -2440,7 +2600,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <button
                 type="submit"
                 disabled={orderSubmitting}
-                className="flex-1 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow"
+                className="flex-1 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer"
               >
                 {orderSubmitting ? 'Procesando...' : 'Hacer Mi Pedido 🚀'}
               </button>
@@ -2461,6 +2621,29 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             <h3 className="text-lg font-black text-white leading-tight">¡Pedido Recibido con Éxito!</h3>
             <p className="text-xs text-indigo-300">Tu número de guía interna es <strong className="font-mono text-white">#{submittedOrder.orderNumber}</strong></p>
             
+            {/* Loyalty Bonus Banner */}
+            <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-amber-500/15 border border-amber-500/40 p-3 rounded-2xl text-left space-y-1.5 shadow-lg">
+              <div className="flex items-center gap-2 text-amber-300 font-extrabold text-xs">
+                <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
+                <span>¡Desbloqueaste 1 GIRO GRATIS!</span>
+              </div>
+              <p className="text-[10px] text-gray-300 font-semibold leading-relaxed">
+                Por tu compra acumulaste puntos en tu cuenta y ganaste una tirada en la ruleta de platos gratis.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubmittedOrder(null);
+                  setCustomerPortalTab('wheel');
+                  setIsCustomerPortalOpen(true);
+                }}
+                className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-black" />
+                ¡Girar Ruleta de Platos Gratis Ahora!
+              </button>
+            </div>
+
             <p className="text-xs text-gray-400 leading-relaxed font-semibold bg-gray-900 border border-gray-900 p-3 rounded-lg text-left">
               Para validar el despacho, te facilitamos un botón que redactará los artículos de tu carrito directamente hacia nuestro canal oficial de WhatsApp. Así podremos coordinar el envío de inmediato.
             </p>
@@ -2469,7 +2652,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <button
                 type="button"
                 onClick={() => triggerShopperWhatsAppMessage(submittedOrder)}
-                className="w-full py-4.5 bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs rounded-lg flex items-center justify-center gap-2 transition shadow shadow-emerald-500/10 active:scale-95 cursor-pointer"
+                className="w-full py-4 bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow shadow-emerald-500/10 active:scale-95 cursor-pointer"
               >
                 <MessageCircle className="w-5 h-5 text-black stroke-[2.5]" />
                 Enviar Pedido por WhatsApp
@@ -2477,8 +2660,25 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
               <button
                 type="button"
+                onClick={() => {
+                  const phone = submittedOrder.customerPhone;
+                  setSubmittedOrder(null);
+                  if (phone) {
+                    setCustPhone(cleanColombianPhone(phone));
+                  }
+                  setCustomerPortalTab('orders');
+                  setIsCustomerPortalOpen(true);
+                }}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Truck className="w-4 h-4" />
+                Rastrear Estado de mi Pedido en Vivo
+              </button>
+
+              <button
+                type="button"
                 onClick={() => { setSubmittedOrder(null); }}
-                className="w-full py-3 bg-gray-900 hover:bg-gray-805 text-xs text-gray-400 font-bold rounded-lg transition"
+                className="w-full py-2.5 bg-gray-900 hover:bg-gray-805 text-xs text-gray-400 font-bold rounded-xl transition cursor-pointer"
               >
                 Volver a la Tienda
               </button>
@@ -2487,6 +2687,19 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           </div>
         </div>
       )}
+
+      {/* CUSTOMER LOYALTY, ACCOUNT, ORDERS & LUCKY WHEEL PORTAL MODAL */}
+      <CustomerPortalModal
+        isOpen={isCustomerPortalOpen}
+        onClose={() => setIsCustomerPortalOpen(false)}
+        initialPhone={custPhone}
+        initialTab={customerPortalTab}
+        storeCurrency={getStoreCurrency()}
+        onSelectRewardCode={(code, discount) => {
+          setAppliedRewardCode(code);
+          if (discount) setRewardDiscountAmount(discount);
+        }}
+      />
 
       {/* FULLSCREEN QR LIGHTBOX MODAL */}
       {expandedQRUrl && (

@@ -147,6 +147,26 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "creatorId", "creatorCode", "orderId", "orderTotal", "commissionAmount", "status", "createdAt"]
+    },
+    "CustomerProfile": {
+      "title": "CustomerProfile",
+      "description": "Stores customer shopper accounts, loyalty points, free dish prizes and order history preferences",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "phone": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "notes": { "type": "string" },
+        "points": { "type": "number" },
+        "totalOrdersCount": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "spinsAvailable": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "phone", "name", "points", "totalOrdersCount", "spinsAvailable"]
     }
   },
   "firestore": {
@@ -157,6 +177,10 @@
     "/profiles/{profileId}": {
       "schema": "UserProfile",
       "description": "Public merchant store configurations"
+    },
+    "/customers/{customerId}": {
+      "schema": "CustomerProfile",
+      "description": "Customer shopper profiles, points and reward vouchers"
     },
     "/subscription_payments/{paymentId}": {
       "schema": "SubscriptionPayment",

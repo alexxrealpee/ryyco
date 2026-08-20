@@ -44,7 +44,49 @@ export interface CartPayloadItem {
   userId: string;
 }
 
+export interface MerchantAdminContext {
+  storeUid: string;
+  storeName: string;
+  storeUsername: string;
+  isClosed?: boolean;
+  scheduleEnabled?: boolean;
+  openTime?: string;
+  closeTime?: string;
+  phone?: string;
+  whatsapp?: string;
+  address?: string;
+  activeProductsCount: number;
+  totalProductsCount: number;
+  totalOrdersCount: number;
+  pendingOrdersCount: number;
+  completedOrdersCount: number;
+  totalSalesAmount: number;
+  todaySalesAmount?: number;
+  recentStoreOrders?: Array<{
+    id: string;
+    orderNumber: number;
+    customerName: string;
+    customerPhone: string;
+    customerAddress?: string;
+    totalAmount: number;
+    status: string;
+    createdAt: string;
+    itemsSummary?: string;
+    paymentMethod?: string;
+  }>;
+  storeProducts?: Array<{
+    id: string;
+    name: string;
+    price: number;
+    stock?: number;
+    category?: string;
+    active?: boolean;
+  }>;
+}
+
 export interface VoiceAssistantContext {
+  role?: 'customer' | 'admin' | 'merchant';
+  merchantContext?: MerchantAdminContext;
   products: CatalogProduct[];
   stores: CatalogStore[];
   deliveryFee: number;
@@ -830,8 +872,134 @@ export async function processOpenAIVoiceAssistantMessage(
   history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [],
   context: VoiceAssistantContext
 ) {
-  let { products = [], stores = [], cart = [], deliveryFee = 4000, recentOrders = [] } = context;
+  const { role = 'customer', merchantContext, deliveryFee = 7000, recentOrders = [] } = context;
+  let { products = [], stores = [], cart = [] } = context;
 
+  // IF ROLE IS ADMIN OR MERCHANT: Tailor the AI specifically for store management, orders, stats, products and operation
+  if (role === 'admin' || role === 'merchant' || merchantContext) {
+    const storeInfo = merchantContext || {
+      storeUid: '',
+      storeName: 'Mi Restaurante / Tienda',
+      storeUsername: 'tienda',
+      isClosed: false,
+      activeProductsCount: products.length,
+      totalProductsCount: products.length,
+      totalOrdersCount: recentOrders.length,
+      pendingOrdersCount: recentOrders.filter(o => o.status === 'pending' || o.status === 'processing').length,
+      completedOrdersCount: recentOrders.filter(o => o.status === 'completed' || o.status === 'delivered').length,
+      totalSalesAmount: recentOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+      todaySalesAmount: recentOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0)
+    };
+
+    const recentOrdersSummary = (storeInfo.recentStoreOrders || recentOrders || []).slice(0, 10).map((o: any) => {
+      return `- Pedido #${o.orderNumber || o.id}: Cliente ${o.customerName || 'Cliente'} (${o.customerPhone || 'Sin tel'}), Estado: "${o.status}", Total: ${(o.totalAmount || 0).toLocaleString('es-CO')} pesos, Fecha: ${o.createdAt || 'Hoy'}. ${o.itemsSummary ? `Platos: ${o.itemsSummary}` : ''}`;
+    }).join('\n') || 'No hay pedidos recientes registrados.';
+
+    const productsListSummary = (storeInfo.storeProducts || products || []).slice(0, 25).map((p: any) => {
+      return `- [ID: ${p.id}] ${p.name}: ${p.price?.toLocaleString('es-CO')} pesos (Stock: ${p.stock ?? 'N/A'}, Estado: ${p.active !== false ? 'Activo' : 'Pausado'}, Cat: ${p.category || 'General'})`;
+    }).join('\n') || 'No hay productos configurados en el catálogo.';
+
+    const adminSystemPrompt = `Eres "Linnk Admin IA", el asesor y copiloto virtual de gestión exclusivo para el ADMINISTRADOR y DUEÑO del restaurante/tienda "${storeInfo.storeName}" (@${storeInfo.storeUsername}) en LinnkPro.
+Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
+
+TU ROL Y ENFOQUE EXCLUSIVO:
+- Eres el asistente del administrador del negocio. Tu única misión es INFORMAR Y ASISTIR SOBRE LA OPERACIÓN, VENTAS, PEDIDOS, PRODUCTOS, HORARIOS Y ESTADÍSTICAS DEL RESTAURANTE O TIENDA.
+- No eres un mesero de clientes ni tomas pedidos aquí; eres el gerente inteligente y analista del negocio.
+- Hablas con tono profesional, amable, claro, motivador y ejecutivo en español colombiano natural y cordial.
+
+DATOS OPERATIVOS EN TIEMPO REAL DE ESTE NEGOCIO:
+- Nombre del negocio: ${storeInfo.storeName} (@${storeInfo.storeUsername})
+- Estado actual de la tienda: ${storeInfo.isClosed ? '🔴 CERRADA (Los clientes no pueden pedir)' : '🟢 ABIERTA (Recibiendo pedidos)'}
+${storeInfo.scheduleEnabled && storeInfo.openTime && storeInfo.closeTime ? `- Horario automático: ${storeInfo.openTime} a ${storeInfo.closeTime}` : ''}
+${storeInfo.phone || storeInfo.whatsapp ? `- Teléfono/WhatsApp de contacto: ${storeInfo.whatsapp || storeInfo.phone}` : ''}
+${storeInfo.address ? `- Dirección registrada: ${storeInfo.address}` : ''}
+- Total de productos: ${storeInfo.totalProductsCount} (${storeInfo.activeProductsCount} activos en menú)
+- Total de pedidos acumulados: ${storeInfo.totalOrdersCount}
+- Pedidos pendientes por despachar: ${storeInfo.pendingOrdersCount}
+- Pedidos completados: ${storeInfo.completedOrdersCount}
+- Ventas totales acumuladas: ${(storeInfo.totalSalesAmount || 0).toLocaleString('es-CO')} pesos
+- Tarifa base de domicilio configurada en plataforma: ${deliveryFee.toLocaleString('es-CO')} pesos
+
+ÚLTIMOS PEDIDOS REGISTRADOS EN ESTA TIENDA:
+${recentOrdersSummary}
+
+PRODUCTOS DEL MENÚ DE ESTA TIENDA:
+${productsListSummary}
+
+PAUTAS DE RESPUESTA:
+1. Responde de forma directa, ágil y ejecutiva a lo que pregunte el administrador (ej: ventas del día, pedidos pendientes, productos con bajo stock, estado de la tienda, recomendaciones para vender más o resumen del negocio).
+2. Si te pregunta sobre pedidos o clientes, indícale detalles precisos basándote en los datos reales de arriba.
+3. Pronuncia y escribe siempre los precios en PESOS COLOMBIANOS (ej: "55.000 pesos"). NUNCA uses el símbolo '$' ni hables de dólares.
+4. Mantén las respuestas entre 1 y 4 frases bien estructuradas, precisas y accionables.`;
+
+    const adminMessages: any[] = [
+      { role: 'system', content: adminSystemPrompt }
+    ];
+
+    if (history && history.length > 0) {
+      for (const h of history.slice(-6)) {
+        const text = h.parts?.map((p: any) => p.text).join(' ').trim();
+        if (text) {
+          adminMessages.push({
+            role: h.role === 'model' ? 'assistant' : 'user',
+            content: text
+          });
+        }
+      }
+    }
+
+    adminMessages.push({ role: 'user', content: userMessage });
+
+    try {
+      const candidateModels = ['gpt-4o-mini', 'gpt-4o'];
+      let completion: any = null;
+
+      for (const model of candidateModels) {
+        try {
+          completion = await openai.chat.completions.create({
+            model,
+            messages: adminMessages,
+            temperature: 0.6,
+            max_tokens: 350
+          });
+          if (completion && completion.choices?.[0]?.message) {
+            break;
+          }
+        } catch (mErr: any) {
+          if (mErr?.status === 429 || mErr?.code === 'insufficient_quota' || mErr?.message?.includes('credits') || mErr?.message?.includes('429')) {
+            throw mErr;
+          }
+        }
+      }
+
+      if (completion && completion.choices?.[0]?.message?.content) {
+        const adminReplyText = completion.choices[0].message.content.trim();
+        const speechText = adminReplyText
+          .replace(/\$\s*([0-9]+(?:[.,][0-9]+)*)\s*(?:COP|cop)?/gi, '$1 pesos')
+          .replace(/([0-9]+(?:[.,][0-9]+)*)\s*(?:COP|cop)/gi, '$1 pesos')
+          .replace(/\$/g, '')
+          .replace(/\bd[oó]lares\b/gi, 'pesos')
+          .replace(/\bd[oó]lar\b/gi, 'peso')
+          .replace(/[*_#`~]/g, '')
+          .replace(/https?:\/\/\S+/g, '')
+          .trim();
+
+        return {
+          text: adminReplyText,
+          speechText,
+          actions: [],
+          functionCalls: []
+        };
+      }
+    } catch (adminAiErr) {
+      console.warn("OpenAI Admin AI failed, falling back to local admin heuristic:", adminAiErr);
+    }
+
+    // Fallback for Admin AI
+    return handleLocalAdminHeuristicResponse(userMessage, storeInfo, deliveryFee);
+  }
+
+  // --- STANDARD CUSTOMER-FACING AI MESERO LOGIC ---
   // Filter open stores strictly: isClosed === true means CLOSED; isClosed === false means OPEN
   const openStores = stores.filter(s => s.isClosed !== true && !s.suspended);
 
@@ -868,10 +1036,11 @@ export async function processOpenAIVoiceAssistantMessage(
     : 'El carrito está actualmente vacío.';
 
   const systemPrompt = `Eres "IAMesero" (iamesero), el mesero y asistente virtual inteligente con Inteligencia Artificial de LinnkPro.Store.
-Hablas con una voz cálida, humana, amable y natural, con acento cordial colombiano.
+Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
 Tu propósito es atender a los clientes en su mesa o domicilio, recomendar platos deliciosos de los restaurantes disponibles, responder dudas y tomar sus pedidos de manera fluida y conversacional.
 
 ESTILO DE VOZ Y CONVERSACIÓN:
+- Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
 - Habla como una persona real: amable, atenta, espontánea y con calidez ("¡Hola! Qué gusto saludarte", "¡Con mucho gusto!", "Te cuento que tenemos...", "¡Quedó listo en tu carrito!").
 - Respuestas breves y sonoras: de 1 a 3 frases claras y agradables de escuchar.
 - No uses listas infinitas, viñetas ni símbolos raros que suenen robóticos al hablarse.
@@ -895,6 +1064,10 @@ REGLAS FUNDAMENTALES Y OBLIGATORIAS:
    - Solicita o confirma los datos de entrega (Nombre, Teléfono, Dirección y Método de Pago).
    - Llama a 'request_order_confirmation' para que el cliente revise.
    - Llama a 'create_order' solo cuando el cliente dé confirmación final ("Sí, confirma", "Haz el pedido").
+
+8. DOMICILIO Y ENVÍOS:
+   - El costo del domicilio equivale a ${deliveryFee.toLocaleString('es-CO')} pesos (7.000 pesos por defecto).
+   - Si el cliente pregunta cuánto cuesta el domicilio o cuánto demora, dile amablemente que el domicilio cuesta ${deliveryFee.toLocaleString('es-CO')} pesos y que el tiempo estimado de entrega suele ser de 30 a 45 minutos según la preparación del restaurante.
 
 INFORMACIÓN ACTUAL DE LA PLATAFORMA:
 Tiendas y Restaurantes Abiertos:
@@ -1520,9 +1693,92 @@ export function processFallbackVoiceAssistantMessage(
   history: any[] = [],
   context: VoiceAssistantContext
 ) {
-  const { products = [], stores = [], cart = [], deliveryFee = 4000 } = context;
+  const { role = 'customer', merchantContext, products = [], stores = [], cart = [], deliveryFee = 7000, recentOrders = [] } = context;
+
+  if (role === 'admin' || role === 'merchant' || merchantContext) {
+    const storeInfo = merchantContext || {
+      storeUid: '',
+      storeName: 'Mi Restaurante / Tienda',
+      storeUsername: 'tienda',
+      isClosed: false,
+      activeProductsCount: products.length,
+      totalProductsCount: products.length,
+      totalOrdersCount: recentOrders.length,
+      pendingOrdersCount: recentOrders.filter(o => o.status === 'pending' || o.status === 'processing').length,
+      completedOrdersCount: recentOrders.filter(o => o.status === 'completed' || o.status === 'delivered').length,
+      totalSalesAmount: recentOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+      todaySalesAmount: recentOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0)
+    };
+    return handleLocalAdminHeuristicResponse(userMessage, storeInfo, deliveryFee);
+  }
 
   return handleLocalHeuristicResponse(userMessage, products, stores, cart, deliveryFee);
+}
+
+export function handleLocalAdminHeuristicResponse(
+  userMessage: string,
+  storeInfo: MerchantAdminContext,
+  deliveryFee: number
+) {
+  const lower = userMessage.toLowerCase().trim();
+  let responseText = '';
+
+  // 1. Inquiries about sales or revenue
+  if (lower.includes('venta') || lower.includes('vendido') || lower.includes('ingreso') || lower.includes('dinero') || lower.includes('ganancia') || lower.includes('cuanto he vendido') || lower.includes('cuánto he vendido')) {
+    const totalSales = (storeInfo.totalSalesAmount || 0).toLocaleString('es-CO');
+    const totalOrds = storeInfo.totalOrdersCount || 0;
+    const completedOrds = storeInfo.completedOrdersCount || 0;
+    responseText = `Tu negocio "${storeInfo.storeName}" registra ventas acumuladas de ${totalSales} pesos en ${totalOrds} pedidos recibidos (${completedOrds} completados).`;
+  }
+  // 2. Inquiries about pending orders or current orders
+  else if (lower.includes('pedido') || lower.includes('orden') || lower.includes('despacho') || lower.includes('pendiente') || lower.includes('cocina')) {
+    const pending = storeInfo.pendingOrdersCount || 0;
+    if (pending > 0) {
+      const topOrders = (storeInfo.recentStoreOrders || []).filter(o => o.status === 'pending' || o.status === 'processing');
+      const sample = topOrders.slice(0, 2).map(o => `Pedido #${o.orderNumber || o.id} de ${o.customerName} (${(o.totalAmount || 0).toLocaleString('es-CO')} pesos)`).join(', ');
+      responseText = `Tienes ${pending} pedido(s) pendiente(s) por despachar. ${sample ? `Por ejemplo: ${sample}.` : ''} Recuerda cambiar su estado en el panel cuando salgan a entrega.`;
+    } else {
+      responseText = `Actualmente no tienes pedidos pendientes por preparar. Tienes un total de ${storeInfo.totalOrdersCount} pedidos históricos registrados.`;
+    }
+  }
+  // 3. Inquiries about store status (open/closed/hours)
+  else if (lower.includes('abierto') || lower.includes('cerrado') || lower.includes('horario') || lower.includes('estado')) {
+    const statusText = storeInfo.isClosed ? '🔴 CERRADA' : '🟢 ABIERTA y recibiendo pedidos de clientes';
+    const schedule = storeInfo.scheduleEnabled && storeInfo.openTime && storeInfo.closeTime
+      ? ` Tu horario automático es de ${storeInfo.openTime} a ${storeInfo.closeTime}.`
+      : '';
+    responseText = `Tu tienda "${storeInfo.storeName}" está actualmente ${statusText}.${schedule}`;
+  }
+  // 4. Inquiries about products, menu or stock
+  else if (lower.includes('producto') || lower.includes('menu') || lower.includes('menú') || lower.includes('plato') || lower.includes('stock') || lower.includes('inventario') || lower.includes('carta')) {
+    const total = storeInfo.totalProductsCount || 0;
+    const active = storeInfo.activeProductsCount || 0;
+    const sample = (storeInfo.storeProducts || []).slice(0, 3).map(p => `${p.name} (${p.price?.toLocaleString('es-CO')} pesos)`).join(', ');
+    responseText = `Tienes ${total} producto(s) en tu catálogo (${active} activos en el menú público). ${sample ? `Platos destacados: ${sample}.` : ''}`;
+  }
+  // 5. Default executive overview
+  else {
+    const totalSales = (storeInfo.totalSalesAmount || 0).toLocaleString('es-CO');
+    const pending = storeInfo.pendingOrdersCount || 0;
+    responseText = `Hola, Administrador de "${storeInfo.storeName}". Tu tienda está ${storeInfo.isClosed ? 'cerrada' : 'abierta'}. Tienes ${pending} pedido(s) pendientes y ventas acumuladas de ${totalSales} pesos. ¿En qué aspecto del negocio deseas que te informe?`;
+  }
+
+  const speechText = responseText
+    .replace(/\$\s*([0-9]+(?:[.,][0-9]+)*)\s*(?:COP|cop)?/gi, '$1 pesos')
+    .replace(/([0-9]+(?:[.,][0-9]+)*)\s*(?:COP|cop)/gi, '$1 pesos')
+    .replace(/\$/g, '')
+    .replace(/\bd[oó]lares\b/gi, 'pesos')
+    .replace(/\bd[oó]lar\b/gi, 'peso')
+    .replace(/[*_#`~]/g, '')
+    .replace(/https?:\/\/\S+/g, '')
+    .trim();
+
+  return {
+    text: responseText,
+    speechText,
+    actions: [],
+    functionCalls: []
+  };
 }
 
 function handleLocalHeuristicResponse(
@@ -1616,6 +1872,10 @@ function handleLocalHeuristicResponse(
       const itemsList = cart.map(i => `${i.quantity}x ${i.name}`).join(', ');
       responseText = `Tienes ${itemCount} plato(s) en tu carrito: ${itemsList}. Subtotal: ${totalAmount.toLocaleString('es-CO')} pesos. ¿Deseas confirmar tu pedido?`;
     }
+  }
+  // 1.1 Query about delivery fee or delivery time
+  else if (lower.includes('domicilio') || lower.includes('envio') || lower.includes('envío') || lower.includes('costo de envio') || lower.includes('costo de envío') || lower.includes('cuanto vale el domicilio') || lower.includes('cuánto vale el domicilio')) {
+    responseText = `El servicio de domicilio equivale a ${deliveryFee.toLocaleString('es-CO')} pesos (COP) y la entrega suele tomar entre 30 y 45 minutos. ¿Deseas que te recomiende algún plato para ordenar?`;
   }
   // 2. Add to cart request (e.g. "quiero una hamburguesa", "agrega 2 pizzas")
   else if (lower.includes('quiero') || lower.includes('agrega') || lower.includes('pedir') || lower.includes('ordenar') || lower.includes('añade') || lower.includes('dame')) {

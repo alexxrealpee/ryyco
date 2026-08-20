@@ -30,6 +30,7 @@ import {
   Coins, 
   X, 
   Volume2,
+  Bell,
   BellRing,
   RefreshCw,
   Search,
@@ -83,6 +84,7 @@ import {
   BankAccount
 } from '../types';
 import BankSettings from './BankSettings';
+import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
 import { formatColombianPhoneWith57 } from './PublicProfile';
 
 export const RESTAURANT_CATEGORIES = [
@@ -185,6 +187,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'design' | 'analytics' | 'subscription' | 'bank'>('overview');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
+  const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
 
   const handleSaveBankAccounts = async (updatedAccounts: BankAccount[]) => {
     const updatedProfile = {
@@ -206,18 +209,44 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [analyticsViews, setAnalyticsViews] = useState<PageViewAnalytic[]>([]);
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
+  // Browser Push Notification Permission state
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(Notification.permission);
+    } else {
+      setPushPermission('unsupported');
+    }
+  }, []);
+
+  const requestPushPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const permission = await Notification.requestPermission();
+        setPushPermission(permission);
+        if (permission === 'granted') {
+          playNewOrderNotification();
+        }
+      } catch (e) {
+        console.warn("Could not request notification permission:", e);
+      }
+    }
+  };
+
   // Ref to track known order IDs for real-time notification
   const knownOrderIdsRef = useRef<Set<string> | null>(null);
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Function to trigger voice "Llegó un pediidooo" and sound chime
-  const playNewOrderNotification = () => {
+  // Function to trigger voice "¡Llegó un pedido!", push notification, sound chime and vibration
+  const playNewOrderNotification = async (order?: OrderItem) => {
     // 1. Play Web Audio Chime (pleasant bell double-tone)
     try {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
         const ctx = new AudioCtx();
         if (ctx.state === 'suspended') {
-          ctx.resume();
+          ctx.resume().catch(() => {});
         }
         const now = ctx.currentTime;
 
@@ -246,6 +275,87 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     } catch (err) {
       console.warn("Web Audio API chime error:", err);
     }
+
+    // 2. Play Voice "¡Llegó un pedido!"
+    try {
+      if (notificationAudioRef.current) {
+        notificationAudioRef.current.pause();
+        notificationAudioRef.current = null;
+      }
+
+      // Try OpenAI TTS endpoint for high-quality natural Colombian voice
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: '¡Llegó un pedido!', voice: 'alloy' })
+      });
+
+      if (res.ok) {
+        const audioBlob = await res.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        notificationAudioRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(audioUrl);
+        };
+        await audio.play();
+      } else {
+        throw new Error("TTS endpoint returned non-ok");
+      }
+    } catch (err) {
+      // Fallback to browser speech synthesis
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance('¡Llegó un pedido!');
+          utterance.lang = 'es-CO';
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          window.speechSynthesis.speak(utterance);
+        } catch (speechErr) {
+          console.warn("Speech synthesis fallback error:", speechErr);
+        }
+      }
+    }
+
+    // 3. Browser Push Notification
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'granted') {
+          const title = '¡Llegó un pedido!';
+          const body = order 
+            ? `Pedido #${order.orderNumber || ''} de ${order.customerName || 'Cliente'} - Total: $${(order.totalAmount || 0).toLocaleString('es-CO')} pesos`
+            : 'Tienes un nuevo pedido pendiente para preparar y despachar.';
+
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.ready.then(registration => {
+              registration.showNotification(title, {
+                body,
+                icon: '/favicon.ico',
+                badge: '/favicon.ico',
+                tag: 'new-order-' + (order?.id || Date.now()),
+                renotify: true
+              } as any);
+            }).catch(() => {
+              new Notification(title, { body, icon: '/favicon.ico' });
+            });
+          } else {
+            new Notification(title, { body, icon: '/favicon.ico' });
+          }
+        }
+      }
+    } catch (pushErr) {
+      console.warn("Push notification error:", pushErr);
+    }
+
+    // 4. Mobile Haptic Vibration
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate([200, 100, 200, 100, 200]);
+      }
+    } catch (vibErr) {
+      // ignore
+    }
   };
 
   const handleSyncOrders = async () => {
@@ -254,10 +364,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     try {
       const ords = await fetchOrders(profile.uid);
       if (knownOrderIdsRef.current !== null) {
-        const hasNew = ords.some(o => !knownOrderIdsRef.current!.has(o.id));
-        if (hasNew) {
-          playNewOrderNotification();
-          setNewOrderAlert("¡Llegó un nuevo pedido!");
+        const newOrders = ords.filter(o => !knownOrderIdsRef.current!.has(o.id));
+        if (newOrders.length > 0) {
+          const newestOrder = newOrders[0];
+          playNewOrderNotification(newestOrder);
+          setNewOrderAlert(newestOrder.customerName ? `¡Llegó un pedido de ${newestOrder.customerName}!` : "¡Llegó un pedido!");
           setTimeout(() => setNewOrderAlert(null), 6000);
         }
       }
@@ -418,10 +529,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         knownOrderIdsRef.current = new Set(ords.map(o => o.id));
       } else {
         // Check if there are new order IDs
-        const hasNewOrder = ords.some(o => !knownOrderIdsRef.current!.has(o.id));
-        if (hasNewOrder) {
-          playNewOrderNotification();
-          setNewOrderAlert("¡Llegó un nuevo pedido!");
+        const newOrders = ords.filter(o => !knownOrderIdsRef.current!.has(o.id));
+        if (newOrders.length > 0) {
+          const newestOrder = newOrders[0];
+          playNewOrderNotification(newestOrder);
+          setNewOrderAlert(newestOrder.customerName ? `¡Llegó un pedido de ${newestOrder.customerName}!` : "¡Llegó un pedido!");
           setTimeout(() => setNewOrderAlert(null), 6000);
         }
         knownOrderIdsRef.current = new Set(ords.map(o => o.id));
@@ -1957,14 +2069,37 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <p className="text-xs text-gray-500 font-medium">Administra compras completas, despacha mercaderías y asiste a tus compradores.</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-center">
+                        {/* Push Notification Toggle Button */}
+                        {pushPermission === 'granted' ? (
+                          <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <Bell className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Push & Voz Activos</span>
+                          </div>
+                        ) : pushPermission === 'denied' ? (
+                          <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-500 bg-gray-900/50 rounded-xl border border-gray-800" title="Las notificaciones están bloqueadas en la configuración de tu navegador">
+                            <BellRing className="w-3.5 h-3.5 text-gray-500" />
+                            <span>Notif. Bloqueadas</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={requestPushPermission}
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 active:scale-95 transition cursor-pointer"
+                            title="Haz clic para permitir notificaciones push cuando llegue un nuevo pedido"
+                          >
+                            <BellRing className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                            <span>Activar Push</span>
+                          </button>
+                        )}
+
                         <button
                           type="button"
-                          onClick={playNewOrderNotification}
-                          title="Probar voz 'Llegó un pediidooo' y sonido"
-                          className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-purple-600/20 hover:bg-purple-600/30 active:scale-95 transition text-purple-300 border border-purple-500/30 cursor-pointer"
+                          onClick={() => playNewOrderNotification()}
+                          title="Probar voz '¡Llegó un pedido!' y sonido de alerta"
+                          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-purple-600/20 hover:bg-purple-600/30 active:scale-95 transition text-purple-300 border border-purple-500/30 cursor-pointer"
                         >
-                          <Volume2 className="w-3.5 h-3.5 text-purple-400" />
-                          <span>Probar Voz</span>
+                          <Volume2 className="w-4 h-4 text-purple-400" />
+                          <span className="hidden sm:inline">Probar Voz</span>
                         </button>
                         <button
                           type="button"
@@ -1973,15 +2108,6 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         >
                           <Plus className="w-3.5 h-3.5 text-black stroke-[3]" />
                           <span>Nuevo Pedido</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleSyncOrders}
-                          disabled={isSyncingOrders}
-                          className="flex items-center gap-2 px-4 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-indigo-600/10 hover:bg-indigo-600/20 active:scale-95 transition text-indigo-400 border border-indigo-500/20 disabled:opacity-50"
-                        >
-                          <RefreshCw className={`w-3.5 h-3.5 ${isSyncingOrders ? 'animate-spin' : ''}`} />
-                          {isSyncingOrders ? 'Sincronizando...' : 'Actualizar Pedidos'}
                         </button>
                       </div>
                     </div>
@@ -4254,8 +4380,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <Volume2 className="w-6 h-6 text-amber-300" />
             </div>
             <div>
-              <p className="text-[10px] uppercase font-black text-amber-300 tracking-wider">¡Nuevo Pedido en Tiempo Real!</p>
-              <p className="text-sm font-black text-white">"Llegó un pediidooo"</p>
+              <p className="text-[10px] uppercase font-black text-amber-300 tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-amber-300" />
+                <span>¡Nuevo Pedido en Tiempo Real!</span>
+              </p>
+              <p className="text-sm font-black text-white">{newOrderAlert}</p>
             </div>
             <button
               type="button"
@@ -4285,6 +4414,34 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             mapUrl: data.mapUrl
           }));
         }}
+      />
+
+      {/* Floating Fixed IA Administrador Button (Bottom Left) */}
+      <motion.button
+        type="button"
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsAdminVoiceAssistantOpen(true)}
+        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-full text-xs font-black flex items-center gap-1.5 shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition group"
+        title="Abrir IA Administrador"
+      >
+        <div className="p-1 bg-white/10 rounded-full flex items-center justify-center">
+          <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+        </div>
+        <span className="tracking-wide uppercase font-black">IA</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+      </motion.button>
+
+      {/* LinnkAdminVoiceAssistant Modal (Specialized AI for Store & Restaurant Managers) */}
+      <LinnkAdminVoiceAssistant
+        isOpen={isAdminVoiceAssistantOpen}
+        onClose={() => setIsAdminVoiceAssistantOpen(false)}
+        profile={profile}
+        products={products}
+        orders={orders}
+        onNavigateTab={(tab) => setActiveTab(tab as any)}
       />
 
     </div>

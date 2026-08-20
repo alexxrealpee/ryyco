@@ -105,7 +105,7 @@ export function clearAllCart(): GeneralCartItem[] {
 }
 
 // Calculate cart totals
-export function calculateCartSummary(cart: GeneralCartItem[], deliveryFeePerStore: number = 4000) {
+export function calculateCartSummary(cart: GeneralCartItem[], deliveryFeePerStore: number = 7000) {
   const totalItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
   
