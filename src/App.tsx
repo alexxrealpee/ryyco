@@ -19,7 +19,6 @@ import DriverRegister from './components/DriverRegister';
 import DriverPortal from './components/DriverPortal';
 import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
-import PwaInstallModal from './components/PwaInstallModal';
 import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
 import { DriverProfile } from './types';
 
@@ -396,9 +395,6 @@ export default function App() {
           }}
         />
       )}
-
-      {/* Progressive Web App (PWA) Installation Bottom Sheet Modal */}
-      <PwaInstallModal />
     </div>
   );
 }
