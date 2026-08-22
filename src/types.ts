@@ -249,6 +249,8 @@ export interface CartItem {
 export interface CustomTheme {
   id: string; // 'minimal' | 'midnight' | 'emerald' | 'pastel' | 'custom'
   name: string;
+  category?: 'food' | 'dessert' | 'nightlife' | 'dark' | 'light' | 'all' | string;
+  description?: string;
   bgType: 'flat' | 'gradient' | 'image';
   bgColor: string; // e.g., "#0f172a" or a gradient CSS
   textColor: string;

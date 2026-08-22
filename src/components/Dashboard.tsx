@@ -50,7 +50,17 @@ import {
   Home,
   MapPin,
   Bike,
-  AlertTriangle
+  AlertTriangle,
+  Sliders,
+  Paintbrush,
+  Coffee,
+  Flame,
+  Moon,
+  Sun,
+  Layers,
+  Type,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { 
@@ -390,18 +400,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   // Custom Themes
   const [customTheme, setCustomTheme] = useState<CustomTheme>({
-    id: 'light-clean',
-    name: 'Mineral Light',
+    id: 'fuego-burger',
+    name: 'Fuego Grill & Burger',
+    category: 'food',
     bgType: 'flat',
-    bgColor: '#f9fafb',
-    textColor: '#111827',
-    cardBg: '#ffffff',
-    cardBorder: 'rgba(209, 213, 219, 0.5)',
-    cardTextColor: '#1f2937',
-    fontFamily: 'font-sans',
+    bgColor: '#0c0d12',
+    textColor: '#ffffff',
+    cardBg: '#151722',
+    cardBorder: 'rgba(249, 115, 22, 0.35)',
+    cardTextColor: '#ffffff',
+    fontFamily: 'font-display',
     buttonStyle: 'rounded',
-    accentColor: '#10b981'
+    accentColor: '#f97316'
   });
+  const [themeCategoryFilter, setThemeCategoryFilter] = useState<string>('all');
+  const [themeSearchQuery, setThemeSearchQuery] = useState<string>('');
+  const [isCustomThemeOpen, setIsCustomThemeOpen] = useState<boolean>(false);
+  const [isSavingTheme, setIsSavingTheme] = useState<boolean>(false);
+  const [themeSavedSuccess, setThemeSavedSuccess] = useState<boolean>(false);
 
   // UI Utilities states
   const [copiedLink, setCopiedLink] = useState(false);
@@ -635,7 +651,36 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // Select Preset Theme
   const handleSelectTheme = async (theme: CustomTheme) => {
     setCustomTheme(theme);
-    await saveCustomTheme(profile.uid, theme);
+    setIsSavingTheme(true);
+    try {
+      await saveCustomTheme(profile.uid, theme);
+      setThemeSavedSuccess(true);
+      setTimeout(() => setThemeSavedSuccess(false), 2500);
+    } catch (e) {
+      console.error("Error saving theme:", e);
+    } finally {
+      setIsSavingTheme(false);
+    }
+  };
+
+  // Save Custom Theme edits
+  const handleSaveCustomTheme = async () => {
+    setIsSavingTheme(true);
+    try {
+      const themeToSave: CustomTheme = {
+        ...customTheme,
+        id: customTheme.id === 'custom' ? 'custom' : `custom-${Date.now()}`
+      };
+      setCustomTheme(themeToSave);
+      await saveCustomTheme(profile.uid, themeToSave);
+      setThemeSavedSuccess(true);
+      setTimeout(() => setThemeSavedSuccess(false), 2500);
+    } catch (e) {
+      console.error("Error saving custom theme:", e);
+      alert("Error al guardar la personalización de tema.");
+    } finally {
+      setIsSavingTheme(false);
+    }
   };
 
   // Select Layout style
@@ -2909,8 +2954,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
                       </form>
 
-                      {/* Presets Theme Board */}
+                      {/* Presets Theme Board & Color Studio */}
                       <div className="lg:col-span-5 space-y-5">
+                        {/* Status notification */}
+                        {themeSavedSuccess && (
+                          <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-400 text-xs font-bold animate-fadeIn">
+                            <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            </div>
+                            <span>¡Tema y colores actualizados exitosamente en tu tienda!</span>
+                          </div>
+                        )}
+
                         {/* Store Layout Selector */}
                         <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4">
                           <div>
@@ -2969,38 +3024,584 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </div>
                         </div>
 
-                        <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 block">Esquemas Visuales de Tienda</span>
-                          
-                          <div className="grid grid-cols-1 gap-3.5">
-                            {PREDEFINED_THEMES.map((th) => (
+                        {/* Themes & Colors Presets */}
+                        <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-5">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 block mb-0.5">
+                                Paletas y Temas de Diseño
+                              </span>
+                              <p className="text-[11px] text-gray-500 font-medium">
+                                Elige entre {PREDEFINED_THEMES.length} temas optimizados por categoría o personaliza colores a tu gusto.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setIsCustomThemeOpen(!isCustomThemeOpen)}
+                              className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer ${
+                                isCustomThemeOpen 
+                                  ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' 
+                                  : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
+                              }`}
+                            >
+                              <Paintbrush className="w-3 h-3" />
+                              <span>{isCustomThemeOpen ? 'Cerrar Estudio' : 'Personalizar Colores'}</span>
+                              {isCustomThemeOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                            </button>
+                          </div>
+
+                          {/* Category Filter Tabs */}
+                          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                            {[
+                              { id: 'all', label: '🌟 Todos', count: PREDEFINED_THEMES.length },
+                              { id: 'food', label: '🍔 Comidas', count: PREDEFINED_THEMES.filter(t => t.category === 'food').length },
+                              { id: 'dessert', label: '🍰 Café & Dulces', count: PREDEFINED_THEMES.filter(t => t.category === 'dessert').length },
+                              { id: 'nightlife', label: '🍸 Licores & Bares', count: PREDEFINED_THEMES.filter(t => t.category === 'nightlife').length },
+                              { id: 'dark', label: '🖤 Oscuros & Lujo', count: PREDEFINED_THEMES.filter(t => t.category === 'dark').length },
+                              { id: 'light', label: '⚪ Claros & Frescos', count: PREDEFINED_THEMES.filter(t => t.category === 'light').length },
+                            ].map((cat) => (
                               <button
-                                key={th.id}
+                                key={cat.id}
                                 type="button"
-                                onClick={() => handleSelectTheme(th)}
-                                className={`p-4 rounded-xl border text-left flex items-center justify-between transition ${
-                                  customTheme.id === th.id 
-                                    ? 'border-emerald-500 bg-emerald-500/5' 
-                                    : 'border-gray-900 bg-gray-920 hover:border-gray-800'
+                                onClick={() => setThemeCategoryFilter(cat.id)}
+                                className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                                  themeCategoryFilter === cat.id
+                                    ? 'bg-emerald-500 text-black shadow-sm'
+                                    : 'bg-gray-900/80 text-gray-400 hover:text-white hover:bg-gray-850 border border-gray-850'
                                 }`}
                               >
-                                <div className="flex items-center gap-3">
-                                  <div 
-                                    className="w-5 h-5 rounded-full border border-white/20" 
-                                    style={th.bgType === 'gradient' ? { backgroundImage: th.bgColor } : { backgroundColor: th.bgColor }}
-                                  />
-                                  <div>
-                                    <h4 className="text-xs font-extrabold text-white">{th.name}</h4>
-                                    <span className="text-[9px] text-gray-500 font-bold uppercase">{th.fontFamily} • {th.buttonStyle}</span>
-                                  </div>
-                                </div>
-                                {customTheme.id === th.id && (
-                                  <Check className="w-4.5 h-4.5 text-emerald-400" />
-                                )}
+                                <span>{cat.label}</span>
+                                <span className={`text-[9px] px-1 py-0.2 rounded-full ${
+                                  themeCategoryFilter === cat.id ? 'bg-black/20 text-black' : 'bg-gray-800 text-gray-400'
+                                }`}>
+                                  {cat.count}
+                                </span>
                               </button>
                             ))}
                           </div>
+
+                          {/* Theme Search */}
+                          <div className="relative">
+                            <Search className="w-3.5 h-3.5 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="text"
+                              value={themeSearchQuery}
+                              onChange={(e) => setThemeSearchQuery(e.target.value)}
+                              placeholder="Buscar por color o estilo (ej: Fuego, Dorado, Cacao, Ruby...)"
+                              className="w-full h-9 bg-gray-900/90 border border-gray-850 focus:border-indigo-500 pl-8.5 pr-3 rounded-xl text-xs font-semibold outline-none text-white placeholder-gray-500"
+                            />
+                            {themeSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setThemeSearchQuery('')}
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                          
+                          {/* Theme Grid */}
+                          <div className="grid grid-cols-1 gap-3 max-h-[460px] overflow-y-auto pr-1">
+                            {PREDEFINED_THEMES
+                              .filter((th) => {
+                                if (themeCategoryFilter !== 'all' && th.category !== themeCategoryFilter) return false;
+                                if (themeSearchQuery.trim()) {
+                                  const q = themeSearchQuery.toLowerCase();
+                                  return th.name.toLowerCase().includes(q) || (th.description && th.description.toLowerCase().includes(q));
+                                }
+                                return true;
+                              })
+                              .map((th) => {
+                                const isSelected = customTheme.id === th.id;
+                                return (
+                                  <button
+                                    key={th.id}
+                                    type="button"
+                                    onClick={() => handleSelectTheme(th)}
+                                    className={`p-3.5 rounded-2xl border text-left transition relative group cursor-pointer ${
+                                      isSelected 
+                                        ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/5 ring-1 ring-emerald-500/30' 
+                                        : 'border-gray-850 bg-gray-900/60 hover:bg-gray-900 hover:border-gray-750'
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="flex items-start gap-3 min-w-0">
+                                        {/* Theme Visual Palette Swatch */}
+                                        <div 
+                                          className="w-11 h-11 rounded-xl border border-white/15 shrink-0 flex flex-col p-1 justify-between shadow-inner"
+                                          style={th.bgType === 'gradient' ? { backgroundImage: th.bgColor } : { backgroundColor: th.bgColor }}
+                                        >
+                                          {/* Mini card indicator inside swatch */}
+                                          <div 
+                                            className="w-full h-4 rounded-md border flex items-center justify-end px-1"
+                                            style={{ backgroundColor: th.cardBg, borderColor: th.cardBorder }}
+                                          >
+                                            <div 
+                                              className="w-2 h-2 rounded-full" 
+                                              style={{ backgroundColor: th.accentColor || '#10b981' }}
+                                            />
+                                          </div>
+                                          <div className="flex items-center gap-0.5 justify-center">
+                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: th.textColor }} />
+                                            <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: th.accentColor || '#10b981' }} />
+                                          </div>
+                                        </div>
+
+                                        <div className="min-w-0">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <h4 className="text-xs font-black text-white truncate">{th.name}</h4>
+                                            {th.category && (
+                                              <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md bg-white/5 border border-white/10 text-gray-400">
+                                                {th.category === 'food' && 'Comida'}
+                                                {th.category === 'dessert' && 'Café/Dulce'}
+                                                {th.category === 'nightlife' && 'Bar/Noche'}
+                                                {th.category === 'dark' && 'Oscuro'}
+                                                {th.category === 'light' && 'Claro'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          
+                                          {th.description && (
+                                            <p className="text-[10px] text-gray-400 font-medium leading-tight mt-1 line-clamp-2">
+                                              {th.description}
+                                            </p>
+                                          )}
+
+                                          {/* Visual Color Dots */}
+                                          <div className="flex items-center gap-2 mt-2">
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-[8px] text-gray-500 font-bold uppercase">Fondo:</span>
+                                              <div 
+                                                className="w-3 h-3 rounded-full border border-white/20" 
+                                                style={th.bgType === 'gradient' ? { backgroundImage: th.bgColor } : { backgroundColor: th.bgColor }}
+                                                title="Color de Fondo"
+                                              />
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-[8px] text-gray-500 font-bold uppercase">Acento:</span>
+                                              <div 
+                                                className="w-3 h-3 rounded-full border border-white/20" 
+                                                style={{ backgroundColor: th.accentColor || '#10b981' }}
+                                                title="Color de Acento / Botones"
+                                              />
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                              <span className="text-[8px] text-gray-500 font-bold uppercase">Tarjetas:</span>
+                                              <div 
+                                                className="w-3 h-3 rounded-full border border-white/20" 
+                                                style={{ backgroundColor: th.cardBg }}
+                                                title="Fondo de Tarjetas"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="shrink-0 flex flex-col items-end gap-1">
+                                        {isSelected ? (
+                                          <span className="w-6 h-6 rounded-full bg-emerald-500 text-black flex items-center justify-center shadow-md">
+                                            <Check className="w-4 h-4 stroke-[3]" />
+                                          </span>
+                                        ) : (
+                                          <span className="w-6 h-6 rounded-full border border-gray-700 text-gray-600 flex items-center justify-center group-hover:border-gray-500 group-hover:text-gray-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                          </div>
                         </div>
+
+                        {/* Interactive Color Studio (Custom Color Palette) */}
+                        {isCustomThemeOpen && (
+                          <div className="bg-gray-950 border border-indigo-500/30 p-6 rounded-3xl space-y-6 shadow-xl animate-fadeIn">
+                            <div className="flex items-center justify-between border-b border-gray-900 pb-4">
+                              <div>
+                                <h3 className="text-xs font-extrabold text-white flex items-center gap-2 uppercase tracking-wider">
+                                  <Paintbrush className="w-4 h-4 text-indigo-400" />
+                                  Personalizador de Colores y Estilos
+                                </h3>
+                                <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                                  Ajusta los colores exactos, fondo, bordes, tipografía y botones de tu tienda en tiempo real.
+                                </p>
+                              </div>
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                Modo Libre
+                              </span>
+                            </div>
+
+                            {/* 1. Color de Acento (Botones & Precios) */}
+                            <div className="space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300">
+                                  Color de Acento Principal (Botones, Precios y Destacados)
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                  <input
+                                    type="color"
+                                    value={customTheme.accentColor || '#10b981'}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, accentColor: e.target.value })}
+                                    className="w-5 h-5 rounded cursor-pointer bg-transparent border-0"
+                                  />
+                                  <span className="text-[10px] font-mono font-bold text-gray-400">
+                                    {customTheme.accentColor || '#10b981'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Quick Accent Swatches */}
+                              <div className="grid grid-cols-7 gap-2">
+                                {[
+                                  { name: 'Esmeralda', hex: '#10b981' },
+                                  { name: 'Naranja Fuego', hex: '#f97316' },
+                                  { name: 'Rojo Rubí', hex: '#ef4444' },
+                                  { name: 'Oro Dorado', hex: '#eab308' },
+                                  { name: 'Azul Real', hex: '#2563eb' },
+                                  { name: 'Cian Eléctrico', hex: '#06b6d4' },
+                                  { name: 'Violeta Neón', hex: '#a855f7' },
+                                  { name: 'Rosa Fresa', hex: '#ec4899' },
+                                  { name: 'Verde Matcha', hex: '#84cc16' },
+                                  { name: 'Ámbar Malta', hex: '#f59e0b' },
+                                  { name: 'Púrpura', hex: '#7c3aed' },
+                                  { name: 'Carmesí Vino', hex: '#be123c' },
+                                  { name: 'Cobre Cálido', hex: '#ea580c' },
+                                  { name: 'Blanco Puro', hex: '#ffffff' },
+                                ].map((sw) => (
+                                  <button
+                                    key={sw.hex}
+                                    type="button"
+                                    onClick={() => setCustomTheme({ ...customTheme, accentColor: sw.hex })}
+                                    title={sw.name}
+                                    className={`h-7 rounded-xl border flex items-center justify-center transition cursor-pointer ${
+                                      customTheme.accentColor?.toLowerCase() === sw.hex.toLowerCase()
+                                        ? 'ring-2 ring-white scale-105 border-white'
+                                        : 'border-white/10 hover:scale-105'
+                                    }`}
+                                    style={{ backgroundColor: sw.hex }}
+                                  >
+                                    {customTheme.accentColor?.toLowerCase() === sw.hex.toLowerCase() && (
+                                      <Check className={`w-3.5 h-3.5 ${sw.hex === '#ffffff' ? 'text-black' : 'text-white'}`} />
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            {/* 2. Fondo de la Tienda */}
+                            <div className="space-y-2.5 pt-2 border-t border-gray-900">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300">
+                                  Fondo General de la Tienda
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomTheme({ ...customTheme, bgType: 'flat' })}
+                                    className={`px-2 py-0.5 text-[9px] font-bold rounded-md ${
+                                      customTheme.bgType === 'flat' ? 'bg-indigo-500 text-white' : 'bg-gray-900 text-gray-400'
+                                    }`}
+                                  >
+                                    Sólido
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCustomTheme({ ...customTheme, bgType: 'gradient' })}
+                                    className={`px-2 py-0.5 text-[9px] font-bold rounded-md ${
+                                      customTheme.bgType === 'gradient' ? 'bg-indigo-500 text-white' : 'bg-gray-900 text-gray-400'
+                                    }`}
+                                  >
+                                    Degradado
+                                  </button>
+                                </div>
+                              </div>
+
+                              {customTheme.bgType === 'flat' ? (
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="color"
+                                      value={customTheme.bgColor.startsWith('#') ? customTheme.bgColor : '#0c0d12'}
+                                      onChange={(e) => setCustomTheme({ ...customTheme, bgColor: e.target.value })}
+                                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={customTheme.bgColor}
+                                      onChange={(e) => setCustomTheme({ ...customTheme, bgColor: e.target.value })}
+                                      placeholder="#0c0d12"
+                                      className="w-full h-8 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-lg text-xs font-mono text-white"
+                                    />
+                                  </div>
+
+                                  {/* Quick Solid Backgrounds */}
+                                  <div className="grid grid-cols-6 gap-1.5">
+                                    {[
+                                      { name: 'Obsidian Negro', hex: '#08080a' },
+                                      { name: 'Carbón Grill', hex: '#0c0d12' },
+                                      { name: 'Azul Medianoche', hex: '#0b111e' },
+                                      { name: 'Cacao Ahumado', hex: '#140c08' },
+                                      { name: 'Vino Borgoña', hex: '#14070e' },
+                                      { name: 'Blanco Mineral', hex: '#f8fafc' },
+                                      { name: 'Lino Arena', hex: '#fdfbf7' },
+                                      { name: 'Menta Suave', hex: '#f2f9f6' },
+                                      { name: 'Lavanda Dulce', hex: '#f7f4fc' },
+                                      { name: 'Abismo Marino', hex: '#050f1d' },
+                                      { name: 'Bosque Esmeralda', hex: '#08130d' },
+                                      { name: 'Gris Grafito', hex: '#18181b' },
+                                    ].map((bg) => (
+                                      <button
+                                        key={bg.hex}
+                                        type="button"
+                                        onClick={() => {
+                                          const isLight = ['#f8fafc', '#fdfbf7', '#f2f9f6', '#f7f4fc'].includes(bg.hex);
+                                          setCustomTheme({
+                                            ...customTheme,
+                                            bgColor: bg.hex,
+                                            textColor: isLight ? '#0f172a' : '#ffffff',
+                                            cardBg: isLight ? '#ffffff' : '#151722',
+                                            cardBorder: isLight ? 'rgba(203, 213, 225, 0.9)' : 'rgba(255, 255, 255, 0.1)',
+                                            cardTextColor: isLight ? '#0f172a' : '#ffffff'
+                                          });
+                                        }}
+                                        title={bg.name}
+                                        className={`h-6 rounded-lg border text-[8px] font-bold flex items-center justify-center transition cursor-pointer ${
+                                          customTheme.bgColor.toLowerCase() === bg.hex.toLowerCase()
+                                            ? 'ring-2 ring-emerald-400 border-white'
+                                            : 'border-white/10'
+                                        }`}
+                                        style={{ backgroundColor: bg.hex }}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  <input
+                                    type="text"
+                                    value={customTheme.bgColor}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, bgColor: e.target.value })}
+                                    placeholder="linear-gradient(135deg, #090b14 0%, #2a0b38 100%)"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-lg text-xs font-mono text-white"
+                                  />
+                                  <div className="grid grid-cols-4 gap-2">
+                                    {[
+                                      { name: 'Aurora Púrpura', grad: 'linear-gradient(135deg, #090b14 0%, #150d2a 50%, #2a0b38 100%)' },
+                                      { name: 'Zafiro Real', grad: 'linear-gradient(135deg, #0f1c3f 0%, #3b0764 100%)' },
+                                      { name: 'Fuego Tropical', grad: 'linear-gradient(135deg, #ea580c 0%, #f59e0b 100%)' },
+                                      { name: 'Atardecer Coral', grad: 'linear-gradient(135deg, #ff7e5f 0%, #feb47b 100%)' },
+                                    ].map((g) => (
+                                      <button
+                                        key={g.name}
+                                        type="button"
+                                        onClick={() => setCustomTheme({ ...customTheme, bgColor: g.grad })}
+                                        className="h-8 rounded-lg border border-white/20 text-[9px] font-bold text-white shadow-sm flex items-center justify-center px-2 text-center"
+                                        style={{ backgroundImage: g.grad }}
+                                      >
+                                        {g.name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 3. Tarjetas de Productos & Textos */}
+                            <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-900">
+                              <div>
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                                  Fondo de Tarjetas de Producto
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={customTheme.cardBg.startsWith('#') ? customTheme.cardBg : '#151722'}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, cardBg: e.target.value })}
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={customTheme.cardBg}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, cardBg: e.target.value })}
+                                    placeholder="#151722"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                                  Borde de Tarjetas
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={customTheme.cardBorder.startsWith('#') ? customTheme.cardBorder : '#f97316'}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, cardBorder: e.target.value })}
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={customTheme.cardBorder}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, cardBorder: e.target.value })}
+                                    placeholder="rgba(249,115,22,0.3)"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                                  Texto de Tarjetas y Título
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={customTheme.cardTextColor.startsWith('#') ? customTheme.cardTextColor : '#ffffff'}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, cardTextColor: e.target.value })}
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={customTheme.cardTextColor}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, cardTextColor: e.target.value })}
+                                    placeholder="#ffffff"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                                  Texto Principal de la Tienda
+                                </label>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={customTheme.textColor.startsWith('#') ? customTheme.textColor : '#ffffff'}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, textColor: e.target.value })}
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={customTheme.textColor}
+                                    onChange={(e) => setCustomTheme({ ...customTheme, textColor: e.target.value })}
+                                    placeholder="#ffffff"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 4. Tipografía y Estilo de Botón */}
+                            <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-900">
+                              <div>
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                                  Tipografía
+                                </label>
+                                <select
+                                  value={customTheme.fontFamily}
+                                  onChange={(e) => setCustomTheme({ ...customTheme, fontFamily: e.target.value as any })}
+                                  className="w-full h-9 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-xl text-xs font-bold text-white outline-none cursor-pointer"
+                                >
+                                  <option value="font-sans">Sans-serif Moderna (Limpia)</option>
+                                  <option value="font-serif">Serif Elegante (Artesanal/Café)</option>
+                                  <option value="font-mono">Monospace Tech (Digital/Cyber)</option>
+                                  <option value="font-display">Display Negrita (Impacto/Grill)</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                                  Estilo de Botones
+                                </label>
+                                <select
+                                  value={customTheme.buttonStyle}
+                                  onChange={(e) => setCustomTheme({ ...customTheme, buttonStyle: e.target.value as any })}
+                                  className="w-full h-9 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-xl text-xs font-bold text-white outline-none cursor-pointer"
+                                >
+                                  <option value="rounded">Redondeado Moderno (Rounded)</option>
+                                  <option value="pill">Píldora Redonda (Pill)</option>
+                                  <option value="square">Cuadrado Minimal (Square)</option>
+                                  <option value="shadow">Con Sombra Sólida (Shadow)</option>
+                                  <option value="bordered">Con Borde Resaltado (Bordered)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            {/* Live Interactive Preview Card */}
+                            <div className="p-4 rounded-2xl border border-gray-800 space-y-2">
+                              <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider block">
+                                Vista Previa de Producto en tu Tienda:
+                              </span>
+                              
+                              <div 
+                                className="p-4 rounded-xl border transition-all"
+                                style={customTheme.bgType === 'gradient' ? { backgroundImage: customTheme.bgColor } : { backgroundColor: customTheme.bgColor }}
+                              >
+                                <div 
+                                  className={`p-3.5 border transition-all ${
+                                    customTheme.buttonStyle === 'square' ? 'rounded-none' : 'rounded-2xl'
+                                  }`}
+                                  style={{
+                                    backgroundColor: customTheme.cardBg,
+                                    borderColor: customTheme.cardBorder,
+                                    color: customTheme.cardTextColor
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <span 
+                                        className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block mb-1"
+                                        style={{ backgroundColor: `${customTheme.accentColor || '#10b981'}25`, color: customTheme.accentColor || '#10b981' }}
+                                      >
+                                        Especialidad
+                                      </span>
+                                      <h4 className="text-xs font-black" style={{ color: customTheme.cardTextColor }}>
+                                        Hamburguesa Artesanal Doble
+                                      </h4>
+                                      <span className="text-xs font-extrabold mt-1 block" style={{ color: customTheme.accentColor || '#10b981' }}>
+                                        $24.500
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className={`px-3 py-2 text-xs font-black transition cursor-pointer ${
+                                        customTheme.buttonStyle === 'pill' ? 'rounded-full' : customTheme.buttonStyle === 'square' ? 'rounded-none' : 'rounded-xl'
+                                      }`}
+                                      style={{
+                                        backgroundColor: customTheme.accentColor || '#10b981',
+                                        color: customTheme.accentColor === '#ffffff' ? '#000000' : '#ffffff'
+                                      }}
+                                    >
+                                      Pedir
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Save Custom Theme Button */}
+                            <div className="pt-2">
+                              <button
+                                type="button"
+                                disabled={isSavingTheme}
+                                onClick={handleSaveCustomTheme}
+                                className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                              >
+                                {isSavingTheme ? (
+                                  <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin rounded-full" />
+                                ) : (
+                                  <Save className="w-4 h-4" />
+                                )}
+                                <span>Guardar y Aplicar Colores Personalizados</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                     </div>

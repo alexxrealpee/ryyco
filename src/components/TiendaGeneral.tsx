@@ -562,51 +562,39 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       
       {/* 1. Navbar */}
       <header className="border-b border-[#232B3A] backdrop-blur-md sticky top-0 z-40 bg-[#090B12]/95">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 relative flex items-center justify-between min-h-[64px]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
           {/* Left: Ayuda Button */}
-          <div className="flex items-center z-10">
+          <div className="flex-1 flex items-center justify-start z-10 min-w-0">
             <button 
               onClick={onNavigateHome}
-              className="flex items-center gap-2 px-3 py-2 bg-[#111827] hover:bg-[#232B3A] border border-[#232B3A] rounded-xl transition text-xs font-bold text-[#A9B2C3] hover:text-white cursor-pointer shadow-sm"
+              className="flex items-center gap-2 px-3 py-2 bg-[#111827] hover:bg-[#232B3A] border border-[#232B3A] rounded-xl transition text-xs font-bold text-[#A9B2C3] hover:text-white cursor-pointer shadow-sm shrink-0"
+              title="Centro de ayuda"
             >
               <ArrowLeft className="w-4 h-4 text-white" />
               <span className="hidden sm:inline">Ayuda</span>
-              <span className="sm:hidden">Ayuda</span>
             </button>
           </div>
 
-          {/* Center: Centered Logo */}
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-auto z-20">
+          {/* Center: Centered Logo with Dedicated Protected Clearance */}
+          <div className="flex items-center justify-center shrink-0 px-2 z-20">
             <LinnkProLogo 
               onClick={onNavigateHome} 
               height={40}
-              imgClassName="h-7 sm:h-[40px]"
+              imgClassName="h-7 sm:h-[38px] md:h-[42px]"
             />
           </div>
 
           {/* Right: Action Buttons */}
-          <div className="flex items-center gap-2 sm:gap-2.5 z-10">
-            {/* Customer Loyalty & Roulette Modal Button (Visible on Large Desktop) */}
+          <div className="flex-1 flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
+            {/* Customer Loyalty & Roulette Modal Button (Desktop) */}
             <button 
               onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
-              className="hidden lg:flex px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer relative whitespace-nowrap"
+              className="hidden lg:flex px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
               title="Mi Cuenta, Puntos, Ruleta de Platos Gratis y Estado de Pedidos"
             >
               <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span>Mis Puntos & Pedidos</span>
-            </button>
-
-            {/* Historias Button in header for extra-large screens */}
-            <button
-              onClick={() => {
-                window.history.pushState({}, '', '/carruselproduc');
-                window.dispatchEvent(new Event('popstate'));
-              }}
-              className="hidden xl:flex px-3 py-2 bg-[#E63946]/15 hover:bg-[#E63946]/25 border border-[#E63946] rounded-xl text-[#E63946] hover:text-white transition cursor-pointer items-center gap-1.5 text-xs font-bold shadow-md whitespace-nowrap"
-              title="Ver historias"
-            >
-              <Sparkles className="w-4 h-4 text-[#E63946] animate-pulse" />
-              <span>Historias</span>
+              <span className="hidden xl:inline">Mis Puntos & Pedidos</span>
+              <span className="xl:hidden">Mis Puntos</span>
             </button>
 
             {/* Dynamic Cart Button in Navbar */}
@@ -623,12 +611,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               )}
             </button>
 
+            {/* Crear Mi Tienda Button */}
             <button 
               onClick={() => {
                 window.history.pushState({}, '', '/landing');
                 window.dispatchEvent(new Event('popstate'));
               }}
-              className="hidden xl:inline-block bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md whitespace-nowrap"
+              className="hidden xl:inline-flex items-center bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md whitespace-nowrap shrink-0"
             >
               Crear Mi Tienda
             </button>
