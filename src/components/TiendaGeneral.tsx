@@ -586,23 +586,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
           {/* Right: Action Buttons */}
           <div className="flex items-center gap-2 sm:gap-2.5 z-10">
-            {/* Customer Loyalty & Roulette Modal Button (Visible on Desktop) */}
+            {/* Customer Loyalty & Roulette Modal Button (Visible on Large Desktop) */}
             <button 
               onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
-              className="hidden sm:flex px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer relative"
+              className="hidden lg:flex px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer relative whitespace-nowrap"
               title="Mi Cuenta, Puntos, Ruleta de Platos Gratis y Estado de Pedidos"
             >
               <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
               <span>Mis Puntos & Pedidos</span>
             </button>
 
-            {/* Historias Button in header for desktop */}
+            {/* Historias Button in header for extra-large screens */}
             <button
               onClick={() => {
                 window.history.pushState({}, '', '/carruselproduc');
                 window.dispatchEvent(new Event('popstate'));
               }}
-              className="hidden sm:flex px-3 py-2 bg-[#E63946]/15 hover:bg-[#E63946]/25 border border-[#E63946] rounded-xl text-[#E63946] hover:text-white transition cursor-pointer items-center gap-1.5 text-xs font-bold shadow-md"
+              className="hidden xl:flex px-3 py-2 bg-[#E63946]/15 hover:bg-[#E63946]/25 border border-[#E63946] rounded-xl text-[#E63946] hover:text-white transition cursor-pointer items-center gap-1.5 text-xs font-bold shadow-md whitespace-nowrap"
               title="Ver historias"
             >
               <Sparkles className="w-4 h-4 text-[#E63946] animate-pulse" />
@@ -612,7 +612,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             {/* Dynamic Cart Button in Navbar */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 bg-[#111827] hover:bg-[#232B3A] border border-[#232B3A] rounded-xl text-white hover:border-[#E63946] transition cursor-pointer flex items-center gap-1.5"
+              className="relative p-2.5 bg-[#111827] hover:bg-[#232B3A] border border-[#232B3A] rounded-xl text-white hover:border-[#E63946] transition cursor-pointer flex items-center gap-1.5 shrink-0"
               title="Ver mi carrito de compras"
             >
               <ShoppingBag className="w-4.5 h-4.5 stroke-[2] text-white" />
@@ -628,7 +628,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 window.history.pushState({}, '', '/landing');
                 window.dispatchEvent(new Event('popstate'));
               }}
-              className="hidden md:inline-block bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md"
+              className="hidden xl:inline-block bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md whitespace-nowrap"
             >
               Crear Mi Tienda
             </button>

@@ -331,16 +331,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             navigator.serviceWorker.ready.then(registration => {
               registration.showNotification(title, {
                 body,
-                icon: '/favicon.ico',
-                badge: '/favicon.ico',
+                icon: '/favicon.svg',
+                badge: '/favicon.svg',
                 tag: 'new-order-' + (order?.id || Date.now()),
                 renotify: true
               } as any);
             }).catch(() => {
-              new Notification(title, { body, icon: '/favicon.ico' });
+              new Notification(title, { body, icon: '/favicon.svg' });
             });
           } else {
-            new Notification(title, { body, icon: '/favicon.ico' });
+            new Notification(title, { body, icon: '/favicon.svg' });
           }
         }
       }
