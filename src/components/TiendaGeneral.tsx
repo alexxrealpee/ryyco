@@ -257,23 +257,73 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     loadData();
   }, []);
 
-  // Get list of unique categories from all loaded products (food categories first)
+  // Helper to normalize categories for robust matching (removes emojis and trims)
+  const normalizeCat = (c?: string) => {
+    if (!c) return '';
+    return c.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim().toUpperCase();
+  };
+
+  const matchesCategoryFilter = (prodCat?: string, filterCat?: string) => {
+    if (!filterCat || filterCat === 'all' || filterCat === 'Todos') return true;
+    if (!prodCat) return false;
+    const pNorm = prodCat.trim().toUpperCase();
+    const fNorm = filterCat.trim().toUpperCase();
+    if (pNorm === fNorm) return true;
+    const pClean = normalizeCat(prodCat);
+    const fClean = normalizeCat(filterCat);
+    return pClean.length > 0 && pClean === fClean;
+  };
+
+  // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
+  const availableBaseProducts = useMemo(() => {
+    return products.filter(product => {
+      const profile = findStoreForProduct(product, profiles);
+      if (!profile || checkIsStoreClosed(profile) || profile.suspended) return false;
+      if (selectedStore !== 'all' && product.userId !== selectedStore && profile.uid !== selectedStore) {
+        return false;
+      }
+      return true;
+    });
+  }, [products, profiles, selectedStore]);
+
+  // Get list of unique categories ONLY from products that actually exist and are available (food categories first)
+  // If a category has no available products, it will NOT be displayed!
   const categories = useMemo(() => {
-    const map = new Map<string, string>();
-    products.forEach(p => {
+    const map = new Map<string, { label: string; count: number }>();
+
+    availableBaseProducts.forEach(p => {
       if (p.category && p.category.trim()) {
-        const trimmed = p.category.trim();
-        const upper = trimmed.toUpperCase();
-        if (!map.has(upper)) {
-          map.set(upper, trimmed);
+        const original = p.category.trim();
+        const key = normalizeCat(original) || original.toUpperCase();
+        const existing = map.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          map.set(key, { label: original, count: 1 });
         }
       }
     });
-    const uniqueList = Array.from(map.values());
-    const foodList = uniqueList.filter(c => isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
-    const nonFoodList = uniqueList.filter(c => !isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
+
+    // Only keep categories that have at least 1 product
+    const validCategories = Array.from(map.values())
+      .filter(item => item.count > 0)
+      .map(item => item.label);
+
+    const foodList = validCategories.filter(c => isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
+    const nonFoodList = validCategories.filter(c => !isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
+
     return ['all', ...foodList, ...nonFoodList];
-  }, [products]);
+  }, [availableBaseProducts]);
+
+  // Auto-reset category filter if currently selected category has no products in the active view
+  useEffect(() => {
+    if (selectedCategory !== 'all') {
+      const hasProducts = availableBaseProducts.some(p => matchesCategoryFilter(p.category, selectedCategory));
+      if (!hasProducts) {
+        setSelectedCategory('all');
+      }
+    }
+  }, [availableBaseProducts, selectedCategory]);
 
   // Get list of unique store profiles with active products (memoized)
   const uniqueStores = useMemo(() => {
@@ -333,23 +383,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Filter & sort logic (food products prioritized first)
   const filteredProducts = useMemo(() => {
-    return products.filter(product => {
+    return availableBaseProducts.filter(product => {
       const profile = findStoreForProduct(product, profiles);
-      if (!profile || checkIsStoreClosed(profile) || profile.suspended) return false;
 
       const matchesSearch = 
+        !searchTerm.trim() ||
         (product.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (product.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (product.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (profile.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (profile.username || '').toLowerCase().includes(searchTerm.toLowerCase());
+        (profile?.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (profile?.username || '').toLowerCase().includes(searchTerm.toLowerCase());
         
-      const matchesCategory = selectedCategory === 'all' || 
-        (product.category && product.category.trim().toUpperCase() === selectedCategory.trim().toUpperCase());
-      
-      const matchesStore = selectedStore === 'all' || product.userId === selectedStore || profile.uid === selectedStore;
+      const matchesCategory = matchesCategoryFilter(product.category, selectedCategory);
 
-      return matchesSearch && matchesCategory && matchesStore;
+      return matchesSearch && matchesCategory;
     }).sort((a, b) => {
       // 1. Food items first
       const foodA = isFoodProduct(a);
@@ -369,7 +416,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         return dateB - dateA;
       }
     });
-  }, [products, profiles, searchTerm, selectedCategory, selectedStore, sortBy]);
+  }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy]);
 
   const [visibleLimit, setVisibleLimit] = useState(8);
 

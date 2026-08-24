@@ -229,18 +229,60 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   const qrRef = useRef<HTMLDivElement>(null);
 
+  // Helper to normalize categories for robust matching
+  const normalizeCat = (c?: string) => {
+    if (!c) return '';
+    return c.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim().toUpperCase();
+  };
+
+  const matchesCategoryFilter = (prodCat?: string, filterCat?: string) => {
+    if (!filterCat || filterCat === 'Todos' || filterCat === 'all') return true;
+    const p = (prodCat || 'General').trim();
+    if (p.toUpperCase() === filterCat.trim().toUpperCase()) return true;
+    const pClean = normalizeCat(p);
+    const fClean = normalizeCat(filterCat);
+    return pClean.length > 0 && pClean === fClean;
+  };
+
   // Filter products by tag and search query (food categories and products prioritized)
+  // Only categories that actually contain products are shown!
   const uniqueCategories: string[] = useMemo(() => {
-    const rawList = Array.from(new Set(products.map(p => (p.category || 'General').trim()))) as string[];
-    const foodList = rawList.filter(c => isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
-    const nonFoodList = rawList.filter(c => !isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
+    const map = new Map<string, { label: string; count: number }>();
+    products.forEach(p => {
+      const original = (p.category || 'General').trim();
+      if (original) {
+        const key = normalizeCat(original) || original.toUpperCase();
+        const existing = map.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          map.set(key, { label: original, count: 1 });
+        }
+      }
+    });
+
+    const validCategories = Array.from(map.values())
+      .filter(item => item.count > 0)
+      .map(item => item.label);
+
+    const foodList = validCategories.filter(c => isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
+    const nonFoodList = validCategories.filter(c => !isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
     return ['Todos', ...foodList, ...nonFoodList];
   }, [products]);
 
+  // Auto-reset category if no products match
+  useEffect(() => {
+    if (selectedCategory !== 'Todos') {
+      const hasProducts = products.some(p => matchesCategoryFilter(p.category, selectedCategory));
+      if (!hasProducts) {
+        setSelectedCategory('Todos');
+      }
+    }
+  }, [products, selectedCategory]);
+
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
-      const pCat = (p.category || 'General').trim();
-      const matchesCategory = selectedCategory === 'Todos' || pCat.toUpperCase() === selectedCategory.trim().toUpperCase();
+      const matchesCategory = matchesCategoryFilter(p.category, selectedCategory);
       const matchesSearch = !searchQuery.trim() || 
         (p.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (p.category || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
