@@ -505,14 +505,6 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
               </div>
             </button>
 
-            {/* Multi-role notice for clarity */}
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2.5 text-[11px] text-emerald-300 flex items-start gap-2">
-              <span className="text-sm shrink-0">💡</span>
-              <p className="leading-snug">
-                <strong>¿Misma cuenta para Vender y Comprar?</strong> Sí, tu correo de Google puede tener perfil de vendedor y cliente. Este portal abre tu <strong>Panel de Vendedor</strong>. Para comprar comida como cliente, accede desde la tienda.
-              </p>
-            </div>
-
             <div className="relative flex py-1 items-center">
               <div className="flex-grow border-t border-[#232B3A]" />
               <span className="flex-shrink mx-4 text-xs font-bold text-[#A9B2C3] lowercase">o con correo</span>
