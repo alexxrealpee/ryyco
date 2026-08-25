@@ -38,6 +38,7 @@ import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile
 import PwaLoadingScreen from './PwaLoadingScreen';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
+import FullScreenSearchModal from './FullScreenSearchModal';
 
 export const isFoodCategory = (cat?: string): boolean => {
   if (!cat || cat === 'all' || cat === 'Todos') return false;
@@ -133,6 +134,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   
   // Filtering & search states
   const [searchTerm, setSearchTerm] = useState('');
+  const [isFullScreenSearchOpen, setIsFullScreenSearchOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
   const [sortBy, setSortBy] = useState<'latest' | 'price_asc' | 'price_desc'>('latest');
@@ -472,6 +474,32 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     setSelectedProduct(null);
     setIsCartOpen(true);
+  };
+
+  const handleAddToCartDirect = (product: ProductItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
+    const cartItemId = `${product.id}_${firstVariant || 'none'}`;
+
+    setCart(prev => {
+      const existing = prev.find(item => item.id === cartItemId);
+      if (existing) {
+        return prev.map(item => 
+          item.id === cartItemId 
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: cartItemId,
+          product,
+          selectedVariant: firstVariant,
+          quantity: 1
+        }
+      ];
+    });
   };
 
   const handleSetItemQuantity = (cartItemId: string, change: number) => {
@@ -947,20 +975,30 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           
           {/* Top Row: Prominent Search Input & Sorting Selector */}
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-            {/* Search Input - White background highlighting with #E63946 border */}
-            <div className="relative flex-grow">
+            {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
+            <div 
+              onClick={() => setIsFullScreenSearchOpen(true)}
+              className="relative flex-grow cursor-pointer"
+            >
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 pointer-events-none" />
               <input
                 type="text"
+                readOnly
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onClick={() => setIsFullScreenSearchOpen(true)}
+                onFocus={() => setIsFullScreenSearchOpen(true)}
                 placeholder="Buscar restaurantes, platos, comida a domicilio o menús..."
-                className="w-full bg-white border-2 border-[#E63946] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#E63946] focus:ring-4 focus:ring-[#E63946]/20 shadow-md transition"
+                className="w-full bg-white border-2 border-[#E63946] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#E63946] focus:ring-4 focus:ring-[#E63946]/20 shadow-md transition cursor-pointer"
               />
               {searchTerm && (
                 <button 
-                  onClick={() => setSearchTerm('')} 
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSearchTerm('');
+                  }} 
                   className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg text-gray-600 transition cursor-pointer"
+                  title="Limpiar filtro"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -1944,6 +1982,30 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         onClose={() => setIsCustomerPortalOpen(false)}
         initialPhone={custPhone}
         initialTab={customerPortalTab}
+      />
+
+      {/* FULL SCREEN SEARCH MODAL VIEW */}
+      <FullScreenSearchModal
+        isOpen={isFullScreenSearchOpen}
+        onClose={() => setIsFullScreenSearchOpen(false)}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        products={products}
+        profiles={profiles}
+        onSelectProduct={(product) => {
+          setSelectedProduct(product);
+          setIsFullScreenSearchOpen(false);
+        }}
+        onAddToCartDirect={(product, e) => handleAddToCartDirect(product, e)}
+        onNavigateToStore={(username) => {
+          setIsFullScreenSearchOpen(false);
+          onNavigateToStore(username);
+        }}
+        cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
+        onOpenCart={() => {
+          setIsFullScreenSearchOpen(false);
+          setIsCartOpen(true);
+        }}
       />
 
       {/* 6. Footer */}
