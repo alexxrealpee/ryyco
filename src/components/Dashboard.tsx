@@ -95,6 +95,7 @@ import {
 } from '../types';
 import BankSettings from './BankSettings';
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
+import LinnkProIsotype from './LinnkProIsotype';
 import { formatColombianPhoneWith57 } from './PublicProfile';
 
 export const RESTAURANT_CATEGORIES = [
@@ -1103,26 +1104,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       <nav className="border-b border-[#232B3A] bg-[#090b12]/95 px-6 py-4 flex flex-col md:flex-row gap-4 items-center justify-between sticky top-0 z-40 backdrop-blur-md">
         <div className="flex items-center justify-between w-full md:w-auto gap-3">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-emerald-500 to-indigo-500 p-2 rounded-xl">
-              <ShoppingBag className="w-5 h-5 text-black stroke-[2.5]" />
+            <div className="w-10 h-10 rounded-2xl overflow-hidden border border-[#232B3A] shrink-0 bg-[#090B12] shadow-sm flex items-center justify-center p-0.5">
+              <img 
+                src="/favicon.svg" 
+                alt="Ryyco" 
+                className="w-full h-full object-contain rounded-xl"
+              />
             </div>
             <div>
               <h1 className="font-extrabold text-sm text-white tracking-tight flex items-center gap-1.5 flex-wrap">
                 {profile.displayName}
-                <span className="text-[9.5px] bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-black tracking-wider uppercase shrink-0 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  MODO VENDEDOR
-                </span>
                 {(profile.suspended || profile.subscriptionStatus === 'suspended') && (
                   <span className="text-[9px] bg-red-500/20 text-red-400 border border-red-500/30 px-1.5 py-0.5 rounded-full font-black tracking-widest uppercase shrink-0 animate-pulse">
                     SUSPENDIDA
                   </span>
                 )}
               </h1>
-              <p className="text-[10px] text-gray-400 font-mono flex items-center gap-2">
-                <span>linnkpro.store/{profile.username}</span>
-                <span className="text-gray-600">•</span>
-                <span className="text-emerald-400 font-sans font-semibold">Administración de Tienda</span>
+              <p className="text-[11px] text-emerald-400 font-sans font-semibold">
+                Administración de Tienda
               </p>
             </div>
           </div>
@@ -5030,17 +5029,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         type="button"
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        whileHover={{ scale: 1.05 }}
+        whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsAdminVoiceAssistantOpen(true)}
-        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 px-3.5 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-full text-xs font-black flex items-center gap-1.5 shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition group"
+        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 w-11 h-11 bg-gradient-to-tr from-indigo-600 via-purple-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-400 text-white rounded-full font-black text-sm flex items-center justify-center shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition tracking-wider"
         title="Abrir IA Administrador"
       >
-        <div className="p-1 bg-white/10 rounded-full flex items-center justify-center">
-          <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
-        </div>
-        <span className="tracking-wide uppercase font-black">IA</span>
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        IA
       </motion.button>
 
       {/* LinnkAdminVoiceAssistant Modal (Specialized AI for Store & Restaurant Managers) */}
