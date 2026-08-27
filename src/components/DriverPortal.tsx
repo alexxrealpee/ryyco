@@ -153,10 +153,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     }
 
     const unsubscribe = listenToUnassignedOrders((unassignedOrders) => {
-      // Filter strictly for delivery orders in 'pending' status (excluding table orders)
+      // Filter strictly for delivery orders in 'pending' status (excluding table orders and pickup orders)
       const pendingOrders = unassignedOrders.filter(o => {
-        const isTable = o.orderType === 'table' || o.isTableOrder || o.customerName?.toLowerCase().startsWith('mesa ') || o.customerAddress?.toLowerCase().includes('mesa');
-        return o.status === 'pending' && !isTable;
+        const isTableOrPickup = o.orderType === 'table' || o.orderType === 'pickup' || o.isTableOrder || o.customerName?.toLowerCase().startsWith('mesa ') || o.customerAddress?.toLowerCase().includes('mesa') || o.customerAddress?.toLowerCase().includes('recoger');
+        return o.status === 'pending' && !isTableOrPickup;
       });
       setAvailableOrders(pendingOrders);
 

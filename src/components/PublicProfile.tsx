@@ -160,6 +160,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [custEmail, setCustEmail] = useState('');
   const [custAddress, setCustAddress] = useState('');
   const [custNotes, setCustNotes] = useState('');
+  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('whatsapp');
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
@@ -527,8 +528,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     if (!profile || cart.length === 0 || orderSubmittingRef.current) return;
     
     const cleanedPhone = cleanColombianPhone(custPhone);
-    if (!custName.trim()) {
-      alert("Por favor, introduce tu nombre completo");
+    if (!custName.trim() || (deliveryType === 'delivery' && !custAddress.trim())) {
+      alert("Por favor, completa todos los campos requeridos (*)");
       return;
     }
 
@@ -541,12 +542,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
     const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-    const deliveryFee = systemDeliveryFee;
+    const deliveryFee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
     const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
     const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
     const rNo = Math.floor(1000 + Math.random() * 9000);
 
     const formattedPhone = formatColombianPhoneWith57(custPhone);
+    const finalAddress = deliveryType === 'pickup' 
+      ? (custAddress.trim() ? `Recoger en Restaurante / Local (Nota: ${custAddress.trim()})` : `Recoger en Restaurante / Local (${profile.displayName || profile.username})`)
+      : custAddress.trim();
 
     let finalNotes = custNotes.trim();
     if (appliedRewardCode) {
@@ -563,7 +567,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       customerName: custName.trim(),
       customerPhone: formattedPhone,
       customerEmail: custEmail.trim() || undefined,
-      customerAddress: custAddress.trim(),
+      customerAddress: finalAddress,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
@@ -573,6 +577,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       })),
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
+      orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
       paymentMethod: payMethod,
       notes: finalNotes || undefined,
       status: 'pending',
@@ -625,6 +630,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   // Launch WhatsApp pre-packaged checkout dispatch message
   const triggerShopperWhatsAppMessage = (order: OrderItem) => {
     if (!profile) return;
+
+    const isPickup = order.orderType === 'pickup' || order.deliveryFee === 0;
     
     let msg = `🛍️ *PEDIDO NUEVO #${order.orderNumber}* de *${order.customerName}*\n`;
     msg += `-----------------------------\n`;
@@ -634,19 +641,24 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     });
     msg += `-----------------------------\n`;
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-    const feeVal = order.deliveryFee ?? systemDeliveryFee;
+    const feeVal = order.deliveryFee ?? (isPickup ? 0 : systemDeliveryFee);
     msg += `Subtotal: ${profile.currency || '$'}${subtotalVal.toLocaleString()}\n`;
-    msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
+    msg += `Tipo de Entrega: *${isPickup ? '🛍️ Recoger en Restaurante / Local (Sin costo de envío)' : '🛵 Envío a Domicilio'}*\n`;
+    if (!isPickup) {
+      msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
+    } else {
+      msg += `Domicilio: *$0 (Recoger en Restaurante)*\n`;
+    }
     msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
     if (order.customerEmail) msg += `✉️ Email: ${order.customerEmail}\n`;
-    msg += `📍 Despacho: ${order.customerAddress}\n`;
+    msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : 'Pago contra Entrega'}*\n`;
     if (order.proofImage) {
       msg += `📸 *Comprobante de compra:* Adjunto en linnkpro.store\n`;
     }
-    msg += `¡Espero confirmación para continuar con el pago/envío!`;
+    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
 
     const cleanMsg = encodeURIComponent(msg);
     let targetPhone = profile.whatsapp || profile.phone || '';
@@ -2193,12 +2205,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <span className="font-mono">{getStoreCurrency()}{totalCartCost.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center justify-between font-bold text-xs text-gray-400">
-                  <span>Costo de Domicilio:</span>
-                  <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
+                  <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : ''}:</span>
+                  {deliveryType === 'pickup' ? (
+                    <span className="font-mono text-emerald-400 font-bold">GRATIS ($0)</span>
+                  ) : (
+                    <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between font-extrabold text-sm text-white pt-1 border-t border-dashed border-gray-900">
                   <span>Total estimado:</span>
-                  <span className="text-emerald-400 text-base font-mono">{getStoreCurrency()}{(totalCartCost + systemDeliveryFee).toLocaleString()}</span>
+                  <span className="text-emerald-400 text-base font-mono">
+                    {getStoreCurrency()}{(totalCartCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee)).toLocaleString()}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2.5 pt-2">
@@ -2301,14 +2319,76 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               )}
             </div>
 
+            {/* Delivery Type Option (Domicilio vs Recoger en Restaurante) */}
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase text-gray-500 block">Tipo de entrega</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeliveryType('delivery')}
+                  className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                    deliveryType === 'delivery'
+                      ? 'bg-indigo-500/10 border-indigo-500 text-white'
+                      : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:border-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
+                      {deliveryType === 'delivery' && <div className="w-2 h-2 bg-indigo-500 rounded-full" />}
+                    </div>
+                    <span className="text-xs font-black text-white">🛵 Domicilio</span>
+                  </div>
+                  <span className="text-[10px] text-gray-400 pl-6">Envío a tu dirección</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDeliveryType('pickup')}
+                  className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                    deliveryType === 'pickup'
+                      ? 'bg-emerald-500/10 border-emerald-500 text-white'
+                      : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:border-gray-700'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
+                      {deliveryType === 'pickup' && <div className="w-2 h-2 bg-emerald-500 rounded-full" />}
+                    </div>
+                    <span className="text-xs font-black text-white">🛍️ Recoger en Restaurante</span>
+                  </div>
+                  <span className="text-[10px] text-emerald-400 font-bold pl-6">¡Sin costo de envío! ($0)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Pickup Location Info Banner */}
+            {deliveryType === 'pickup' && (
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-1">
+                <p className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
+                  <span>🛍️</span> <span>Recogida en {profile?.displayName || 'el restaurante'}</span>
+                </p>
+                {profile?.address && (
+                  <p className="text-[10px] text-gray-300 font-semibold flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span>Ubicación: {profile.address}</span>
+                  </p>
+                )}
+                <p className="text-[10px] text-gray-400 leading-tight">
+                  Podrás retirar tu pedido directamente sin pagar domicilio. Te avisarán por WhatsApp cuando tu orden esté lista.
+                </p>
+              </div>
+            )}
+
             <div>
-              <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">Dirección Completa de Despacho *</label>
+              <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
+                {deliveryType === 'pickup' ? 'Detalles o Nota de Recogida (Opcional)' : 'Dirección Completa de Despacho *'}
+              </label>
               <input 
                 type="text" 
-                required
+                required={deliveryType === 'delivery'}
                 value={custAddress}
                 onChange={(e) => setCustAddress(e.target.value)}
-                placeholder="Ej: Calle 45 #23-12, Apto 402, Bogotá"
+                placeholder={deliveryType === 'pickup' ? 'Ej: Paso a las 2:00 PM o voy en carro placa XYZ' : 'Ej: Calle 45 #23-12, Apto 402, Bogotá'}
                 className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
               />
             </div>
@@ -2597,8 +2677,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <span className="font-mono">{getStoreCurrency()}{totalCartCost.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-xs text-gray-400 font-bold">
-                <span>Costo de Domicilio:</span>
-                <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
+                <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : ''}:</span>
+                {deliveryType === 'pickup' ? (
+                  <span className="font-mono text-emerald-400 font-bold">GRATIS ($0)</span>
+                ) : (
+                  <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
+                )}
               </div>
               {rewardDiscountAmount > 0 && (
                 <div className="flex justify-between items-center text-xs text-emerald-400 font-bold">
@@ -2609,7 +2693,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-gray-900 pt-2 text-white">
                 <span>Monto Total a Pagar:</span>
                 <span className="text-emerald-400 text-base font-mono">
-                  {getStoreCurrency()}{Math.max(0, totalCartCost + systemDeliveryFee - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
+                  {getStoreCurrency()}{Math.max(0, totalCartCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
                 </span>
               </div>
             </div>

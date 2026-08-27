@@ -180,6 +180,13 @@ export function checkIsTableOrder(order?: Partial<OrderItem> | null): boolean {
   return false;
 }
 
+export function checkIsPickupOrder(order?: Partial<OrderItem> | null): boolean {
+  if (!order) return false;
+  if (order.orderType === 'pickup') return true;
+  if (order.customerAddress?.toLowerCase().includes('recoger')) return true;
+  return false;
+}
+
 interface DashboardProps {
   userProfile: UserProfile;
   onLogout: () => void;
@@ -2270,6 +2277,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     <td className="py-3.5 px-2 max-w-[200px] truncate">
                                       <div className="font-extrabold text-white text-[11.5px] flex items-center gap-1.5 flex-wrap">
                                         <span>{order.customerName}</span>
+                                        {checkIsPickupOrder(order) && (
+                                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded text-[8.5px] font-black uppercase tracking-wider">
+                                            🛍️ Recoger
+                                          </span>
+                                        )}
+                                        {checkIsTableOrder(order) && (
+                                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded text-[8.5px] font-black uppercase tracking-wider">
+                                            🍽️ En Mesa
+                                          </span>
+                                        )}
                                         {order.proofImage && (
                                           <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[8.5px] font-black uppercase tracking-wider scale-90" title="Contiene imagen de comprobante adjunta">
                                             📸 Recibo
@@ -2376,8 +2393,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </div>
 
                                 <div className="space-y-1 border-t border-gray-900/50 pt-3">
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="text-white font-extrabold text-[12.5px]">{order.customerName}</span>
+                                    {checkIsPickupOrder(order) && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded text-[8px] font-black uppercase tracking-wider">
+                                        🛍️ Recoger
+                                      </span>
+                                    )}
+                                    {checkIsTableOrder(order) && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded text-[8px] font-black uppercase tracking-wider">
+                                        🍽️ Mesa
+                                      </span>
+                                    )}
                                     {order.proofImage && (
                                       <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[8px] font-black uppercase tracking-wider" title="Tiene comprobante">
                                         📸 Recibo
@@ -4095,6 +4122,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 {viewingOrder.deliveryVehicle && (
                   <div className="flex justify-between items-center"><span className="text-gray-400">Vehículo:</span> <span className="text-white font-semibold">{viewingOrder.deliveryVehicle} {viewingOrder.deliveryVehiclePlate ? `(Placa: ${viewingOrder.deliveryVehiclePlate})` : ''}</span></div>
                 )}
+              </div>
+            ) : checkIsPickupOrder(viewingOrder) ? (
+              <div className="p-3 bg-emerald-950/30 rounded-xl border border-emerald-800/40 text-[11px] text-emerald-300 flex items-center gap-2">
+                <span className="text-base">🛍️</span>
+                <span className="font-semibold">Pedido para Recoger en Restaurante / Local (El cliente retira personalmente, sin costo de domicilio)</span>
+              </div>
+            ) : checkIsTableOrder(viewingOrder) ? (
+              <div className="p-3 bg-amber-950/30 rounded-xl border border-amber-800/40 text-[11px] text-amber-300 flex items-center gap-2">
+                <span className="text-base">🍽️</span>
+                <span className="font-semibold">Pedido en Mesa (Atención en salón / restaurante)</span>
               </div>
             ) : (
               <div className="p-3 bg-gray-900/40 rounded-xl border border-gray-900 text-[11px] text-gray-500 flex items-center gap-2">

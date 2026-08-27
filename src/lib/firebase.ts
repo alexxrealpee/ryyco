@@ -2663,12 +2663,12 @@ export function listenToUnassignedOrders(onOrdersChanged: (orders: OrderItem[]) 
       // An order is available for driver pick-up ONLY if:
       // 1. Order status is strictly 'pending' (pendiente)
       // 2. Order does NOT have a driver assigned yet
-      // 3. Order is NOT a table order (pedido en mesa)
-      const isTable = order.orderType === 'table' || order.isTableOrder || order.customerName?.toLowerCase().startsWith('mesa ') || order.customerAddress?.toLowerCase().includes('mesa');
+      // 3. Order is NOT a table order (pedido en mesa) or pickup order (recoger en restaurante)
+      const isTableOrPickup = order.orderType === 'table' || order.orderType === 'pickup' || order.isTableOrder || order.customerName?.toLowerCase().startsWith('mesa ') || order.customerAddress?.toLowerCase().includes('mesa') || order.customerAddress?.toLowerCase().includes('recoger');
       if (
         order.status === 'pending' && 
         (!order.deliveryDriverId || order.deliveryDriverId.trim() === '') &&
-        !isTable
+        !isTableOrPickup
       ) {
         unassigned.push(order);
       }

@@ -179,7 +179,7 @@ export interface OrderItem {
   notes?: string;
   createdAt: string;
   proofImage?: string; // Base64 data URL representing uploaded payment receipt or purchase transaction photo
-  orderType?: 'delivery' | 'table';
+  orderType?: 'delivery' | 'table' | 'pickup';
   isTableOrder?: boolean;
 
   // Independent Delivery Driver fields

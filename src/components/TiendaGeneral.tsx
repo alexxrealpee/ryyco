@@ -190,6 +190,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [phoneError, setPhoneError] = useState('');
   const [custAddress, setCustAddress] = useState('');
   const [custNotes, setCustNotes] = useState('');
+  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
 
   // Customer Loyalty & Account Modal
@@ -523,7 +524,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (cart.length === 0) return;
     
     const cleanedPhone = cleanColombianPhone(custPhone);
-    if (!custName.trim() || !custAddress.trim()) {
+    if (!custName.trim() || (deliveryType === 'delivery' && !custAddress.trim())) {
       alert("Por favor, completa todos los campos requeridos (*)");
       return;
     }
@@ -551,12 +552,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     try {
       for (const [sellerId, sellerCart] of Object.entries(itemsBySeller)) {
         const subtotal = sellerCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-        const deliveryFee = systemDeliveryFee;
+        const deliveryFee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
         const totalSum = subtotal + deliveryFee;
         const rNo = Math.floor(1000 + Math.random() * 9000);
 
         const sellerProfile = profiles[sellerId];
         const formattedPhone = formatColombianPhoneWith57(custPhone);
+        const finalAddress = deliveryType === 'pickup' 
+          ? (custAddress.trim() ? `Recoger en Restaurante / Local (Nota: ${custAddress.trim()})` : 'Recoger en Restaurante / Local')
+          : custAddress.trim();
+
         const newOrder: OrderItem = {
           id: `order_${Date.now()}_${sellerId}`,
           storeOwnerId: sellerId,
@@ -566,7 +571,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           orderNumber: rNo,
           customerName: custName.trim(),
           customerPhone: formattedPhone,
-          customerAddress: custAddress.trim(),
+          customerAddress: finalAddress,
           items: sellerCart.map(item => ({
             productId: item.product.id,
             name: item.product.name,
@@ -576,6 +581,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           })),
           totalAmount: totalSum,
           deliveryFee: deliveryFee,
+          orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
           paymentMethod: payMethod === 'whatsapp' ? 'whatsapp' : payMethod === 'transfer' ? 'transfer' : 'delivery_cash',
           notes: custNotes.trim() || undefined,
           status: 'pending',
@@ -603,6 +609,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     const profile = profiles[order.storeOwnerId];
     if (!profile) return;
 
+    const isPickup = order.orderType === 'pickup' || order.deliveryFee === 0;
+
     let msg = `🛍️ *PEDIDO NUEVO #${order.orderNumber}* de *${order.customerName}*\n`;
     msg += `-----------------------------\n`;
     order.items.forEach(item => {
@@ -611,15 +619,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     });
     msg += `-----------------------------\n`;
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-    const feeVal = order.deliveryFee ?? systemDeliveryFee;
+    const feeVal = order.deliveryFee ?? (isPickup ? 0 : systemDeliveryFee);
     msg += `Subtotal: ${profile.currency || '$'}${subtotalVal.toLocaleString()}\n`;
-    msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
+    msg += `Tipo de Entrega: *${isPickup ? '🛍️ Recoger en Restaurante / Local (Sin costo de envío)' : '🛵 Envío a Domicilio'}*\n`;
+    if (!isPickup) {
+      msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
+    } else {
+      msg += `Domicilio: *$0 (Recoger en Restaurante)*\n`;
+    }
     msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
-    msg += `📍 Despacho: ${order.customerAddress}\n`;
+    msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : 'Pago contra Entrega'}*\n\n`;
-    msg += `¡Espero confirmación para continuar con el pago/envío!`;
+    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
 
     const cleanMsg = encodeURIComponent(msg);
     const targetPhone = profile.whatsapp || profile.phone || '';
@@ -1754,15 +1767,71 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   )}
                 </div>
 
+                {/* Delivery Type Option (Domicilio vs Recoger en Restaurante) */}
+                <div className="space-y-2 pt-2 border-t border-[#232B3A]">
+                  <span className="text-[10px] font-black uppercase text-[#A9B2C3] block">Tipo de entrega</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType('delivery')}
+                      className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                        deliveryType === 'delivery'
+                          ? 'bg-[#E63946]/10 border-[#E63946] shadow-sm'
+                          : 'bg-[#090B12] border-[#232B3A] hover:border-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full border border-[#232B3A] flex items-center justify-center shrink-0">
+                          {deliveryType === 'delivery' && <div className="w-2 h-2 bg-[#E63946] rounded-full" />}
+                        </div>
+                        <span className="text-xs font-black text-white">🛵 Domicilio</span>
+                      </div>
+                      <span className="text-[10px] text-[#A9B2C3] pl-6">Envío a tu dirección</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setDeliveryType('pickup')}
+                      className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                        deliveryType === 'pickup'
+                          ? 'bg-emerald-500/10 border-emerald-500 shadow-sm'
+                          : 'bg-[#090B12] border-[#232B3A] hover:border-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-full border border-[#232B3A] flex items-center justify-center shrink-0">
+                          {deliveryType === 'pickup' && <div className="w-2 h-2 bg-emerald-500 rounded-full" />}
+                        </div>
+                        <span className="text-xs font-black text-white">🛍️ Recoger en Restaurante</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-bold pl-6">¡Sin costo de envío! ($0)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pickup Info Banner if pickup selected */}
+                {deliveryType === 'pickup' && (
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-1">
+                    <p className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
+                      <span>🛍️</span> <span>Recogida en restaurante / local del vendedor</span>
+                    </p>
+                    <p className="text-[10px] text-gray-400 leading-tight">
+                      Podrás pasar a retirar tu pedido sin pagar costo de domicilio. Te notificarán por WhatsApp cuando esté listo.
+                    </p>
+                  </div>
+                )}
+
                 {/* Dispatch Address */}
                 <div>
-                  <label className="text-[10px] font-black uppercase text-[#A9B2C3] block mb-1">Dirección Completa de Despacho *</label>
+                  <label className="text-[10px] font-black uppercase text-[#A9B2C3] block mb-1">
+                    {deliveryType === 'pickup' ? 'Detalles o Nota de Recogida (Opcional)' : 'Dirección Completa de Despacho *'}
+                  </label>
                   <input 
                     type="text" 
-                    required
+                    required={deliveryType === 'delivery'}
                     value={custAddress}
                     onChange={(e) => setCustAddress(e.target.value)}
-                    placeholder="Ej: Calle 45 #23-12, Apto 402, Bogotá"
+                    placeholder={deliveryType === 'pickup' ? 'Ej: Paso a las 2:00 PM o voy en carro placa XYZ' : 'Ej: Calle 45 #23-12, Apto 402, Bogotá'}
                     className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20"
                   />
                 </div>
@@ -1773,7 +1842,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   <textarea 
                     value={custNotes}
                     onChange={(e) => setCustNotes(e.target.value)}
-                    placeholder="Ej: Golpear fuerte el portón negro o dejar en portería."
+                    placeholder="Ej: Sin cebolla, salsas aparte o especificaciones de preparación."
                     rows={2}
                     className="w-full bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl p-3 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20 resize-none"
                   />
@@ -1787,7 +1856,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     {[
                       { id: 'whatsapp', title: 'Pedir por WhatsApp', desc: 'Coordinar pago por chat' },
                       { id: 'transfer', title: 'Transferencia Bancaria', desc: 'Soporte de transferencia bancaria' },
-                      { id: 'delivery_cash', title: 'Pago contra Entrega', desc: 'Paga en efectivo al recibir' }
+                      { id: 'delivery_cash', title: deliveryType === 'pickup' ? 'Pago en Restaurante' : 'Pago contra Entrega', desc: deliveryType === 'pickup' ? 'Paga en efectivo o tarjeta al recoger' : 'Paga en efectivo al recibir' }
                     ].map((opt) => (
                       <label 
                         key={opt.id}
@@ -1816,7 +1885,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 {cart.length > 0 && (() => {
                   const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
                   const uniqueSellersCount = new Set(cart.map(item => item.product.userId)).size;
-                  const totalDeliveryFee = uniqueSellersCount * systemDeliveryFee;
+                  const totalDeliveryFee = deliveryType === 'pickup' ? 0 : uniqueSellersCount * systemDeliveryFee;
                   const total = subtotal + totalDeliveryFee;
                   const curr = profiles[cart[0].product.userId]?.currency || '$';
 
@@ -1827,8 +1896,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         <span className="font-mono text-white">{curr}{subtotal.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
-                        <span>Costo de Domicilio ({uniqueSellersCount} {uniqueSellersCount === 1 ? 'envío' : 'envíos'}):</span>
-                        <span className="font-mono text-[#F4B400]">{curr}{totalDeliveryFee.toLocaleString()}</span>
+                        <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : `(${uniqueSellersCount} ${uniqueSellersCount === 1 ? 'envío' : 'envíos'})`}:</span>
+                        {deliveryType === 'pickup' ? (
+                          <span className="font-mono text-emerald-400 font-bold">GRATIS ($0)</span>
+                        ) : (
+                          <span className="font-mono text-[#F4B400]">{curr}{totalDeliveryFee.toLocaleString()}</span>
+                        )}
                       </div>
                       <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-[#232B3A] pt-2 text-white">
                         <span>Monto Total a Pagar:</span>
