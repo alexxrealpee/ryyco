@@ -560,6 +560,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
+  const [confirmExtendModalUser, setConfirmExtendModalUser] = useState<AdminUser | null>(null);
+  const [extendingSubscription, setExtendingSubscription] = useState<boolean>(false);
+
+  const handleExecuteExtendSubscription = async () => {
+    if (!confirmExtendModalUser) return;
+    setExtendingSubscription(true);
+    try {
+      await handleExtendSubscription(confirmExtendModalUser);
+      setConfirmExtendModalUser(null);
+    } catch (err) {
+      console.error("Error al extender suscripción:", err);
+      setNotif(`❌ Error al extender: ${err instanceof Error ? err.message : 'Intente nuevamente'}`);
+      setTimeout(() => setNotif(''), 4000);
+    } finally {
+      setExtendingSubscription(false);
+    }
+  };
+
   const [scheduleModalUser, setScheduleModalUser] = useState<AdminUser | null>(null);
   const [openTimeInput, setOpenTimeInput] = useState<string>('08:00');
   const [closeTimeInput, setCloseTimeInput] = useState<string>('22:00');
@@ -1359,7 +1377,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           <div className="grid grid-cols-2 gap-2 pt-2">
                             <button
                               type="button"
-                              onClick={() => handleExtendSubscription(user)}
+                              onClick={() => setConfirmExtendModalUser(user)}
                               title={`Extender 1 mes manteniendo el día de corte (${anchorDay})`}
                               className="w-full py-2.5 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
                             >
@@ -1516,7 +1534,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => handleExtendSubscription(user)}
+                                    onClick={() => setConfirmExtendModalUser(user)}
                                     title={`Extender 1 mes conservando el día de corte ${anchorDay}`}
                                     className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-indigo-500/25 transition cursor-pointer flex items-center gap-1"
                                   >
@@ -2444,6 +2462,110 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </div>
           </div>
         )}
+
+        {/* Modal para Confirmar Extensión +1 Mes (Corte) */}
+        {confirmExtendModalUser && (() => {
+          const user = confirmExtendModalUser;
+          const { nextPaidUntil, anchorDay } = calculateNextExpirationDate(user, 1);
+          const formatSpanishDate = (dateStr?: string | null | Date) => {
+            if (!dateStr) return 'Sin pago activo';
+            const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+            if (isNaN(d.getTime())) return 'Sin pago activo';
+            return d.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+          };
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-[#0f1422] border border-indigo-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+                {/* Encabezado */}
+                <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 rounded-xl">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-white">Confirmar Extensión (+1 Mes)</h3>
+                      <p className="text-[11px] text-gray-400">Renovación de suscripción con día de corte</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmExtendModalUser(null)}
+                    className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Tarjeta con detalles */}
+                <div className="bg-gray-900/90 border border-gray-800 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between border-b border-gray-800/70 pb-2.5">
+                    <span className="text-xs text-gray-400 font-semibold">Tienda:</span>
+                    <div className="text-right">
+                      <span className="text-xs font-extrabold text-white block">
+                        {user.storeName || user.username}
+                      </span>
+                      <span className="text-gray-500 font-mono text-[10.5px]">@{user.username}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between border-b border-gray-800/70 pb-2.5">
+                    <span className="text-xs text-gray-400 font-semibold">Vencimiento Actual:</span>
+                    <span className="text-xs font-mono font-bold text-gray-300">
+                      {formatSpanishDate(user.subscriptionPaidUntil)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-emerald-500/10 -mx-4 px-4 py-2.5 border-y border-emerald-500/20">
+                    <span className="text-xs text-emerald-300 font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                      Nuevo Vencimiento (+1 Mes):
+                    </span>
+                    <span className="text-xs font-mono font-black text-emerald-400">
+                      {formatSpanishDate(nextPaidUntil)}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-0.5">
+                    <span className="text-xs text-gray-400 font-semibold">Día de Corte:</span>
+                    <span className="px-2 py-0.5 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 rounded text-xs font-mono font-black">
+                      Día {anchorDay}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11.5px] text-gray-300 text-center leading-relaxed">
+                  ¿Deseas confirmar la adición de <strong className="text-white font-black">+1 mes</strong> de servicio a esta tienda? El estado se activará automáticamente.
+                </p>
+
+                {/* Botones de acción */}
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-850">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmExtendModalUser(null)}
+                    disabled={extendingSubscription}
+                    className="flex-1 py-2.5 bg-gray-900 hover:bg-gray-850 text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExecuteExtendSubscription}
+                    disabled={extendingSubscription}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/40 disabled:opacity-50"
+                  >
+                    {extendingSubscription ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                    <span>Confirmar +1 Mes</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
     </div>
