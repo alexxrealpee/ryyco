@@ -986,7 +986,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             onClick={() => scrollToSection('store-hero')}
             className="flex items-center gap-3 cursor-pointer group"
           >
-            <div className={`w-11 h-11 ${profile.photoURL ? 'rounded-full border border-emerald-400/30' : 'rounded border-r-4 border-emerald-400'} bg-black text-white dark:bg-white dark:text-black font-extrabold flex items-center justify-center text-sm tracking-tighter group-hover:scale-105 transition overflow-hidden shrink-0`}>
+            <div className={`w-13 h-13 sm:w-14 sm:h-14 md:w-15 md:h-15 ${profile.photoURL ? 'rounded-full border-2 border-emerald-400/40 shadow-sm' : 'rounded-xl border-r-4 border-emerald-400'} bg-black text-white dark:bg-white dark:text-black font-extrabold flex items-center justify-center text-sm tracking-tighter group-hover:scale-105 transition-transform overflow-hidden shrink-0`}>
               {profile.photoURL ? (
                 <img src={profile.photoURL} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
