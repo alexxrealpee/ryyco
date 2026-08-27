@@ -3670,6 +3670,25 @@ export async function addCustomerWonPrize(
 }
 
 /**
+ * Deduct a spin from the customer profile when landing on Sigue Intentando
+ */
+export async function consumeCustomerSpin(rawPhone: string): Promise<number> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone) throw new Error("Teléfono requerido");
+
+  const customer = await fetchCustomerProfileByPhone(phone);
+  if (!customer) throw new Error("Perfil de cliente no encontrado");
+
+  const newSpins = Math.max(0, (customer.spinsAvailable || 0) - 1);
+  await saveCustomerProfile({
+    ...customer,
+    spinsAvailable: newSpins
+  });
+
+  return newSpins;
+}
+
+/**
  * Redeem a customer prize voucher
  */
 export async function redeemCustomerPrize(rawPhone: string, prizeId: string): Promise<boolean> {

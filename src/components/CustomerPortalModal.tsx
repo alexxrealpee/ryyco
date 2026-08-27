@@ -23,6 +23,7 @@ import {
   saveCustomerProfile, 
   fetchCustomerOrders, 
   addCustomerWonPrize, 
+  consumeCustomerSpin,
   redeemCustomerPrize, 
   exchangePointsForReward, 
   REDEEMABLE_FOOD_REWARDS,
@@ -70,17 +71,18 @@ interface WheelSlice {
   color: string;
   textColor: string;
   icon: string;
+  isLose?: boolean;
 }
 
 const WHEEL_SLICES: WheelSlice[] = [
-  { title: '¡Plato Fuerte Gratis!', category: 'dish', description: 'Vale para 1 Plato o Hamburguesa del Menú ($20.000 COP)', discountAmount: 20000, color: '#E63946', textColor: '#ffffff', icon: '🍔' },
-  { title: '+1.000 Puntos ($1.000 COP)', category: 'points', description: '1.000 Puntos ($1.000 COP) sumados a tu billetera', discountAmount: 1000, color: '#4361EE', textColor: '#ffffff', icon: '⭐' },
-  { title: '¡Bebida Gratis!', category: 'drink', description: 'Gaseosa o jugo refrescante gratis ($4.000 COP)', discountAmount: 4000, color: '#10B981', textColor: '#ffffff', icon: '🥤' },
-  { title: 'Bono $10.000 COP', category: 'discount', description: 'Bono de descuento para tu próximo pedido', discountAmount: 10000, color: '#F72585', textColor: '#ffffff', icon: '🎟️' },
-  { title: '¡Postre de la Casa!', category: 'dessert', description: 'Postre artesanal delicioso gratis ($8.000 COP)', discountAmount: 8000, color: '#7209B7', textColor: '#ffffff', icon: '🍨' },
-  { title: '+3.000 Puntos VIP ($3.000 COP)', category: 'points', description: '3.000 Puntos ($3.000 COP) adicionales para comida', discountAmount: 3000, color: '#F59E0B', textColor: '#ffffff', icon: '👑' },
-  { title: 'Papas Francesas', category: 'dish', description: 'Porción de papas crujientes gratis ($7.000 COP)', discountAmount: 7000, color: '#06D6A0', textColor: '#ffffff', icon: '🍟' },
-  { title: '+2.000 Puntos Suerte ($2.000 COP)', category: 'points', description: '2.000 Puntos ($2.000 COP) acumulados en tu billetera', discountAmount: 2000, color: '#3A0CA3', textColor: '#ffffff', icon: '✨' },
+  { title: '¡Plato Fuerte Gratis!', category: 'dish', description: 'Vale para 1 Plato o Hamburguesa del Menú ($20.000 COP)', discountAmount: 20000, color: '#E63946', textColor: '#ffffff', icon: '🍔', isLose: false },
+  { title: '¡Sigue Intentando!', category: 'dish', description: '¡Casi! Tienes otra oportunidad en tu próximo pedido', discountAmount: 0, color: '#3B82F6', textColor: '#ffffff', icon: '🍀', isLose: true },
+  { title: '¡Bebida Gratis!', category: 'drink', description: 'Gaseosa o jugo refrescante gratis ($4.000 COP)', discountAmount: 4000, color: '#10B981', textColor: '#ffffff', icon: '🥤', isLose: false },
+  { title: '¡Casi! Intenta de Nuevo', category: 'dish', description: '¡Estuviste a milímetros! Sigue acumulando pedidos', discountAmount: 0, color: '#8B5CF6', textColor: '#ffffff', icon: '🎯', isLose: true },
+  { title: 'Bono $10.000 COP', category: 'discount', description: 'Bono de descuento para tu próximo pedido', discountAmount: 10000, color: '#F72585', textColor: '#ffffff', icon: '🎟️', isLose: false },
+  { title: '¡Sigue Intentando!', category: 'dish', description: '¡No te rindas! Acumula más giros con tus compras', discountAmount: 0, color: '#F59E0B', textColor: '#ffffff', icon: '💫', isLose: true },
+  { title: '¡Postre de la Casa!', category: 'dessert', description: 'Postre artesanal delicioso gratis ($8.000 COP)', discountAmount: 8000, color: '#7209B7', textColor: '#ffffff', icon: '🍨', isLose: false },
+  { title: '¡Casi! Sigue Intentando', category: 'dish', description: '¡Estuvo a punto! Sigue ordenando en Ryyco', discountAmount: 0, color: '#06D6A0', textColor: '#ffffff', icon: '✨', isLose: true },
 ];
 
 export default function CustomerPortalModal({
@@ -114,6 +116,7 @@ export default function CustomerPortalModal({
   const [isSpinning, setIsSpinning] = useState(false);
   const [wheelRotation, setWheelRotation] = useState(0);
   const [wonPrizeModal, setWonPrizeModal] = useState<CustomerPrize | null>(null);
+  const [tryAgainModal, setTryAgainModal] = useState<{ title: string; description: string; icon: string } | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
   // Reward redeeming action
@@ -453,35 +456,37 @@ export default function CustomerPortalModal({
 
     setIsSpinning(true);
 
-    // Pick random winning slice
+    // Pick random slice strictly from losing slices ("Sigue intentando") so nobody wins a prize
     const sliceCount = WHEEL_SLICES.length;
     const sliceAngle = 360 / sliceCount;
-    const randomIndex = Math.floor(Math.random() * sliceCount);
-    const winningSlice = WHEEL_SLICES[randomIndex];
+    const loseIndices = WHEEL_SLICES.map((s, idx) => s.isLose ? idx : -1).filter(idx => idx !== -1);
+    const chosenIndex = loseIndices.length > 0
+      ? loseIndices[Math.floor(Math.random() * loseIndices.length)]
+      : 1;
+    const targetSlice = WHEEL_SLICES[chosenIndex];
 
-    // Extra spins (5 to 8 full rotations) + target slice angle
+    // Extra spins (5 to 8 full rotations) + target slice angle so it stops precisely on Sigue intentando
     const extraRotations = 360 * (5 + Math.floor(Math.random() * 3));
-    // Calculate final rotation to align winning slice with top indicator
-    const targetAngle = extraRotations + (360 - (randomIndex * sliceAngle + sliceAngle / 2));
+    const targetAngle = extraRotations + (360 - (chosenIndex * sliceAngle));
     
     setWheelRotation(prev => prev + targetAngle);
 
-    // Wait for wheel animation (4 seconds)
+    // Wait for wheel animation (4.2 seconds)
     setTimeout(async () => {
       try {
-        const prize = await addCustomerWonPrize(customer.phone, {
-          title: winningSlice.title,
-          category: winningSlice.category,
-          description: winningSlice.description,
-          discountAmount: winningSlice.discountAmount
-        });
-
-        setWonPrizeModal(prize);
+        await consumeCustomerSpin(customer.phone);
         // Refresh customer profile
         const fresh = await fetchCustomerProfileByPhone(customer.phone);
         if (fresh) setCustomer(fresh);
+
+        // Show Try Again modal
+        setTryAgainModal({
+          title: targetSlice.title,
+          description: "¡Estuviste muy cerca de ganar un plato gratis! Recuerda que con cada compra que realices acumulas nuevos giros y puntos en Ryyco. ¡Sigue intentando!",
+          icon: targetSlice.icon
+        });
       } catch (err) {
-        console.warn("Failed recording prize:", err);
+        console.warn("Error consumiendo giro:", err);
       } finally {
         setIsSpinning(false);
       }
@@ -1731,6 +1736,42 @@ export default function CustomerPortalModal({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* TRY AGAIN MODAL (CUANDO CAE EN SIGUE INTENTANDO) */}
+      {tryAgainModal && (
+        <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
+          <div className="bg-[#0e1322] border border-blue-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 p-1 mx-auto flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-3xl select-none">
+                {tryAgainModal.icon || '🍀'}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-black tracking-wider text-blue-400">Ruleta de la Suerte</span>
+              <h3 className="text-xl font-black text-white">{tryAgainModal.title}</h3>
+            </div>
+            
+            <div className="p-4 bg-gray-900/80 border border-gray-800 rounded-2xl space-y-2 text-left">
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {tryAgainModal.description}
+              </p>
+              <div className="flex items-center gap-2 pt-1 text-[11px] font-bold text-amber-400 border-t border-gray-800">
+                <Sparkles className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                <span>¡Cada pedido te da nuevos giros automáticos!</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setTryAgainModal(null)}
+              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-blue-500/20"
+            >
+              ¡Entendido, Seguir Intentando! 🚀
+            </button>
           </div>
         </div>
       )}
