@@ -541,6 +541,40 @@ export function cleanUndefined<T>(obj: T): T {
   return obj;
 }
 
+// Default primary administrator email
+export const PRIMARY_ADMIN_EMAIL = 'alexxrealpee@gmail.com';
+
+/**
+ * Check if a given email is registered as an administrator
+ */
+export function checkIsAdminEmail(email?: string | null, customAdminList?: string[]): boolean {
+  if (!email) return false;
+  const normalized = email.toLowerCase().trim();
+  if (normalized === PRIMARY_ADMIN_EMAIL.toLowerCase()) return true;
+
+  // Check explicit list if provided
+  if (customAdminList && Array.isArray(customAdminList)) {
+    if (customAdminList.some(e => typeof e === 'string' && e.toLowerCase().trim() === normalized)) {
+      return true;
+    }
+  }
+
+  // Check cached system settings
+  try {
+    const cached = localStorage.getItem('linnk_system_settings');
+    if (cached) {
+      const parsed: SystemSettings = JSON.parse(cached);
+      if (parsed.adminEmails && Array.isArray(parsed.adminEmails)) {
+        if (parsed.adminEmails.some(e => typeof e === 'string' && e.toLowerCase().trim() === normalized)) {
+          return true;
+        }
+      }
+    }
+  } catch (e) {}
+
+  return false;
+}
+
 // Check if a username is available
 export async function isUsernameAvailable(username: string): Promise<boolean> {
   const clean = sanitizeUsername(username);
@@ -664,7 +698,7 @@ export async function fetchProfileByUsername(username: string): Promise<{ profil
 
 // Helper to load profile relations (links, products, custom theme) with failover
 async function loadProfileRelations(profile: UserProfile, searchKey: string) {
-  if (profile.email && profile.email.toLowerCase() === 'alexxrealpee@gmail.com' && profile.role !== 'admin') {
+  if (profile.email && checkIsAdminEmail(profile.email) && profile.role !== 'admin') {
     profile.role = 'admin';
   }
 
@@ -785,7 +819,7 @@ function saveLocalBackup(username: string, profile: any, links: any[], products:
 export async function saveProfile(profile: UserProfile): Promise<void> {
   const cleanUsername = sanitizeUsername(profile.username);
   
-  if (profile.email && profile.email.toLowerCase() === 'alexxrealpee@gmail.com') {
+  if (profile.email && checkIsAdminEmail(profile.email)) {
     profile.role = 'admin';
   }
 
@@ -793,7 +827,7 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
     const rawProfile = {
       ...profile,
       username: cleanUsername,
-      role: profile.role || 'user'
+      role: profile.role || (profile.email && checkIsAdminEmail(profile.email) ? 'admin' : 'user')
     };
     const cleanedProfile = cleanUndefined(rawProfile);
 
@@ -805,7 +839,7 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
       uid: profile.uid,
       email: profile.email || '',
       username: cleanUsername,
-      role: profile.role || 'user',
+      role: profile.role || (profile.email && checkIsAdminEmail(profile.email) ? 'admin' : 'user'),
       plan: profile.plan || 'free',
       updatedAt: new Date().toISOString()
     }), { merge: true });
@@ -845,7 +879,7 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
     const pDoc = await getDoc(doc(db, 'profiles', uid));
     if (pDoc.exists()) {
       const p = pDoc.data() as UserProfile;
-      if (p.email && p.email.toLowerCase() === 'alexxrealpee@gmail.com' && p.role !== 'admin') {
+      if (p.email && checkIsAdminEmail(p.email) && p.role !== 'admin') {
         p.role = 'admin';
         // Auto-correct role in Firestore in background
         setDoc(doc(db, 'profiles', uid), { role: 'admin' }, { merge: true }).catch(console.error);
@@ -863,7 +897,7 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
     const cached = localStorage.getItem(`linnk_session_${uid}`);
     if (cached) {
       const p = JSON.parse(cached) as UserProfile;
-      if (p.email && p.email.toLowerCase() === 'alexxrealpee@gmail.com') {
+      if (p.email && checkIsAdminEmail(p.email)) {
         p.role = 'admin';
       }
       return p;
@@ -3018,6 +3052,79 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
   try {
     localStorage.setItem('linnk_system_settings', JSON.stringify(updated));
   } catch (e) {}
+}
+
+/**
+ * Add a new administrator email to system settings
+ */
+export async function addAdminEmail(newEmail: string): Promise<string[]> {
+  const cleanEmail = newEmail.toLowerCase().trim();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('Por favor ingresa un correo electrónico válido');
+  }
+
+  const currentSettings = await fetchSystemSettings();
+  const currentList = Array.isArray(currentSettings.adminEmails) ? currentSettings.adminEmails : [];
+  
+  // Ensure PRIMARY_ADMIN_EMAIL is accounted for
+  const uniqueEmails = new Set<string>([
+    PRIMARY_ADMIN_EMAIL.toLowerCase(),
+    ...currentList.map(e => e.toLowerCase().trim())
+  ]);
+
+  uniqueEmails.add(cleanEmail);
+  const updatedList = Array.from(uniqueEmails);
+
+  await updateSystemSettings({
+    adminEmails: updatedList
+  });
+
+  // If a profile with this email exists in Firestore or locally, promote them to admin role immediately
+  try {
+    const profilesSnap = await getDocs(query(collection(db, 'profiles'), where('email', '==', cleanEmail)));
+    profilesSnap.forEach((d) => {
+      updateDoc(d.ref, { role: 'admin' }).catch(console.error);
+      setDoc(doc(db, 'users', d.id), { role: 'admin' }, { merge: true }).catch(console.error);
+    });
+  } catch (e) {
+    console.warn("Could not immediately update profile document for new admin:", e);
+  }
+
+  return updatedList;
+}
+
+/**
+ * Remove an administrator email from system settings
+ */
+export async function removeAdminEmail(emailToRemove: string): Promise<string[]> {
+  const cleanEmail = emailToRemove.toLowerCase().trim();
+  if (cleanEmail === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+    throw new Error('No se puede eliminar el correo del administrador principal.');
+  }
+
+  const currentSettings = await fetchSystemSettings();
+  const currentList = Array.isArray(currentSettings.adminEmails) ? currentSettings.adminEmails : [];
+  
+  const updatedList = currentList
+    .map(e => e.toLowerCase().trim())
+    .filter(e => e !== cleanEmail && e !== PRIMARY_ADMIN_EMAIL.toLowerCase());
+
+  await updateSystemSettings({
+    adminEmails: updatedList
+  });
+
+  // Update profile role back to user if applicable
+  try {
+    const profilesSnap = await getDocs(query(collection(db, 'profiles'), where('email', '==', cleanEmail)));
+    profilesSnap.forEach((d) => {
+      updateDoc(d.ref, { role: 'user' }).catch(console.error);
+      setDoc(doc(db, 'users', d.id), { role: 'user' }, { merge: true }).catch(console.error);
+    });
+  } catch (e) {
+    console.warn("Could not revert profile document role:", e);
+  }
+
+  return updatedList;
 }
 
 // ==================== CONTENT CREATOR REFERRAL SYSTEM ====================

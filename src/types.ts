@@ -10,6 +10,7 @@ export interface SystemSettings {
   defaultDeliveryFee: number;
   supportPhone?: string;
   supportEmail?: string;
+  adminEmails?: string[];
   updatedAt?: string;
 }
 

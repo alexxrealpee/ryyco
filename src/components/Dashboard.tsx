@@ -60,8 +60,12 @@ import {
   Layers,
   Type,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  QrCode,
+  Share2,
+  Download
 } from 'lucide-react';
+import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { 
   saveProfile, 
@@ -82,7 +86,8 @@ import {
   fetchMySubscriptionPayments,
   saveSubscriptionPayment,
   checkIsStoreClosed,
-  getPlanProductLimit
+  getPlanProductLimit,
+  checkIsAdminEmail
 } from '../lib/firebase';
 import { 
   UserProfile, 
@@ -206,6 +211,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'design' | 'analytics' | 'subscription' | 'bank'>('overview');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   const handleSaveBankAccounts = async (updatedAccounts: BankAccount[]) => {
     const updatedProfile = {
@@ -1158,6 +1164,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             <ExternalLink className="w-3.5 h-3.5 opacity-60" />
           </a>
 
+          {/* QR Code Modal Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsQrModalOpen(true)}
+            className="px-3.5 py-2 bg-gray-900 hover:bg-gray-850 hover:text-white rounded-xl text-xs font-bold text-gray-300 flex items-center gap-1.5 border border-gray-800 transition cursor-pointer"
+            title="Ver y compartir Código QR de la tienda"
+          >
+            <QrCode className="w-4 h-4 text-red-500" />
+            Código QR
+          </button>
+
           {/* Copy shop Url */}
           <button
             type="button"
@@ -1332,7 +1349,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             Datos Bancarios
           </button>
 
-          {profile.role === 'admin' && (
+          {(profile.role === 'admin' || checkIsAdminEmail(profile.email)) && (
             <button
               type="button"
               onClick={onNavigateAdmin}
@@ -5144,6 +5161,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         products={products}
         orders={orders}
         onNavigateTab={(tab) => setActiveTab(tab as any)}
+      />
+
+      {/* Store QR Modal with Ryyco Logo and Sharing functionality */}
+      <StoreQRModal
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        username={profile.username}
+        storeName={profile.displayName || profile.storeName}
+        storeLogo={profile.photoURL}
       />
 
     </div>

@@ -79,6 +79,7 @@ import {
   Ticket
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
+import StoreQRModal from './StoreQRModal';
 import { getFontClass } from './ThemeStyles';
 
 // Custom Tiktok Icon component to match lucide-react styling
@@ -1908,73 +1909,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       })()}
 
       {/* 1. CODE QR MODAL */}
-      {showQrModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-gray-950 border border-gray-900 rounded-3xl max-w-sm w-full p-6 text-gray-100 relative shadow-2xl">
-            <button 
-              onClick={() => setShowQrModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-white font-bold p-1 cursor-pointer"
-            >
-              ✕
-            </button>
-            
-            <h3 className="text-sm font-black text-white text-center mb-1">Código QR de la Tienda</h3>
-            <p className="text-[10px] text-gray-500 text-center mb-6">Escanea con la cámara de tu celular para ingresar directo</p>
-            
-            <div className="flex flex-col items-center">
-              <div 
-                ref={qrRef} 
-                className="p-5 bg-white rounded-3xl shadow-lg relative mb-6 border border-gray-100"
-                style={{ backgroundColor: qrBgColor }}
-              >
-                <QRCodeCanvas 
-                  value={`${window.location.origin}/${username}`}
-                  size={180}
-                  fgColor={qrFgColor}
-                  bgColor={qrBgColor}
-                  level="H" 
-                  imageSettings={
-                    (includeLogo && profile.photoURL) ? {
-                      src: profile.photoURL,
-                      height: 36,
-                      width: 36,
-                      excavate: true,
-                    } : undefined
-                  }
-                />
-              </div>
-
-              {/* Controls */}
-              <div className="w-full space-y-2.5 mb-6 bg-gray-900 p-4 rounded-xl border border-gray-850">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-semibold text-gray-500">Color QR</span>
-                  <input 
-                    type="color"
-                    value={qrFgColor}
-                    onChange={(e) => setQrFgColor(e.target.value)}
-                    className="w-8 h-6 bg-transparent rounded cursor-pointer border-0"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-2.5 w-full">
-                <button 
-                  onClick={downloadQrPng}
-                  className="flex-1 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition"
-                >
-                  <Download className="w-3.5 h-3.5" /> Descargar QR
-                </button>
-                <button 
-                  onClick={copyUrl}
-                  className="flex-1 py-2.5 bg-gray-900 hover:bg-gray-805 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <StoreQRModal
+        isOpen={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        username={username || profile.username}
+        storeName={profile.displayName || profile.storeName}
+        storeLogo={profile.photoURL}
+      />
 
       {/* 2. PRODUCT CUSTOMIZATION OVERLAY / ADDTOCART BAR */}
       {selectedProduct && (

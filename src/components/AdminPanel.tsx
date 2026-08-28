@@ -16,6 +16,10 @@ import {
   deleteOrder,
   fetchSystemSettings,
   updateSystemSettings,
+  addAdminEmail,
+  removeAdminEmail,
+  PRIMARY_ADMIN_EMAIL,
+  checkIsAdminEmail,
   checkIsStoreClosed,
   getSubscriptionAnchorDay,
   calculateNextExpirationDate,
@@ -54,7 +58,11 @@ import {
   FileText,
   Phone,
   Clock,
-  Share2
+  Share2,
+  Mail,
+  Plus,
+  UserCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { 
   collection, 
@@ -118,10 +126,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     defaultDeliveryFee: 7000,
     supportPhone: '3219730865',
-    supportEmail: 'soporte@linnkpro.store'
+    supportEmail: 'soporte@linnkpro.store',
+    adminEmails: [PRIMARY_ADMIN_EMAIL]
   });
   const [deliveryFeeInput, setDeliveryFeeInput] = useState<string>('7000');
   const [savingSettings, setSavingSettings] = useState<boolean>(false);
+  const [newAdminEmailInput, setNewAdminEmailInput] = useState<string>('');
+  const [addingAdminEmail, setAddingAdminEmail] = useState<boolean>(false);
+  const [removingAdminEmail, setRemovingAdminEmail] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   // Filter specific store for historical payments ledger
@@ -271,6 +283,63 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       console.error("Error guardando ajustes del sistema:", err);
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const handleAddAdminEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newAdminEmailInput.toLowerCase().trim();
+    if (!clean || !clean.includes('@')) {
+      setNotif("⚠️ Por favor ingresa un correo electrónico válido.");
+      setTimeout(() => setNotif(''), 4000);
+      return;
+    }
+
+    setAddingAdminEmail(true);
+    try {
+      const updatedList = await addAdminEmail(clean);
+      setSystemSettings(prev => ({ ...prev, adminEmails: updatedList }));
+      setNewAdminEmailInput('');
+      setNotif(`👑 Correo ${clean} agregado exitosamente como administrador.`);
+      setTimeout(() => setNotif(''), 5000);
+
+      // Also update local users list if that user was already rendered
+      setUsers(prev => prev.map(u => u.email.toLowerCase() === clean ? { ...u, role: 'admin' } : u));
+    } catch (err) {
+      console.error("Error al agregar administrador:", err);
+      setNotif(`❌ Error: ${err instanceof Error ? err.message : 'No se pudo agregar el correo'}`);
+      setTimeout(() => setNotif(''), 5000);
+    } finally {
+      setAddingAdminEmail(false);
+    }
+  };
+
+  const handleRemoveAdminEmail = async (emailToRemove: string) => {
+    const clean = emailToRemove.toLowerCase().trim();
+    if (clean === PRIMARY_ADMIN_EMAIL.toLowerCase()) {
+      setNotif("⚠️ No se puede eliminar el administrador principal.");
+      setTimeout(() => setNotif(''), 4000);
+      return;
+    }
+
+    const confirmRemove = window.confirm(`¿Estás seguro de remover los permisos de administrador para ${clean}?`);
+    if (!confirmRemove) return;
+
+    setRemovingAdminEmail(clean);
+    try {
+      const updatedList = await removeAdminEmail(clean);
+      setSystemSettings(prev => ({ ...prev, adminEmails: updatedList }));
+      setNotif(`🗑️ Permisos de administrador revocados para ${clean}.`);
+      setTimeout(() => setNotif(''), 4000);
+
+      // Also update local users list if that user was rendered
+      setUsers(prev => prev.map(u => u.email.toLowerCase() === clean ? { ...u, role: 'user' } : u));
+    } catch (err) {
+      console.error("Error al eliminar administrador:", err);
+      setNotif(`❌ Error: ${err instanceof Error ? err.message : 'No se pudo remover el correo'}`);
+      setTimeout(() => setNotif(''), 5000);
+    } finally {
+      setRemovingAdminEmail(null);
     }
   };
 
@@ -2088,7 +2157,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       <tr key={user.uid} className="hover:bg-gray-900/20 transition-colors">
                         <td className="py-4 px-4 font-bold text-emerald-300">
                           @{user.username}
-                          {user.role === 'admin' && (
+                          {(user.role === 'admin' || checkIsAdminEmail(user.email, systemSettings.adminEmails)) && (
                             <span className="ml-2 bg-indigo-500/10 text-indigo-400 text-[9px] font-black uppercase px-1.5 py-0.5 rounded border border-indigo-500/15">Admin</span>
                           )}
                         </td>
@@ -2320,8 +2389,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
                 </div>
 
-                {/* Save button */}
-                <div className="pt-2">
+                {/* Save button for General Contact and Delivery Settings */}
+                <div className="pt-1">
                   <button
                     type="submit"
                     disabled={savingSettings}
@@ -2335,13 +2404,143 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     ) : (
                       <>
                         <Check className="w-4 h-4 stroke-[3]" />
-                        <span>Guardar Configuración General</span>
+                        <span>Guardar Configuración de Tarifas y Contacto</span>
                       </>
                     )}
                   </button>
                 </div>
 
               </form>
+
+              {/* Multi-Admin Management Section (Agregar otro correo que pueda administrar) */}
+              <div className="bg-[#0b101d] border border-indigo-900/30 p-5 sm:p-6 rounded-2xl space-y-5 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800/80 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20 shadow-inner">
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-black text-white uppercase tracking-tight">Administradores del Sistema</h4>
+                        <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 rounded-full text-[10px] font-black font-mono">
+                          {Array.from(new Set([PRIMARY_ADMIN_EMAIL.toLowerCase(), ...(systemSettings.adminEmails || []).map(e => e.toLowerCase().trim())])).length} AUTORIZADOS
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400">
+                        Agrega otros correos electrónicos para que puedan ingresar al Panel de Administración con todos los permisos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form to Add New Admin Email */}
+                <form onSubmit={handleAddAdminEmail} className="space-y-3">
+                  <label className="text-xs font-bold text-gray-300 flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-indigo-400" />
+                    <span>Agregar Nuevo Correo Administrador</span>
+                  </label>
+
+                  <div className="flex flex-col sm:flex-row gap-2.5">
+                    <div className="relative flex-1">
+                      <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-500">
+                        <Mail className="w-4 h-4" />
+                      </span>
+                      <input 
+                        type="email"
+                        required
+                        value={newAdminEmailInput}
+                        onChange={(e) => setNewAdminEmailInput(e.target.value)}
+                        placeholder="ejemplo.admin@gmail.com"
+                        className="w-full bg-gray-950 border border-gray-800 focus:border-indigo-500 text-white font-medium text-xs rounded-xl py-3 pl-10 pr-4 outline-none transition placeholder:text-gray-600"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={addingAdminEmail || !newAdminEmailInput.trim()}
+                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+                    >
+                      {addingAdminEmail ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Agregando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 stroke-[3]" />
+                          <span>Habilitar Administrador</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Al ingresar con este correo, el usuario tendrá acceso total al Panel Administrador, gestión de suscripciones, domiciliarios, pagos y configuración.
+                  </p>
+                </form>
+
+                {/* Authorized Admins List */}
+                <div className="space-y-2.5 pt-2">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block font-mono">
+                    Correos con Acceso Administrativo Activo
+                  </span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    {Array.from(new Set([PRIMARY_ADMIN_EMAIL.toLowerCase(), ...(systemSettings.adminEmails || []).map(e => e.toLowerCase().trim())])).map((adminEmail) => {
+                      const isPrimary = adminEmail === PRIMARY_ADMIN_EMAIL.toLowerCase();
+                      const isRemoving = removingAdminEmail === adminEmail;
+
+                      return (
+                        <div 
+                          key={adminEmail}
+                          className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 transition ${
+                            isPrimary 
+                              ? 'bg-indigo-950/20 border-indigo-500/30' 
+                              : 'bg-gray-950/60 border-gray-800 hover:border-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`p-2 rounded-lg shrink-0 ${isPrimary ? 'bg-indigo-500/20 text-indigo-300' : 'bg-gray-900 text-gray-400'}`}>
+                              <UserCheck className="w-4 h-4" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-white truncate block">
+                                  {adminEmail}
+                                </span>
+                                {isPrimary && (
+                                  <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-md text-[9px] font-black uppercase tracking-wider shrink-0 font-mono">
+                                    PRINCIPAL
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-emerald-400 font-medium block">
+                                ● Rol Administrador Activo
+                              </span>
+                            </div>
+                          </div>
+
+                          {!isPrimary && (
+                            <button
+                              type="button"
+                              disabled={isRemoving}
+                              onClick={() => handleRemoveAdminEmail(adminEmail)}
+                              title="Remover permisos de administrador"
+                              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition border border-transparent hover:border-red-500/20 cursor-pointer disabled:opacity-50 shrink-0"
+                            >
+                              {isRemoving ? (
+                                <RefreshCw className="w-4 h-4 animate-spin text-red-400" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
 
             </div>
           </div>
