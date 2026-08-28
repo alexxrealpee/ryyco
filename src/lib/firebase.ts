@@ -2405,6 +2405,8 @@ export interface PaginatedSubscriptionsResult {
     subscriptionPlan?: 'basico' | 'medio' | 'pro';
     subscriptionStatus?: string;
     storeName?: string;
+    whatsapp?: string;
+    phone?: string;
     subscriptionPaidUntil?: string;
     subscriptionAnchorDay?: number;
     createdAt?: string;
@@ -2419,30 +2421,34 @@ export interface PaginatedSubscriptionsResult {
 }
 
 export async function fetchAdminSubscriptionsBatch(
-  pageSize: number = 7,
+  pageSize: number = 20,
   lastDocSnapshot: QueryDocumentSnapshot | null = null,
   offset: number = 0
 ): Promise<PaginatedSubscriptionsResult> {
   try {
-    let q;
-    if (lastDocSnapshot) {
-      q = query(
-        collection(db, 'profiles'),
-        limit(pageSize),
-        startAfter(lastDocSnapshot)
-      );
-    } else {
-      q = query(
-        collection(db, 'profiles'),
-        limit(pageSize)
-      );
-    }
-
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocs(collection(db, 'profiles'));
     const usersList: PaginatedSubscriptionsResult['users'] = [];
 
     snapshot.forEach(docSnap => {
       const d = docSnap.data() as any;
+      
+      let createdAtStr = '';
+      if (d.createdAt) {
+        if (typeof d.createdAt === 'string') {
+          createdAtStr = d.createdAt;
+        } else if (typeof d.createdAt?.toDate === 'function') {
+          createdAtStr = d.createdAt.toDate().toISOString();
+        } else if (typeof d.createdAt?.seconds === 'number') {
+          createdAtStr = new Date(d.createdAt.seconds * 1000).toISOString();
+        }
+      } else if (d.created_at) {
+        if (typeof d.created_at === 'string') {
+          createdAtStr = d.created_at;
+        } else if (typeof d.created_at?.toDate === 'function') {
+          createdAtStr = d.created_at.toDate().toISOString();
+        }
+      }
+
       usersList.push({ 
         uid: docSnap.id, 
         email: d.email || '', 
@@ -2452,9 +2458,11 @@ export async function fetchAdminSubscriptionsBatch(
         subscriptionPlan: d.subscriptionPlan || 'basico',
         subscriptionStatus: d.subscriptionStatus || 'active',
         storeName: d.displayName || d.storeName || '',
+        whatsapp: d.whatsapp || d.phone || '',
+        phone: d.phone || d.whatsapp || '',
         subscriptionPaidUntil: d.subscriptionPaidUntil || '',
         subscriptionAnchorDay: typeof d.subscriptionAnchorDay === 'number' ? d.subscriptionAnchorDay : getSubscriptionAnchorDay(d),
-        createdAt: d.createdAt || '',
+        createdAt: createdAtStr,
         suspended: d.suspended || false,
         isClosed: d.isClosed || false,
         openTime: d.openTime || '',
@@ -2463,32 +2471,39 @@ export async function fetchAdminSubscriptionsBatch(
       });
     });
 
+    // Ordenar de manera descendente: el último registrado siempre en la parte superior (más reciente primero)
+    usersList.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
+
     if (usersList.length > 0) {
-      const newLastDoc = snapshot.docs[snapshot.docs.length - 1] as QueryDocumentSnapshot;
-      const hasMore = snapshot.docs.length >= pageSize;
-      return { users: usersList, lastDoc: newLastDoc, hasMore };
+      const sliced = usersList.slice(offset, offset + pageSize);
+      const hasMore = offset + pageSize < usersList.length;
+      return { users: sliced, lastDoc: null, hasMore };
     }
   } catch (err) {
-    console.warn("Firestore profiles batch query failed or returned empty:", err);
+    console.warn("Firestore profiles query failed or returned empty:", err);
   }
 
   // Fallback realistic user list for development/demo ease when Firestore has no profile docs yet or for offline mode
-  const defaultList: PaginatedSubscriptionsResult['users'] = [
-    { uid: 'u1', email: 'alexxrealpee@gmail.com', username: 'alexxrealpee', role: 'admin', plan: 'pro', subscriptionPlan: 'pro', storeName: 'Linnk Staff Store', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T10:00:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: false },
-    { uid: 'u2', email: 'sofia.disenos@gmail.com', username: 'sofia_creative', role: 'user', plan: 'pro', subscriptionPlan: 'medio', storeName: 'Sofía Diseños Creativos', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T11:30:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: false },
-    { uid: 'u3', email: 'fitness.trainer@outlook.com', username: 'coach_fit', role: 'user', plan: 'free', subscriptionPlan: 'basico', storeName: 'Coach Fit Athletics', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T14:15:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: true },
-    { uid: 'u4', email: 'camila.viajes@gmail.com', username: 'camiactive', role: 'user', plan: 'pro', subscriptionPlan: 'medio', storeName: 'Cami Active Store', subscriptionStatus: 'suspended', suspended: true, createdAt: '2025-05-31T09:00:00.000Z', subscriptionAnchorDay: 31, subscriptionPaidUntil: '2025-06-30T23:59:59.999Z', isClosed: true },
-    { uid: 'u5', email: 'restaurante.tacos@gmail.com', username: 'tacos_el_guero', role: 'user', plan: 'pro', subscriptionPlan: 'pro', storeName: 'Tacos El Güero', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T16:20:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: false },
-    { uid: 'u6', email: 'diego_code@yahoo.com', username: 'diego_developer', role: 'user', plan: 'free', subscriptionPlan: 'basico', storeName: 'Diego Gadgets & Tech', subscriptionStatus: 'pending_payment', suspended: false, createdAt: '2025-07-29T18:00:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '', isClosed: false },
-    { uid: 'u7', email: 'tienda.masha@gmail.com', username: 'tienda_masha', role: 'user', plan: 'pro', subscriptionPlan: 'medio', storeName: 'Masha & Co. Boutique', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T19:00:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: false },
-    { uid: 'u8', email: 'wilmer.daniel@gmail.com', username: 'wilmer_daniel', role: 'user', plan: 'pro', subscriptionPlan: 'pro', storeName: 'Wilmer Tech Solutions', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T20:10:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: false },
-    { uid: 'u9', email: 'motorepuestos@outlook.com', username: 'moto_express', role: 'user', plan: 'free', subscriptionPlan: 'basico', storeName: 'MotoRepuestos Express', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-15T10:00:00.000Z', subscriptionAnchorDay: 15, subscriptionPaidUntil: '2025-08-15T23:59:59.999Z', isClosed: false },
-    { uid: 'u10', email: 'boutique.isabella@gmail.com', username: 'isabella_fashion', role: 'user', plan: 'pro', subscriptionPlan: 'medio', storeName: 'Boutique Isabella', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-29T08:00:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '2025-08-29T23:59:59.999Z', isClosed: false },
-    { uid: 'u11', email: 'panaderia.sanjose@gmail.com', username: 'pan_sanjose', role: 'user', plan: 'free', subscriptionPlan: 'basico', storeName: 'Panadería San José', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-12T09:30:00.000Z', subscriptionAnchorDay: 12, subscriptionPaidUntil: '2025-08-12T23:59:59.999Z', isClosed: false },
-    { uid: 'u12', email: 'burger.station@gmail.com', username: 'burger_station', role: 'user', plan: 'pro', subscriptionPlan: 'pro', storeName: 'Burger Station Gourmet', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-22T14:00:00.000Z', subscriptionAnchorDay: 22, subscriptionPaidUntil: '2025-08-22T23:59:59.999Z', isClosed: false },
-    { uid: 'u13', email: 'tecnored.col@gmail.com', username: 'tecnored_col', role: 'user', plan: 'pro', subscriptionPlan: 'medio', storeName: 'TecnoRed Colombia', subscriptionStatus: 'pending_payment', suspended: false, createdAt: '2025-07-29T21:00:00.000Z', subscriptionAnchorDay: 29, subscriptionPaidUntil: '', isClosed: false },
-    { uid: 'u14', email: 'floristeria.primavera@gmail.com', username: 'flores_primavera', role: 'user', plan: 'free', subscriptionPlan: 'basico', storeName: 'Floristería Primavera', subscriptionStatus: 'active', suspended: false, createdAt: '2025-07-05T11:00:00.000Z', subscriptionAnchorDay: 5, subscriptionPaidUntil: '2025-08-05T23:59:59.999Z', isClosed: false },
-  ];
+  const defaultList: PaginatedSubscriptionsResult['users'] = ([
+    { uid: 'u13', email: 'tecnored.col@gmail.com', username: 'tecnored_col', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'medio' as const, storeName: 'TecnoRed Colombia', subscriptionStatus: 'pending_payment', suspended: false, createdAt: '2026-08-28T21:00:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '', isClosed: false },
+    { uid: 'u8', email: 'wilmer.daniel@gmail.com', username: 'wilmer_daniel', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'pro' as const, storeName: 'Wilmer Tech Solutions', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T20:10:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: false },
+    { uid: 'u7', email: 'tienda.masha@gmail.com', username: 'tienda_masha', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'medio' as const, storeName: 'Masha & Co. Boutique', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T19:00:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: false },
+    { uid: 'u6', email: 'diego_code@yahoo.com', username: 'diego_developer', role: 'user' as const, plan: 'free' as const, subscriptionPlan: 'basico' as const, storeName: 'Diego Gadgets & Tech', subscriptionStatus: 'pending_payment', suspended: false, createdAt: '2026-08-28T18:00:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '', isClosed: false },
+    { uid: 'u5', email: 'restaurante.tacos@gmail.com', username: 'tacos_el_guero', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'pro' as const, storeName: 'Tacos El Güero', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T16:20:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: false },
+    { uid: 'u3', email: 'fitness.trainer@outlook.com', username: 'coach_fit', role: 'user' as const, plan: 'free' as const, subscriptionPlan: 'basico' as const, storeName: 'Coach Fit Athletics', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T14:15:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: true },
+    { uid: 'u2', email: 'sofia.disenos@gmail.com', username: 'sofia_creative', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'medio' as const, storeName: 'Sofía Diseños Creativos', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T11:30:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: false },
+    { uid: 'u1', email: 'alexxrealpee@gmail.com', username: 'alexxrealpee', role: 'admin' as const, plan: 'pro' as const, subscriptionPlan: 'pro' as const, storeName: 'Linnk Staff Store', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T10:00:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: false },
+    { uid: 'u10', email: 'boutique.isabella@gmail.com', username: 'isabella_fashion', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'medio' as const, storeName: 'Boutique Isabella', subscriptionStatus: 'active', suspended: false, createdAt: '2026-08-28T08:00:00.000Z', subscriptionAnchorDay: 28, subscriptionPaidUntil: '2026-09-28T23:59:59.999Z', isClosed: false },
+    { uid: 'u12', email: 'burger.station@gmail.com', username: 'burger_station', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'pro' as const, storeName: 'Burger Station Gourmet', subscriptionStatus: 'active', suspended: false, createdAt: '2026-07-22T14:00:00.000Z', subscriptionAnchorDay: 22, subscriptionPaidUntil: '2026-08-22T23:59:59.999Z', isClosed: false },
+    { uid: 'u9', email: 'motorepuestos@outlook.com', username: 'moto_express', role: 'user' as const, plan: 'free' as const, subscriptionPlan: 'basico' as const, storeName: 'MotoRepuestos Express', subscriptionStatus: 'active', suspended: false, createdAt: '2026-07-15T10:00:00.000Z', subscriptionAnchorDay: 15, subscriptionPaidUntil: '2026-08-15T23:59:59.999Z', isClosed: false },
+    { uid: 'u11', email: 'panaderia.sanjose@gmail.com', username: 'pan_sanjose', role: 'user' as const, plan: 'free' as const, subscriptionPlan: 'basico' as const, storeName: 'Panadería San José', subscriptionStatus: 'active', suspended: false, createdAt: '2026-07-12T09:30:00.000Z', subscriptionAnchorDay: 12, subscriptionPaidUntil: '2026-08-12T23:59:59.999Z', isClosed: false },
+    { uid: 'u14', email: 'floristeria.primavera@gmail.com', username: 'flores_primavera', role: 'user' as const, plan: 'free' as const, subscriptionPlan: 'basico' as const, storeName: 'Floristería Primavera', subscriptionStatus: 'active', suspended: false, createdAt: '2026-07-05T11:00:00.000Z', subscriptionAnchorDay: 5, subscriptionPaidUntil: '2026-08-05T23:59:59.999Z', isClosed: false },
+    { uid: 'u4', email: 'camila.viajes@gmail.com', username: 'camiactive', role: 'user' as const, plan: 'pro' as const, subscriptionPlan: 'medio' as const, storeName: 'Cami Active Store', subscriptionStatus: 'suspended', suspended: true, createdAt: '2026-05-31T09:00:00.000Z', subscriptionAnchorDay: 31, subscriptionPaidUntil: '2026-06-30T23:59:59.999Z', isClosed: true }
+  ] as PaginatedSubscriptionsResult['users']).sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
   const sliced = defaultList.slice(offset, offset + pageSize);
   const hasMore = offset + pageSize < defaultList.length;

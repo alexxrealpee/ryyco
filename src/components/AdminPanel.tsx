@@ -80,6 +80,8 @@ interface AdminUser {
   subscriptionPlan?: 'basico' | 'medio' | 'pro';
   subscriptionStatus?: string;
   storeName?: string;
+  whatsapp?: string;
+  phone?: string;
   subscriptionPaidUntil?: string;
   subscriptionAnchorDay?: number;
   createdAt?: string;
@@ -789,10 +791,33 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     });
   }, [allOrders, selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery, storesMap, users]);
 
-  const filteredUsers = users.filter(u => 
-    u.email.toLowerCase().includes(search.toLowerCase()) || 
-    u.username.toLowerCase().includes(search.toLowerCase())
-  );
+  // Helper to sort users with the most recently registered on top (el último registrado arriba)
+  const sortUsersNewestFirst = (list: AdminUser[]): AdminUser[] => {
+    return [...list].sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return timeB - timeA;
+    });
+  };
+
+  const displayedSubscriptions = useMemo(() => {
+    const sorted = sortUsersNewestFirst(users);
+    if (!selectedStoreFilter || selectedStoreFilter === 'all') {
+      return sorted;
+    }
+    return sorted.filter(u => u.username === selectedStoreFilter || u.uid === selectedStoreFilter || (u.email && u.email === selectedStoreFilter));
+  }, [users, selectedStoreFilter]);
+
+  const filteredUsers = useMemo(() => {
+    const sorted = sortUsersNewestFirst(users);
+    if (!search.trim()) return sorted;
+    const query = search.toLowerCase();
+    return sorted.filter(u => 
+      u.email.toLowerCase().includes(query) || 
+      u.username.toLowerCase().includes(query) ||
+      (u.storeName && u.storeName.toLowerCase().includes(query))
+    );
+  }, [users, search]);
 
   return (
     <div className="min-h-screen bg-[#090b12] text-gray-100 p-4 md:p-8 pb-28 lg:pb-8">
@@ -1251,10 +1276,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 
                 {/* Mobile view: beautiful cards for cell phones */}
                 <div className="block md:hidden space-y-4">
-                  {users.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500 font-semibold">Cargando tiendas...</div>
+                  {displayedSubscriptions.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500 font-semibold">
+                      {users.length === 0 ? 'Cargando tiendas...' : 'No se encontraron tiendas con el filtro seleccionado.'}
+                    </div>
                   ) : (
-                    users.map((user) => {
+                    displayedSubscriptions.map((user) => {
                       const anchorDay = getSubscriptionAnchorDay(user);
                       const daysRemaining = getSubscriptionDaysRemaining(user.subscriptionPaidUntil);
                       const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
@@ -1419,12 +1446,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-850 text-xs">
-                      {users.length === 0 ? (
+                      {displayedSubscriptions.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-500 font-semibold">Cargando tiendas...</td>
+                          <td colSpan={7} className="py-8 text-center text-gray-500 font-semibold">
+                            {users.length === 0 ? 'Cargando tiendas...' : 'No se encontraron tiendas con el filtro seleccionado.'}
+                          </td>
                         </tr>
                       ) : (
-                        users.map((user) => {
+                        displayedSubscriptions.map((user) => {
                           const anchorDay = getSubscriptionAnchorDay(user);
                           const daysRemaining = getSubscriptionDaysRemaining(user.subscriptionPaidUntil);
                           const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
