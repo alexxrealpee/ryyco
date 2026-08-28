@@ -213,6 +213,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
+  // WhatsApp requirement modal states
+  const [isWhatsAppRequiredModalOpen, setIsWhatsAppRequiredModalOpen] = useState(false);
+  const [quickWhatsAppInput, setQuickWhatsAppInput] = useState('');
+  const [isSavingQuickWhatsApp, setIsSavingQuickWhatsApp] = useState(false);
+  const [quickWhatsAppError, setQuickWhatsAppError] = useState('');
+
   const handleSaveBankAccounts = async (updatedAccounts: BankAccount[]) => {
     const updatedProfile = {
       ...profile,
@@ -723,9 +729,53 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
   };
 
+  // Helper to save WhatsApp number quickly when attempting to create a product
+  const handleSaveQuickWhatsApp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    let val = quickWhatsAppInput.replace(/\D/g, '');
+    if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
+    val = val.slice(0, 10);
+
+    if (val.length < 7) {
+      setQuickWhatsAppError('Por favor ingresa un número de WhatsApp válido (mínimo 7 dígitos, ej: 3157785706).');
+      return;
+    }
+
+    setIsSavingQuickWhatsApp(true);
+    setQuickWhatsAppError('');
+    try {
+      const updatedProfile = {
+        ...profile,
+        whatsapp: val
+      };
+      await saveProfile(updatedProfile);
+      setProfile(updatedProfile);
+      setIsWhatsAppRequiredModalOpen(false);
+      
+      // Immediately open product creation modal!
+      triggerAddProductForm(updatedProfile);
+    } catch (err) {
+      console.error("Error guardando WhatsApp:", err);
+      setQuickWhatsAppError("No se pudo guardar el número de WhatsApp. Inténtalo de nuevo.");
+    } finally {
+      setIsSavingQuickWhatsApp(false);
+    }
+  };
+
   // Open Add Form
-  const triggerAddProductForm = () => {
-    const userPlan = profile.subscriptionPlan || profile.plan || 'basico';
+  const triggerAddProductForm = (overrideProfile?: UserProfile) => {
+    const currentProf = overrideProfile || profile;
+    const currentWhatsApp = currentProf.whatsapp ? currentProf.whatsapp.replace(/\D/g, '') : '';
+    
+    // Condition: Seller cannot create products until WhatsApp is configured
+    if (!currentWhatsApp || currentWhatsApp.length < 7) {
+      setQuickWhatsAppInput(currentProf.whatsapp || '');
+      setQuickWhatsAppError('');
+      setIsWhatsAppRequiredModalOpen(true);
+      return;
+    }
+
+    const userPlan = currentProf.subscriptionPlan || currentProf.plan || 'basico';
     const limit = getPlanProductLimit(userPlan);
     if (products.length >= limit) {
       alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Avanzado' : 'Básico'}) te permite subir hasta ${limit} productos.\n\nPara poder subir más productos, por favor actualiza tu plan en "Suscripción y Pagos".`);
@@ -810,6 +860,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const handleSaveProductForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSavingProduct) return;
+
+    // Condition: WhatsApp is strictly required to publish and save products
+    const currentWhatsApp = profile.whatsapp ? profile.whatsapp.replace(/\D/g, '') : '';
+    if (!currentWhatsApp || currentWhatsApp.length < 7) {
+      alert("⚠️ Requisito indispensable: Para publicar productos debes agregar primero el número de WhatsApp de tu tienda.");
+      setIsAddingProd(false);
+      setQuickWhatsAppInput(profile.whatsapp || '');
+      setQuickWhatsAppError('');
+      setIsWhatsAppRequiredModalOpen(true);
+      return;
+    }
 
     const userPlan = profile.subscriptionPlan || profile.plan || 'basico';
     const limit = getPlanProductLimit(userPlan);
@@ -1677,13 +1738,50 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       </div>
                       <button
                         type="button"
-                        onClick={triggerAddProductForm}
-                        className="bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs py-2.5 px-4.5 rounded-xl flex items-center gap-1.5 self-start transition active:scale-[0.98] shadow-lg shadow-emerald-500/10"
+                        onClick={() => triggerAddProductForm()}
+                        className="bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs py-2.5 px-4.5 rounded-xl flex items-center gap-1.5 self-start transition active:scale-[0.98] shadow-lg shadow-emerald-500/10 cursor-pointer"
                       >
                         <Plus className="w-4 h-4 text-black stroke-[3]" />
                         Nuevo Producto
                       </button>
                     </div>
+
+                    {/* Banner WhatsApp Requirement Warning (Seller cannot create products without WhatsApp) */}
+                    {(!profile.whatsapp || profile.whatsapp.replace(/\D/g, '').length < 7) && (
+                      <div className="bg-gradient-to-r from-emerald-950/80 via-gray-900 to-emerald-950/60 border-2 border-emerald-500/60 p-4.5 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xl shadow-emerald-950/50 animate-fade-in relative overflow-hidden">
+                        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                        <div className="flex items-start gap-3.5 relative z-10">
+                          <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30 shrink-0 shadow-inner">
+                            <MessageCircle className="w-6 h-6 fill-emerald-500/20" />
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-sm font-extrabold text-white tracking-tight">
+                                WhatsApp Obligatorio para Crear Productos
+                              </h4>
+                              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-md text-[9px] font-black uppercase tracking-wider">
+                                Requerido
+                              </span>
+                            </div>
+                            <p className="text-xs text-gray-300 leading-relaxed font-medium max-w-2xl">
+                              Para publicar productos y habilitar las compras en tu tienda, debes registrar tu número de WhatsApp. Los clientes recibirán sus confirmaciones y te enviarán sus pedidos directamente a ese chat.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickWhatsAppInput(profile.whatsapp || '');
+                            setQuickWhatsAppError('');
+                            setIsWhatsAppRequiredModalOpen(true);
+                          }}
+                          className="px-5 py-2.5 bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/25 shrink-0 flex items-center gap-2 cursor-pointer relative z-10"
+                        >
+                          <MessageCircle className="w-4 h-4 text-black fill-black/20" />
+                          <span>Agregar WhatsApp</span>
+                        </button>
+                      </div>
+                    )}
 
                     {/* Banner Limit Reached Warning */}
                     {products.length >= getPlanProductLimit(profile.subscriptionPlan || profile.plan) && (
@@ -1968,17 +2066,37 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                     {/* Products Grid list */}
                     {products.length === 0 ? (
-                      <div className="bg-gray-950 border border-gray-900 rounded-3xl p-12 text-center text-gray-500">
-                        <Package className="w-12 h-12 mb-3 mx-auto opacity-30 animate-pulse text-indigo-400" />
-                        <h3 className="font-extrabold text-white text-sm mb-1">Tu escaparate está vacío</h3>
-                        <p className="text-xs text-gray-500 max-w-sm mx-auto mb-6 leading-relaxed">Sube tus primeros productos con sus respectivos precios e imágenes para habilitar las compras desde tu URL.</p>
-                        <button
-                          type="button"
-                          onClick={triggerAddProductForm}
-                          className="bg-emerald-400 hover:bg-emerald-300 text-black font-bold text-xs py-2 px-4 rounded-xl shadow transition"
-                        >
-                          Crear mi Primer Producto
-                        </button>
+                      <div className="bg-gray-950 border border-gray-900 rounded-3xl p-10 sm:p-12 text-center text-gray-500 space-y-4">
+                        <div className="w-16 h-16 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center mx-auto text-emerald-400">
+                          <Package className="w-8 h-8 opacity-60" />
+                        </div>
+                        <div>
+                          <h3 className="font-extrabold text-white text-base mb-1">Tu escaparate está listo para tus productos</h3>
+                          <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+                            {(!profile.whatsapp || profile.whatsapp.replace(/\D/g, '').length < 7) 
+                              ? 'Para poder crear y publicar artículos, primero debes agregar tu número de WhatsApp de atención al cliente.'
+                              : 'Sube tus primeros productos con sus respectivos precios, fotos y categorías para habilitar las compras en línea.'}
+                          </p>
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => triggerAddProductForm()}
+                            className="bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs py-3 px-6 rounded-xl shadow-lg shadow-emerald-500/15 transition active:scale-[0.98] cursor-pointer inline-flex items-center gap-2"
+                          >
+                            {(!profile.whatsapp || profile.whatsapp.replace(/\D/g, '').length < 7) ? (
+                              <>
+                                <MessageCircle className="w-4 h-4 text-black fill-black/20" />
+                                <span>Configurar WhatsApp y Crear Producto</span>
+                              </>
+                            ) : (
+                              <>
+                                <Plus className="w-4 h-4 text-black stroke-[3]" />
+                                <span>Crear mi Primer Producto</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-5">
@@ -5171,6 +5289,123 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         storeName={profile.displayName || profile.storeName}
         storeLogo={profile.photoURL}
       />
+
+      {/* WhatsApp Required Modal (Mandatory condition before creating products) */}
+      <AnimatePresence>
+        {isWhatsAppRequiredModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-md bg-gray-950 border border-emerald-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-emerald-950/60 overflow-hidden"
+            >
+              {/* Background gradient decorative element */}
+              <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="flex items-center justify-between border-b border-gray-900 pb-4 mb-5">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                    <MessageCircle className="w-5 h-5 fill-emerald-500/20" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-white text-sm uppercase tracking-tight">
+                      Configura tu WhatsApp
+                    </h3>
+                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                      Requisito obligatorio para crear productos
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsWhatsAppRequiredModalOpen(false)}
+                  className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-900 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-emerald-950/20 border border-emerald-500/20 p-3.5 rounded-2xl">
+                  <p className="text-xs text-gray-300 leading-relaxed font-medium">
+                    Antes de agregar productos a tu catálogo, debes configurar tu número de WhatsApp para que tus clientes puedan enviarte sus pedidos directamente a tu celular.
+                  </p>
+                </div>
+
+                <form onSubmit={handleSaveQuickWhatsApp} className="space-y-4">
+                  <div>
+                    <label className="text-[11px] font-black uppercase text-gray-400 tracking-wider block mb-1.5">
+                      Número de WhatsApp de la Tienda
+                    </label>
+
+                    <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400/30">
+                      <div className="bg-gray-950 text-emerald-400 px-3.5 py-2.5 flex items-center gap-1.5 text-xs font-black border-r border-gray-850 select-none">
+                        <span>🇨🇴 +57</span>
+                      </div>
+                      <input
+                        type="tel"
+                        required
+                        autoFocus
+                        value={quickWhatsAppInput}
+                        placeholder="Ej: 3157785706"
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/\D/g, '');
+                          if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
+                          val = val.slice(0, 10);
+                          setQuickWhatsAppInput(val);
+                          if (quickWhatsAppError) setQuickWhatsAppError('');
+                        }}
+                        className="w-full h-11 bg-transparent px-3.5 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
+                      />
+                    </div>
+                    {quickWhatsAppError && (
+                      <p className="text-[11px] text-red-400 font-semibold mt-1.5 flex items-center gap-1">
+                        <span>⚠️</span>
+                        <span>{quickWhatsAppError}</span>
+                      </p>
+                    )}
+                    <p className="text-[10px] text-gray-500 mt-1.5">
+                      Ingresa los 10 dígitos de tu línea móvil. Ejemplo: 3157785706.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2">
+                    <button
+                      type="submit"
+                      disabled={isSavingQuickWhatsApp || !quickWhatsAppInput.trim()}
+                      className="w-full py-3 bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {isSavingQuickWhatsApp ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                          <span>Guardando WhatsApp...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4 text-black stroke-[3]" />
+                          <span>Guardar WhatsApp y Continuar</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsWhatsAppRequiredModalOpen(false);
+                        setActiveTab('design');
+                      }}
+                      className="w-full py-2.5 text-gray-400 hover:text-gray-200 text-xs font-bold transition text-center cursor-pointer"
+                    >
+                      Ir a Configuración Completa de Tienda
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
