@@ -38,8 +38,6 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [username, setUsername] = useState(usernameClaimed);
   const [displayName, setDisplayName] = useState('');
-  const [ownerWhatsapp, setOwnerWhatsapp] = useState('');
-  const [customerServiceWhatsapp, setCustomerServiceWhatsapp] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
@@ -151,21 +149,6 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
       return;
     }
 
-    // Clean and validate owner WhatsApp (Mandatory)
-    let cleanOwner = ownerWhatsapp.replace(/\D/g, '');
-    if (cleanOwner.startsWith('57') && cleanOwner.length >= 12) cleanOwner = cleanOwner.slice(2);
-    cleanOwner = cleanOwner.slice(0, 10);
-
-    if (!cleanOwner || cleanOwner.length < 7) {
-      setError('Por favor ingresa un número de WhatsApp del propietario/administrador válido (mínimo 7 a 10 dígitos, ej: 3157785706).');
-      return;
-    }
-
-    // Clean optional customer service WhatsApp
-    let cleanCustomer = customerServiceWhatsapp.replace(/\D/g, '');
-    if (cleanCustomer.startsWith('57') && cleanCustomer.length >= 12) cleanCustomer = cleanCustomer.slice(2);
-    cleanCustomer = cleanCustomer.slice(0, 10);
-
     setIsCreatingStore(true);
     setCreationSuccess(false);
     setError('');
@@ -193,10 +176,10 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
       subscriptionStatus: 'trial',
       subscriptionTrialExpires: trialExpires,
       currency: '$',
-      ownerWhatsapp: cleanOwner,
-      customerServiceWhatsapp: cleanCustomer || undefined,
-      whatsapp: cleanCustomer || cleanOwner,
-      phone: cleanOwner,
+      ownerWhatsapp: '',
+      customerServiceWhatsapp: undefined,
+      whatsapp: '',
+      phone: '',
       createdAt: new Date().toISOString()
     };
     try {
@@ -707,73 +690,6 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
                   {showSignupPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-            </div>
-
-            {/* WHATSAPP DEL PROPIETARIO / ADMINISTRADOR (OBLIGATORIO) */}
-            <div className="p-4 bg-emerald-950/20 border border-emerald-500/35 rounded-2xl space-y-2">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <label className="text-xs font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  WhatsApp del Propietario / Administrador
-                </label>
-                <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[9px] font-black uppercase rounded-md tracking-wider">
-                  Obligatorio
-                </span>
-              </div>
-              <div className="flex rounded-xl overflow-hidden bg-[#090B12] border border-[#232B3A] focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400/20">
-                <div className="bg-[#121622] text-emerald-400 px-3.5 py-3 flex items-center gap-1 text-xs font-black border-r border-[#232B3A] select-none">
-                  <span>🇨🇴 +57</span>
-                </div>
-                <input 
-                  type="tel" 
-                  required
-                  value={ownerWhatsapp}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/\D/g, '');
-                    if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
-                    val = val.slice(0, 10);
-                    setOwnerWhatsapp(val);
-                  }}
-                  placeholder="Ej: 3157785706"
-                  className="w-full bg-transparent px-3.5 py-3 text-sm font-bold text-white outline-none placeholder-[#A9B2C3]/60"
-                />
-              </div>
-              <p className="text-[10.5px] text-gray-400 leading-normal font-medium">
-                Número privado del dueño para control de pagos, seguridad de cuenta y notificaciones administrativas.
-              </p>
-            </div>
-
-            {/* WHATSAPP DE ATENCIÓN AL CLIENTE (OPCIONAL) */}
-            <div className="p-4 bg-slate-900/60 border border-slate-700/60 rounded-2xl space-y-2">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <label className="text-xs font-black uppercase text-gray-300 tracking-wider flex items-center gap-1.5">
-                  <Headphones className="w-4 h-4 text-gray-300" />
-                  WhatsApp para Atención al Cliente
-                </label>
-                <span className="px-2 py-0.5 bg-gray-800 text-gray-400 border border-gray-700 text-[9px] font-black uppercase rounded-md tracking-wider">
-                  Opcional
-                </span>
-              </div>
-              <div className="flex rounded-xl overflow-hidden bg-[#090B12] border border-[#232B3A] focus-within:border-gray-500">
-                <div className="bg-[#121622] text-gray-400 px-3.5 py-3 flex items-center gap-1 text-xs font-black border-r border-[#232B3A] select-none">
-                  <span>🇨🇴 +57</span>
-                </div>
-                <input 
-                  type="tel" 
-                  value={customerServiceWhatsapp}
-                  onChange={(e) => {
-                    let val = e.target.value.replace(/\D/g, '');
-                    if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
-                    val = val.slice(0, 10);
-                    setCustomerServiceWhatsapp(val);
-                  }}
-                  placeholder="Ej: 3101234567 (Opcional)"
-                  className="w-full bg-transparent px-3.5 py-3 text-sm font-semibold text-white outline-none placeholder-[#A9B2C3]/50"
-                />
-              </div>
-              <p className="text-[10.5px] text-gray-400 leading-normal font-medium">
-                Línea donde tus clientes enviarán pedidos y consultas. Si lo dejas vacío, se usará el WhatsApp del propietario.
-              </p>
             </div>
 
             <button

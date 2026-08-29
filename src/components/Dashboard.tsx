@@ -1626,10 +1626,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </p>
                         </div>
                         <button
-                          onClick={() => setActiveTab('design')}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs rounded-xl uppercase tracking-wider transition shrink-0 cursor-pointer flex items-center gap-1.5"
+                          type="button"
+                          onClick={() => {
+                            setQuickOwnerWhatsAppInput(profile.ownerWhatsapp || profile.whatsapp || profile.phone || '');
+                            setQuickCustomerServiceWhatsAppInput(profile.customerServiceWhatsapp || '');
+                            setQuickWhatsAppError('');
+                            setIsWhatsAppRequiredModalOpen(true);
+                          }}
+                          className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-black font-black text-xs rounded-xl uppercase tracking-wider transition shrink-0 cursor-pointer flex items-center gap-1.5 shadow-lg shadow-amber-500/20"
                         >
-                          <MessageCircle className="w-3.5 h-3.5" />
+                          <MessageCircle className="w-4 h-4 text-black fill-black/20" />
                           <span>Configurar WhatsApp</span>
                         </button>
                       </div>
