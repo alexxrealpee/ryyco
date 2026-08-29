@@ -4050,6 +4050,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <h2 className="text-xl font-bold text-white">Suscripción y Pagos de la Plataforma</h2>
                         <p className="text-xs text-gray-500 font-medium">Gestiona tu plan de facturación mensual en pesos colombianos (COP), revisa tus consumos de productos y sube comprobantes de transferencias bancarias directas.</p>
                       </div>
+                      <a
+                        id="subscription-tab-whatsapp-help-btn"
+                        href="https://wa.me/573106502043?text=Hola%2C%20necesito%20ayuda%20con%20mi%20suscripci%C3%B3n%20y%20pago%20en%20la%20plataforma"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 font-black text-xs rounded-xl transition shrink-0 cursor-pointer shadow-sm shadow-emerald-950/20"
+                        title="Contactar soporte administrativo por WhatsApp"
+                      >
+                        <MessageCircle className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+                        <span>Ayuda por WhatsApp 3106502043</span>
+                      </a>
                     </div>
 
                     {/* Progress limits meter */}
