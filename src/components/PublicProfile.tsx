@@ -563,7 +563,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       storeOwnerId: profile.uid,
       storeName: profile.displayName || profile.username,
       storeAddress: profile.address || profile.location || 'Dirección de la Tienda',
-      storePhone: profile.whatsapp || profile.phone,
+      storePhone: profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone,
       orderNumber: rNo,
       customerName: custName.trim(),
       customerPhone: formattedPhone,
@@ -662,7 +662,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
 
     const cleanMsg = encodeURIComponent(msg);
-    let targetPhone = profile.whatsapp || profile.phone || '';
+    let targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';
     let cleanedWhatsapp = targetPhone.replace(/[^0-9]/g, '');
     
     // Auto-fix: if it's a 10 digit Colombian celular (starts with 3), automatically prepend country code '57'

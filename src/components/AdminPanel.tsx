@@ -62,7 +62,9 @@ import {
   Mail,
   Plus,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  Headphones,
+  MessageCircle
 } from 'lucide-react';
 import { 
   collection, 
@@ -79,6 +81,22 @@ interface AdminPanelProps {
   onBack: () => void;
 }
 
+// Helpers to format and build WhatsApp links
+const formatWhatsAppDisplay = (raw?: string | null) => {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return null;
+  const cleanNumber = digits.startsWith('57') && digits.length >= 12 ? digits.slice(2) : digits;
+  return cleanNumber;
+};
+
+const getWhatsAppUrl = (raw?: string | null) => {
+  if (!raw) return '#';
+  const digits = raw.replace(/\D/g, '');
+  const fullNumber = digits.startsWith('57') ? digits : `57${digits}`;
+  return `https://wa.me/${fullNumber}`;
+};
+
 interface AdminUser {
   uid: string;
   email: string;
@@ -89,6 +107,8 @@ interface AdminUser {
   subscriptionStatus?: string;
   storeName?: string;
   whatsapp?: string;
+  ownerWhatsapp?: string;
+  customerServiceWhatsapp?: string;
   phone?: string;
   subscriptionPaidUntil?: string;
   subscriptionAnchorDay?: number;
@@ -1371,6 +1391,40 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               <div className="font-extrabold text-white text-[13px]">{user.storeName || user.username || 'Tienda sin Nombre'}</div>
                               <div className="text-[10px] text-gray-500 font-mono">@{user.username}</div>
                               <div className="text-[10px] text-gray-500 font-mono">{user.email}</div>
+                              {/* WhatsApp Contact Badges */}
+                              <div className="mt-2 space-y-1">
+                                {(user.ownerWhatsapp || user.whatsapp || user.phone) ? (
+                                  <a
+                                    href={getWhatsAppUrl(user.ownerWhatsapp || user.whatsapp || user.phone)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-lg text-[10px] font-bold transition shadow-sm active:scale-95"
+                                    title="Contactar al Propietario / Administrador"
+                                  >
+                                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
+                                  </a>
+                                ) : (
+                                  <span className="inline-block text-[9.5px] text-gray-600 font-mono italic">
+                                    Sin WhatsApp del dueño
+                                  </span>
+                                )}
+
+                                {user.customerServiceWhatsapp && (
+                                  <div>
+                                    <a
+                                      href={getWhatsAppUrl(user.customerServiceWhatsapp)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-2 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 rounded-lg text-[10px] font-bold transition shadow-sm active:scale-95"
+                                      title="Contactar a Línea de Atención al Cliente"
+                                    >
+                                      <Headphones className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                      <span>💬 Clientes: +57 {formatWhatsAppDisplay(user.customerServiceWhatsapp)}</span>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[9px] font-black uppercase rounded-lg">
                               {user.subscriptionPlan || 'Básico'}
@@ -1541,6 +1595,40 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               <td className="py-3.5 px-4">
                                 <div className="font-extrabold text-white text-xs">{user.storeName || user.username || 'Tienda sin Nombre'}</div>
                                 <div className="text-[10px] text-gray-500 font-mono">@{user.username} • {user.email}</div>
+                                {/* WhatsApp badges */}
+                                <div className="mt-1.5 space-y-1">
+                                  {(user.ownerWhatsapp || user.whatsapp || user.phone) ? (
+                                    <a
+                                      href={getWhatsAppUrl(user.ownerWhatsapp || user.whatsapp || user.phone)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-md text-[9.5px] font-bold transition shadow-sm"
+                                      title="Contactar al Propietario / Administrador"
+                                    >
+                                      <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
+                                    </a>
+                                  ) : (
+                                    <div className="text-[9.5px] text-gray-600 italic">
+                                      Sin WhatsApp
+                                    </div>
+                                  )}
+
+                                  {user.customerServiceWhatsapp && (
+                                    <div>
+                                      <a
+                                        href={getWhatsAppUrl(user.customerServiceWhatsapp)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 rounded-md text-[9.5px] font-bold transition shadow-sm"
+                                        title="Contactar a Línea de Atención al Cliente"
+                                      >
+                                        <Headphones className="w-3 h-3 text-sky-400 shrink-0" />
+                                        <span>💬 Clientes: +57 {formatWhatsAppDisplay(user.customerServiceWhatsapp)}</span>
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
                                 <div className="mt-1 flex items-center gap-2">
                                   <span className="uppercase font-black font-mono text-indigo-400 text-[9px] bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
                                     {user.subscriptionPlan || 'Básico'}
@@ -1731,6 +1819,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           <div className="font-bold text-white">@{p.username}</div>
                           <div className="text-[10px] text-gray-500 font-semibold">{p.storeName}</div>
                           <div className="text-[9px] text-gray-550 font-mono">{p.userEmail}</div>
+                          {(() => {
+                            const ownerNumber = p.ownerWhatsapp || p.storeWhatsapp || p.storePhone || storesMap[p.userId]?.ownerWhatsapp || storesMap[p.userId]?.whatsapp || storesMap[p.userId]?.phone || users.find(u => u.uid === p.userId)?.ownerWhatsapp || users.find(u => u.uid === p.userId)?.whatsapp || users.find(u => u.uid === p.userId)?.phone;
+                            const customerNumber = p.customerServiceWhatsapp || storesMap[p.userId]?.customerServiceWhatsapp || users.find(u => u.uid === p.userId)?.customerServiceWhatsapp;
+
+                            return (
+                              <div className="mt-1.5 space-y-1">
+                                {ownerNumber ? (
+                                  <a
+                                    href={getWhatsAppUrl(ownerNumber)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-[9.5px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-md border border-emerald-500/25 transition cursor-pointer"
+                                    title="Contactar al dueño para verificar comprobante"
+                                  >
+                                    <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                                    <span>👑 Dueño: +57 {formatWhatsAppDisplay(ownerNumber)}</span>
+                                  </a>
+                                ) : (
+                                  <div className="text-[9.5px] text-gray-600 italic">Sin WhatsApp del dueño</div>
+                                )}
+
+                                {customerNumber && (
+                                  <div>
+                                    <a
+                                      href={getWhatsAppUrl(customerNumber)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-[9.5px] font-bold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2 py-0.5 rounded-md border border-sky-500/25 transition cursor-pointer"
+                                      title="Línea de Atención al Cliente de la tienda"
+                                    >
+                                      <Headphones className="w-3 h-3 text-sky-400 shrink-0" />
+                                      <span>💬 Clientes: +57 {formatWhatsAppDisplay(customerNumber)}</span>
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-4 px-4 font-semibold">
                           <span className="text-xs uppercase font-black text-indigo-400 block">{p.plan}</span>
@@ -2160,8 +2286,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           {(user.role === 'admin' || checkIsAdminEmail(user.email, systemSettings.adminEmails)) && (
                             <span className="ml-2 bg-indigo-500/10 text-indigo-400 text-[9px] font-black uppercase px-1.5 py-0.5 rounded border border-indigo-500/15">Admin</span>
                           )}
+                          {user.storeName && (
+                            <div className="text-[10.5px] text-gray-400 font-normal mt-0.5">{user.storeName}</div>
+                          )}
                         </td>
-                        <td className="py-4 px-4 font-semibold text-gray-300">{user.email}</td>
+                        <td className="py-4 px-4 font-semibold text-gray-300">
+                          <div>{user.email}</div>
+                          <div className="mt-1.5 space-y-1">
+                            {(user.ownerWhatsapp || user.whatsapp || user.phone) ? (
+                              <a
+                                href={getWhatsAppUrl(user.ownerWhatsapp || user.whatsapp || user.phone)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-md text-[9.5px] font-bold transition cursor-pointer"
+                                title="Abrir WhatsApp del Propietario / Administrador"
+                              >
+                                <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
+                                <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
+                              </a>
+                            ) : (
+                              <span className="text-[9.5px] text-gray-600 italic block">Sin WhatsApp</span>
+                            )}
+
+                            {user.customerServiceWhatsapp && (
+                              <div>
+                                <a
+                                  href={getWhatsAppUrl(user.customerServiceWhatsapp)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/25 rounded-md text-[9.5px] font-bold transition cursor-pointer"
+                                  title="Abrir WhatsApp de Atención al Cliente"
+                                >
+                                  <Headphones className="w-3 h-3 text-sky-400 shrink-0" />
+                                  <span>💬 Clientes: +57 {formatWhatsAppDisplay(user.customerServiceWhatsapp)}</span>
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </td>
                         <td className="py-4 px-4">
                           <select 
                             value={user.subscriptionPlan || 'basico'}

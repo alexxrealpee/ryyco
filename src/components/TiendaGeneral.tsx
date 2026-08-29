@@ -635,7 +635,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
 
     const cleanMsg = encodeURIComponent(msg);
-    const targetPhone = profile.whatsapp || profile.phone || '';
+    const targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';
     let cleanedWhatsapp = targetPhone.replace(/[^0-9]/g, '');
 
     if (cleanedWhatsapp.length === 10 && cleanedWhatsapp.startsWith('3')) {

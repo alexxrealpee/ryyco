@@ -63,7 +63,10 @@ import {
   ChevronUp,
   QrCode,
   Share2,
-  Download
+  Download,
+  ShieldCheck,
+  Headphones,
+  Phone
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -215,7 +218,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   // WhatsApp requirement modal states
   const [isWhatsAppRequiredModalOpen, setIsWhatsAppRequiredModalOpen] = useState(false);
-  const [quickWhatsAppInput, setQuickWhatsAppInput] = useState('');
+  const [quickOwnerWhatsAppInput, setQuickOwnerWhatsAppInput] = useState('');
+  const [quickCustomerServiceWhatsAppInput, setQuickCustomerServiceWhatsAppInput] = useState('');
   const [isSavingQuickWhatsApp, setIsSavingQuickWhatsApp] = useState(false);
   const [quickWhatsAppError, setQuickWhatsAppError] = useState('');
 
@@ -729,24 +733,31 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
   };
 
-  // Helper to save WhatsApp number quickly when attempting to create a product
+  // Helper to save WhatsApp numbers quickly when attempting to create a product
   const handleSaveQuickWhatsApp = async (e: React.FormEvent) => {
     e.preventDefault();
-    let val = quickWhatsAppInput.replace(/\D/g, '');
-    if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
-    val = val.slice(0, 10);
+    let cleanOwner = quickOwnerWhatsAppInput.replace(/\D/g, '');
+    if (cleanOwner.startsWith('57') && cleanOwner.length >= 12) cleanOwner = cleanOwner.slice(2);
+    cleanOwner = cleanOwner.slice(0, 10);
 
-    if (val.length < 7) {
-      setQuickWhatsAppError('Por favor ingresa un número de WhatsApp válido (mínimo 7 dígitos, ej: 3157785706).');
+    if (cleanOwner.length < 7) {
+      setQuickWhatsAppError('Por favor ingresa un número de WhatsApp del propietario válido (mínimo 7 a 10 dígitos, ej: 3157785706).');
       return;
     }
+
+    let cleanCustomer = quickCustomerServiceWhatsAppInput.replace(/\D/g, '');
+    if (cleanCustomer.startsWith('57') && cleanCustomer.length >= 12) cleanCustomer = cleanCustomer.slice(2);
+    cleanCustomer = cleanCustomer.slice(0, 10);
 
     setIsSavingQuickWhatsApp(true);
     setQuickWhatsAppError('');
     try {
-      const updatedProfile = {
+      const updatedProfile: UserProfile = {
         ...profile,
-        whatsapp: val
+        ownerWhatsapp: cleanOwner,
+        customerServiceWhatsapp: cleanCustomer || undefined,
+        whatsapp: cleanCustomer || cleanOwner,
+        phone: cleanOwner
       };
       await saveProfile(updatedProfile);
       setProfile(updatedProfile);
@@ -765,11 +776,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // Open Add Form
   const triggerAddProductForm = (overrideProfile?: UserProfile) => {
     const currentProf = overrideProfile || profile;
-    const currentWhatsApp = currentProf.whatsapp ? currentProf.whatsapp.replace(/\D/g, '') : '';
+    const currentWhatsApp = (currentProf.ownerWhatsapp || currentProf.whatsapp || currentProf.phone || '').replace(/\D/g, '');
     
-    // Condition: Seller cannot create products until WhatsApp is configured
+    // Condition: Seller cannot create products until Owner WhatsApp is configured
     if (!currentWhatsApp || currentWhatsApp.length < 7) {
-      setQuickWhatsAppInput(currentProf.whatsapp || '');
+      setQuickOwnerWhatsAppInput(currentProf.ownerWhatsapp || currentProf.whatsapp || currentProf.phone || '');
+      setQuickCustomerServiceWhatsAppInput(currentProf.customerServiceWhatsapp || '');
       setQuickWhatsAppError('');
       setIsWhatsAppRequiredModalOpen(true);
       return;
@@ -862,11 +874,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     if (isSavingProduct) return;
 
     // Condition: WhatsApp is strictly required to publish and save products
-    const currentWhatsApp = profile.whatsapp ? profile.whatsapp.replace(/\D/g, '') : '';
-    if (!currentWhatsApp || currentWhatsApp.length < 7) {
-      alert("⚠️ Requisito indispensable: Para publicar productos debes agregar primero el número de WhatsApp de tu tienda.");
+    const currentOwnerWhatsApp = (profile.ownerWhatsapp || profile.whatsapp || profile.phone || '').replace(/\D/g, '');
+    if (!currentOwnerWhatsApp || currentOwnerWhatsApp.length < 7) {
+      alert("⚠️ Requisito indispensable: Para publicar productos debes agregar primero el número de WhatsApp del propietario de tu tienda.");
       setIsAddingProd(false);
-      setQuickWhatsAppInput(profile.whatsapp || '');
+      setQuickOwnerWhatsAppInput(profile.ownerWhatsapp || profile.whatsapp || profile.phone || '');
+      setQuickCustomerServiceWhatsAppInput(profile.customerServiceWhatsapp || '');
       setQuickWhatsAppError('');
       setIsWhatsAppRequiredModalOpen(true);
       return;
@@ -1771,7 +1784,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <button
                           type="button"
                           onClick={() => {
-                            setQuickWhatsAppInput(profile.whatsapp || '');
+                            setQuickOwnerWhatsAppInput(profile.ownerWhatsapp || profile.whatsapp || profile.phone || '');
+                            setQuickCustomerServiceWhatsAppInput(profile.customerServiceWhatsapp || '');
                             setQuickWhatsAppError('');
                             setIsWhatsAppRequiredModalOpen(true);
                           }}
@@ -2697,15 +2711,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           />
                         </div>
 
-                        {/* WHATSAPP DEL NEGOCIO / ENCARGADO - CAMPO DESTACADO */}
+                        {/* 1. WHATSAPP DEL PROPIETARIO / ADMINISTRADOR - OBLIGATORIO */}
                         <div className="p-4 bg-emerald-950/25 border-2 border-emerald-500/50 rounded-2xl space-y-2.5 shadow-lg shadow-emerald-950/30">
                           <div className="flex items-center justify-between flex-wrap gap-2">
                             <label className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
-                              <MessageCircle className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
-                              Número de WhatsApp del Negocio / Encargado
+                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                              WhatsApp del Propietario / Administrador
                             </label>
                             <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-wider rounded-md border border-emerald-500/30">
-                              ⭐ Muy Importante
+                              ⭐ Obligatorio / Administración
                             </span>
                           </div>
 
@@ -2715,23 +2729,29 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
                             <input
                               type="tel"
-                              value={profile.whatsapp || ''}
+                              required
+                              value={profile.ownerWhatsapp || profile.whatsapp || profile.phone || ''}
                               placeholder="Ej: 3157785706"
                               onChange={(e) => {
                                 let val = e.target.value.replace(/\D/g, '');
                                 if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
                                 val = val.slice(0, 10);
-                                setProfile(p => ({ ...p, whatsapp: val }));
+                                setProfile(p => ({ 
+                                  ...p, 
+                                  ownerWhatsapp: val,
+                                  phone: val,
+                                  whatsapp: p.customerServiceWhatsapp || val 
+                                }));
                               }}
                               className="w-full h-11 bg-transparent px-3.5 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
                             />
-                            {profile.whatsapp && profile.whatsapp.length >= 10 && (
+                            {(profile.ownerWhatsapp || profile.whatsapp || profile.phone) && (profile.ownerWhatsapp || profile.whatsapp || profile.phone)!.length >= 10 && (
                               <a
-                                href={`https://wa.me/57${profile.whatsapp}`}
+                                href={`https://wa.me/57${(profile.ownerWhatsapp || profile.whatsapp || profile.phone)!.replace(/\D/g, '')}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-3.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 flex items-center gap-1.5 text-[11px] font-bold border-l border-emerald-500/30 transition-all whitespace-nowrap"
-                                title="Verificar que este enlace abra tu chat de WhatsApp"
+                                title="Verificar chat de WhatsApp del propietario"
                               >
                                 <span>Probar Chat</span>
                                 <ExternalLink className="w-3 h-3" />
@@ -2740,7 +2760,58 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </div>
 
                           <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
-                            A este número de WhatsApp llegarán todos los <strong className="text-emerald-300">pedidos de tus clientes</strong>, comprobantes de pago bancario y mensajes directos del catálogo web.
+                            Número privado del dueño o administrador. Utilizado para la seguridad de tu cuenta, comprobantes de pago de suscripción y soporte directo de la plataforma.
+                          </p>
+                        </div>
+
+                        {/* 2. WHATSAPP DE ATENCIÓN AL CLIENTE - OPCIONAL */}
+                        <div className="p-4 bg-slate-900/50 border border-slate-700/60 rounded-2xl space-y-2.5">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider flex items-center gap-2">
+                              <Headphones className="w-4 h-4 text-sky-400" />
+                              WhatsApp de Atención al Cliente / Pedidos
+                            </label>
+                            <span className="px-2.5 py-0.5 bg-slate-800 text-gray-400 text-[9px] font-black uppercase tracking-wider rounded-md border border-slate-700">
+                              💬 Opcional / Pedidos
+                            </span>
+                          </div>
+
+                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/30">
+                            <div className="bg-gray-950 text-gray-400 px-3.5 py-2.5 flex items-center gap-1.5 text-xs font-black border-r border-gray-850 select-none">
+                              <span>🇨🇴 +57</span>
+                            </div>
+                            <input
+                              type="tel"
+                              value={profile.customerServiceWhatsapp || ''}
+                              placeholder="Ej: 3101234567 (Opcional)"
+                              onChange={(e) => {
+                                let val = e.target.value.replace(/\D/g, '');
+                                if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
+                                val = val.slice(0, 10);
+                                setProfile(p => ({ 
+                                  ...p, 
+                                  customerServiceWhatsapp: val,
+                                  whatsapp: val || p.ownerWhatsapp || p.phone || ''
+                                }));
+                              }}
+                              className="w-full h-11 bg-transparent px-3.5 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
+                            />
+                            {profile.customerServiceWhatsapp && profile.customerServiceWhatsapp.length >= 10 && (
+                              <a
+                                href={`https://wa.me/57${profile.customerServiceWhatsapp}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 flex items-center gap-1.5 text-[11px] font-bold border-l border-sky-500/30 transition-all whitespace-nowrap"
+                                title="Verificar chat de atención al cliente"
+                              >
+                                <span>Probar Chat</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+
+                          <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
+                            Línea pública donde tus clientes enviarán sus <strong className="text-gray-300">pedidos y consultas</strong> desde la tienda online. Si lo dejas vacío, se usará automáticamente el WhatsApp del propietario.
                           </p>
                         </div>
 
@@ -4140,6 +4211,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     userEmail: profile.email,
                                     username: profile.username,
                                     storeName: profile.displayName || profile.username,
+                                    storeWhatsapp: profile.ownerWhatsapp || profile.whatsapp || profile.phone || '',
+                                    storePhone: profile.phone || profile.ownerWhatsapp || profile.whatsapp || '',
+                                    ownerWhatsapp: profile.ownerWhatsapp || profile.whatsapp || profile.phone || '',
+                                    customerServiceWhatsapp: profile.customerServiceWhatsapp || '',
                                     plan: chosenPlan,
                                     amount: amountToPay,
                                     status: 'review',
@@ -5298,7 +5373,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative w-full max-w-md bg-gray-950 border border-emerald-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-emerald-950/60 overflow-hidden"
+              className="relative w-full max-w-lg bg-gray-950 border border-emerald-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl shadow-emerald-950/60 overflow-hidden"
             >
               {/* Background gradient decorative element */}
               <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -5310,10 +5385,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   </div>
                   <div>
                     <h3 className="font-black text-white text-sm uppercase tracking-tight">
-                      Configura tu WhatsApp
+                      Configura los Números de WhatsApp
                     </h3>
                     <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
-                      Requisito obligatorio para crear productos
+                      Requisito para tu catálogo y gestión de cuenta
                     </p>
                   </div>
                 </div>
@@ -5329,62 +5404,104 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <div className="space-y-4">
                 <div className="bg-emerald-950/20 border border-emerald-500/20 p-3.5 rounded-2xl">
                   <p className="text-xs text-gray-300 leading-relaxed font-medium">
-                    Antes de agregar productos a tu catálogo, debes configurar tu número de WhatsApp para que tus clientes puedan enviarte sus pedidos directamente a tu celular.
+                    Para comenzar a vender y gestionar tu tienda, por favor ingresa el WhatsApp del propietario (obligatorio) y opcionalmente el de atención al cliente.
                   </p>
                 </div>
 
                 <form onSubmit={handleSaveQuickWhatsApp} className="space-y-4">
-                  <div>
-                    <label className="text-[11px] font-black uppercase text-gray-400 tracking-wider block mb-1.5">
-                      Número de WhatsApp de la Tienda
-                    </label>
+                  {/* 1. Owner WhatsApp */}
+                  <div className="p-3.5 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        WhatsApp del Propietario / Administrador
+                      </label>
+                      <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[8.5px] font-black uppercase rounded">
+                        Obligatorio
+                      </span>
+                    </div>
 
                     <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400/30">
-                      <div className="bg-gray-950 text-emerald-400 px-3.5 py-2.5 flex items-center gap-1.5 text-xs font-black border-r border-gray-850 select-none">
+                      <div className="bg-gray-950 text-emerald-400 px-3 py-2 flex items-center gap-1 text-xs font-black border-r border-gray-850 select-none">
                         <span>🇨🇴 +57</span>
                       </div>
                       <input
                         type="tel"
                         required
                         autoFocus
-                        value={quickWhatsAppInput}
+                        value={quickOwnerWhatsAppInput}
                         placeholder="Ej: 3157785706"
                         onChange={(e) => {
                           let val = e.target.value.replace(/\D/g, '');
                           if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
                           val = val.slice(0, 10);
-                          setQuickWhatsAppInput(val);
+                          setQuickOwnerWhatsAppInput(val);
                           if (quickWhatsAppError) setQuickWhatsAppError('');
                         }}
-                        className="w-full h-11 bg-transparent px-3.5 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
+                        className="w-full h-10 bg-transparent px-3 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
                       />
                     </div>
-                    {quickWhatsAppError && (
-                      <p className="text-[11px] text-red-400 font-semibold mt-1.5 flex items-center gap-1">
-                        <span>⚠️</span>
-                        <span>{quickWhatsAppError}</span>
-                      </p>
-                    )}
-                    <p className="text-[10px] text-gray-500 mt-1.5">
-                      Ingresa los 10 dígitos de tu línea móvil. Ejemplo: 3157785706.
+                    <p className="text-[9.5px] text-gray-400">
+                      Línea principal para control de pagos, seguridad y avisos administrativos.
                     </p>
                   </div>
+
+                  {/* 2. Customer Service WhatsApp */}
+                  <div className="p-3.5 bg-slate-900/60 border border-slate-700/60 rounded-2xl space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider flex items-center gap-1.5">
+                        <Headphones className="w-3.5 h-3.5 text-gray-300" />
+                        WhatsApp para Atención al Cliente
+                      </label>
+                      <span className="px-2 py-0.5 bg-gray-800 text-gray-400 text-[8.5px] font-black uppercase rounded">
+                        Opcional
+                      </span>
+                    </div>
+
+                    <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-gray-500">
+                      <div className="bg-gray-950 text-gray-400 px-3 py-2 flex items-center gap-1 text-xs font-black border-r border-gray-850 select-none">
+                        <span>🇨🇴 +57</span>
+                      </div>
+                      <input
+                        type="tel"
+                        value={quickCustomerServiceWhatsAppInput}
+                        placeholder="Ej: 3101234567 (Opcional)"
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/\D/g, '');
+                          if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
+                          val = val.slice(0, 10);
+                          setQuickCustomerServiceWhatsAppInput(val);
+                        }}
+                        className="w-full h-10 bg-transparent px-3 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
+                      />
+                    </div>
+                    <p className="text-[9.5px] text-gray-400">
+                      Línea donde tus clientes enviarán pedidos. Si lo dejas vacío, se usará el WhatsApp del propietario.
+                    </p>
+                  </div>
+
+                  {quickWhatsAppError && (
+                    <p className="text-[11px] text-red-400 font-semibold flex items-center gap-1">
+                      <span>⚠️</span>
+                      <span>{quickWhatsAppError}</span>
+                    </p>
+                  )}
 
                   <div className="flex flex-col gap-2 pt-2">
                     <button
                       type="submit"
-                      disabled={isSavingQuickWhatsApp || !quickWhatsAppInput.trim()}
+                      disabled={isSavingQuickWhatsApp || !quickOwnerWhatsAppInput.trim()}
                       className="w-full py-3 bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2"
                     >
                       {isSavingQuickWhatsApp ? (
                         <>
                           <RefreshCw className="w-4 h-4 animate-spin text-black" />
-                          <span>Guardando WhatsApp...</span>
+                          <span>Guardando Números...</span>
                         </>
                       ) : (
                         <>
                           <Check className="w-4 h-4 text-black stroke-[3]" />
-                          <span>Guardar WhatsApp y Continuar</span>
+                          <span>Guardar y Continuar</span>
                         </>
                       )}
                     </button>
@@ -5395,7 +5512,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         setIsWhatsAppRequiredModalOpen(false);
                         setActiveTab('design');
                       }}
-                      className="w-full py-2.5 text-gray-400 hover:text-gray-200 text-xs font-bold transition text-center cursor-pointer"
+                      className="w-full py-2 text-gray-400 hover:text-gray-200 text-xs font-bold transition text-center cursor-pointer"
                     >
                       Ir a Configuración Completa de Tienda
                     </button>

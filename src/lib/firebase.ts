@@ -2440,6 +2440,8 @@ export interface PaginatedSubscriptionsResult {
     subscriptionStatus?: string;
     storeName?: string;
     whatsapp?: string;
+    ownerWhatsapp?: string;
+    customerServiceWhatsapp?: string;
     phone?: string;
     subscriptionPaidUntil?: string;
     subscriptionAnchorDay?: number;
@@ -2492,8 +2494,10 @@ export async function fetchAdminSubscriptionsBatch(
         subscriptionPlan: d.subscriptionPlan || 'basico',
         subscriptionStatus: d.subscriptionStatus || 'active',
         storeName: d.displayName || d.storeName || '',
-        whatsapp: d.whatsapp || d.phone || '',
-        phone: d.phone || d.whatsapp || '',
+        whatsapp: d.customerServiceWhatsapp || d.whatsapp || d.ownerWhatsapp || d.phone || '',
+        ownerWhatsapp: d.ownerWhatsapp || d.phone || d.whatsapp || '',
+        customerServiceWhatsapp: d.customerServiceWhatsapp || '',
+        phone: d.phone || d.ownerWhatsapp || d.whatsapp || '',
         subscriptionPaidUntil: d.subscriptionPaidUntil || '',
         subscriptionAnchorDay: typeof d.subscriptionAnchorDay === 'number' ? d.subscriptionAnchorDay : getSubscriptionAnchorDay(d),
         createdAt: createdAtStr,

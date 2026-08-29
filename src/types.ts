@@ -85,7 +85,9 @@ export interface UserProfile {
   plan: UserPlan;
   createdAt: string;
   phone?: string;
-  whatsapp?: string; // Store WhatsApp Number for orders
+  whatsapp?: string; // Store WhatsApp Number for orders (Customer Service or fallback to Owner)
+  ownerWhatsapp?: string; // WhatsApp del Propietario / Administrador (Obligatorio)
+  customerServiceWhatsapp?: string; // WhatsApp para Atención al Cliente (Opcional)
   address?: string; // Physical Store / Business Address (Dirección del negocio)
   location?: string;
   currency?: string; // Currency symbol/code (e.g., "$", "COP", "EUR", "MXN", "USD")
@@ -133,6 +135,10 @@ export interface SubscriptionPayment {
   userEmail: string;
   username: string;
   storeName: string;
+  storeWhatsapp?: string;
+  storePhone?: string;
+  ownerWhatsapp?: string;
+  customerServiceWhatsapp?: string;
   plan: 'basico' | 'medio' | 'pro';
   amount: number;
   status: 'pending' | 'review' | 'approved' | 'rejected';
