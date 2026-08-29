@@ -126,7 +126,7 @@ export default function StoreQRModal({
 
     ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
 
-    // 4. Draw high-fidelity circular center logo badge over QR excavated center
+    // 4. Draw high-fidelity center logo badge over QR excavated center
     try {
       const logoImg = new Image();
       logoImg.crossOrigin = 'anonymous';
@@ -139,29 +139,50 @@ export default function StoreQRModal({
       if (logoImg.complete && logoImg.naturalWidth > 0) {
         const centerX = width / 2;
         const centerY = qrY + qrSize / 2;
-        const badgeRadius = 112; // 224px diameter white circle
-        const logoRadius = 100;  // 200px diameter round logo
+        const badgeSize = 200;
+        const logoDrawSize = 184;
 
-        // 1) Circular white badge background
+        // White background badge behind center logo
         ctx.save();
+        const badgeRadius = 36;
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(centerX, centerY, badgeRadius, 0, Math.PI * 2);
+        ctx.moveTo(centerX - badgeSize / 2 + badgeRadius, centerY - badgeSize / 2);
+        ctx.lineTo(centerX + badgeSize / 2 - badgeRadius, centerY - badgeSize / 2);
+        ctx.quadraticCurveTo(centerX + badgeSize / 2, centerY - badgeSize / 2, centerX + badgeSize / 2, centerY - badgeSize / 2 + badgeRadius);
+        ctx.lineTo(centerX + badgeSize / 2, centerY + badgeSize / 2 - badgeRadius);
+        ctx.quadraticCurveTo(centerX + badgeSize / 2, centerY + badgeSize / 2, centerX + badgeSize / 2 - badgeRadius, centerY + badgeSize / 2);
+        ctx.lineTo(centerX - badgeSize / 2 + badgeRadius, centerY + badgeSize / 2);
+        ctx.quadraticCurveTo(centerX - badgeSize / 2, centerY + badgeSize / 2, centerX - badgeSize / 2, centerY + badgeSize / 2 - badgeRadius);
+        ctx.lineTo(centerX - badgeSize / 2, centerY - badgeSize / 2 + badgeRadius);
+        ctx.quadraticCurveTo(centerX - badgeSize / 2, centerY - badgeSize / 2, centerX - badgeSize / 2 + badgeRadius, centerY - badgeSize / 2);
+        ctx.closePath();
         ctx.fill();
 
-        // 2) Circular subtle badge border
+        // Subtle badge border
         ctx.strokeStyle = '#e5e7eb';
         ctx.lineWidth = 4;
         ctx.stroke();
 
-        // 3) Perfect circle clipping mask for the store logo
+        // Clip and draw logo crisply inside badge
         ctx.beginPath();
-        ctx.arc(centerX, centerY, logoRadius, 0, Math.PI * 2);
+        const innerRadius = 28;
+        const innerX = centerX - logoDrawSize / 2;
+        const innerY = centerY - logoDrawSize / 2;
+        ctx.moveTo(innerX + innerRadius, innerY);
+        ctx.lineTo(innerX + logoDrawSize - innerRadius, innerY);
+        ctx.quadraticCurveTo(innerX + logoDrawSize, innerY, innerX + logoDrawSize, innerY + innerRadius);
+        ctx.lineTo(innerX + logoDrawSize, innerY + logoDrawSize - innerRadius);
+        ctx.quadraticCurveTo(innerX + logoDrawSize, innerY + logoDrawSize, innerX + logoDrawSize - innerRadius, innerY + logoDrawSize);
+        ctx.lineTo(innerX + innerRadius, innerY + logoDrawSize);
+        ctx.quadraticCurveTo(innerX, innerY + logoDrawSize, innerX, innerY + logoDrawSize - innerRadius);
+        ctx.lineTo(innerX, innerY + innerRadius);
+        ctx.quadraticCurveTo(innerX, innerY, innerX + innerRadius, innerY);
+        ctx.closePath();
         ctx.clip();
 
-        // 4) Draw image centered
-        const drawSize = logoRadius * 2;
-        ctx.drawImage(logoImg, centerX - logoRadius, centerY - logoRadius, drawSize, drawSize);
+        // Draw image maintaining aspect ratio
+        ctx.drawImage(logoImg, innerX, innerY, logoDrawSize, logoDrawSize);
         ctx.restore();
       }
     } catch (e) {
@@ -341,7 +362,7 @@ export default function StoreQRModal({
             </div>
 
             {/* QR Canvas with store logo in center */}
-            <div className="p-1 rounded-2xl bg-white relative flex items-center justify-center">
+            <div className="p-1 rounded-2xl bg-white">
               <QRCodeCanvas 
                 value={storeUrl}
                 size={200}
@@ -350,19 +371,11 @@ export default function StoreQRModal({
                 level="H" 
                 imageSettings={{
                   src: activeLogo,
-                  height: 44,
-                  width: 44,
+                  height: 42,
+                  width: 42,
                   excavate: true,
                 }}
               />
-              {/* Circular Logo Badge Overlay in QR Center */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white p-0.5 shadow-sm border border-gray-200 flex items-center justify-center overflow-hidden pointer-events-none">
-                <img 
-                  src={activeLogo} 
-                  alt={displayName} 
-                  className="w-full h-full rounded-full object-cover" 
-                />
-              </div>
             </div>
 
             {/* Powered by Ryyco Footer Badge on Card */}
