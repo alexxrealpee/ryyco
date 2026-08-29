@@ -144,7 +144,7 @@ const Tiktok = ({ className = "w-4 h-4", ...props }: React.SVGProps<SVGSVGElemen
   </svg>
 );
 
-const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Promise<string> => {
+const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 800, quality = 0.85): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
     img.src = base64Str;
@@ -153,16 +153,13 @@ const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Prom
       let width = img.width;
       let height = img.height;
 
-      if (width > height) {
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-      } else {
-        if (height > maxHeight) {
-          width = Math.round((width * maxHeight) / height);
-          height = maxHeight;
-        }
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      if (height > maxHeight) {
+        width = Math.round((width * maxHeight) / height);
+        height = maxHeight;
       }
 
       canvas.width = width;
@@ -170,9 +167,11 @@ const compressImage = (base64Str: string, maxWidth = 800, maxHeight = 800): Prom
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        // Compress as jpeg with 70% quality for optimal weight/fidelity ratio
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        // High fidelity compression
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
         resolve(compressedBase64);
       } else {
         resolve(base64Str);
@@ -445,6 +444,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [isCustomThemeOpen, setIsCustomThemeOpen] = useState<boolean>(false);
   const [isSavingTheme, setIsSavingTheme] = useState<boolean>(false);
   const [themeSavedSuccess, setThemeSavedSuccess] = useState<boolean>(false);
+  const [bannerSavedSuccess, setBannerSavedSuccess] = useState<boolean>(false);
 
   // UI Utilities states
   const [copiedLink, setCopiedLink] = useState(false);
@@ -3197,9 +3197,38 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                           {/* BANNER UPLOAD */}
                           <div className="space-y-2">
-                            <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">
-                              Banner o Portada de la Tienda
-                            </label>
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">
+                                Banner o Portada de la Tienda
+                              </label>
+                              {profile.coverURL && (
+                                <button
+                                  type="button"
+                                  onClick={async (e) => {
+                                    e.preventDefault();
+                                    try {
+                                      await saveProfile(profile);
+                                      setBannerSavedSuccess(true);
+                                      setTimeout(() => setBannerSavedSuccess(false), 3000);
+                                    } catch (err) {
+                                      console.error("Error saving banner:", err);
+                                      alert("Error al guardar el banner.");
+                                    }
+                                  }}
+                                  className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 rounded-lg text-[9px] font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1"
+                                >
+                                  <Save className="w-3 h-3" />
+                                  <span>Guardar Banner</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {bannerSavedSuccess && (
+                              <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-bold flex items-center gap-2 animate-fadeIn">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>¡Banner guardado y publicado en tu tienda con éxito!</span>
+                              </div>
+                            )}
                             
                             <div className="relative border border-dashed border-gray-850 hover:border-emerald-500/50 rounded-2xl p-4 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[140px] overflow-hidden group">
                               <input
@@ -3213,9 +3242,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     reader.onloadend = async () => {
                                       try {
                                         const base64 = reader.result as string;
-                                        // Compress banner/cover to 1200x500 max
-                                        const compressed = await compressImage(base64, 1200, 500);
-                                        setProfile(p => ({ ...p, coverURL: compressed }));
+                                        // Compress banner/cover with high resolution
+                                        const compressed = await compressImage(base64, 1400, 700, 0.85);
+                                        const updated = { ...profile, coverURL: compressed };
+                                        setProfile(updated);
+                                        // Auto-persist banner directly to profile in Firestore
+                                        await saveProfile(updated);
+                                        setBannerSavedSuccess(true);
+                                        setTimeout(() => setBannerSavedSuccess(false), 3000);
                                       } catch (err) {
                                         console.error("Error compressing banner:", err);
                                         alert("Error al procesar el banner. Intenta con otra imagen.");
@@ -3232,27 +3266,42 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               {isCompressingBanner ? (
                                 <div className="flex flex-col items-center gap-2">
                                   <div className="w-6 h-6 border-2 border-emerald-400 border-t-transparent animate-spin rounded-full" />
-                                  <span className="text-[10px] font-bold text-gray-400">Procesando...</span>
+                                  <span className="text-[10px] font-bold text-gray-400">Procesando y guardando banner...</span>
                                 </div>
                               ) : profile.coverURL ? (
                                 <div className="space-y-3 z-20 flex flex-col items-center w-full">
-                                  <div className="w-full h-16 rounded-xl overflow-hidden border border-emerald-500/20 relative">
+                                  <div className="w-full h-20 rounded-xl overflow-hidden border border-emerald-500/20 relative shadow-inner">
                                     <img 
                                       src={profile.coverURL} 
                                       alt="Banner de Tienda" 
                                       className="w-full h-full object-cover"
                                     />
+                                    <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition backdrop-blur-[1px]">
+                                      <span className="text-[10px] font-bold text-white bg-black/60 px-2 py-1 rounded-md">
+                                        Clic para cambiar banner
+                                      </span>
+                                    </div>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setProfile(p => ({ ...p, coverURL: '' }));
-                                    }}
-                                    className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white text-[9px] font-black uppercase tracking-wider rounded-lg border border-rose-500/20 transition cursor-pointer"
-                                  >
-                                    Eliminar Banner
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const updated = { ...profile, coverURL: '' };
+                                        setProfile(updated);
+                                        try {
+                                          await saveProfile(updated);
+                                          setBannerSavedSuccess(true);
+                                          setTimeout(() => setBannerSavedSuccess(false), 3000);
+                                        } catch (err) {
+                                          console.error("Error removing banner:", err);
+                                        }
+                                      }}
+                                      className="px-2.5 py-1 bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white text-[9px] font-black uppercase tracking-wider rounded-lg border border-rose-500/20 transition cursor-pointer"
+                                    >
+                                      Eliminar Banner
+                                    </button>
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="flex flex-col items-center justify-center gap-2 text-gray-500 group-hover:text-gray-300 transition">
