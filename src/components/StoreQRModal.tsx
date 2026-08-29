@@ -29,6 +29,7 @@ export default function StoreQRModal({
   const [isDownloading, setIsDownloading] = useState(false);
 
   const qrRef = useRef<HTMLDivElement>(null);
+  const highResQrRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen) return null;
 
@@ -62,20 +63,25 @@ export default function StoreQRModal({
   };
 
   const generateFullCardCanvas = async (): Promise<HTMLCanvasElement | null> => {
-    if (!qrRef.current) return null;
-    const qrCanvas = qrRef.current.querySelector('canvas');
+    // Prefer high-res QR canvas, fallback to screen QR canvas
+    const qrCanvas = highResQrRef.current?.querySelector('canvas') || qrRef.current?.querySelector('canvas');
     if (!qrCanvas) return null;
 
-    const width = 800;
-    const height = 1060;
+    // Ultra High Definition Canvas Dimensions (1200 x 1600 px) for crisp print & digital quality
+    const width = 1200;
+    const height = 1600;
     const cardCanvas = document.createElement('canvas');
     cardCanvas.width = width;
     cardCanvas.height = height;
-    const ctx = cardCanvas.getContext('2d');
+    const ctx = cardCanvas.getContext('2d', { alpha: false });
     if (!ctx) return null;
 
-    // 1. Draw rounded card background (white with smooth corners)
-    const radius = 54;
+    // Enable best quality rendering
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // 1. Draw rounded card background (white with smooth high-res corners)
+    const radius = 80;
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
     ctx.moveTo(radius, 0);
@@ -91,44 +97,87 @@ export default function StoreQRModal({
     ctx.fill();
 
     // Subtle outer card border
-    ctx.strokeStyle = '#f3f4f6';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 3;
     ctx.stroke();
 
     // 2. Draw Store Title and Username
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
-    // Store Name
-    ctx.font = '900 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    // Store Name (Large, crisp, uppercase)
+    ctx.font = '900 58px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#111827';
     let displayTitle = displayName.toUpperCase();
-    if (displayTitle.length > 26) {
-      displayTitle = displayTitle.slice(0, 25) + '...';
+    if (displayTitle.length > 28) {
+      displayTitle = displayTitle.slice(0, 27) + '...';
     }
-    ctx.fillText(displayTitle, width / 2, 85);
+    ctx.fillText(displayTitle, width / 2, 130);
 
     // @username
-    ctx.font = '700 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.font = '700 34px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.fillStyle = '#6b7280';
-    ctx.fillText(`@${cleanUser}`, width / 2, 135);
+    ctx.fillText(`@${cleanUser}`, width / 2, 205);
 
-    // 3. Draw QR Code centered
-    const qrSize = 580;
+    // 3. Draw QR Code centered (Ultra Sharp)
+    const qrSize = 880;
     const qrX = (width - qrSize) / 2;
-    const qrY = 185;
+    const qrY = 275;
+
     ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
 
-    // 4. Draw Divider Line
+    // 4. Draw high-fidelity circular center logo badge over QR excavated center
+    try {
+      const logoImg = new Image();
+      logoImg.crossOrigin = 'anonymous';
+      await new Promise((resolve) => {
+        logoImg.onload = resolve;
+        logoImg.onerror = resolve;
+        logoImg.src = activeLogo;
+      });
+
+      if (logoImg.complete && logoImg.naturalWidth > 0) {
+        const centerX = width / 2;
+        const centerY = qrY + qrSize / 2;
+        const badgeRadius = 112; // 224px diameter white circle
+        const logoRadius = 100;  // 200px diameter round logo
+
+        // 1) Circular white badge background
+        ctx.save();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, badgeRadius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2) Circular subtle badge border
+        ctx.strokeStyle = '#e5e7eb';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+
+        // 3) Perfect circle clipping mask for the store logo
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, logoRadius, 0, Math.PI * 2);
+        ctx.clip();
+
+        // 4) Draw image centered
+        const drawSize = logoRadius * 2;
+        ctx.drawImage(logoImg, centerX - logoRadius, centerY - logoRadius, drawSize, drawSize);
+        ctx.restore();
+      }
+    } catch (e) {
+      console.warn('Center logo overlay skipped:', e);
+    }
+
+    // 5. Draw Divider Line
     ctx.beginPath();
     ctx.strokeStyle = '#f3f4f6';
-    ctx.lineWidth = 2.5;
-    ctx.moveTo(70, 830);
-    ctx.lineTo(width - 70, 830);
+    ctx.lineWidth = 3.5;
+    ctx.moveTo(100, 1260);
+    ctx.lineTo(width - 100, 1260);
     ctx.stroke();
 
-    // 5. Draw Footer ("Pide en Ryyco" with icon)
-    const footerY = 920;
+    // 6. Draw Footer ("Pide en Ryyco" with official icon)
+    const footerY = 1400;
     try {
       const iconImg = new Image();
       iconImg.crossOrigin = 'anonymous';
@@ -139,12 +188,11 @@ export default function StoreQRModal({
       });
 
       if (iconImg.complete && iconImg.naturalWidth > 0) {
-        const iconSize = 48;
-        // Calculate text metrics to center everything
-        ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const iconSize = 72;
+        ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         const pideEnWidth = ctx.measureText('Pide en ').width;
         const ryycoWidth = ctx.measureText('Ryyco').width;
-        const totalContentWidth = iconSize + 16 + pideEnWidth + ryycoWidth;
+        const totalContentWidth = iconSize + 22 + pideEnWidth + ryycoWidth;
         const startX = (width - totalContentWidth) / 2;
 
         // Draw icon
@@ -154,22 +202,22 @@ export default function StoreQRModal({
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
         ctx.fillStyle = '#111827';
-        ctx.fillText('Pide en ', startX + iconSize + 16, footerY);
+        ctx.fillText('Pide en ', startX + iconSize + 22, footerY);
 
         // Text "Ryyco"
         ctx.fillStyle = '#fa1324';
-        ctx.fillText('Ryyco', startX + iconSize + 16 + pideEnWidth, footerY);
+        ctx.fillText('Ryyco', startX + iconSize + 22 + pideEnWidth, footerY);
       } else {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.fillStyle = '#111827';
         ctx.fillText('Pide en Ryyco', width / 2, footerY);
       }
     } catch {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.font = '900 48px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.fillStyle = '#111827';
       ctx.fillText('Pide en Ryyco', width / 2, footerY);
     }
@@ -293,7 +341,7 @@ export default function StoreQRModal({
             </div>
 
             {/* QR Canvas with store logo in center */}
-            <div className="p-1 rounded-2xl bg-white">
+            <div className="p-1 rounded-2xl bg-white relative flex items-center justify-center">
               <QRCodeCanvas 
                 value={storeUrl}
                 size={200}
@@ -302,11 +350,19 @@ export default function StoreQRModal({
                 level="H" 
                 imageSettings={{
                   src: activeLogo,
-                  height: 42,
-                  width: 42,
+                  height: 44,
+                  width: 44,
                   excavate: true,
                 }}
               />
+              {/* Circular Logo Badge Overlay in QR Center */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white p-0.5 shadow-sm border border-gray-200 flex items-center justify-center overflow-hidden pointer-events-none">
+                <img 
+                  src={activeLogo} 
+                  alt={displayName} 
+                  className="w-full h-full rounded-full object-cover" 
+                />
+              </div>
             </div>
 
             {/* Powered by Ryyco Footer Badge on Card */}
@@ -390,6 +446,27 @@ export default function StoreQRModal({
             >
               Cerrar
             </button>
+          </div>
+
+          {/* Hidden High-Resolution QR Canvas for ultra-sharp HD downloads */}
+          <div 
+            ref={highResQrRef} 
+            style={{ position: 'fixed', left: '-99999px', top: '-99999px', opacity: 0, pointerEvents: 'none' }}
+            aria-hidden="true"
+          >
+            <QRCodeCanvas 
+              value={storeUrl}
+              size={1024}
+              fgColor="#0b0b0b"
+              bgColor="#ffffff"
+              level="H" 
+              imageSettings={{
+                src: activeLogo,
+                height: 220,
+                width: 220,
+                excavate: true,
+              }}
+            />
           </div>
 
         </div>
