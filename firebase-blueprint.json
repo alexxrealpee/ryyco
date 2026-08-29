@@ -23,6 +23,7 @@
         "googleAnalyticsId": { "type": "string" },
         "whatsappMessageTemplate": { "type": "string" },
         "subscriptionPlan": { "type": "string", "enum": ["basico", "medio", "pro"] },
+        "requestedPlan": { "type": "string", "enum": ["basico", "medio", "pro"] },
         "subscriptionStatus": { "type": "string", "enum": ["trial", "active", "pending_payment", "under_review"] },
         "subscriptionStartDate": { "type": "string" },
         "subscriptionTrialExpires": { "type": "string" },

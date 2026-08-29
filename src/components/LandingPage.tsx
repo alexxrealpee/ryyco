@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   Store, 
@@ -37,9 +37,18 @@ import {
   Rocket,
   Star,
   Headphones,
-  Tag
+  Tag,
+  Mic,
+  Bot,
+  Volume2,
+  Activity,
+  DollarSign,
+  Calendar,
+  MessageSquare
 } from 'lucide-react';
 import LinnkProLogo from './LinnkProLogo';
+import { fetchAllStoresMap } from '../lib/firebase';
+import { UserProfile } from '../types';
 
 interface LandingPageProps {
   onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal', usernameToClaim?: string) => void;
@@ -49,6 +58,96 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   const [storeSlug, setStoreSlug] = useState('');
   const [checking, setChecking] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Partner stores in Ipiales with logos and names
+  const [partnerStores, setPartnerStores] = useState<Array<{
+    name: string;
+    category?: string;
+    logo?: string;
+    username?: string;
+  }>>([
+    {
+      name: "Señor Barril",
+      category: "Parrilla & Asados",
+      logo: "https://images.unsplash.com/photo-1544025162-d76694265947?w=200&auto=format&fit=crop&q=80",
+      username: "senor-barril"
+    },
+    {
+      name: "Comidas Rápidas Sofí",
+      category: "Hamburguesas & Salchipapas",
+      logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&auto=format&fit=crop&q=80",
+      username: "comidas-rapidas-sofi"
+    },
+    {
+      name: "La Casa de los Caldos",
+      category: "Caldos & Tradición",
+      logo: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=200&auto=format&fit=crop&q=80",
+      username: "la-casa-de-los-caldos"
+    },
+    {
+      name: "Las Delicias de Doña Yoli",
+      category: "Panadería & Típicos",
+      logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&auto=format&fit=crop&q=80",
+      username: "las-delicias-de-dona-yoli"
+    }
+  ]);
+
+  useEffect(() => {
+    async function loadStores() {
+      try {
+        const map = await fetchAllStoresMap();
+        if (map && Object.keys(map).length > 0) {
+          const uniqueList: Array<{ name: string; category?: string; logo?: string; username?: string }> = [];
+          const seen = new Set<string>();
+
+          const baseFeatured = [
+            { name: "Señor Barril", category: "Parrilla & Asados", logo: "https://images.unsplash.com/photo-1544025162-d76694265947?w=200&auto=format&fit=crop&q=80", username: "senor-barril" },
+            { name: "Comidas Rápidas Sofí", category: "Hamburguesas & Salchipapas", logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&auto=format&fit=crop&q=80", username: "comidas-rapidas-sofi" },
+            { name: "La Casa de los Caldos", category: "Caldos & Tradición", logo: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=200&auto=format&fit=crop&q=80", username: "la-casa-de-los-caldos" },
+            { name: "Las Delicias de Doña Yoli", category: "Panadería & Típicos", logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&auto=format&fit=crop&q=80", username: "las-delicias-de-dona-yoli" }
+          ];
+
+          baseFeatured.forEach(f => {
+            const foundProfile = Object.values(map).find(p => 
+              p.displayName?.toLowerCase().trim() === f.name.toLowerCase().trim() ||
+              p.username?.toLowerCase().trim() === f.username.toLowerCase().trim()
+            );
+            if (foundProfile && foundProfile.photoURL) {
+              uniqueList.push({
+                name: foundProfile.displayName || f.name,
+                category: foundProfile.category || f.category,
+                logo: foundProfile.photoURL,
+                username: foundProfile.username || f.username
+              });
+            } else {
+              uniqueList.push(f);
+            }
+            seen.add(f.name.toLowerCase().trim());
+          });
+
+          // Add any other active stores registered in the database (up to 8 total)
+          Object.values(map).forEach(p => {
+            const dName = p.displayName || p.username || '';
+            const key = dName.toLowerCase().trim();
+            if (dName && !seen.has(key) && !p.suspended && uniqueList.length < 8) {
+              seen.add(key);
+              uniqueList.push({
+                name: dName,
+                category: p.category || 'Restaurante',
+                logo: p.photoURL || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&auto=format&fit=crop&q=80',
+                username: p.username
+              });
+            }
+          });
+
+          setPartnerStores(uniqueList);
+        }
+      } catch (err) {
+        console.warn("Could not load partner stores map:", err);
+      }
+    }
+    loadStores();
+  }, []);
 
   // Mock State for Restaurant Interactive simulation
   const [mockCategory, setMockCategory] = useState('TODOS');
@@ -103,6 +202,16 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   };
 
   const features = [
+    {
+      icon: <Mic className="w-6 h-6 text-[#E63946]" />,
+      title: "Mesero Virtual IA por Voz Natural",
+      desc: "Tus comensales y clientes pueden ordenar platos hablando con voz natural a un mesero virtual inteligente que responde, recomienda y arma el pedido al instante."
+    },
+    {
+      icon: <Bot className="w-6 h-6 text-[#F4B400]" />,
+      title: "Administrador IA para Propietarios",
+      desc: "Pregúntale por voz a tu panel cómo te fue en el día con ventas, pedidos o tu balance del mes. El Administrador IA te informa métricas y rendimiento financiero en segundos."
+    },
     {
       icon: <QrCode className="w-6 h-6 text-[#E63946]" />,
       title: "Menú Digital y Código QR en Mesa",
@@ -205,120 +314,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             transition={{ duration: 0.5, delay: 0.15 }}
             className="text-sm sm:text-base md:text-lg text-[#A9B2C3] mb-6 max-w-3xl mx-auto leading-relaxed break-words px-2 font-medium"
           >
-            <strong className="text-white">Ryyco</strong> es una plataforma gastronómica inteligente que conecta personas con restaurantes, platos y domicilios. Descubre nuevas opciones, recibe recomendaciones personalizadas y encuentra fácilmente lo que quieres comer.
+            <strong className="text-white">Ryyco</strong> es la plataforma gastronómica impulsada por <strong className="text-[#F4B400]">Inteligencia Artificial</strong>: tus clientes pueden pedir platos por <strong className="text-[#E63946]">voz natural con un Mesero Virtual</strong>, y tú como dueño tienes un <strong className="text-[#F4B400]">Administrador IA por voz</strong> para consultar ventas diarias, pedidos y tu balance del mes en tiempo real.
           </motion.p>
-
-          {/* Prominent Delivery & Directory Banner Button */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.18 }}
-            onClick={() => onNavigate('tienda')}
-            className="w-full max-w-4xl mx-auto my-6 sm:my-8 p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border-2 border-[#E63946] bg-gradient-to-r from-[#0D1117] via-[#111827] to-[#0D1117] shadow-[0_0_30px_rgba(230,57,70,0.35)] hover:border-[#F4B400] transition-all duration-300 cursor-pointer group text-left select-none"
-          >
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 sm:gap-6">
-              
-              {/* Left Column: Delivery CTA */}
-              <div className="flex items-center gap-3.5 sm:gap-4 w-full md:w-auto">
-                {/* Red Circular Icon with Scooter & Food Cloche */}
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-gradient-to-tr from-[#B71C1C] via-[#E63946] to-[#FF5252] flex items-center justify-center shrink-0 shadow-lg shadow-[#E63946]/50 border-2 border-white/20 group-hover:scale-105 transition-transform duration-300">
-                  <svg className="w-9 h-9 sm:w-11 sm:h-11 text-white" viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    {/* Cloche Food Lid */}
-                    <path d="M 28 15 C 28 15, 32 12, 36 12 C 40 12, 44 15, 44 15" strokeWidth="2.5" />
-                    <circle cx="36" cy="11" r="2" fill="currentColor" />
-                    <path d="M 24 24 C 24 17, 48 17, 48 24 Z" fill="currentColor" opacity="0.9" />
-                    <line x1="21" y1="25" x2="51" y2="25" strokeWidth="3.5" />
-                    {/* Scooter */}
-                    <circle cx="21" cy="46" r="6" strokeWidth="3.5" />
-                    <circle cx="48" cy="46" r="6" strokeWidth="3.5" />
-                    <path d="M 12 36 L 21 46 L 36 46 L 42 34 L 48 46" strokeWidth="3.5" />
-                    <path d="M 40 33 C 40 33, 44 26, 44 22 L 38 22" strokeWidth="3.5" />
-                    {/* Motion speed lines */}
-                    <line x1="10" y1="28" x2="16" y2="28" strokeWidth="2.5" />
-                    <line x1="8" y1="33" x2="14" y2="33" strokeWidth="2.5" />
-                  </svg>
-                </div>
-
-                {/* Text & Button */}
-                <div className="flex flex-col items-start justify-center">
-                  <span className="text-[10px] sm:text-xs font-black tracking-widest text-white uppercase">
-                    REALIZA TU
-                  </span>
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-black uppercase tracking-tight leading-none text-white font-sans">
-                    PEDIDO <span className="text-[#F4B400]">A DOMICILIO</span>
-                  </h3>
-                  <p className="text-[11px] sm:text-xs text-[#A9B2C3] font-medium mt-1 leading-snug">
-                    Disfruta tu comida favorita desde la comodidad de tu hogar.
-                  </p>
-                  
-                  <motion.div 
-                    animate={{ 
-                      scale: [1, 1.04, 1],
-                      boxShadow: [
-                        '0 4px 10px rgba(230,57,70,0.3)',
-                        '0 4px 22px rgba(230,57,70,0.85)',
-                        '0 4px 10px rgba(230,57,70,0.3)'
-                      ]
-                    }}
-                    transition={{ 
-                      duration: 1.8, 
-                      repeat: Infinity, 
-                      ease: "easeInOut" 
-                    }}
-                    className="mt-2.5 inline-flex items-center gap-1.5 bg-[#E63946] group-hover:bg-[#D62839] text-white font-black text-xs sm:text-sm px-4 py-1.5 sm:py-2 rounded-full transition-colors duration-200 uppercase tracking-wider cursor-pointer"
-                  >
-                    <span>REALIZA TU PEDIDO</span>
-                    <motion.div
-                      animate={{ x: [0, 5, 0] }}
-                      transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
-                    >
-                      <ChevronRight className="w-4 h-4 stroke-[3]" />
-                    </motion.div>
-                  </motion.div>
-                </div>
-              </div>
-
-              {/* Right Column: Gastronomic Directory Preview */}
-              <div className="w-full md:w-auto border-t md:border-t-0 md:border-l border-[#232B3A] pt-3 md:pt-0 md:pl-6 flex flex-col items-center md:items-start shrink-0">
-                <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-white text-center md:text-left mb-2">
-                  MIRA EL DIRECTORIO GASTRONÓMICO <br className="hidden md:inline" />
-                  <span className="text-[#F4B400]">DE IPIALES</span>
-                </span>
-
-                <div className="flex items-center gap-2 sm:gap-2.5">
-                  {/* Red Store Icon Badge */}
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#E63946] text-white flex items-center justify-center font-black shadow-md border border-white/20">
-                      <Store className="w-5 h-5 text-white" />
-                    </div>
-                    <span className="text-[9px] font-extrabold text-[#E63946]">Todas</span>
-                  </div>
-
-                  {/* Store Badge 1 */}
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black border border-amber-500/50 flex items-center justify-center text-amber-400 font-black text-[9px] text-center p-0.5 shadow-md">
-                      Licorera...
-                    </div>
-                    <span className="text-[9px] font-bold text-[#A9B2C3]">Licorera...</span>
-                  </div>
-
-                  {/* Store Badge 2 */}
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#D62839] text-white flex items-center justify-center font-black text-base shadow-md">
-                      L
-                    </div>
-                    <span className="text-[9px] font-bold text-[#A9B2C3]">La casa...</span>
-                  </div>
-
-                  {/* Red Circle Arrow Button */}
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-[#E63946] group-hover:bg-[#F4B400] group-hover:text-black text-white flex items-center justify-center shadow-lg transition duration-200">
-                    <ArrowRight className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </motion.div>
 
           {/* Subdomain Input claim bar */}
           <motion.div 
@@ -329,7 +326,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           >
             <form onSubmit={handleClaim} className="flex flex-col sm:flex-row gap-2.5 bg-[#111827] border border-[#232B3A] p-2 rounded-2xl shadow-xl">
               <div className="flex items-center flex-grow px-3 sm:px-4 py-2 bg-transparent text-[#A9B2C3] min-w-0">
-                <span className="text-[#A9B2C3] mr-0.5 select-none font-semibold text-xs sm:text-base shrink-0">linnkpro.store/</span>
+                <span className="text-[#A9B2C3] mr-0.5 select-none font-semibold text-xs sm:text-base shrink-0">ryyco.com/</span>
                 <input 
                   type="text" 
                   value={storeSlug}
@@ -372,31 +369,61 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </div>
           </motion.div>
 
-          {/* Restaurant Partners Badge Box */}
+          {/* Restaurant Partners Badge Box with Logos and Names */}
           <motion.div
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.25 }}
-            className="max-w-3xl mx-auto bg-[#111827] border border-[#232B3A] rounded-2xl p-3.5 sm:p-5 text-center shadow-xl"
+            className="max-w-4xl mx-auto bg-[#111827] border border-[#232B3A] rounded-2xl p-4 sm:p-6 text-center shadow-xl"
           >
-            <p className="text-[11px] sm:text-xs uppercase tracking-wider text-[#A9B2C3] font-bold mb-3 flex items-center justify-center gap-1.5">
+            <p className="text-[11px] sm:text-xs uppercase tracking-wider text-[#A9B2C3] font-bold mb-4 sm:mb-6 flex items-center justify-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
-              <span>Ya hacen parte de LinnkPro.Store en Ipiales:</span>
+              <span>Ya hacen parte de <strong className="text-white">Ryyco.com</strong> en Ipiales:</span>
             </p>
-            <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
-              {[
-                "Señor Barril",
-                "Comidas Rápidas Sofí",
-                "La Casa de los Caldos",
-                "Las Delicias de Doña Yoli"
-              ].map((name, idx) => (
-                <span key={idx} className="px-3 py-1.5 rounded-xl bg-[#090B12] border border-[#232B3A] text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 shadow-sm">
-                  <span className="w-2 h-2 rounded-full bg-[#E63946] block animate-pulse shrink-0" />
-                  {name}
-                </span>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 items-start justify-items-center">
+              {partnerStores.map((store, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => onNavigate('tienda')}
+                  className="flex flex-col items-center group cursor-pointer focus:outline-none transition-transform duration-200 hover:-translate-y-1 w-full max-w-[140px]"
+                  title={`Ver tienda de ${store.name}`}
+                >
+                  {/* Circular Logo Container */}
+                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full p-0.5 bg-gradient-to-tr from-[#E63946] via-[#F4B400] to-[#E63946] shadow-lg shadow-[#E63946]/20 group-hover:shadow-[0_0_20px_rgba(230,57,70,0.5)] group-hover:scale-105 transition-all duration-300">
+                    <div className="w-full h-full rounded-full overflow-hidden bg-[#090B12] border-2 border-[#111827] flex items-center justify-center">
+                      {store.logo ? (
+                        <img 
+                          src={store.logo} 
+                          alt={store.name}
+                          referrerPolicy="no-referrer"
+                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1F2937] to-[#111827] text-white font-black text-base sm:text-lg">
+                          {store.name.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                    {/* Active Store Indicator */}
+                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-emerald-500 border-2 border-[#111827] rounded-full shadow-xs" title="Tienda Activa" />
+                  </div>
+
+                  {/* Store Name Underneath */}
+                  <span className="mt-2.5 text-xs sm:text-sm font-extrabold text-white group-hover:text-[#F4B400] transition-colors leading-tight text-center line-clamp-2 px-1">
+                    {store.name}
+                  </span>
+                  {store.category && (
+                    <span className="text-[10px] text-[#A9B2C3] font-medium mt-0.5 text-center line-clamp-1">
+                      {store.category}
+                    </span>
+                  )}
+                </button>
               ))}
             </div>
-            <p className="text-xs text-[#E63946] font-semibold mt-3">
+
+            <p className="text-xs sm:text-sm text-[#E63946] font-semibold mt-5">
               Y cada vez somos más. ¡Únase hoy! Nosotros ponemos la tecnología, la publicidad y los domicilios.
             </p>
           </motion.div>
@@ -413,7 +440,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#E63946]/40 block shrink-0" />
               <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#F4B400]/40 block shrink-0" />
               <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-emerald-500/40 block shrink-0" />
-              <span className="text-[10px] sm:text-xs text-[#A9B2C3] font-mono ml-1.5 sm:ml-3 truncate max-w-[150px] sm:max-w-none">linnkpro.store/panel-vendedor</span>
+              <span className="text-[10px] sm:text-xs text-[#A9B2C3] font-mono ml-1.5 sm:ml-3 truncate max-w-[150px] sm:max-w-none">ryyco.com/panel-vendedor</span>
             </div>
             <span className="bg-[#E63946]/15 text-[#E63946] border border-[#E63946]/30 rounded-full px-2.5 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-black tracking-wider uppercase shrink-0">
               CONSTRUCTOR LIVE
@@ -429,7 +456,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   Diseñado para emprendedores y marcas
                 </h3>
                 <p className="text-[#A9B2C3] text-xs sm:text-sm md:text-base leading-relaxed break-words">
-                  Con el creador de LinnkPro.store, tienes el control absoluto de tu negocio digital. Olvídate de configuraciones confusas o integraciones complejas. Crea tu catálogo, súbelo a la nube, controla tus pedidos en un panel inteligente y comunícate fluidamente con tus clientes.
+                  Con el creador de Ryyco.com, tienes el control absoluto de tu negocio digital. Olvídate de configuraciones confusas o integraciones complejas. Crea tu catálogo, súbelo a la nube, controla tus pedidos en un panel inteligente y comunícate fluidamente con tus clientes.
                 </p>
               </div>
 
@@ -662,7 +689,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                     </div>
                     <span className="text-[3px] font-black text-[#A9B2C3] uppercase tracking-widest block">RESTAURANTE</span>
                     <h6 className="text-[6px] font-black text-white leading-none">Señor Barril</h6>
-                    <span className="text-[5px] font-black text-[#E63946] tracking-wider block mt-0.5">linnkpro.shop/senor-barril</span>
+                    <span className="text-[5px] font-black text-[#E63946] tracking-wider block mt-0.5">ryyco.com/senor-barril</span>
                     <p className="text-[4px] text-[#A9B2C3] mt-1">El mejor sabor a la parrilla de Ipiales en tu mesa o domicilio.</p>
                     
                     <div className="flex items-center justify-center gap-1 mt-1.5 text-[4px] text-[#A9B2C3]">
@@ -678,7 +705,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       ))}
                     </div>
                     
-                    <span className="text-[3px] font-black text-[#A9B2C3] uppercase tracking-widest block mt-3">MENÚ PRO POR ♥ LINNKPRO.STORE</span>
+                    <span className="text-[3px] font-black text-[#A9B2C3] uppercase tracking-widest block mt-3">MENÚ PRO POR ♥ RYYCO.COM</span>
                   </div>
 
                 </div>
@@ -702,6 +729,245 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
           </div>
 
+        </div>
+      </section>
+
+      {/* DEDICATED AI VOICE SECTION: MESERO VIRTUAL & ADMINISTRADOR IA */}
+      <section className="py-20 px-3 sm:px-6 relative overflow-hidden bg-gradient-to-b from-[#090B12] via-[#0D111A] to-[#090B12] border-t border-[#232B3A]">
+        {/* Glow FX Background */}
+        <div className="absolute top-1/3 left-1/4 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-[#E63946]/10 blur-[130px] rounded-full -z-10 pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-[#F4B400]/10 blur-[130px] rounded-full -z-10 pointer-events-none" />
+
+        <div className="max-w-7xl mx-auto">
+          {/* Section Header */}
+          <div className="text-center max-w-3xl mx-auto mb-14 sm:mb-20">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#E63946]/20 to-[#F4B400]/20 border border-[#E63946]/30 text-[#F4B400] text-xs font-black uppercase tracking-wider mb-4 shadow-sm">
+              <Sparkles className="w-4 h-4 text-[#F4B400] animate-pulse" />
+              <span>Inteligencia Artificial con Voz Natural</span>
+            </div>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-4 tracking-tight leading-tight">
+              Pide y administra tu restaurante <br className="hidden sm:inline" />
+              <span className="text-[#E63946]">hablando por voz natural</span>
+            </h2>
+            <p className="text-[#A9B2C3] text-sm sm:text-base md:text-lg leading-relaxed">
+              En <strong className="text-white">Ryyco</strong> revolucionamos la experiencia gastronómica: tus clientes ordenan con un <strong>Mesero Virtual IA</strong> y tú tienes un <strong>Administrador IA</strong> que te reporta ventas del día y del mes al instante.
+            </p>
+          </div>
+
+          {/* Dual AI Pillars Grid */}
+          <div className="grid lg:grid-cols-2 gap-8 items-stretch">
+            
+            {/* PILLAR 1: CLIENTES - MESERO VIRTUAL IA */}
+            <div className="bg-[#111827] border border-[#E63946]/30 hover:border-[#E63946]/70 transition-all duration-300 rounded-3xl p-6 sm:p-8 flex flex-col justify-between relative shadow-2xl group">
+              <div className="absolute -top-3.5 left-6 sm:left-8 bg-gradient-to-r from-[#E63946] to-[#D62839] text-white text-[11px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full shadow-md flex items-center gap-1.5">
+                <Mic className="w-3.5 h-3.5" />
+                <span>Para tus Clientes • Mesero Virtual</span>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-3.5 mb-5 mt-2">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#E63946]/15 border border-[#E63946]/30 text-[#E63946] flex items-center justify-center shrink-0 shadow-inner">
+                    <Mic className="w-6 h-6 sm:w-7 sm:h-7" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-white leading-tight">
+                      Mesero Virtual por Voz Natural
+                    </h3>
+                    <p className="text-xs sm:text-sm text-[#A9B2C3] font-medium">
+                      Tus comensales piden platos hablando en vivo
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-[#A9B2C3] text-xs sm:text-sm leading-relaxed mb-6">
+                  Tus clientes ya no tienen que buscar plato por plato en la pantalla. Solo presionan el micrófono del mesero virtual, le hablan naturalmente y la IA les recomienda opciones, personaliza su plato y lo agrega de inmediato a la orden.
+                </p>
+
+                {/* Simulated Voice Dialogue Box */}
+                <div className="bg-[#090B12] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-3.5 mb-6">
+                  {/* Voice waveform simulation header */}
+                  <div className="flex items-center justify-between border-b border-[#232B3A] pb-2.5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                      <span>Mesero IA en Vivo</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="w-1 h-3 bg-[#E63946] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1 h-5 bg-[#F4B400] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1 h-4 bg-[#E63946] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      <span className="w-1 h-6 bg-[#F4B400] rounded-full animate-bounce" style={{ animationDelay: '450ms' }} />
+                      <span className="w-1 h-3 bg-[#E63946] rounded-full animate-bounce" style={{ animationDelay: '600ms' }} />
+                    </div>
+                  </div>
+
+                  {/* Customer phrase */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      Tú
+                    </div>
+                    <div className="bg-[#1F2937] text-white text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none font-medium leading-relaxed">
+                      🎙️ <em>"Mesero, recomiéndame una hamburguesa especial con tocineta y papas francesas."</em>
+                    </div>
+                  </div>
+
+                  {/* AI Response phrase */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-[#E63946]/20 text-[#E63946] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      IA
+                    </div>
+                    <div className="bg-[#E63946]/10 border border-[#E63946]/20 text-gray-200 text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none leading-relaxed">
+                      <span className="text-[#F4B400] font-bold">Mesero Virtual:</span> "¡Con gusto! Te sugiero la <strong>Hamburguesa Doble Especial ($28.000)</strong>. La he añadido a tu carrito con papas francesas crujientes. ¿Deseas agregar gaseosa o postre?"
+                    </div>
+                  </div>
+                </div>
+
+                {/* Key Benefits List */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-[#A9B2C3] font-semibold mb-6">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Reconocimiento de voz natural fluido</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Carga automática de platos al carrito</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Sugerencias de platos y combos</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Disponible en celular y computador</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('tienda')}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-[#E63946] hover:bg-[#D62839] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#E63946]/25 cursor-pointer"
+                >
+                  <Volume2 className="w-4 h-4" />
+                  <span>Explorar Vitrina con Mesero IA</span>
+                </button>
+              </div>
+            </div>
+
+            {/* PILLAR 2: ADMINISTRADORES - ADMINISTRADOR IA DE VENTAS */}
+            <div className="bg-[#111827] border border-[#F4B400]/30 hover:border-[#F4B400]/70 transition-all duration-300 rounded-3xl p-6 sm:p-8 flex flex-col justify-between relative shadow-2xl group">
+              <div className="absolute -top-3.5 left-6 sm:left-8 bg-gradient-to-r from-[#F4B400] to-[#E0A600] text-black text-[11px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full shadow-md flex items-center gap-1.5">
+                <Bot className="w-3.5 h-3.5 text-black" />
+                <span>Para Propietarios • Administrador IA</span>
+              </div>
+
+              <div>
+                <div className="flex items-center gap-3.5 mb-5 mt-2">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#F4B400]/15 border border-[#F4B400]/30 text-[#F4B400] flex items-center justify-center shrink-0 shadow-inner">
+                    <Bot className="w-6 h-6 sm:w-7 sm:h-7" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl sm:text-2xl font-black text-white leading-tight">
+                      Administrador IA de tu Negocio
+                    </h3>
+                    <p className="text-xs sm:text-sm text-[#A9B2C3] font-medium">
+                      Habla con tu panel para saber cómo va tu restaurante
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-[#A9B2C3] text-xs sm:text-sm leading-relaxed mb-6">
+                  Como dueño o encargado, no tienes que perder tiempo analizando tablas complejas. Habla por voz con tu Administrador IA y pregúntale cómo te fue hoy, cuántos pedidos se hicieron o cómo van las ventas acumuladas del mes.
+                </p>
+
+                {/* Simulated Voice Dialogue Box */}
+                <div className="bg-[#090B12] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-3.5 mb-6">
+                  {/* Status header */}
+                  <div className="flex items-center justify-between border-b border-[#232B3A] pb-2.5">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#F4B400]">
+                      <Activity className="w-3.5 h-3.5 text-[#F4B400] animate-pulse" />
+                      <span>Administrador IA Activo</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-[#A9B2C3] bg-[#1F2937] px-2 py-0.5 rounded-md">
+                      Métricas en Tiempo Real
+                    </span>
+                  </div>
+
+                  {/* Admin phrase 1 */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      Tú
+                    </div>
+                    <div className="bg-[#1F2937] text-white text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none font-medium leading-relaxed">
+                      🎙️ <em>"¿Cómo me fue hoy en ventas y pedidos?"</em>
+                    </div>
+                  </div>
+
+                  {/* AI Response phrase 1 */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-[#F4B400]/20 text-[#F4B400] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      IA
+                    </div>
+                    <div className="bg-[#F4B400]/10 border border-[#F4B400]/20 text-gray-200 text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none leading-relaxed">
+                      <span className="text-[#F4B400] font-bold">Administrador IA:</span> "Hoy registraste <strong>18 pedidos completados</strong> por un total de <strong>$468.000 COP</strong> en ventas. Tu plato más pedido fue la <em>Salchipapa Especial</em>."
+                    </div>
+                  </div>
+
+                  {/* Admin phrase 2 */}
+                  <div className="flex items-start gap-2.5 pt-1">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      Tú
+                    </div>
+                    <div className="bg-[#1F2937] text-white text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none font-medium leading-relaxed">
+                      🎙️ <em>"¿Y cómo nos fue en el balance del mes?"</em>
+                    </div>
+                  </div>
+
+                  {/* AI Response phrase 2 */}
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-[#F4B400]/20 text-[#F4B400] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                      IA
+                    </div>
+                    <div className="bg-[#F4B400]/10 border border-[#F4B400]/20 text-gray-200 text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none leading-relaxed">
+                      <span className="text-[#F4B400] font-bold">Administrador IA:</span> "En el mes acumulas <strong>$11.450.000 COP en ventas</strong> (+24% vs mes anterior) con <strong>420 pedidos atendidos</strong> y 0% de comisiones retenidas."
+                    </div>
+                  </div>
+                </div>
+
+                {/* Key Benefits List */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-[#A9B2C3] font-semibold mb-6">
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Reporte de ventas del día y del mes por voz</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Control de pedidos pendientes y despachos</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Identificación de productos más vendidos</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Voz natural y respuestas en tiempo real</span>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('signup')}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-[#F4B400] hover:bg-[#e0a600] text-black font-black text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#F4B400]/20 cursor-pointer"
+                >
+                  <Bot className="w-4 h-4 text-black" />
+                  <span>Crear mi Tienda y Obtener Asistente IA</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
         </div>
       </section>
 
@@ -964,7 +1230,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </p>
         </div>
 
-        <p className="font-semibold text-gray-500 text-[11px]">© 2026 Ryyco (linnkpro.store). Todos los derechos reservados.</p>
+        <p className="font-semibold text-gray-500 text-[11px]">© 2026 Ryyco (ryyco.com). Todos los derechos reservados.</p>
         <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
           <button 
             onClick={() => {
@@ -1080,7 +1346,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               {/* Header */}
               <div className="border-b-2 border-emerald-600 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                 <div>
-                  <h2 className="text-2xl font-black text-gray-900 font-sans tracking-tight">LinnkPro.Store</h2>
+                  <h2 className="text-2xl font-black text-gray-900 font-sans tracking-tight">Ryyco.com</h2>
                   <p className="text-xs text-gray-500 font-sans uppercase tracking-wider font-semibold">
                     Tecnología, Publicidad y Domicilios para Restaurantes • Ipiales, Nariño
                   </p>
@@ -1088,7 +1354,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <div className="text-left sm:text-right text-xs text-gray-500 font-sans">
                   <p className="font-bold text-gray-800">Atención Propietarios</p>
                   <p>WhatsApp: 321 973 0865</p>
-                  <p>www.linnkpro.store</p>
+                  <p>www.ryyco.com</p>
                 </div>
               </div>
 
@@ -1101,7 +1367,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
               {/* Main Copy Paragraphs */}
               <p className="text-base leading-relaxed">
-                Cada día más personas piden su comida desde el celular. En <strong>LinnkPro.Store</strong> le ayudamos a llegar a más clientes, aumentar sus ventas y ofrecer una mejor experiencia, sin complicaciones. Nos encargamos de la <strong>tecnología, publicidad y domicilios</strong> para que usted se concentre en preparar excelentes platos.
+                Cada día más personas piden su comida desde el celular. En <strong>Ryyco.com</strong> le ayudamos a llegar a más clientes, aumentar sus ventas y ofrecer una mejor experiencia, sin complicaciones. Nos encargamos de la <strong>tecnología, publicidad y domicilios</strong> para que usted se concentre en preparar excelentes platos.
               </p>
 
               {/* Bullet Points / Key Pillars */}
@@ -1133,6 +1399,12 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <div className="flex items-start gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-600 mt-1.5 shrink-0" />
                   <p>
+                    <strong>Inteligencia Artificial por Voz Natural:</strong> Sus clientes pueden pedir platos hablando directamente con un mesero virtual por voz natural, y usted como propietario puede preguntarle a la IA cómo le fue en el día con ventas y pedidos, o consultar su balance mensual al instante.
+                  </p>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 mt-1.5 shrink-0" />
+                  <p>
                     <strong>Panel sencillo y en tiempo real:</strong> Desde un panel muy intuitivo, puede agregar platos, cambiar precios, actualizar fotos y recibir pedidos en tiempo real.
                   </p>
                 </div>
@@ -1140,14 +1412,34 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
               {/* Partner Restaurants Callout */}
               <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center font-sans">
-                <p className="text-xs uppercase tracking-wider text-emerald-800 font-bold mb-2">
-                  Ya hacen parte de LinnkPro.Store en Ipiales:
+                <p className="text-xs uppercase tracking-wider text-emerald-800 font-bold mb-3">
+                  Ya hacen parte de Ryyco.com en Ipiales:
                 </p>
-                <div className="flex flex-wrap justify-center gap-2 text-sm font-extrabold text-gray-900 mb-2">
-                  <span className="bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs">Señor Barril</span>
-                  <span className="bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs">Comidas Rápidas Sofí</span>
-                  <span className="bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs">La Casa de los Caldos</span>
-                  <span className="bg-white px-3 py-1 rounded-lg border border-emerald-200 shadow-xs">Las Delicias de Doña Yoli</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 justify-items-center mb-3">
+                  {partnerStores.slice(0, 4).map((store, idx) => (
+                    <div key={idx} className="flex flex-col items-center text-center">
+                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-emerald-300 bg-white shadow-xs mb-1.5 flex items-center justify-center">
+                        {store.logo ? (
+                          <img 
+                            src={store.logo} 
+                            alt={store.name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="font-black text-emerald-800 text-sm">{store.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <span className="text-xs font-black text-gray-900 leading-tight max-w-[110px]">
+                        {store.name}
+                      </span>
+                      {store.category && (
+                        <span className="text-[9px] text-gray-500 font-semibold">
+                          {store.category}
+                        </span>
+                      )}
+                    </div>
+                  ))}
                 </div>
                 <p className="text-xs text-emerald-700 font-semibold">
                   Y cada vez somos más. Únase hoy a la red gastronómica líder.
@@ -1161,7 +1453,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   Usted se dedica a lo que mejor sabe hacer: <strong>preparar deliciosa comida.</strong>
                 </p>
                 <p className="text-xl font-black text-emerald-700 tracking-tight mt-3">
-                  Más clientes. Más pedidos. Más ventas. LinnkPro.Store.
+                  Más clientes. Más pedidos. Más ventas. Ryyco.com.
                 </p>
               </div>
             </div>

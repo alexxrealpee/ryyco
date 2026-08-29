@@ -2038,10 +2038,10 @@ export function findStoreForProduct(
 
   return {
     uid: fallbackUid,
-    email: `${fallbackUsername || 'store'}@linnkpro.store`,
+    email: `${fallbackUsername || 'store'}@ryyco.com`,
     username: fallbackUsername,
     displayName: fallbackDisplayName,
-    bio: 'Restaurante y tienda oficial en LinnkPro',
+    bio: 'Restaurante y tienda oficial en Ryyco',
     role: 'user',
     plan: 'pro',
     isClosed: false,
@@ -2400,7 +2400,7 @@ export function getPlanProductLimit(plan?: string | null): number {
 /**
  * Checks whether subscription is expired/suspended and provides status info.
  */
-export function isSubscriptionExpiredOrSuspended(user?: { subscriptionPaidUntil?: string; suspended?: boolean; subscriptionStatus?: string } | null): {
+export function isSubscriptionExpiredOrSuspended(user?: { subscriptionPaidUntil?: string; subscriptionTrialExpires?: string; suspended?: boolean; subscriptionStatus?: string } | null): {
   isExpired: boolean;
   isSuspended: boolean;
   effectiveStatus: string;
@@ -2409,6 +2409,14 @@ export function isSubscriptionExpiredOrSuspended(user?: { subscriptionPaidUntil?
 
   if (user.suspended || user.subscriptionStatus === 'suspended') {
     return { isExpired: true, isSuspended: true, effectiveStatus: 'suspended' };
+  }
+
+  // Check 7-day trial expiration
+  if (user.subscriptionTrialExpires && user.subscriptionStatus !== 'active') {
+    const trialExpDate = new Date(user.subscriptionTrialExpires);
+    if (!isNaN(trialExpDate.getTime()) && trialExpDate.getTime() < Date.now()) {
+      return { isExpired: true, isSuspended: true, effectiveStatus: 'expired' };
+    }
   }
 
   if (!user.subscriptionPaidUntil) {

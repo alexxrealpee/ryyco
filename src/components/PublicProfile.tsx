@@ -657,7 +657,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : 'Pago contra Entrega'}*\n`;
     if (order.proofImage) {
-      msg += `📸 *Comprobante de compra:* Adjunto en linnkpro.store\n`;
+      msg += `📸 *Comprobante de compra:* Adjunto en ryyco.com\n`;
     }
     msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
 
@@ -720,7 +720,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     );
   }
 
-  if (profile.suspended || profile.subscriptionStatus === 'suspended') {
+  const isTrialExpired = Boolean(
+    profile.subscriptionTrialExpires &&
+    profile.subscriptionStatus !== 'active' &&
+    new Date(profile.subscriptionTrialExpires).getTime() < Date.now()
+  );
+
+  const isStoreSuspended = profile.suspended || 
+    profile.subscriptionStatus === 'suspended' || 
+    profile.subscriptionStatus === 'expired' || 
+    isTrialExpired;
+
+  if (isStoreSuspended) {
     const whatsappContact = "3219730865";
     const waClean = "573219730865";
     const waMsg = encodeURIComponent(`Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username} (${profile.displayName || 'Tienda'}).`);
@@ -740,7 +751,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
           <div className="inline-flex items-center gap-2 px-3.5 py-1 bg-red-500/10 border border-red-500/20 rounded-full text-red-400 text-[11px] font-black tracking-widest uppercase mb-3">
             <Store className="w-3.5 h-3.5" />
-            <span>TIENDA SUSPENDIDA</span>
+            <span>{isTrialExpired ? 'PRUEBA 7 DÍAS FINALIZADA' : 'TIENDA SUSPENDIDA'}</span>
           </div>
 
           <h2 className="text-2xl font-black text-white mb-1 tracking-tight">
@@ -756,7 +767,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               Realiza el pago de tu tienda para seguir vendiendo
             </h3>
             <p className="text-xs text-amber-200/80 mt-1.5 font-medium">
-              Esta tienda se encuentra suspendida temporalmente por vencimiento de suscripción.
+              {isTrialExpired 
+                ? 'El período de prueba gratuito de 1 semana (7 días) ha finalizado. Realiza el pago del Plan Básico ($49.000 COP) y sube tu comprobante para que tus productos vuelvan a ser visibles a tus clientes.'
+                : 'Esta tienda se encuentra suspendida temporalmente por vencimiento de suscripción.'}
             </p>
           </div>
 
@@ -1785,15 +1798,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               )}
             </div>
             <div>
-              <span className="text-[9px] font-black tracking-widest uppercase text-gray-500 block mb-1">PRO PIETARIO</span>
+              <span className="text-[9px] font-black tracking-widest uppercase text-gray-500 block mb-1">PROPIETARIO</span>
               <h3 className="text-base font-black" style={{ color: activeTheme.cardTextColor }}>{profile.displayName}</h3>
               <a 
-                href={`https://linnkpro.store/${profile.username}`}
+                href={`https://ryyco.com/${profile.username}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-[11px] font-bold text-emerald-400 hover:underline block"
               >
-                linnkpro.store/{profile.username}
+                ryyco.com/{profile.username}
               </a>
             </div>
           </div>
@@ -1809,10 +1822,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
           {/* Social connections & Contact metadata */}
           <div className="flex flex-col items-center md:items-end gap-3.5 min-w-[220px]">
-            {(profile.location || profile.phone || profile.email) && (
+            {(profile.location || profile.email) && (
               <div className="flex flex-col gap-1.5 text-xs font-semibold opacity-75 items-center md:items-end">
                 {profile.location && <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {profile.location}</span>}
-                {profile.phone && <span className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {profile.phone}</span>}
                 {profile.email && <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {profile.email}</span>}
               </div>
             )}
@@ -1861,7 +1873,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         {/* Humble system credits footer */}
         <div className="text-center opacity-40 hover:opacity-100 transition-opacity z-10 mt-10 border-t border-white/5 pt-6">
           <a href={window.location.origin} className="text-[9px] font-black tracking-widest uppercase flex items-center justify-center gap-1 text-current">
-            TIENDA PRO POR <span className="text-red-500">♥</span> linnkpro.store
+            TIENDA PRO POR <span className="text-red-500">♥</span> ryyco.com
           </a>
         </div>
       </footer>

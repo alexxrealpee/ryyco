@@ -145,12 +145,12 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
     const profile = currentProduct ? profiles[currentProduct.userId] : null;
     const url = window.location.href;
     const text = currentProduct 
-      ? `Mira este producto en linnkpro.store: ${currentProduct.name} - ${profile?.displayName || 'LinnkPro'}`
-      : 'Mira el carrusel de productos en linnkpro.store';
+      ? `Mira este producto en ryyco.com: ${currentProduct.name} - ${profile?.displayName || 'Ryyco'}`
+      : 'Mira el carrusel de productos en ryyco.com';
 
     if (navigator.share) {
       try {
-        await navigator.share({ title: currentProduct?.name || 'Carrusel LinnkPro', text, url });
+        await navigator.share({ title: currentProduct?.name || 'Carrusel Ryyco', text, url });
       } catch (err) {
         // Fallback to copy
       }
@@ -161,7 +161,7 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
     }
   };
 
-  // Dedicated navigation to Tienda General (linnkpro.store/tienda)
+  // Dedicated navigation to Tienda General (ryyco.com/tienda)
   const handleGoToTienda = () => {
     if (onNavigateToTienda) {
       onNavigateToTienda();
@@ -204,7 +204,7 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
   const cleanPhone = rawPhone.replace(/\D/g, '');
   const waPhone = cleanPhone.length === 10 ? `57${cleanPhone}` : cleanPhone;
   const waMessage = activeProduct 
-    ? encodeURIComponent(`¡Hola! Vi el producto *${activeProduct.name}* ($${activeProduct.price?.toLocaleString('es-CO')}) en el carrusel de linnkpro.store y me gustaría realizar un pedido.`)
+    ? encodeURIComponent(`¡Hola! Vi el producto *${activeProduct.name}* ($${activeProduct.price?.toLocaleString('es-CO')}) en el carrusel de ryyco.com y me gustaría realizar un pedido.`)
     : '';
 
   return (

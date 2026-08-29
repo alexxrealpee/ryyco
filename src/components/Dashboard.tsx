@@ -66,7 +66,8 @@ import {
   Download,
   ShieldCheck,
   Headphones,
-  Phone
+  Phone,
+  Zap
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -105,6 +106,8 @@ import BankSettings from './BankSettings';
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
 import LinnkProIsotype from './LinnkProIsotype';
 import { formatColombianPhoneWith57 } from './PublicProfile';
+import { BasicPlanTrialModal } from './BasicPlanTrialModal';
+import { DashboardTrialBanner } from './DashboardTrialBanner';
 
 export const RESTAURANT_CATEGORIES = [
   '🍔 Hamburguesas',
@@ -465,6 +468,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [isCompressingLogo, setIsCompressingLogo] = useState(false);
   const [isCompressingBanner, setIsCompressingBanner] = useState(false);
   const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [showBasicTrialModal, setShowBasicTrialModal] = useState(false);
   
   // Detail Order overlay state
   const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
@@ -752,6 +756,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setIsSavingQuickWhatsApp(true);
     setQuickWhatsAppError('');
     try {
+      const isFirstProduct = !editingProd && products.length === 0;
       const updatedProfile: UserProfile = {
         ...profile,
         ownerWhatsapp: cleanOwner,
@@ -759,12 +764,25 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         whatsapp: cleanCustomer || cleanOwner,
         phone: cleanOwner
       };
+
+      const isBasic = (profile.subscriptionPlan || profile.plan || 'basico') === 'basico';
+      if ((products.length >= 1 || isFirstProduct) && isBasic && profile.subscriptionStatus !== 'active') {
+        if (!updatedProfile.subscriptionTrialExpires) {
+          updatedProfile.subscriptionTrialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+          updatedProfile.subscriptionStatus = 'trial';
+        }
+      }
+
       await saveProfile(updatedProfile);
       setProfile(updatedProfile);
       setIsWhatsAppRequiredModalOpen(false);
       
-      // Immediately open product creation modal!
-      triggerAddProductForm(updatedProfile);
+      if (products.length >= 1 && isBasic && profile.subscriptionStatus !== 'active') {
+        setShowBasicTrialModal(true);
+      } else {
+        // Immediately open product creation modal!
+        triggerAddProductForm(updatedProfile);
+      }
     } catch (err) {
       console.error("Error guardando WhatsApp:", err);
       setQuickWhatsAppError("No se pudo guardar el número de WhatsApp. Inténtalo de nuevo.");
@@ -790,7 +808,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     const userPlan = currentProf.subscriptionPlan || currentProf.plan || 'basico';
     const limit = getPlanProductLimit(userPlan);
     if (products.length >= limit) {
-      alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Avanzado' : 'Básico'}) te permite subir hasta ${limit} productos.\n\nPara poder subir más productos, por favor actualiza tu plan en "Suscripción y Pagos".`);
+      if (currentProf.subscriptionStatus === 'under_review' && currentProf.requestedPlan) {
+        const reqPlanName = currentProf.requestedPlan === 'medio' ? 'Plan Medio (12 productos)' : 'Plan Avanzado (24 productos)';
+        alert(`¡Límite de productos alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${limit} productos).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo de productos.`);
+      } else {
+        alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${limit} productos.\n\nPara pasar al Plan Medio (hasta 12 productos), ingresa a "Suscripción y Pagos", realiza la transferencia y envía tu comprobante de pago para que el Administrador lo apruebe.`);
+      }
       setActiveTab('subscription');
       return;
     }
@@ -890,7 +913,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
     if (!editingProd) {
       if (products.length >= limit) {
-        alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Avanzado' : 'Básico'}) te permite subir hasta ${limit} productos.\n\nPor favor, cancela la creación y actualiza tu plan en "Suscripción y Pagos" para añadir más productos.`);
+        if (profile.subscriptionStatus === 'under_review' && profile.requestedPlan) {
+          const reqPlanName = profile.requestedPlan === 'medio' ? 'Plan Medio (12 productos)' : 'Plan Avanzado (24 productos)';
+          alert(`¡Límite de productos alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${limit} productos).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo.`);
+        } else {
+          alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${limit} productos.\n\nPara pasar al Plan Medio (hasta 12 productos), ingresa a "Suscripción y Pagos", realiza la transferencia y envía tu comprobante de pago para que el Administrador lo apruebe.`);
+        }
         setActiveTab('subscription');
         setIsAddingProd(false);
         return;
@@ -932,6 +960,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
     try {
       setIsSavingProduct(true);
+      const isFirstProductCreation = !editingProd && products.length === 0;
       const saved = await saveProduct(payload);
       if (editingProd) {
         setProducts(prev => {
@@ -949,6 +978,23 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
       setIsAddingProd(false);
       setEditingProd(null);
+
+      // Check if this is the first product created with WhatsApp in Basic Plan -> Launch 7-Day Reverse Clock Trial Modal
+      const hasWhatsApp = Boolean((profile.ownerWhatsapp || profile.whatsapp || profile.phone || '').replace(/\D/g, '').length >= 7);
+      const isBasicPlan = (profile.subscriptionPlan || profile.plan || 'basico') === 'basico';
+
+      if (isFirstProductCreation && hasWhatsApp && isBasicPlan && profile.subscriptionStatus !== 'active') {
+        const trialExpires = profile.subscriptionTrialExpires || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const updatedProf: UserProfile = {
+          ...profile,
+          subscriptionPlan: 'basico',
+          subscriptionStatus: 'trial',
+          subscriptionTrialExpires: trialExpires
+        };
+        setProfile(updatedProf);
+        saveProfile(updatedProf).catch(console.error);
+        setShowBasicTrialModal(true);
+      }
     } catch (e) {
       console.error("Error saving product:", e);
       alert("Ocurrió un error al intentar guardar el producto. Por favor intenta de nuevo.");
@@ -1445,11 +1491,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   {(profile.subscriptionPlan || profile.plan) === 'medio' ? 'Plan Medio' : (profile.subscriptionPlan || profile.plan) === 'pro' || (profile.subscriptionPlan || profile.plan) === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}
                 </span>
                 <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
-                  profile.subscriptionStatus === 'trial' ? 'bg-emerald-450 text-black' :
+                  profile.subscriptionStatus === 'trial' ? 'bg-amber-400 text-black' :
                   profile.subscriptionStatus === 'active' ? 'bg-indigo-500 text-white' :
                   profile.subscriptionStatus === 'under_review' ? 'bg-amber-500 text-black' : 'bg-red-500 text-white'
                 }`}>
-                  {profile.subscriptionStatus === 'trial' ? 'MES GRATIS' :
+                  {profile.subscriptionStatus === 'trial' ? '7 DÍAS GRATIS' :
                    profile.subscriptionStatus === 'active' ? 'ACTIVO' :
                    profile.subscriptionStatus === 'under_review' ? 'REVISIÓN' : 'VENCIDO'}
                 </span>
@@ -1475,7 +1521,23 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <span className="text-xs text-gray-500 font-semibold tracking-wider">Cargando panel de control...</span>
             </div>
           ) : (
-            <AnimatePresence mode="wait">
+            <>
+              {/* Sticky 7-Day Trial Reverse Clock Banner */}
+              <DashboardTrialBanner 
+                profile={profile}
+                productsCount={products.length}
+                onGoToPayment={() => {
+                  setActiveTab('subscription');
+                  setSelectedSubPlan('basico');
+                  setTimeout(() => {
+                    const el = document.getElementById('report-payment-section');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }, 100);
+                }}
+                onOpenModal={() => setShowBasicTrialModal(true)}
+              />
+
+              <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
                 initial={{ opacity: 0, y: 10 }}
@@ -2357,7 +2419,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       <div className="bg-gray-950 border border-gray-900 rounded-3xl p-12 text-center text-gray-550 flex flex-col items-center justify-center">
                         <ShoppingBag className="w-12 h-12 mb-3 opacity-35 animate-bounce text-indigo-400" />
                         <h3 className="font-extrabold text-white text-sm mb-1">Aún no registras ventas</h3>
-                        <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">Coloca enlaces a tus redes, comparte tu subdominio de linnkpro.store, ¡y tus clientes comenzarán a enviar órdenes!</p>
+                        <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">Coloca enlaces a tus redes, comparte tu subdominio de ryyco.com, ¡y tus clientes comenzarán a enviar órdenes!</p>
                         <div className="flex flex-col sm:flex-row gap-2.5 items-center justify-center">
                           <button
                             type="button"
@@ -2682,7 +2744,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <div>
                           <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Enlace / Nombre de Usuario de tu Tienda</label>
                           <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-500">
-                            <span className="bg-gray-950 text-gray-400 px-3 py-2 flex items-center text-xs font-bold border-r border-gray-850 select-none">linnkpro.store/</span>
+                            <span className="bg-gray-950 text-gray-400 px-3 py-2 flex items-center text-xs font-bold border-r border-gray-850 select-none">ryyco.com/</span>
                             <input
                               type="text"
                               required
@@ -2697,7 +2759,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </div>
                           {checkingUsername && <p className="text-[10px] text-indigo-400 mt-1">Verificando disponibilidad...</p>}
                           {usernameError && <p className="text-[10px] text-red-105 mt-1 font-semibold">{usernameError}</p>}
-                          <p className="text-[9px] text-gray-500 mt-1 font-semibold">Este enlace define la URL pública de tu negocio (ej. linnkpro.store/compratuuco).</p>
+                          <p className="text-[9px] text-gray-500 mt-1 font-semibold">Este enlace define la URL pública de tu negocio (ej. ryyco.com/compratuuco).</p>
                         </div>
 
                         <div>
@@ -3986,7 +4048,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block border-b border-gray-900 pb-2">Estado de Cuenta</span>
                         
                         <div>
-                          <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Plan Actual</p>
+                          <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Plan Activo</p>
                           <h3 className="text-base font-extrabold text-white uppercase mt-0.5">
                             {(profile.subscriptionPlan || profile.plan) === 'medio' ? 'Plan Medio' : 
                              (profile.subscriptionPlan || profile.plan) === 'pro' || (profile.subscriptionPlan || profile.plan) === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}
@@ -3994,19 +4056,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         <div>
-                          <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Estado de Pago</p>
+                          <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Estado de Suscripción</p>
                           <div className="mt-1">
                             {profile.subscriptionStatus === 'trial' || !profile.subscriptionStatus ? (
                               <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                Primer Mes Gratis
+                                Primer Mes Gratis (Básico)
                               </span>
                             ) : profile.subscriptionStatus === 'active' ? (
                               <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                                 Activo • Pagado
                               </span>
                             ) : profile.subscriptionStatus === 'under_review' ? (
-                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                                En Revisión
+                              <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                                Comprobante en Revisión
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 text-[9px] font-black uppercase rounded bg-red-500/10 text-red-400 border border-red-500/20">
@@ -4015,6 +4077,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             )}
                           </div>
                         </div>
+
+                        {profile.subscriptionStatus === 'under_review' && profile.requestedPlan && (
+                          <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl space-y-1">
+                            <p className="text-[10px] font-black text-amber-300 uppercase tracking-wider">Solicitud de Ascenso</p>
+                            <p className="text-xs font-bold text-white">
+                              {profile.requestedPlan === 'medio' ? 'Plan Medio ($79.000 COP)' : profile.requestedPlan === 'pro' ? 'Plan Avanzado ($99.000 COP)' : 'Plan Básico ($49.000 COP)'}
+                            </p>
+                            <p className="text-[10px] text-amber-200/80 leading-snug">
+                              Pendiente de verificación y aprobación por el Administrador. Tu tienda continúa operando en Plan Básico.
+                            </p>
+                          </div>
+                        )}
 
                         <div>
                           <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Cupo de Productos</p>
@@ -4030,13 +4104,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         {(profile.subscriptionStatus === 'trial' || !profile.subscriptionStatus) && (
-                          <div className="bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-xl text-[10px] text-emerald-300 font-semibold leading-relaxed">
-                            🎁 Tu primer mes es gratuito. No se cobrará comisión. Al concluir el mes, podrás reportar tu transferencia para mantener el servicio activo.
+                          <div className="bg-amber-500/5 border border-amber-500/15 p-3 rounded-xl text-[10px] text-amber-200 font-semibold leading-relaxed">
+                            🎁 Tu período inicial es de <strong>1 semana (7 días) de prueba gratis</strong> en Plan Básico (hasta 5 productos). Al concluir los 7 días, los productos se ocultarán a los clientes si no se ha validado tu comprobante de pago ($49.000 COP/mes).
                           </div>
                         )}
                         {profile.subscriptionStatus === 'under_review' && (
                           <div className="bg-amber-500/5 border border-amber-500/10 p-3 rounded-xl text-[10px] text-amber-300 font-semibold leading-relaxed">
-                            ⏱️ Tu comprobante de transferencia está en cola de aprobación. Sigue disfrutando de tu tienda mientras validamos el pago.
+                            ⏱️ Tu comprobante de transferencia bancaria está en cola de verificación. En cuanto el Administrador apruebe el pago, tu nuevo plan y cupo de productos se activarán automáticamente.
                           </div>
                         )}
                       </div>
@@ -4046,30 +4120,46 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         
                         {/* 1. SELECT / CHANGE PLAN GRID */}
                         <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4">
-                          <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block">Planes Disponibles</span>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block">Planes Disponibles</span>
+                              <p className="text-[11px] text-gray-500 font-sans mt-0.5">Selecciona el plan al que deseas ascender o renovar. Para activarlo se requiere comprobante de pago y aprobación del Administrador.</p>
+                            </div>
+                          </div>
                           
                           <div className="grid sm:grid-cols-3 gap-4">
                             {[
-                              { id: 'basico', name: 'Plan Básico', price: 49000, limit: 5, desc: 'Hasta 5 productos para tu inicio de tu negocio.' },
+                              { id: 'basico', name: 'Plan Básico', price: 49000, limit: 5, desc: 'Hasta 5 productos para el inicio de tu negocio.' },
                               { id: 'medio', name: 'Plan Medio', price: 79000, limit: 12, desc: 'Hasta 12 productos para tiendas en crecimiento.' },
                               { id: 'pro', name: 'Plan Avanzado', price: 99000, limit: 24, desc: 'Hasta 24 productos para marcas de alto calibre.' }
                             ].map((pl) => {
-                              const isCurrent = (profile.subscriptionPlan === pl.id) || (!profile.subscriptionPlan && pl.id === 'basico');
+                              const isCurrentActive = (profile.subscriptionPlan === pl.id) || (!profile.subscriptionPlan && pl.id === 'basico');
+                              const isPendingReview = profile.subscriptionStatus === 'under_review' && profile.requestedPlan === pl.id;
+                              const isSelectedForPayment = selectedSubPlan === pl.id;
+
                               return (
                                 <div 
                                   key={pl.id}
-                                  className={`p-4 rounded-xl border flex flex-col justify-between space-y-3.5 transition ${
-                                    isCurrent 
-                                      ? 'border-emerald-500 bg-emerald-500/5' 
+                                  className={`p-4 rounded-2xl border flex flex-col justify-between space-y-3.5 transition ${
+                                    isCurrentActive 
+                                      ? 'border-emerald-500/70 bg-emerald-500/5 shadow-md shadow-emerald-500/5' 
+                                      : isPendingReview
+                                      ? 'border-amber-500/60 bg-amber-500/5'
+                                      : isSelectedForPayment
+                                      ? 'border-indigo-500/70 bg-indigo-500/5'
                                       : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                                   }`}
                                 >
                                   <div>
                                     <div className="flex justify-between items-start">
                                       <h4 className="text-xs font-black text-white">{pl.name}</h4>
-                                      {isCurrent && (
-                                        <span className="text-[8px] bg-emerald-450 text-black font-extrabold uppercase px-1.5 py-0.5 rounded">Actual</span>
-                                      )}
+                                      {isCurrentActive ? (
+                                        <span className="text-[8px] bg-emerald-450 text-black font-extrabold uppercase px-1.5 py-0.5 rounded">Activo</span>
+                                      ) : isPendingReview ? (
+                                        <span className="text-[8px] bg-amber-400 text-black font-extrabold uppercase px-1.5 py-0.5 rounded">En Revisión</span>
+                                      ) : isSelectedForPayment ? (
+                                        <span className="text-[8px] bg-indigo-500 text-white font-extrabold uppercase px-1.5 py-0.5 rounded">Seleccionado</span>
+                                      ) : null}
                                     </div>
                                     <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed font-semibold">{pl.desc}</p>
                                   </div>
@@ -4077,22 +4167,32 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     <div className="text-lg font-mono font-extrabold text-white">${pl.price.toLocaleString()} <span className="text-[10px] text-gray-500 italic">COP/mes</span></div>
                                     <div className="text-[9px] text-indigo-400 font-bold mt-1 uppercase tracking-wider">{pl.limit} Productos Máx.</div>
                                     
-                                    {!isCurrent && (
+                                    {isCurrentActive ? (
+                                      <div className="w-full mt-3 h-8 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-extrabold text-[10px] rounded-xl flex items-center justify-center gap-1 uppercase tracking-wider">
+                                        <Check className="w-3 h-3 stroke-[3]" /> Plan Actual
+                                      </div>
+                                    ) : isPendingReview ? (
+                                      <div className="w-full mt-3 h-8 bg-amber-500/10 border border-amber-500/20 text-amber-300 font-extrabold text-[9.5px] rounded-xl flex items-center justify-center gap-1 uppercase tracking-wider">
+                                        <Clock className="w-3 h-3 animate-pulse" /> En Revisión Admin
+                                      </div>
+                                    ) : (
                                       <button
                                         type="button"
-                                        onClick={async () => {
-                                          const updated = {
-                                            ...profile,
-                                            subscriptionPlan: pl.id as any
-                                          };
-                                          setProfile(updated);
-                                          await saveProfile(updated);
+                                        onClick={() => {
                                           setSelectedSubPlan(pl.id as any);
-                                          alert(`Tu plan seleccionado ha cambiado a: ${pl.name.toUpperCase()} (Límite: ${pl.limit} productos).`);
+                                          const el = document.getElementById('report-payment-section');
+                                          if (el) {
+                                            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                          }
                                         }}
-                                        className="w-full mt-3 h-8 bg-gray-900 hover:bg-gray-850 text-gray-300 font-extrabold text-[10px] rounded-lg transition"
+                                        className={`w-full mt-3 h-8 font-extrabold text-[10px] rounded-xl transition flex items-center justify-center gap-1.5 uppercase tracking-wider cursor-pointer ${
+                                          isSelectedForPayment 
+                                            ? 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-md shadow-indigo-500/20' 
+                                            : 'bg-gray-900 hover:bg-gray-850 text-gray-300 border border-gray-800 hover:border-gray-700'
+                                        }`}
                                       >
-                                        Elegir Plan
+                                        <Zap className="w-3 h-3 text-amber-400" />
+                                        {isSelectedForPayment ? 'Plan Seleccionado' : `Solicitar ${pl.name}`}
                                       </button>
                                     )}
                                   </div>
@@ -4103,8 +4203,29 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         {/* 2. BANK TRANSFER AND RECEIPT LOADER CARD */}
-                        <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-5 animate-fade-in">
-                          <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block">Reportar Transferencia Bancaria Directa</span>
+                        <div id="report-payment-section" className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-5 animate-fade-in scroll-mt-20">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-900 pb-3">
+                            <div>
+                              <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block">Reportar Transferencia Bancaria Directa</span>
+                              <p className="text-[11px] text-gray-500 font-medium">Adjunta el capture de tu pago para que el Administrador apruebe la activación de tu plan.</p>
+                            </div>
+                            <span className="text-xs font-black text-white px-3 py-1 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-xl self-start">
+                              Plan: {selectedSubPlan === 'medio' ? 'Plan Medio (12 prod.)' : selectedSubPlan === 'pro' ? 'Plan Avanzado (24 prod.)' : 'Plan Básico (5 prod.)'}
+                            </span>
+                          </div>
+
+                          {/* Upgrade instruction banner */}
+                          <div className="bg-indigo-950/40 border border-indigo-500/30 p-4 rounded-2xl flex items-start gap-3 text-xs text-indigo-200">
+                            <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                              <strong className="text-white font-bold block">
+                                Requisito de Activación para {selectedSubPlan === 'medio' ? 'Plan Medio ($79.000 COP)' : selectedSubPlan === 'pro' ? 'Plan Avanzado ($99.000 COP)' : 'Plan Básico ($49.000 COP)'}:
+                              </strong>
+                              <p className="text-[11px] text-indigo-200/90 leading-relaxed font-normal">
+                                Para pasar a un plan superior desde el Plan Básico, es necesario transferir el valor correspondiente a los canales autorizados y adjuntar el comprobante abajo. El cambio de plan y la ampliación de cupo <strong className="text-amber-300 underline underline-offset-2">se activarán automáticamente en cuanto el Administrador valide y apruebe tu comprobante</strong> en el sistema central.
+                              </p>
+                            </div>
+                          </div>
                           
                           <div className="bg-gray-905 border border-gray-900 p-4.5 rounded-2xl grid sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5 text-xs text-gray-400">
@@ -4113,19 +4234,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <div className="flex justify-between"><span>Número Nequi:</span> <strong className="text-white font-mono text-sm">3219730865</strong></div>
                               <div className="flex justify-between"><span>Titular:</span> <strong className="text-white">Linnk.Pro SAS</strong></div>
                             </div>
-                            <div className="text-xs text-gray-400 space-y-1.5 bg-gray-950 p-3 rounded-xl border border-gray-900">
-                              <span className="text-[9px] font-bold uppercase text-gray-550 block">Monto a Transferir</span>
-                              <div className="text-lg font-black text-white font-mono">
+                            <div className="text-xs text-gray-400 space-y-1.5 bg-gray-950 p-3.5 rounded-xl border border-gray-900">
+                              <span className="text-[9px] font-bold uppercase text-gray-550 block">Monto Exacto a Transferir</span>
+                              <div className="text-xl font-black text-emerald-400 font-mono">
                                 ${(selectedSubPlan === 'medio' ? 79000 : selectedSubPlan === 'pro' ? 99000 : 49000).toLocaleString()} COP
                               </div>
-                              <p className="text-[9px] text-gray-500 mt-1 leading-normal font-semibold">Consigna o transfiere desde tu app bancaria o cajero y adjunta el comprobante abajo.</p>
+                              <p className="text-[9px] text-gray-500 mt-1 leading-normal font-semibold">Transfiere el valor exacto desde tu app Nequi/Bancolombia y adjunta la captura a continuación.</p>
                             </div>
                           </div>
 
                           {/* Image photo upload receipt form */}
                           <div className="space-y-4">
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider block mb-1.5">Comprobante de Pago (Imagen del capture)</label>
+                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider block mb-1.5">Comprobante de Pago (Captura obligatoria)</label>
                               
                               <div className="grid sm:grid-cols-12 gap-3.5 items-center">
                                 <div className="sm:col-span-8">
@@ -4159,7 +4280,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </div>
                                 <div className="sm:col-span-4 flex justify-center">
                                   {uploadedReceiptBase64 ? (
-                                    <div className="relative w-28 h-24 bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+                                    <div className="relative w-28 h-24 bg-gray-900 rounded-xl overflow-hidden border border-gray-800 shadow-md">
                                       <img 
                                         src={uploadedReceiptBase64} 
                                         alt="Preview" 
@@ -4189,7 +4310,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 type="text"
                                 value={receiptNotes}
                                 onChange={(e) => setReceiptNotes(e.target.value)}
-                                placeholder="Ej: Pago realizado por Nequi desde celular #312xxxx..."
+                                placeholder="Ej: Pago de Plan Medio realizado por Nequi desde número #312xxxx..."
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-indigo-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white placeholder:text-gray-700"
                               />
                             </div>
@@ -4198,12 +4319,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               type="button"
                               disabled={submittingProof || !uploadedReceiptBase64}
                               onClick={async () => {
-                                if (!uploadedReceiptBase64) return;
+                                if (!uploadedReceiptBase64) {
+                                  alert("Por favor, selecciona y sube la captura de tu comprobante de pago primero.");
+                                  return;
+                                }
                                 setSubmittingProof(true);
                                 try {
                                   const paymentId = `pay_${Date.now()}`;
                                   const chosenPlan = selectedSubPlan;
                                   const amountToPay = chosenPlan === 'medio' ? 79000 : chosenPlan === 'pro' ? 99000 : 49000;
+                                  const planDisplayName = chosenPlan === 'medio' ? 'Plan Medio' : chosenPlan === 'pro' ? 'Plan Avanzado' : 'Plan Básico';
                                   
                                   const payload: SubscriptionPayment = {
                                     id: paymentId,
@@ -4219,19 +4344,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     amount: amountToPay,
                                     status: 'review',
                                     proofImage: uploadedReceiptBase64,
-                                    notes: receiptNotes || 'Se adjuntó comprobante de pago.',
+                                    notes: receiptNotes || `Comprobante de pago para solicitud de ${planDisplayName}.`,
                                     createdAt: new Date().toISOString(),
                                     updatedAt: new Date().toISOString(),
-                                    periodLabel: `Suscripción Mensual - ${new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' })}`
+                                    periodLabel: `Suscripción Mensual (${planDisplayName}) - ${new Date().toLocaleString('es-ES', { month: 'long', year: 'numeric' })}`
                                   };
 
                                   await saveSubscriptionPayment(payload);
 
-                                  // Update merchant profile status
-                                  const updatedProfile = {
+                                  // Update merchant profile status: Keep active plan intact until admin approval
+                                  const updatedProfile: UserProfile = {
                                     ...profile,
-                                    subscriptionPlan: chosenPlan,
-                                    subscriptionStatus: 'under_review' as const
+                                    subscriptionPlan: profile.subscriptionPlan || 'basico',
+                                    requestedPlan: chosenPlan,
+                                    subscriptionStatus: 'under_review'
                                   };
                                   await saveProfile(updatedProfile);
                                   setProfile(updatedProfile);
@@ -4243,7 +4369,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   const payments = await fetchMySubscriptionPayments(profile.uid);
                                   setMyPayments(payments);
 
-                                  alert("¡Comprobante enviado! Un administrador verificará y aprobará tu transferencia.");
+                                  alert(`✅ ¡Comprobante de pago enviado con éxito!\n\nTu solicitud para el ${planDisplayName} ha sido registrada y está en cola de revisión.\n\n🔒 El cambio de plan y el nuevo cupo de productos se activarán automáticamente una vez que el Administrador verifique y apruebe tu pago.`);
                                 } catch (e) {
                                   console.error(e);
                                   alert("Ocurrió un error al enviar el comprobante.");
@@ -4251,7 +4377,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   setSubmittingProof(false);
                                 }
                               }}
-                              className={`w-full h-11 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-lg ${
+                              className={`w-full h-11 rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 transition shadow-lg cursor-pointer ${
                                 !uploadedReceiptBase64 
                                   ? 'bg-gray-900 border border-gray-850 text-gray-500 cursor-not-allowed' 
                                   : 'bg-indigo-500 hover:bg-indigo-400 text-white shadow-indigo-500/10'
@@ -4262,7 +4388,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               ) : (
                                 <Check className="w-4 h-4 stroke-[2.5]" />
                               )}
-                              Enviar Comprobante de Pago
+                              Enviar Comprobante de Pago para Aprobación
                             </button>
                           </div>
                         </div>
@@ -4325,6 +4451,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
               </motion.div>
             </AnimatePresence>
+            </>
           )}
         </main>
       </div>
@@ -5523,6 +5650,22 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
           </div>
         )}
       </AnimatePresence>
+
+      {/* 7-Day Reverse Clock Trial Modal */}
+      <BasicPlanTrialModal
+        isOpen={showBasicTrialModal}
+        onClose={() => setShowBasicTrialModal(false)}
+        profile={profile}
+        onGoToPayment={() => {
+          setShowBasicTrialModal(false);
+          setActiveTab('subscription');
+          setSelectedSubPlan('basico');
+          setTimeout(() => {
+            const el = document.getElementById('report-payment-section');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 150);
+        }}
+      />
 
     </div>
   );

@@ -41,7 +41,7 @@ export default function AdminDriversManager() {
 
   // Registration link state
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
-  const driverLink = "https://linnkpro.store/domiciliario";
+  const driverLink = "https://ryyco.com/domiciliario";
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(driverLink);

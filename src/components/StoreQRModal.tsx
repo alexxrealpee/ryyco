@@ -38,7 +38,7 @@ export default function StoreQRModal({
 
   if (!isOpen) return null;
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://linnkpro.store';
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://ryyco.com';
   const cleanUser = username ? username.replace(/^@/, '') : '';
   const storeUrl = `${origin}/${cleanUser}`;
   const displayName = storeName?.trim() || cleanUser || 'Mi Tienda';

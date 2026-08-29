@@ -146,7 +146,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({
     defaultDeliveryFee: 7000,
     supportPhone: '3219730865',
-    supportEmail: 'soporte@linnkpro.store',
+    supportEmail: 'soporte@ryyco.com',
     adminEmails: [PRIMARY_ADMIN_EMAIL]
   });
   const [deliveryFeeInput, setDeliveryFeeInput] = useState<string>('7000');
@@ -294,7 +294,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       await updateSystemSettings({
         defaultDeliveryFee: numFee,
         supportPhone: systemSettings.supportPhone || '3219730865',
-        supportEmail: systemSettings.supportEmail || 'soporte@linnkpro.store'
+        supportEmail: systemSettings.supportEmail || 'soporte@ryyco.com'
       });
       setSystemSettings(prev => ({ ...prev, defaultDeliveryFee: numFee }));
       setNotif(`🟢 Costo general de domicilio actualizado a $${numFee.toLocaleString('es-CO')} COP correctamente.`);
@@ -725,6 +725,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         subscriptionStatus: 'active',
         suspended: false,
         subscriptionPlan: payment.plan || 'basico',
+        requestedPlan: null,
         subscriptionPaidUntil: newPaidUntilStr,
         subscriptionAnchorDay: anchorDay
       });
@@ -735,6 +736,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           subscriptionStatus: 'active',
           suspended: false,
           subscriptionPlan: payment.plan || 'basico',
+          requestedPlan: null,
           subscriptionPaidUntil: newPaidUntilStr,
           subscriptionAnchorDay: anchorDay
         });
@@ -747,11 +749,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         subscriptionStatus: 'active',
         suspended: false,
         subscriptionPlan: payment.plan || u.subscriptionPlan,
+        requestedPlan: undefined,
         subscriptionPaidUntil: newPaidUntilStr,
         subscriptionAnchorDay: anchorDay
       } : u));
 
-      setNotif(`¡Pago de @${payment.username} por $${payment.amount.toLocaleString()} COP APROBADO correctamente! Próximo vencimiento: ${nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })} (Día de corte: ${anchorDay}).`);
+      const planName = payment.plan === 'medio' ? 'Plan Medio' : payment.plan === 'pro' ? 'Plan Avanzado' : 'Plan Básico';
+      setNotif(`¡Pago de @${payment.username} para el ${planName} APROBADO correctamente! El nuevo plan y cupo ya están activos. Próximo vencimiento: ${nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })} (Día de corte: ${anchorDay}).`);
       setTimeout(() => setNotif(''), 5000);
     } catch (e) {
       console.error(e);
@@ -769,8 +773,17 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
       const profileRef = doc(db, 'profiles', payment.userId);
       await updateDoc(profileRef, {
-        subscriptionStatus: 'pending_payment'
+        subscriptionStatus: 'pending_payment',
+        requestedPlan: null
       });
+
+      const userRef = doc(db, 'users', payment.userId);
+      try {
+        await updateDoc(userRef, {
+          subscriptionStatus: 'pending_payment',
+          requestedPlan: null
+        });
+      } catch (err) {}
 
       setAllPayments(prev => prev.map(p => p.id === payment.id ? { ...p, status: 'rejected' } : p));
       setNotif(`Pago de @${payment.username} marcado como RECHAZADO.`);
@@ -1859,8 +1872,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           })()}
                         </td>
                         <td className="py-4 px-4 font-semibold">
-                          <span className="text-xs uppercase font-black text-indigo-400 block">{p.plan}</span>
-                          <span className="text-[10px] text-gray-400 italic">Suscripción Mensual</span>
+                          <span className={`text-xs uppercase font-black block ${
+                            p.plan === 'medio' ? 'text-indigo-400' : p.plan === 'pro' || p.plan === 'avanzado' ? 'text-purple-400' : 'text-emerald-400'
+                          }`}>
+                            {p.plan === 'medio' ? 'Plan Medio (12 prod.)' : p.plan === 'pro' || p.plan === 'avanzado' ? 'Plan Avanzado (24 prod.)' : 'Plan Básico (5 prod.)'}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-medium">Solicitud de Activación</span>
                         </td>
                         <td className="py-4 px-4 font-mono font-bold text-white">
                           ${p.amount.toLocaleString()} COP
@@ -2542,9 +2559,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       </label>
                       <input 
                         type="email"
-                        value={systemSettings.supportEmail || 'soporte@linnkpro.store'}
+                        value={systemSettings.supportEmail || 'soporte@ryyco.com'}
                         onChange={(e) => setSystemSettings(prev => ({ ...prev, supportEmail: e.target.value }))}
-                        placeholder="Ej: soporte@linnkpro.store"
+                        placeholder="Ej: soporte@ryyco.com"
                         className="w-full bg-gray-950 border border-gray-800 focus:border-indigo-500 text-white font-bold text-xs rounded-xl p-3 outline-none transition font-mono"
                       />
                     </div>

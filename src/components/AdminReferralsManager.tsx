@@ -662,7 +662,7 @@ export default function AdminReferralsManager() {
               <div>
                 <label className="block text-gray-300 font-semibold mb-1">Código Único de Referido *</label>
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 font-mono text-xs">linnkpro.store/?ref=</span>
+                  <span className="text-gray-500 font-mono text-xs">ryyco.com/?ref=</span>
                   <input
                     type="text"
                     placeholder="juandiego"

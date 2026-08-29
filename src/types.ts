@@ -96,6 +96,7 @@ export interface UserProfile {
   whatsappMessageTemplate?: string; // Custom WhatsApp order message template
   // Subscription plans & status fields (COP pricing plans)
   subscriptionPlan?: 'basico' | 'medio' | 'pro';
+  requestedPlan?: 'basico' | 'medio' | 'pro';
   subscriptionStatus?: 'trial' | 'active' | 'pending_payment' | 'under_review';
   subscriptionStartDate?: string;
   subscriptionTrialExpires?: string;

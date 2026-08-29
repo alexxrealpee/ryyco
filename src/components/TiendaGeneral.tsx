@@ -676,30 +676,55 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     transition={{ duration: 0.15 }}
                     className="absolute left-0 top-full mt-2 w-72 bg-[#111827] border border-[#232B3A] rounded-2xl shadow-2xl overflow-hidden z-50 p-2 space-y-1.5"
                   >
-                    {/* Header Item: Mis Puntos y Pedidos */}
+                    {/* Item 1: Mis Pedidos */}
                     <button
+                      id="drawer-my-orders-btn"
                       type="button"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         setCustomerPortalTab('orders');
                         setIsCustomerPortalOpen(true);
                       }}
-                      className="w-full text-left p-3 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/25 border border-amber-500/40 transition cursor-pointer flex items-start gap-3 group"
+                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] border border-transparent hover:border-[#232B3A] transition cursor-pointer flex items-center gap-3 text-white group"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition">
+                      <div className="w-8 h-8 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                        <ShoppingBag className="w-4 h-4 text-[#E63946]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-bold text-xs text-white block group-hover:text-[#E63946] transition">
+                          Mis Pedidos
+                        </span>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          Rastreo y estado de tus compras en vivo
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Item 2: Mis Puntos & Ruleta */}
+                    <button
+                      id="drawer-my-points-btn"
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setCustomerPortalTab('wheel');
+                        setIsCustomerPortalOpen(true);
+                      }}
+                      className="w-full text-left p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/20 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
                         <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-extrabold text-amber-300 text-xs block">
-                            Mis Puntos y Pedidos
+                            Mis Puntos
                           </span>
                           <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md">
-                            500 pts
+                            Premios
                           </span>
                         </div>
-                        <p className="text-[10px] text-gray-300 font-medium leading-tight mt-0.5">
-                          Billetera $ COP, ruleta de premios y rastreo en vivo
+                        <p className="text-[10px] text-gray-300 font-medium leading-tight">
+                          Billetera $ COP y ruleta de platos gratis
                         </p>
                       </div>
                     </button>
@@ -810,16 +835,27 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Right: Action Buttons */}
-          <div className="flex-1 flex items-center justify-end gap-2 sm:gap-2.5 z-10 min-w-0">
-            {/* Customer Loyalty & Roulette Modal Button (Desktop) */}
+          <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
+            {/* Mis Pedidos Button (Desktop & Tablet) */}
             <button 
+              id="navbar-my-orders-btn"
               onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
-              className="hidden lg:flex px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-              title="Mi Cuenta, Puntos, Ruleta de Platos Gratis y Estado de Pedidos"
+              className="hidden md:flex px-3 py-2 rounded-xl bg-[#111827] hover:bg-[#1A2234] border border-[#232B3A] hover:border-gray-600 text-gray-200 hover:text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+              title="Ver y rastrear el estado de mis pedidos en tiempo real"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-[#E63946]" />
+              <span>Mis Pedidos</span>
+            </button>
+
+            {/* Mis Puntos Button (Desktop & Tablet) */}
+            <button 
+              id="navbar-my-points-btn"
+              onClick={() => { setCustomerPortalTab('wheel'); setIsCustomerPortalOpen(true); }}
+              className="hidden sm:flex px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+              title="Mis Puntos acumulados, Ruleta de Platos Gratis y Recompensas"
             >
               <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span className="hidden xl:inline">Mis Puntos & Pedidos</span>
-              <span className="xl:hidden">Mis Puntos</span>
+              <span>Mis Puntos</span>
             </button>
 
             {/* Dynamic Cart Button in Navbar */}
@@ -2077,7 +2113,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         <p className="text-gray-400 max-w-2xl mx-auto text-[11px] leading-relaxed">
           Plataforma gastronómica inteligente para pedir comida online y a domicilio en Colombia. Explora platos, consulta menús y descubre qué quieres comer hoy.
         </p>
-        <p className="text-gray-500 text-[10px] pt-2">© 2026 Ryyco (linnkpro.store). Todos los derechos reservados.</p>
+        <p className="text-gray-500 text-[10px] pt-2">© 2026 Ryyco (ryyco.com). Todos los derechos reservados.</p>
       </footer>
 
     </div>
