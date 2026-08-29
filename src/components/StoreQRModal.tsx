@@ -5,10 +5,7 @@ import {
   Share2, 
   Copy, 
   Check, 
-  MessageCircle, 
-  ExternalLink,
-  Sparkles,
-  Palette
+  MessageCircle
 } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 
@@ -27,12 +24,9 @@ export default function StoreQRModal({
   storeName,
   storeLogo,
 }: StoreQRModalProps) {
-  const [qrFgColor, setQrFgColor] = useState('#0b0b0b');
-  const [qrBgColor, setQrBgColor] = useState('#ffffff');
-  const [logoChoice, setLogoChoice] = useState<'ryyco' | 'store' | 'none'>('ryyco');
   const [copied, setCopied] = useState(false);
   const [shareSuccessMsg, setShareSuccessMsg] = useState('');
-  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const qrRef = useRef<HTMLDivElement>(null);
 
@@ -42,6 +36,7 @@ export default function StoreQRModal({
   const cleanUser = username ? username.replace(/^@/, '') : '';
   const storeUrl = `${origin}/${cleanUser}`;
   const displayName = storeName?.trim() || cleanUser || 'Mi Tienda';
+  const activeLogo = storeLogo || '/favicon.svg';
 
   const copyUrl = async () => {
     try {
@@ -66,18 +61,134 @@ export default function StoreQRModal({
     }
   };
 
+  const generateFullCardCanvas = async (): Promise<HTMLCanvasElement | null> => {
+    if (!qrRef.current) return null;
+    const qrCanvas = qrRef.current.querySelector('canvas');
+    if (!qrCanvas) return null;
+
+    const width = 800;
+    const height = 1060;
+    const cardCanvas = document.createElement('canvas');
+    cardCanvas.width = width;
+    cardCanvas.height = height;
+    const ctx = cardCanvas.getContext('2d');
+    if (!ctx) return null;
+
+    // 1. Draw rounded card background (white with smooth corners)
+    const radius = 54;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.lineTo(width - radius, 0);
+    ctx.quadraticCurveTo(width, 0, width, radius);
+    ctx.lineTo(width, height - radius);
+    ctx.quadraticCurveTo(width, height, width - radius, height);
+    ctx.lineTo(radius, height);
+    ctx.quadraticCurveTo(0, height, 0, height - radius);
+    ctx.lineTo(0, radius);
+    ctx.quadraticCurveTo(0, 0, radius, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Subtle outer card border
+    ctx.strokeStyle = '#f3f4f6';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // 2. Draw Store Title and Username
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Store Name
+    ctx.font = '900 40px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#111827';
+    let displayTitle = displayName.toUpperCase();
+    if (displayTitle.length > 26) {
+      displayTitle = displayTitle.slice(0, 25) + '...';
+    }
+    ctx.fillText(displayTitle, width / 2, 85);
+
+    // @username
+    ctx.font = '700 24px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#6b7280';
+    ctx.fillText(`@${cleanUser}`, width / 2, 135);
+
+    // 3. Draw QR Code centered
+    const qrSize = 580;
+    const qrX = (width - qrSize) / 2;
+    const qrY = 185;
+    ctx.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+
+    // 4. Draw Divider Line
+    ctx.beginPath();
+    ctx.strokeStyle = '#f3f4f6';
+    ctx.lineWidth = 2.5;
+    ctx.moveTo(70, 830);
+    ctx.lineTo(width - 70, 830);
+    ctx.stroke();
+
+    // 5. Draw Footer ("Pide en Ryyco" with icon)
+    const footerY = 920;
+    try {
+      const iconImg = new Image();
+      iconImg.crossOrigin = 'anonymous';
+      await new Promise((resolve) => {
+        iconImg.onload = resolve;
+        iconImg.onerror = resolve;
+        iconImg.src = '/favicon.svg';
+      });
+
+      if (iconImg.complete && iconImg.naturalWidth > 0) {
+        const iconSize = 48;
+        // Calculate text metrics to center everything
+        ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        const pideEnWidth = ctx.measureText('Pide en ').width;
+        const ryycoWidth = ctx.measureText('Ryyco').width;
+        const totalContentWidth = iconSize + 16 + pideEnWidth + ryycoWidth;
+        const startX = (width - totalContentWidth) / 2;
+
+        // Draw icon
+        ctx.drawImage(iconImg, startX, footerY - iconSize / 2, iconSize, iconSize);
+
+        // Text "Pide en "
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#111827';
+        ctx.fillText('Pide en ', startX + iconSize + 16, footerY);
+
+        // Text "Ryyco"
+        ctx.fillStyle = '#fa1324';
+        ctx.fillText('Ryyco', startX + iconSize + 16 + pideEnWidth, footerY);
+      } else {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.fillStyle = '#111827';
+        ctx.fillText('Pide en Ryyco', width / 2, footerY);
+      }
+    } catch {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '900 32px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.fillStyle = '#111827';
+      ctx.fillText('Pide en Ryyco', width / 2, footerY);
+    }
+
+    return cardCanvas;
+  };
+
   const handleShare = async () => {
     const shareText = `🍽️ ¡Hola! Conoce el menú digital y pide directo en ${displayName} a través de Ryyco:\n👉 ${storeUrl}`;
     
     // Check for native Web Share API
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
-        const canvas = qrRef.current?.querySelector('canvas');
+        const fullCard = await generateFullCardCanvas();
         let files: File[] = [];
 
-        if (canvas && typeof navigator.canShare === 'function') {
+        if (fullCard && typeof navigator.canShare === 'function') {
           try {
-            const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+            const blob = await new Promise<Blob | null>((resolve) => fullCard.toBlob(resolve, 'image/png'));
             if (blob) {
               const file = new File([blob], `QR_${cleanUser}_Ryyco.png`, { type: 'image/png' });
               if (navigator.canShare({ files: [file] })) {
@@ -119,29 +230,27 @@ export default function StoreQRModal({
     window.open(waUrl, '_blank');
   };
 
-  const downloadQrPng = () => {
-    if (!qrRef.current) return;
-    const canvas = qrRef.current.querySelector('canvas');
-    if (canvas) {
-      const url = canvas.toDataURL('image/png');
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `QR_${cleanUser || 'tienda'}_Ryyco.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setShareSuccessMsg('¡Código QR descargado!');
-      setTimeout(() => setShareSuccessMsg(''), 2500);
+  const downloadQrPng = async () => {
+    try {
+      setIsDownloading(true);
+      const cardCanvas = await generateFullCardCanvas();
+      if (cardCanvas) {
+        const url = cardCanvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `QR_${cleanUser || 'tienda'}_Ryyco.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setShareSuccessMsg('¡Imagen QR completa descargada con éxito!');
+        setTimeout(() => setShareSuccessMsg(''), 3000);
+      }
+    } catch (err) {
+      console.error('Error downloading full QR card:', err);
+    } finally {
+      setIsDownloading(false);
     }
   };
-
-  const colorPresets = [
-    { name: 'Negro', value: '#0b0b0b' },
-    { name: 'Rojo Ryyco', value: '#fa1324' },
-    { name: 'Esmeralda', value: '#059669' },
-    { name: 'Azul', value: '#2563eb' },
-    { name: 'Púrpura', value: '#7c3aed' },
-  ];
 
   return (
     <div 
@@ -162,7 +271,7 @@ export default function StoreQRModal({
         </button>
 
         {/* Header */}
-        <div className="text-center mb-4">
+        <div className="text-center mb-3">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-950/40 border border-red-800/40 rounded-full text-[10px] font-extrabold text-red-400 uppercase tracking-wider mb-2">
             <img src="/favicon.svg" alt="Ryyco" className="w-3.5 h-3.5 rounded-sm" />
             Código QR Oficial Ryyco
@@ -175,43 +284,35 @@ export default function StoreQRModal({
         <div className="flex flex-col items-center">
           <div 
             ref={qrRef} 
-            className="p-5 bg-white rounded-3xl shadow-xl relative mb-3 border border-gray-200 flex flex-col items-center justify-center transition-transform hover:scale-[1.01]"
-            style={{ backgroundColor: qrBgColor }}
+            className="p-5 bg-white rounded-3xl shadow-xl relative mb-3 border border-gray-200 flex flex-col items-center justify-center transition-transform hover:scale-[1.01] w-full max-w-[280px]"
           >
-            {/* Store mini header on card */}
-            <div className="text-center mb-2">
-              <span className="text-[11px] font-black text-gray-900 line-clamp-1 max-w-[200px]">{displayName}</span>
-              <span className="text-[9px] font-bold text-gray-500 block">@{cleanUser}</span>
+            {/* Store title and username on top of card */}
+            <div className="text-center mb-2.5">
+              <span className="text-xs font-black text-gray-900 line-clamp-1 uppercase tracking-tight block">{displayName}</span>
+              <span className="text-[10px] font-bold text-gray-500 block">@{cleanUser}</span>
             </div>
 
-            {/* QR Canvas */}
+            {/* QR Canvas with store logo in center */}
             <div className="p-1 rounded-2xl bg-white">
               <QRCodeCanvas 
                 value={storeUrl}
-                size={180}
-                fgColor={qrFgColor}
-                bgColor={qrBgColor}
+                size={200}
+                fgColor="#0b0b0b"
+                bgColor="#ffffff"
                 level="H" 
-                imageSettings={
-                  logoChoice === 'ryyco' ? {
-                    src: '/favicon.svg',
-                    height: 38,
-                    width: 38,
-                    excavate: true,
-                  } : (logoChoice === 'store' && storeLogo) ? {
-                    src: storeLogo,
-                    height: 38,
-                    width: 38,
-                    excavate: true,
-                  } : undefined
-                }
+                imageSettings={{
+                  src: activeLogo,
+                  height: 42,
+                  width: 42,
+                  excavate: true,
+                }}
               />
             </div>
 
             {/* Powered by Ryyco Footer Badge on Card */}
-            <div className="mt-3 pt-2 border-t border-gray-200/80 w-full flex items-center justify-center gap-1.5">
-              <img src="/favicon.svg" alt="Ryyco" className="w-3.5 h-3.5 rounded-sm" />
-              <span className="text-[10px] font-black text-gray-900 tracking-tight">
+            <div className="mt-3.5 pt-2.5 border-t border-gray-100 w-full flex items-center justify-center gap-2">
+              <img src="/favicon.svg" alt="Ryyco" className="w-4 h-4 rounded-xs" />
+              <span className="text-xs font-black text-gray-900 tracking-tight">
                 Pide en <span className="text-[#fa1324]">Ryyco</span>
               </span>
             </div>
@@ -224,94 +325,6 @@ export default function StoreQRModal({
               {shareSuccessMsg}
             </div>
           )}
-
-          {/* Logo Options Selector */}
-          <div className="w-full bg-gray-900/90 p-3 rounded-2xl border border-gray-850 mb-3">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-400" />
-                Logo en el Centro del QR:
-              </span>
-            </div>
-            <div className="grid grid-cols-3 gap-1.5">
-              {/* Option 1: Ryyco Logo */}
-              <button
-                type="button"
-                onClick={() => setLogoChoice('ryyco')}
-                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border ${
-                  logoChoice === 'ryyco' 
-                    ? 'bg-red-950/60 border-red-500 text-red-300 shadow-sm' 
-                    : 'bg-gray-950/60 border-gray-800 text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                <img src="/favicon.svg" alt="Ryyco" className="w-3.5 h-3.5 rounded-xs shrink-0" />
-                <span>Ryyco</span>
-              </button>
-
-              {/* Option 2: Store Logo (if available) */}
-              <button
-                type="button"
-                onClick={() => setLogoChoice('store')}
-                disabled={!storeLogo}
-                title={!storeLogo ? 'La tienda no tiene foto de perfil cargada' : 'Logo de la tienda'}
-                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer border ${
-                  !storeLogo 
-                    ? 'opacity-40 cursor-not-allowed bg-gray-950 border-gray-850 text-gray-600'
-                    : logoChoice === 'store'
-                      ? 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-sm'
-                      : 'bg-gray-950/60 border-gray-800 text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                {storeLogo ? (
-                  <img src={storeLogo} alt="Tienda" className="w-3.5 h-3.5 rounded-full object-cover shrink-0" />
-                ) : null}
-                <span>Tienda</span>
-              </button>
-
-              {/* Option 3: None */}
-              <button
-                type="button"
-                onClick={() => setLogoChoice('none')}
-                className={`py-1.5 px-2 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 transition cursor-pointer border ${
-                  logoChoice === 'none' 
-                    ? 'bg-gray-800 border-gray-600 text-white shadow-sm' 
-                    : 'bg-gray-950/60 border-gray-800 text-gray-400 hover:text-gray-200'
-                }`}
-              >
-                <span>Sin Logo</span>
-              </button>
-            </div>
-          </div>
-
-          {/* QR Color Customizer Dropdown / Row */}
-          <div className="w-full bg-gray-900/60 p-2.5 rounded-2xl border border-gray-850 mb-4 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5">
-              <Palette className="w-3.5 h-3.5 text-gray-400" />
-              <span className="text-[11px] font-bold text-gray-300">Color del QR</span>
-            </div>
-            
-            <div className="flex items-center gap-1.5">
-              {colorPresets.map((c) => (
-                <button
-                  key={c.value}
-                  type="button"
-                  onClick={() => setQrFgColor(c.value)}
-                  style={{ backgroundColor: c.value }}
-                  title={c.name}
-                  className={`w-5 h-5 rounded-full transition-transform border cursor-pointer ${
-                    qrFgColor === c.value ? 'scale-125 border-white shadow-md' : 'border-gray-700 hover:scale-110'
-                  }`}
-                />
-              ))}
-              <input 
-                type="color"
-                value={qrFgColor}
-                onChange={(e) => setQrFgColor(e.target.value)}
-                title="Color personalizado"
-                className="w-6 h-6 bg-transparent rounded cursor-pointer border-0 ml-1"
-              />
-            </div>
-          </div>
 
           {/* ACTION BUTTONS */}
           <div className="w-full space-y-2">
@@ -338,15 +351,16 @@ export default function StoreQRModal({
               </button>
             </div>
 
-            {/* Secondary Action Row: Download PNG + Copy URL */}
+            {/* Secondary Action Row: Download Full Card PNG + Copy URL */}
             <div className="grid grid-cols-2 gap-2">
               <button 
                 type="button"
                 onClick={downloadQrPng}
-                className="py-2.5 px-3 bg-gray-900 hover:bg-gray-850 text-gray-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition border border-gray-800 cursor-pointer"
+                disabled={isDownloading}
+                className="py-2.5 px-3 bg-gray-900 hover:bg-gray-850 text-gray-200 hover:text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition border border-gray-800 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
-                Descargar QR
+                {isDownloading ? 'Generando...' : 'Descargar QR'}
               </button>
 
               <button 
