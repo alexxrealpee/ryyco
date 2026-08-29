@@ -979,16 +979,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       setIsAddingProd(false);
       setEditingProd(null);
 
-      // Check if this is the first product created with WhatsApp in Basic Plan -> Launch 7-Day Reverse Clock Trial Modal
-      const hasWhatsApp = Boolean((profile.ownerWhatsapp || profile.whatsapp || profile.phone || '').replace(/\D/g, '').length >= 7);
+      // Check if this is a product creation in Basic Plan -> Launch 7-Day Reverse Clock Trial Modal
       const isBasicPlan = (profile.subscriptionPlan || profile.plan || 'basico') === 'basico';
+      const isTrialOrUnpaid = profile.subscriptionStatus !== 'active';
 
-      if (isFirstProductCreation && hasWhatsApp && isBasicPlan && profile.subscriptionStatus !== 'active') {
+      if (!editingProd && isBasicPlan && isTrialOrUnpaid) {
         const trialExpires = profile.subscriptionTrialExpires || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
         const updatedProf: UserProfile = {
           ...profile,
           subscriptionPlan: 'basico',
-          subscriptionStatus: 'trial',
+          subscriptionStatus: profile.subscriptionStatus === 'under_review' ? 'under_review' : 'trial',
           subscriptionTrialExpires: trialExpires
         };
         setProfile(updatedProf);
@@ -1199,16 +1199,22 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       'cancelled': 'Cancelado 🚫'
     };
     
-    const intro = `Hola *${order.customerName}*, te contactamos de *${profile.displayName}* respecto a tu compra #${order.orderNumber}.\n\n`;
-    const statusMsg = `El estado actual de tu pedido es: *${statusLang[order.status]}*.\n\n`;
-    const total = `Total: *${formatPrice(order.totalAmount)}*\n`;
-    const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.`;
+    const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
+    const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
+
+    const intro = `Hola *${order.customerName}*, te contactamos de *${profile.displayName || 'la tienda'}* respecto a tu compra #${order.orderNumber}.\n\n`;
+    const statusMsg = `El estado actual de tu pedido es: *${statusLang[order.status] || order.status}*.\n\n`;
+    const total = `Total: *${formatPrice(order.totalAmount)}*\n\n`;
+    const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.\n\n`;
+    const footerLinks = `-----------------------------\n` +
+      `💬 *Comunicarse con soporte:* https://wa.me/573106502043\n` +
+      `⭐ *Calificar tu experiencia:* ${storeRatingUrl}`;
     
     let rawPhone = order.customerPhone.replace(/[^0-9]/g, '');
     if (rawPhone.length === 10 && rawPhone.startsWith('3')) {
       rawPhone = '57' + rawPhone;
     }
-    const fullText = encodeURIComponent(`${intro}${statusMsg}${total}${out}`);
+    const fullText = encodeURIComponent(`${intro}${statusMsg}${total}${out}${footerLinks}`);
     window.open(`https://wa.me/${rawPhone}?text=${fullText}`, '_blank');
   };
 
@@ -1981,7 +1987,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                           <div className="grid sm:grid-cols-3 gap-4">
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Precio de Venta ({profile.currency})</label>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Precio de Venta ({profile.currency || '$'})</label>
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -1994,13 +2000,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Precio Compara (Original/Tachado)</label>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Precio Promoción ({profile.currency || '$'})</label>
                               <input
                                 type="text"
                                 inputMode="decimal"
                                 value={prodComparePrice}
                                 onChange={(e) => setProdComparePrice(e.target.value)}
-                                placeholder="Opcional. Ej: 50000"
+                                placeholder="Opcional. Ej: 50000 o 50.000"
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                               />
                             </div>
@@ -5656,6 +5662,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         isOpen={showBasicTrialModal}
         onClose={() => setShowBasicTrialModal(false)}
         profile={profile}
+        onPaymentSubmitted={(payment) => {
+          setMyPayments(prev => [payment, ...prev]);
+          setProfile(prev => ({
+            ...prev,
+            subscriptionPlan: 'basico',
+            requestedPlan: 'basico',
+            subscriptionStatus: 'under_review'
+          }));
+        }}
         onGoToPayment={() => {
           setShowBasicTrialModal(false);
           setActiveTab('subscription');

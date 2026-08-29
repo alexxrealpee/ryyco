@@ -892,7 +892,19 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
     console.error("Error loading user profile via Firestore", e);
   }
 
-  // Fallback
+  // Fallback 1: Check pending signup profile in sessionStorage
+  try {
+    const pending = sessionStorage.getItem('ryyco_pending_signup_profile');
+    if (pending) {
+      const parsed = JSON.parse(pending);
+      if (parsed && (parsed.uid === uid || !parsed.uid)) {
+        parsed.uid = uid;
+        return parsed as UserProfile;
+      }
+    }
+  } catch (e) {}
+
+  // Fallback 2: Check cached session in localStorage
   try {
     const cached = localStorage.getItem(`linnk_session_${uid}`);
     if (cached) {
@@ -905,6 +917,17 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
   } catch (e) {
     console.warn("Cached session read failed", e);
   }
+
+  // Fallback 3: Check linnk_profiles registry
+  try {
+    const localProfiles = JSON.parse(localStorage.getItem('linnk_profiles') || '{}');
+    for (const key of Object.keys(localProfiles)) {
+      if (localProfiles[key]?.uid === uid) {
+        return localProfiles[key] as UserProfile;
+      }
+    }
+  } catch (e) {}
+
   return null;
 }
 

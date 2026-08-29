@@ -53,6 +53,7 @@ import {
   Minus,
   Trash2,
   Lock,
+  Clock,
   Wallet,
   Landmark,
   Truck,
@@ -659,7 +660,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     if (order.proofImage) {
       msg += `📸 *Comprobante de compra:* Adjunto en ryyco.com\n`;
     }
-    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
+    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!\n\n`;
+
+    const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
+    const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
+
+    msg += `-----------------------------\n`;
+    msg += `💬 *Comunicarse con soporte:* https://wa.me/573106502043\n`;
+    msg += `⭐ *Calificar tu experiencia:* ${storeRatingUrl}`;
 
     const cleanMsg = encodeURIComponent(msg);
     let targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';
@@ -1381,7 +1389,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           )}
 
           {/* Shoppable catalog board */}
-          {products.length === 0 ? (
+          {isTrialExpired ? (
+            <div className="w-full text-center py-12 px-6 border border-amber-500/30 rounded-3xl bg-amber-950/20 text-xs text-amber-300 space-y-2">
+              <Clock className="w-8 h-8 text-amber-400 mx-auto animate-pulse" />
+              <strong className="block text-sm text-white font-bold">Catálogo en Pausa Temporal</strong>
+              <p className="max-w-md mx-auto text-[11px] text-gray-300">
+                Esta tienda ha completado su período gratuito de prueba (1 semana). Los productos no están visibles para clientes mientras se completa la verificación del comprobante de pago del Plan Básico.
+              </p>
+            </div>
+          ) : products.length === 0 ? (
             <div className="w-full text-center py-12 px-6 border border-dashed rounded-3xl opacity-50 text-xs">
               Esta tienda aún no ha publicado productos en venta.
             </div>

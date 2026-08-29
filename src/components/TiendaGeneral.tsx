@@ -282,6 +282,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return products.filter(product => {
       const profile = findStoreForProduct(product, profiles);
       if (!profile || checkIsStoreClosed(profile) || profile.suspended) return false;
+      // Check if trial has expired and store subscription is not active
+      if (profile.subscriptionTrialExpires && new Date(profile.subscriptionTrialExpires).getTime() < Date.now() && profile.subscriptionStatus !== 'active') {
+        return false;
+      }
       if (selectedStore !== 'all' && product.userId !== selectedStore && profile.uid !== selectedStore) {
         return false;
       }
@@ -632,7 +636,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : 'Pago contra Entrega'}*\n\n`;
-    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!`;
+    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!\n\n`;
+
+    const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
+    const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
+
+    msg += `-----------------------------\n`;
+    msg += `💬 *Comunicarse con soporte:* https://wa.me/573106502043\n`;
+    msg += `⭐ *Calificar tu experiencia:* ${storeRatingUrl}`;
 
     const cleanMsg = encodeURIComponent(msg);
     const targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';

@@ -189,22 +189,43 @@ export default function App() {
         } else {
           // Seller mode (default for merchant login / admin)
           localStorage.setItem('ryyco_auth_mode', 'seller');
-          const profile = await fetchProfileByUid(user.uid);
+          let profile = await fetchProfileByUid(user.uid);
+          
+          if (!profile) {
+            // Check if there is pending profile in session or fallback registry
+            try {
+              const pendingStr = sessionStorage.getItem('ryyco_pending_signup_profile');
+              if (pendingStr) {
+                const parsed = JSON.parse(pendingStr);
+                if (parsed) {
+                  profile = { uid: user.uid, ...parsed };
+                }
+              }
+            } catch (e) {}
+          }
+
           if (profile) {
             setUserProfile(profile);
             
-            // Only force redirect to dashboard if user is not looking at a public profile or public routing explicitly
+            // Only force redirect to dashboard if user is not looking at a public profile, public routing or during active store creation
             const activeUserProfileUrl = getUsernameFromUrl();
             const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
             const hashVal = window.location.hash.toLowerCase();
             const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
               ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
 
-            if (!activeUserProfileUrl && !isPublicRoute) {
-              setView(profile.suspended ? 'landing' : 'dashboard');
-            }
+            setView(prevView => {
+              if (prevView === 'signup') {
+                return 'signup'; // Let AuthPage finish celebratory creation and call handleAuthSuccess
+              }
+              if (!activeUserProfileUrl && !isPublicRoute) {
+                return profile.suspended ? 'landing' : 'dashboard';
+              }
+              return prevView;
+            });
           } else {
-            // Setup a temporary user profile for seller
+            // Setup a temporary user profile for seller with 7-day reverse trial
+            const trialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
             const tempProfile: UserProfile = {
               uid: user.uid,
               email: user.email || '',
@@ -213,6 +234,9 @@ export default function App() {
               bio: '¡Bienvenido a nuestra tienda! Aquí encontrarás los mejores productos con envíos rápidos y seguros.',
               role: 'user',
               plan: 'free',
+              subscriptionPlan: 'basico',
+              subscriptionStatus: 'trial',
+              subscriptionTrialExpires: trialExpires,
               currency: '$',
               createdAt: new Date().toISOString()
             };
@@ -224,9 +248,15 @@ export default function App() {
             const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
               ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
 
-            if (!activeUserProfileUrl && !isPublicRoute) {
-              setView('dashboard');
-            }
+            setView(prevView => {
+              if (prevView === 'signup') {
+                return 'signup';
+              }
+              if (!activeUserProfileUrl && !isPublicRoute) {
+                return 'dashboard';
+              }
+              return prevView;
+            });
           }
         }
       } else {
