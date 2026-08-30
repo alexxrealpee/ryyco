@@ -613,13 +613,32 @@ export class RealtimeMeseroManager {
 
     try {
       // 1. Request microphone permissions first
-      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        } 
-      });
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Tu navegador o entorno actual no soporta captura de audio para llamadas de voz.");
+      }
+
+      let mediaStream: MediaStream;
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          } 
+        });
+      } catch (micErr: any) {
+        const isPermissionDenied = 
+          micErr?.name === 'NotAllowedError' || 
+          micErr?.name === 'PermissionDeniedError' || 
+          micErr?.message?.toLowerCase?.().includes('permission') ||
+          micErr?.message?.toLowerCase?.().includes('denied');
+        
+        if (isPermissionDenied) {
+          throw new Error("Permiso de micrófono denegado en tu navegador. Puedes habilitarlo en los permisos del sitio o continuar ordenando por chat.");
+        }
+        throw new Error(micErr?.message || "No se pudo acceder al micrófono del dispositivo.");
+      }
+
       this.localStream = mediaStream;
 
       // 2. Fetch ephemeral Realtime session token from our secure backend

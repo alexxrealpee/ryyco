@@ -349,8 +349,32 @@ export default function LinnkProVoiceAssistant({
 
       await realtimeManagerRef.current.start();
     } catch (realtimeErr: any) {
-      console.error("Error starting continuous Realtime voice session:", realtimeErr);
-      setMicPermissionError(realtimeErr?.message || "No se pudo acceder al micrófono. Por favor verifica los permisos.");
+      console.warn("Realtime voice session notice:", realtimeErr);
+      
+      setIsInVoiceCall(false);
+      isInVoiceCallRef.current = false;
+      stopAudioPlayback();
+      stopAudioAnalyser();
+
+      if (realtimeManagerRef.current) {
+        try {
+          realtimeManagerRef.current.stop();
+        } catch (e) {}
+        realtimeManagerRef.current = null;
+      }
+
+      const isPermissionDenied = 
+        realtimeErr?.name === 'NotAllowedError' || 
+        realtimeErr?.name === 'PermissionDeniedError' || 
+        realtimeErr?.message?.toLowerCase?.().includes('permission') ||
+        realtimeErr?.message?.toLowerCase?.().includes('permiso') ||
+        realtimeErr?.message?.toLowerCase?.().includes('denied');
+      
+      const errorMsg = isPermissionDenied
+        ? "El acceso al micrófono no fue permitido en tu navegador. Puedes habilitarlo en los permisos del sitio o continuar conversando por chat de texto."
+        : (realtimeErr?.message || "No se pudo iniciar la llamada de voz. Puedes chatear por texto directamente.");
+      
+      setMicPermissionError(errorMsg);
       setAssistantState('idle');
     }
   };
@@ -1231,18 +1255,29 @@ export default function LinnkProVoiceAssistant({
                     </h2>
                   </div>
 
-                  {/* Mobile Mic Permission Notice if any */}
+                  {/* Mobile / Browser Mic Permission Notice if any */}
                   {micPermissionError && (
-                    <div className="z-20 my-2 mx-auto max-w-sm bg-rose-950/90 border border-rose-600 rounded-2xl p-3 text-center shadow-2xl backdrop-blur">
-                      <p className="text-xs text-rose-200 font-medium leading-relaxed">
+                    <div className="z-20 my-2 mx-auto max-w-sm bg-[#1A121A]/95 border border-red-500/40 rounded-2xl p-3.5 text-center shadow-2xl backdrop-blur">
+                      <p className="text-xs text-red-200 font-medium leading-relaxed mb-3">
                         {micPermissionError}
                       </p>
-                      <button
-                        onClick={startVoiceCall}
-                        className="mt-2 px-3 py-1 bg-[#EF4444] hover:bg-[#DC2626] text-white text-xs font-bold rounded-lg transition"
-                      >
-                        🔄 Reintentar conexión de voz
-                      </button>
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => {
+                            setMicPermissionError(null);
+                            setActiveTab('chat');
+                          }}
+                          className="px-3 py-1.5 bg-[#182030] hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-white/10 transition"
+                        >
+                          💬 Chatear por texto
+                        </button>
+                        <button
+                          onClick={startVoiceCall}
+                          className="px-3 py-1.5 bg-[#EF4444] hover:bg-[#DC2626] text-white text-xs font-bold rounded-xl transition"
+                        >
+                          🔄 Reintentar micrófono
+                        </button>
+                      </div>
                     </div>
                   )}
 
