@@ -1952,16 +1952,37 @@ export async function saveSubscriptionPayment(payment: SubscriptionPayment): Pro
  */
 export function checkIsStoreClosed(profile?: {
   isClosed?: boolean;
+  suspended?: boolean;
+  subscriptionStatus?: string;
+  subscriptionTrialExpires?: string;
   scheduleEnabled?: boolean;
   openTime?: string;
   closeTime?: string;
 } | null): boolean {
   if (!profile) return false;
 
-  // 1. Manual override takes highest priority if explicitly set to true
+  // 1. If store is suspended or subscription expired, it is ALWAYS closed for customers
+  if (
+    profile.suspended === true || 
+    profile.subscriptionStatus === 'suspended' || 
+    profile.subscriptionStatus === 'expired'
+  ) {
+    return true;
+  }
+
+  // 2. If 7-day trial has expired without active subscription, it is ALWAYS closed
+  if (
+    profile.subscriptionTrialExpires &&
+    profile.subscriptionStatus !== 'active' &&
+    new Date(profile.subscriptionTrialExpires).getTime() < Date.now()
+  ) {
+    return true;
+  }
+
+  // 3. Manual override takes highest priority if explicitly set to true
   if (profile.isClosed === true) return true;
 
-  // 2. Automated schedule calculation if enabled and valid time strings exist
+  // 4. Automated schedule calculation if enabled and valid time strings exist
   if (
     profile.scheduleEnabled === true &&
     typeof profile.openTime === 'string' &&
@@ -2084,16 +2105,16 @@ export async function fetchAllActiveProductsAndStores(): Promise<{ products: Pro
       if (profilesSnapshot && !profilesSnapshot.empty) {
         profilesSnapshot.forEach(docSnap => {
           const data = docSnap.data() as UserProfile;
-          if (!data.suspended) {
-            const profileObj: UserProfile = { 
-              ...data, 
-              uid: data.uid || docSnap.id,
-              isClosed: data.isClosed === true
-            };
-            profilesMap[docSnap.id] = profileObj;
-            if (profileObj.uid) profilesMap[profileObj.uid] = profileObj;
-            if (profileObj.username) profilesMap[profileObj.username.toLowerCase()] = profileObj;
-          }
+          const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+          const profileObj: UserProfile = { 
+            ...data, 
+            uid: data.uid || docSnap.id,
+            suspended: isSuspended,
+            isClosed: isSuspended ? true : data.isClosed === true
+          };
+          profilesMap[docSnap.id] = profileObj;
+          if (profileObj.uid) profilesMap[profileObj.uid] = profileObj;
+          if (profileObj.username) profilesMap[profileObj.username.toLowerCase()] = profileObj;
         });
       }
     } catch (e) {
@@ -2107,8 +2128,14 @@ export async function fetchAllActiveProductsAndStores(): Promise<{ products: Pro
         const parsed = JSON.parse(rawLocalProfiles);
         Object.keys(parsed).forEach(k => {
           const p = parsed[k];
-          if (p && !p.suspended) {
-            const profileObj: UserProfile = { ...p, uid: p.uid || k, isClosed: p.isClosed === true };
+          if (p) {
+            const isSuspended = p.suspended === true || p.subscriptionStatus === 'suspended' || p.subscriptionStatus === 'expired';
+            const profileObj: UserProfile = { 
+              ...p, 
+              uid: p.uid || k, 
+              suspended: isSuspended,
+              isClosed: isSuspended ? true : p.isClosed === true 
+            };
             if (!profilesMap[k]) profilesMap[k] = profileObj;
             if (profileObj.uid && !profilesMap[profileObj.uid]) profilesMap[profileObj.uid] = profileObj;
             if (profileObj.username && !profilesMap[profileObj.username.toLowerCase()]) {
@@ -2124,8 +2151,13 @@ export async function fetchAllActiveProductsAndStores(): Promise<{ products: Pro
         if (key && (key.startsWith('linnk_session_') || key.startsWith('linnk_profile_'))) {
           try {
             const sp = JSON.parse(localStorage.getItem(key) || '{}');
-            if (sp && sp.uid && !sp.suspended) {
-              const profileObj: UserProfile = { ...sp, isClosed: sp.isClosed === true };
+            if (sp && sp.uid) {
+              const isSuspended = sp.suspended === true || sp.subscriptionStatus === 'suspended' || sp.subscriptionStatus === 'expired';
+              const profileObj: UserProfile = { 
+                ...sp, 
+                suspended: isSuspended,
+                isClosed: isSuspended ? true : sp.isClosed === true 
+              };
               if (!profilesMap[sp.uid]) profilesMap[sp.uid] = profileObj;
               if (sp.username && !profilesMap[sp.username.toLowerCase()]) {
                 profilesMap[sp.username.toLowerCase()] = profileObj;
@@ -2191,7 +2223,23 @@ export async function fetchAllActiveProductsAndStores(): Promise<{ products: Pro
       }
     });
 
-    return { products: dedupedProducts, profiles: profilesMap };
+    // 6. Filter out products belonging to suspended or expired stores so they are hidden from customers
+    const activeProductsForClients = dedupedProducts.filter(p => {
+      const storeProf = findStoreForProduct(p, profilesMap);
+      if (storeProf) {
+        if (
+          storeProf.suspended === true || 
+          storeProf.subscriptionStatus === 'suspended' || 
+          storeProf.subscriptionStatus === 'expired' ||
+          (storeProf.subscriptionTrialExpires && storeProf.subscriptionStatus !== 'active' && new Date(storeProf.subscriptionTrialExpires).getTime() < Date.now())
+        ) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    return { products: activeProductsForClients, profiles: profilesMap };
   } catch (e) {
     console.error("Error fetching all active products and profiles:", e);
     return { products: [], profiles: {} };

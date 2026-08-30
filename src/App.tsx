@@ -69,12 +69,34 @@ const detectInitialRouteFromUrl = (): { view: 'landing' | 'login' | 'signup' | '
 
   const pathLower = pathUser.toLowerCase();
   const hashLower = hashUser.toLowerCase();
+  const searchTab = searchParams.get('tab')?.toLowerCase();
 
+  // 1. Explicit admin routes (e.g. /admin, /admin?tab=general, #/admin, #admin)
+  if (
+    pathLower === 'admin' || 
+    pathLower.startsWith('admin/') || 
+    hashLower === 'admin' || 
+    hashLower.startsWith('admin/') || 
+    searchParams.has('admin') ||
+    (searchTab && ['users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general'].includes(searchTab))
+  ) {
+    return { view: 'admin', username: null };
+  }
+
+  // 2. Dashboard and Authentication routes
+  if (['dashboard'].includes(pathLower) || ['dashboard'].includes(hashLower)) {
+    return { view: 'dashboard', username: null };
+  }
+  if (['login', 'ingresar'].includes(pathLower) || ['login', 'ingresar'].includes(hashLower)) {
+    return { view: 'login', username: null };
+  }
+  if (['signup', 'registro'].includes(pathLower) || ['signup', 'registro'].includes(hashLower)) {
+    return { view: 'signup', username: null };
+  }
+
+  // 3. Other system views
   if (['landing', 'vender', 'crear-tienda'].includes(pathLower) || ['landing', 'vender', 'crear-tienda'].includes(hashLower)) {
     return { view: 'landing', username: null };
-  }
-  if (['tienda', 'tiendas', 'catalogo', ''].includes(pathLower) || ['tienda', 'tiendas', 'catalogo'].includes(hashLower)) {
-    return { view: 'tienda', username: null };
   }
   if (['carruselproduc', 'carrusel-productos'].includes(pathLower) || ['carruselproduc', 'carrusel-productos'].includes(hashLower)) {
     return { view: 'carruselproduc', username: null };
@@ -84,6 +106,9 @@ const detectInitialRouteFromUrl = (): { view: 'landing' | 'login' | 'signup' | '
   }
   if (['driver-register'].includes(pathLower) || ['driver-register'].includes(hashLower)) {
     return { view: 'driver-register', username: null };
+  }
+  if (['tienda', 'tiendas', 'catalogo', ''].includes(pathLower) || ['tienda', 'tiendas', 'catalogo'].includes(hashLower)) {
+    return { view: 'tienda', username: null };
   }
 
   const cleanedPath = pathUser && !systemRoutes.includes(pathLower) ? pathUser : null;
@@ -218,6 +243,10 @@ export default function App() {
               if (prevView === 'signup') {
                 return 'signup'; // Let AuthPage finish celebratory creation and call handleAuthSuccess
               }
+              const routeCheck = detectInitialRouteFromUrl();
+              if (routeCheck.view === 'admin' || prevView === 'admin') {
+                return 'admin';
+              }
               if (!activeUserProfileUrl && !isPublicRoute) {
                 return profile.suspended ? 'landing' : 'dashboard';
               }
@@ -251,6 +280,10 @@ export default function App() {
             setView(prevView => {
               if (prevView === 'signup') {
                 return 'signup';
+              }
+              const routeCheck = detectInitialRouteFromUrl();
+              if (routeCheck.view === 'admin' || prevView === 'admin') {
+                return 'admin';
               }
               if (!activeUserProfileUrl && !isPublicRoute) {
                 return 'dashboard';
@@ -342,7 +375,11 @@ export default function App() {
         <Dashboard 
           userProfile={userProfile} 
           onLogout={handleLogout}
-          onNavigateAdmin={() => setView('admin')}
+          onNavigateAdmin={() => {
+            const lastTab = localStorage.getItem('ryyco_admin_active_tab') || 'subscriptions';
+            window.history.pushState({}, '', `/admin?tab=${lastTab}`);
+            setView('admin');
+          }}
         />
       )}
 
@@ -366,7 +403,10 @@ export default function App() {
 
       {view === 'admin' && (
         <AdminPanel 
-          onBack={() => setView('dashboard')}
+          onBack={() => {
+            window.history.pushState({}, '', '/dashboard');
+            setView('dashboard');
+          }}
         />
       )}
 

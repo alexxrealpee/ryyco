@@ -120,6 +120,31 @@ interface AdminUser {
   scheduleEnabled?: boolean;
 }
 
+const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' => {
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const queryTab = urlParams.get('tab')?.toLowerCase();
+    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general'> = [
+      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general'
+    ];
+    if (queryTab && validTabs.includes(queryTab as any)) {
+      return queryTab as any;
+    }
+    const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+    if (hash.startsWith('admin/')) {
+      const hashTab = hash.split('/')[1];
+      if (hashTab && validTabs.includes(hashTab as any)) {
+        return hashTab as any;
+      }
+    }
+    const storedTab = localStorage.getItem('ryyco_admin_active_tab');
+    if (storedTab && validTabs.includes(storedTab as any)) {
+      return storedTab as any;
+    }
+  } catch (e) {}
+  return 'subscriptions';
+};
+
 export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [stats, setStats] = useState({
     totalUsers: 142,
@@ -133,10 +158,34 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [notif, setNotif] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general'>('subscriptions');
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
+
+  // Tab switching with instant URL query and storage synchronization
+  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general') => {
+    setActiveAdminTab(tab);
+    try {
+      localStorage.setItem('ryyco_admin_active_tab', tab);
+      const url = new URL(window.location.href);
+      url.pathname = '/admin';
+      url.searchParams.set('tab', tab);
+      window.history.replaceState(null, '', url.pathname + url.search);
+    } catch (e) {}
+  };
+
+  // Ensure URL reflection on initial component mount
+  useEffect(() => {
+    try {
+      const currentTab = getInitialAdminTab();
+      localStorage.setItem('ryyco_admin_active_tab', currentTab);
+      const url = new URL(window.location.href);
+      url.pathname = '/admin';
+      url.searchParams.set('tab', currentTab);
+      window.history.replaceState(null, '', url.pathname + url.search);
+    } catch (e) {}
+  }, []);
 
   // Comprehensive Store Profiles Directory for accurate Store Name resolution
   const [storesMap, setStoresMap] = useState<Record<string, UserProfile>>({});
@@ -537,24 +586,29 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   };
 
   const handleToggleSuspension = async (user: AdminUser) => {
-    const nextStatus = !user.suspended;
+    const nextSuspended = !user.suspended;
     try {
-      // Write to Firebase
-      await updateDoc(doc(db, 'users', user.uid), { suspended: nextStatus });
-      await updateDoc(doc(db, 'profiles', user.uid), { suspended: nextStatus });
-    } catch(e) {
-      try {
-        await setDoc(doc(db, 'profiles', user.uid), { suspended: nextStatus }, { merge: true });
-        await setDoc(doc(db, 'users', user.uid), { suspended: nextStatus }, { merge: true });
-      } catch (err) {
-        console.error("Error toggling suspension:", err);
-      }
-    }
+      const updates = {
+        suspended: nextSuspended,
+        isClosed: nextSuspended ? true : false,
+        subscriptionStatus: nextSuspended ? 'suspended' : 'active'
+      };
 
-    // Update Local State
-    setUsers(users.map(u => u.uid === user.uid ? { ...u, suspended: nextStatus } : u));
-    setNotif(`La tienda de @${user.username || user.email} ha sido ${nextStatus ? '🔴 SUSPENDIDA' : '🟢 ACTIVADA'} correctamente.`);
-    setTimeout(() => setNotif(''), 4000);
+      // Write to Firebase
+      await setDoc(doc(db, 'profiles', user.uid), updates, { merge: true });
+      try {
+        await setDoc(doc(db, 'users', user.uid), updates, { merge: true });
+      } catch (err) {}
+
+      // Update Local State
+      setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, ...updates } : u));
+      setNotif(`La tienda de @${user.username || user.email} ha sido ${nextSuspended ? '🔴 CERRADA Y SUSPENDIDA (Productos Ocultos)' : '🟢 ACTIVADA Y ABIERTA'} correctamente.`);
+      setTimeout(() => setNotif(''), 4500);
+    } catch (e) {
+      console.error("Error toggling suspension:", e);
+      setNotif(`❌ Error al cambiar estado de suspensión: ${e instanceof Error ? e.message : 'Error imprevisto'}`);
+      setTimeout(() => setNotif(''), 5000);
+    }
   };
 
   const handlePlanUpgrade = async (user: AdminUser, newPlan: 'basico' | 'medio' | 'pro') => {
@@ -583,18 +637,29 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const handleUpdateSubscriptionStatus = async (userId: string, newStatus: string) => {
     try {
+      const isSuspended = newStatus === 'suspended' || newStatus === 'expired';
+      const updates: Record<string, any> = {
+        subscriptionStatus: newStatus,
+        suspended: isSuspended
+      };
+
+      if (isSuspended) {
+        updates.isClosed = true;
+      }
+
       const userRef = doc(db, 'profiles', userId);
-      await updateDoc(userRef, {
-        subscriptionStatus: newStatus
-      });
+      await setDoc(userRef, updates, { merge: true });
+      try {
+        await setDoc(doc(db, 'users', userId), updates, { merge: true });
+      } catch (err) {}
 
       setUsers(prev => prev.map(u => u.uid === userId ? {
         ...u,
-        subscriptionStatus: newStatus
+        ...updates
       } : u));
 
-      setNotif(`Estado de suscripción actualizado a: ${newStatus.toUpperCase()}`);
-      setTimeout(() => setNotif(''), 4000);
+      setNotif(`Estado de suscripción actualizado a: ${newStatus.toUpperCase()} ${isSuspended ? '(Tienda Cerrada y Productos Ocultos)' : ''}`);
+      setTimeout(() => setNotif(''), 4500);
     } catch (e) {
       console.error(e);
     }
@@ -605,33 +670,28 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const { nextPaidUntil, anchorDay } = calculateNextExpirationDate(user, 1);
       const newPaidUntilStr = nextPaidUntil.toISOString();
       
-      const userRef = doc(db, 'profiles', user.uid);
-      await updateDoc(userRef, {
+      const updates = {
         subscriptionStatus: 'active',
         suspended: false,
+        isClosed: false,
         subscriptionPaidUntil: newPaidUntilStr,
         subscriptionAnchorDay: anchorDay
-      });
+      };
+
+      const userRef = doc(db, 'profiles', user.uid);
+      await setDoc(userRef, updates, { merge: true });
 
       try {
         const legacyRef = doc(db, 'users', user.uid);
-        await updateDoc(legacyRef, {
-          subscriptionStatus: 'active',
-          suspended: false,
-          subscriptionPaidUntil: newPaidUntilStr,
-          subscriptionAnchorDay: anchorDay
-        });
+        await setDoc(legacyRef, updates, { merge: true });
       } catch (e) {}
 
       setUsers(prev => prev.map(u => u.uid === user.uid ? {
         ...u,
-        subscriptionStatus: 'active',
-        suspended: false,
-        subscriptionPaidUntil: newPaidUntilStr,
-        subscriptionAnchorDay: anchorDay
+        ...updates
       } : u));
 
-      setNotif(`Suscripción de @${user.username || 'tienda'} extendida hasta ${nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })} (Día de corte: ${anchorDay})`);
+      setNotif(`Suscripción de @${user.username || 'tienda'} extendida hasta ${nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })} (Día de corte: ${anchorDay}) y tienda ABIERTA.`);
       setTimeout(() => setNotif(''), 4500);
     } catch (e) {
       console.error(e);
@@ -1022,7 +1082,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 
                 <nav className="flex flex-col gap-2">
                   <button
-                    onClick={() => setActiveAdminTab('subscriptions')}
+                    onClick={() => handleSwitchTab('subscriptions')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'subscriptions' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1036,7 +1096,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveAdminTab('payments')}
+                    onClick={() => handleSwitchTab('payments')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'payments' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1055,7 +1115,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveAdminTab('orders')}
+                    onClick={() => handleSwitchTab('orders')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'orders' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1072,7 +1132,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveAdminTab('drivers')}
+                    onClick={() => handleSwitchTab('drivers')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'drivers' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1086,7 +1146,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveAdminTab('referrals')}
+                    onClick={() => handleSwitchTab('referrals')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'referrals' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1100,7 +1160,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveAdminTab('users')}
+                    onClick={() => handleSwitchTab('users')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'users' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1117,7 +1177,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveAdminTab('general')}
+                    onClick={() => handleSwitchTab('general')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'general' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
@@ -1149,7 +1209,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           {/* Fixed Mobile Bottom Navigation Bar */}
           <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#090b12]/95 backdrop-blur-xl border-t border-gray-800/80 px-3 py-2 flex items-center gap-2 overflow-x-auto scroll-smooth no-scrollbar shadow-2xl">
             <button
-              onClick={() => setActiveAdminTab('subscriptions')}
+              onClick={() => handleSwitchTab('subscriptions')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'subscriptions'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
@@ -1161,7 +1221,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('payments')}
+              onClick={() => handleSwitchTab('payments')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'payments'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
@@ -1180,7 +1240,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('orders')}
+              onClick={() => handleSwitchTab('orders')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'orders'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
@@ -1199,7 +1259,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('drivers')}
+              onClick={() => handleSwitchTab('drivers')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'drivers'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
@@ -1211,7 +1271,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('referrals')}
+              onClick={() => handleSwitchTab('referrals')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'referrals'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
@@ -1223,7 +1283,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('users')}
+              onClick={() => handleSwitchTab('users')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'users'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
@@ -1242,7 +1302,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </button>
 
             <button
-              onClick={() => setActiveAdminTab('general')}
+              onClick={() => handleSwitchTab('general')}
               className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
                 activeAdminTab === 'general'
                   ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'

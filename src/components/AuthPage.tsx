@@ -22,6 +22,7 @@ import {
 } from 'firebase/auth';
 import { UserProfile } from '../types';
 import LinnkProLogo from './LinnkProLogo';
+import StoreTermsModal from './StoreTermsModal';
 
 interface AuthPageProps {
   initialView: 'login' | 'signup';
@@ -44,6 +45,10 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
   const [isCreatingStore, setIsCreatingStore] = useState(false);
   const [creationSuccess, setCreationSuccess] = useState(false);
   const [createdProfile, setCreatedProfile] = useState<UserProfile | null>(null);
+  
+  // Terms & Conditions for store registration
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
   
   // Real-time username validation
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'too-short'>('idle');
@@ -144,6 +149,10 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password || !username) return;
+    if (!acceptedTerms) {
+      setError('Debes aceptar los Términos y Condiciones para registrar tu tienda en Ryyco.');
+      return;
+    }
     if (usernameStatus !== 'available') {
       setError('Por favor, elige un nombre de usuario válido y disponible.');
       return;
@@ -532,6 +541,19 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
               </div>
             </button>
 
+            {view === 'signup' && (
+              <p className="text-[11px] text-center text-[#A9B2C3] leading-snug px-1">
+                Al registrar tu tienda con Google o correo, aceptas nuestros{' '}
+                <button
+                  type="button"
+                  onClick={() => setIsTermsModalOpen(true)}
+                  className="text-white underline font-semibold hover:text-[#E63946] transition cursor-pointer"
+                >
+                  Términos y Condiciones para Tiendas
+                </button>.
+              </p>
+            )}
+
             <div className="relative flex py-1 items-center">
               <div className="flex-grow border-t border-[#232B3A]" />
               <span className="flex-shrink mx-4 text-xs font-bold text-[#A9B2C3] lowercase">o con correo</span>
@@ -692,10 +714,40 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
               </div>
             </div>
 
+            {/* Terms and Conditions Checkbox for Store Registration */}
+            <div className="pt-2">
+              <label className="flex items-start gap-3 cursor-pointer group select-none">
+                <input 
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => {
+                    setAcceptedTerms(e.target.checked);
+                    if (error && error.includes('Términos')) setError('');
+                  }}
+                  className="mt-0.5 w-4 h-4 rounded border-[#232B3A] bg-[#090B12] text-[#E63946] focus:ring-[#E63946] focus:ring-offset-[#090B12] accent-[#E63946] cursor-pointer shrink-0"
+                />
+                <span className="text-xs text-[#A9B2C3] leading-snug group-hover:text-gray-200 transition">
+                  He leído y acepto los{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsTermsModalOpen(true);
+                    }}
+                    className="text-white font-bold underline hover:text-[#E63946] transition cursor-pointer"
+                  >
+                    Términos y Condiciones para Tiendas
+                  </button>{' '}
+                  y las Políticas de Privacidad de Ryyco.
+                </span>
+              </label>
+            </div>
+
             <button
               type="submit"
               disabled={loading || (usernameStatus !== 'available' && usernameStatus !== 'idle')}
-              className="w-full text-center py-4 bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-sm rounded-xl mt-6 transition-all shadow-lg shadow-[#E63946]/20 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+              className="w-full text-center py-4 bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-sm rounded-xl mt-4 transition-all shadow-lg shadow-[#E63946]/20 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
             >
               {loading ? 'Registrando...' : 'Comenzar Mi Cuenta'}
             </button>
@@ -742,20 +794,43 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
 
         {/* Auth Mode Toggle Footer Link */}
         {view !== 'forgot' && (
-          <div className="text-center mt-8 pt-4 border-t border-[#232B3A]">
-            <span className="text-xs text-[#A9B2C3]">
-              {view === 'login' ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}
-            </span>
-            <button 
-              type="button"
-              onClick={() => setView(view === 'login' ? 'signup' : 'login')}
-              className="text-xs font-extrabold text-[#E63946] hover:underline ml-1.5 underline-offset-4 cursor-pointer"
-            >
-              {view === 'login' ? 'Regístrate aquí' : 'Ingresa aquí'}
-            </button>
+          <div className="text-center mt-6 pt-4 border-t border-[#232B3A] space-y-2">
+            <div>
+              <span className="text-xs text-[#A9B2C3]">
+                {view === 'login' ? '¿No tienes una cuenta?' : '¿Ya tienes una cuenta?'}
+              </span>
+              <button 
+                type="button"
+                onClick={() => setView(view === 'login' ? 'signup' : 'login')}
+                className="text-xs font-extrabold text-[#E63946] hover:underline ml-1.5 underline-offset-4 cursor-pointer"
+              >
+                {view === 'login' ? 'Regístrate aquí' : 'Ingresa aquí'}
+              </button>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => setIsTermsModalOpen(true)}
+                className="text-[11px] text-[#A9B2C3]/80 hover:text-white underline underline-offset-2 transition cursor-pointer"
+              >
+                Consultar Términos y Condiciones para Tiendas
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Store Terms and Conditions Modal */}
+      <StoreTermsModal
+        isOpen={isTermsModalOpen}
+        onClose={() => setIsTermsModalOpen(false)}
+        onAccept={() => {
+          setAcceptedTerms(true);
+          if (error && error.includes('Términos')) setError('');
+        }}
+        showAcceptButton={view === 'signup'}
+      />
     </div>
   );
 }

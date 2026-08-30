@@ -43,12 +43,16 @@ export function rebuildClientAvailableCatalog(): ClientAvailableCatalog {
   const openStoreUsernames = new Set<string>();
 
   rawProfilesMap.forEach((prof, key) => {
-    // isClosed === true -> CLOSED
+    const isSuspended = prof.suspended === true || prof.subscriptionStatus === 'suspended' || prof.subscriptionStatus === 'expired';
+    const isClosed = isSuspended || prof.isClosed === true || checkIsStoreClosed(prof);
+
+    // isClosed === true || suspended -> CLOSED / HIDDEN from clients
     // isClosed === false -> OPEN
-    if (prof.isClosed !== true && !prof.suspended) {
+    if (!isClosed && !isSuspended) {
       const cleanProf: UserProfile = {
         ...prof,
-        isClosed: false
+        isClosed: false,
+        suspended: false
       };
       if (prof.uid && !openStoreUids.has(prof.uid)) {
         openStores.push(cleanProf);

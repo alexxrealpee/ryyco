@@ -657,6 +657,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // Toggle store opened / closed status
   const toggleStoreStatus = async () => {
     if (updatingStatus) return;
+    if (profile.suspended || profile.subscriptionStatus === 'suspended') {
+      alert("⚠️ Tu tienda se encuentra suspendida. Realiza el pago o ponte en contacto con soporte para reactivar tu cuenta y abrir tu tienda.");
+      return;
+    }
     setUpdatingStatus(true);
     try {
       const isCurrentlyClosed = checkIsStoreClosed(profile);
@@ -1558,10 +1562,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   <div className="space-y-6">
                     {/* Control de Apertura/Cierre de Tienda */}
                     {(() => {
+                      const isSuspended = profile.suspended || profile.subscriptionStatus === 'suspended';
                       const isClosedNow = checkIsStoreClosed(profile);
                       return (
                         <div className={`p-6 rounded-3xl border transition-all duration-300 ${
-                          isClosedNow 
+                          isSuspended
+                            ? 'bg-amber-950/20 border-amber-500/30 shadow-amber-500/5 shadow-xl'
+                            : isClosedNow 
                             ? 'bg-red-950/20 border-red-500/20 shadow-red-550/5 shadow-xl' 
                             : 'bg-emerald-950/10 border-emerald-500/10 shadow-emerald-550/5 shadow-xl'
                         }`}>
@@ -1569,12 +1576,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <div className="space-y-1.5">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className={`w-3 h-3 rounded-full ${
-                                  isClosedNow ? 'bg-red-500 animate-ping' : 'bg-emerald-500 animate-pulse'
+                                  isSuspended ? 'bg-amber-500 animate-ping' : isClosedNow ? 'bg-red-500 animate-ping' : 'bg-emerald-500 animate-pulse'
                                 }`} />
                                 <h3 className="text-base font-extrabold text-white tracking-tight">
-                                  Tu tienda se encuentra: {isClosedNow ? '🔴 CERRADA' : '🟢 ABIERTA'}
+                                  Tu tienda se encuentra: {isSuspended ? '🔴 CERRADA (SUSPENDIDA)' : isClosedNow ? '🔴 CERRADA' : '🟢 ABIERTA'}
                                 </h3>
-                                {profile.scheduleEnabled && profile.openTime && profile.closeTime && (
+                                {profile.scheduleEnabled && profile.openTime && profile.closeTime && !isSuspended && (
                                   <span className="text-xs font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1 ml-2">
                                     <Clock className="w-3 h-3 text-indigo-400" />
                                     Horario: {profile.openTime} - {profile.closeTime}
@@ -1582,7 +1589,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 )}
                               </div>
                               <p className="text-xs text-gray-400 max-w-2xl font-semibold leading-relaxed">
-                                {profile.isClosed 
+                                {isSuspended
+                                  ? 'Tu tienda está suspendida y tus productos se encuentran ocultos en la plataforma. Realiza el pago para reactivarla y reanudar tus ventas.'
+                                  : profile.isClosed 
                                   ? 'Tienda cerrada manualmente. Tus clientes verán un letrero animado de "Tienda Cerrada".'
                                   : isClosedNow
                                   ? `Tienda cerrada automáticamente según el horario asignado (${profile.openTime} - ${profile.closeTime}). Se abrirá automáticamente dentro del horario.`
@@ -1591,24 +1600,35 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               </p>
                             </div>
                             
-                            <button
-                              type="button"
-                              onClick={toggleStoreStatus}
-                              disabled={updatingStatus}
-                              className={`px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0 ${
-                                isClosedNow 
-                                  ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/25 ring-2 ring-emerald-400/30' 
-                                  : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/25 ring-2 ring-red-500/30'
-                              } disabled:opacity-50`}
-                            >
-                              {updatingStatus ? (
-                                <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                              ) : isClosedNow ? (
-                                'Abrir Tienda'
-                              ) : (
-                                'Cerrar Tienda'
-                              )}
-                            </button>
+                            {isSuspended ? (
+                              <a
+                                href={`https://wa.me/573219730865?text=${encodeURIComponent(`Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/25 ring-2 ring-amber-400/30 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0"
+                              >
+                                Reactivar Tienda
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={toggleStoreStatus}
+                                disabled={updatingStatus}
+                                className={`px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0 ${
+                                  isClosedNow 
+                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/25 ring-2 ring-emerald-400/30' 
+                                    : 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/25 ring-2 ring-red-500/30'
+                                } disabled:opacity-50`}
+                              >
+                                {updatingStatus ? (
+                                  <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                                ) : isClosedNow ? (
+                                  'Abrir Tienda'
+                                ) : (
+                                  'Cerrar Tienda'
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       );

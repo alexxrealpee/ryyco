@@ -97,7 +97,7 @@ export interface UserProfile {
   // Subscription plans & status fields (COP pricing plans)
   subscriptionPlan?: 'basico' | 'medio' | 'pro';
   requestedPlan?: 'basico' | 'medio' | 'pro';
-  subscriptionStatus?: 'trial' | 'active' | 'pending_payment' | 'under_review';
+  subscriptionStatus?: 'trial' | 'active' | 'pending_payment' | 'under_review' | 'suspended' | 'expired';
   subscriptionStartDate?: string;
   subscriptionTrialExpires?: string;
   subscriptionPaidUntil?: string;

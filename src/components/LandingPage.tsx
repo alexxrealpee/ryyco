@@ -49,6 +49,7 @@ import {
 import LinnkProLogo from './LinnkProLogo';
 import { fetchAllStoresMap } from '../lib/firebase';
 import { UserProfile } from '../types';
+import StoreTermsModal from './StoreTermsModal';
 
 interface LandingPageProps {
   onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal', usernameToClaim?: string) => void;
@@ -58,6 +59,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   const [storeSlug, setStoreSlug] = useState('');
   const [checking, setChecking] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
 
   // Partner stores in Ipiales with logos and names
   const [partnerStores, setPartnerStores] = useState<Array<{
@@ -1249,6 +1251,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <Bike className="w-4 h-4 text-[#F4B400]" />
             <span>Ser Domiciliario</span>
           </button>
+          <button 
+            onClick={() => setIsTermsModalOpen(true)}
+            className="inline-flex items-center gap-1.5 text-gray-300 hover:text-white font-extrabold text-xs transition bg-[#182030] hover:bg-[#232B3A] px-4 py-2.5 rounded-xl border border-[#232B3A] active:scale-[0.98] cursor-pointer"
+          >
+            <FileText className="w-4 h-4 text-[#F4B400]" />
+            <span>Términos y Condiciones Tiendas</span>
+          </button>
           <a 
             href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20Ryyco"
             target="_blank"
@@ -1470,6 +1479,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
         </div>
       )}
+
+      {/* Store Terms and Conditions Modal */}
+      <StoreTermsModal
+        isOpen={isTermsModalOpen}
+        onClose={() => setIsTermsModalOpen(false)}
+        showAcceptButton={false}
+      />
 
     </div>
   );
