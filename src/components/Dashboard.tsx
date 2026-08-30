@@ -91,7 +91,10 @@ import {
   saveSubscriptionPayment,
   checkIsStoreClosed,
   getPlanProductLimit,
-  checkIsAdminEmail
+  checkIsAdminEmail,
+  fetchSystemSettings,
+  listenToSystemSettings,
+  auth
 } from '../lib/firebase';
 import { 
   UserProfile, 
@@ -100,7 +103,8 @@ import {
   OrderItem,
   PageViewAnalytic,
   SubscriptionPayment,
-  BankAccount
+  BankAccount,
+  SystemSettings
 } from '../types';
 import BankSettings from './BankSettings';
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
@@ -217,6 +221,32 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+  // System settings and real-time administrator synchronization
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
+    try {
+      const cached = localStorage.getItem('linnk_system_settings');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return { adminEmails: ['alexxrealpee@gmail.com', 'margaritavall1720@gmail.com'] };
+  });
+
+  useEffect(() => {
+    const unsubscribe = listenToSystemSettings((st) => {
+      if (st) setSystemSettings(st);
+    });
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  const activeAuthEmail = auth?.currentUser?.email || profile.email || '';
+  const isUserAdmin = Boolean(
+    profile.role === 'admin' ||
+    checkIsAdminEmail(profile.email, systemSettings?.adminEmails) ||
+    checkIsAdminEmail(activeAuthEmail, systemSettings?.adminEmails) ||
+    (systemSettings?.adminEmails && Array.isArray(systemSettings.adminEmails) && activeAuthEmail && systemSettings.adminEmails.some(e => typeof e === 'string' && e.toLowerCase().trim() === activeAuthEmail.toLowerCase().trim()))
+  );
 
   // WhatsApp requirement modal states
   const [isWhatsAppRequiredModalOpen, setIsWhatsAppRequiredModalOpen] = useState(false);
@@ -1479,7 +1509,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             Datos Bancarios
           </button>
 
-          {(profile.role === 'admin' || checkIsAdminEmail(profile.email)) && (
+          {isUserAdmin && (
             <button
               type="button"
               onClick={onNavigateAdmin}
@@ -5431,7 +5461,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 </button>
 
                 {/* Panel Administrador */}
-                {profile.role === 'admin' && (
+                {isUserAdmin && (
                   <button
                     type="button"
                     onClick={() => {

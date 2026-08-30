@@ -147,11 +147,15 @@ const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders'
 
 export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [stats, setStats] = useState({
-    totalUsers: 142,
-    totalProfiles: 142,
-    subscribersPro: 31,
-    subscribersBusiness: 11,
-    monthlyRevenue: 639.46
+    totalUsers: 29,
+    totalProfiles: 8,
+    activePaidStores: 8,
+    activeStoresCount: 8,
+    expiredStoresCount: 4,
+    totalActiveAndExpired: 12,
+    subscribersPro: 5,
+    subscribersBusiness: 3,
+    monthlyRevenue: 642000
   });
   
   const [loading, setLoading] = useState(true);
@@ -205,8 +209,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [removingAdminEmail, setRemovingAdminEmail] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
-  // Filter specific store for historical payments ledger
-  const [selectedStoreFilter, setSelectedStoreFilter] = useState<string>('all');
+  // Filter by subscription status for historical payments & subscriptions ledger
+  const [selectedSubscriptionStatusFilter, setSelectedSubscriptionStatusFilter] = useState<string>('all');
   // Order specific filters and lazy loading / progressive pagination state
   const [selectedOrderStoreFilter, setSelectedOrderStoreFilter] = useState<string>('all');
   const [selectedOrderStatusFilter, setSelectedOrderStatusFilter] = useState<string>('all');
@@ -637,7 +641,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const handleUpdateSubscriptionStatus = async (userId: string, newStatus: string) => {
     try {
-      const isSuspended = newStatus === 'suspended' || newStatus === 'expired';
+      const isSuspended = newStatus === 'suspended';
+      const isExpired = newStatus === 'expired';
       const updates: Record<string, any> = {
         subscriptionStatus: newStatus,
         suspended: isSuspended
@@ -645,6 +650,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
       if (isSuspended) {
         updates.isClosed = true;
+      } else if (isExpired) {
+        updates.isClosed = true;
+        updates.suspended = false;
+      } else if (newStatus === 'trial') {
+        updates.isClosed = false;
+        updates.suspended = false;
+        updates.subscriptionTrialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      } else if (newStatus === 'active') {
+        updates.isClosed = false;
+        updates.suspended = false;
+      } else if (newStatus === 'pending_payment') {
+        updates.isClosed = false;
+        updates.suspended = false;
       }
 
       const userRef = doc(db, 'profiles', userId);
@@ -658,7 +676,50 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ...updates
       } : u));
 
-      setNotif(`Estado de suscripción actualizado a: ${newStatus.toUpperCase()} ${isSuspended ? '(Tienda Cerrada y Productos Ocultos)' : ''}`);
+      // Synchronize active and expired stores count in real-time
+      setStats(prev => {
+        const target = users.find(u => u.uid === userId);
+        const prevStatus = target ? isSubscriptionExpiredOrSuspended(target).effectiveStatus : 'unknown';
+        const nextStatus = newStatus;
+        
+        let activeDiff = 0;
+        if (prevStatus === 'active' && nextStatus !== 'active') activeDiff = -1;
+        if (prevStatus !== 'active' && nextStatus === 'active') activeDiff = 1;
+
+        let expiredDiff = 0;
+        if (prevStatus === 'expired' && nextStatus !== 'expired') expiredDiff = -1;
+        if (prevStatus !== 'expired' && nextStatus === 'expired') expiredDiff = 1;
+
+        const currentActive = (prev as any).activeStoresCount ?? prev.activePaidStores ?? 0;
+        const currentExpired = (prev as any).expiredStoresCount ?? 0;
+        const updatedActive = Math.max(0, currentActive + activeDiff);
+        const updatedExpired = Math.max(0, currentExpired + expiredDiff);
+        const updatedTotal = updatedActive + updatedExpired;
+
+        return {
+          ...prev,
+          totalProfiles: updatedActive,
+          activePaidStores: updatedActive,
+          activeStoresCount: updatedActive,
+          expiredStoresCount: updatedExpired,
+          totalActiveAndExpired: updatedTotal
+        };
+      });
+
+      let statusDescription = '';
+      if (newStatus === 'trial') {
+        statusDescription = '🆓 ESTADO GRATUITO (7 Días de Prueba)';
+      } else if (newStatus === 'suspended') {
+        statusDescription = '⚠️ ESTADO SUSPENDIDO (Bloqueada por Administración - Tienda Cerrada)';
+      } else if (newStatus === 'expired') {
+        statusDescription = '🔴 ESTADO EXPIRADO (Suscripción Vencida - Tienda Cerrada)';
+      } else if (newStatus === 'active') {
+        statusDescription = '🟢 ESTADO ACTIVO (Tienda Abierta y Operativa)';
+      } else {
+        statusDescription = '🟡 PENDIENTE DE PAGO';
+      }
+
+      setNotif(`Suscripción actualizada a: ${statusDescription}`);
       setTimeout(() => setNotif(''), 4500);
     } catch (e) {
       console.error(e);
@@ -690,6 +751,28 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ...u,
         ...updates
       } : u));
+
+      // Synchronize stats in real-time
+      setStats(prev => {
+        const prevStatus = isSubscriptionExpiredOrSuspended(user).effectiveStatus;
+        const activeDiff = prevStatus !== 'active' ? 1 : 0;
+        const expiredDiff = prevStatus === 'expired' ? -1 : 0;
+
+        const currentActive = (prev as any).activeStoresCount ?? prev.activePaidStores ?? 0;
+        const currentExpired = (prev as any).expiredStoresCount ?? 0;
+        const updatedActive = Math.max(0, currentActive + activeDiff);
+        const updatedExpired = Math.max(0, currentExpired + expiredDiff);
+        const updatedTotal = updatedActive + updatedExpired;
+
+        return {
+          ...prev,
+          totalProfiles: updatedActive,
+          activePaidStores: updatedActive,
+          activeStoresCount: updatedActive,
+          expiredStoresCount: updatedExpired,
+          totalActiveAndExpired: updatedTotal
+        };
+      });
 
       setNotif(`Suscripción de @${user.username || 'tienda'} extendida hasta ${nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })} (Día de corte: ${anchorDay}) y tienda ABIERTA.`);
       setTimeout(() => setNotif(''), 4500);
@@ -964,11 +1047,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const displayedSubscriptions = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
-    if (!selectedStoreFilter || selectedStoreFilter === 'all') {
+    if (!selectedSubscriptionStatusFilter || selectedSubscriptionStatusFilter === 'all') {
       return sorted;
     }
-    return sorted.filter(u => u.username === selectedStoreFilter || u.uid === selectedStoreFilter || (u.email && u.email === selectedStoreFilter));
-  }, [users, selectedStoreFilter]);
+    return sorted.filter(u => {
+      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(u);
+      return effectiveStatus === selectedSubscriptionStatusFilter;
+    });
+  }, [users, selectedSubscriptionStatusFilter]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
@@ -1338,16 +1424,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 </span>
               </div>
 
-              <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
-                <div className="flex justify-between items-center text-gray-400 mb-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">PERFILES ACTIVOS</span>
-                  <Layers className="w-4 h-4 text-indigo-400" />
+              <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center text-gray-400 mb-2">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                      TIENDAS ACTIVAS Y EXPIRADAS
+                    </span>
+                    <Layers className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
+                    <div className="flex flex-col">
+                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                        Activas
+                      </span>
+                      <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono mt-0.5">
+                        {(stats as any).activeStoresCount ?? stats.totalProfiles ?? 0}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col border-l border-gray-800/80 pl-2">
+                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
+                        Expiradas
+                      </span>
+                      <span className="text-lg sm:text-xl font-black text-red-400 font-mono mt-0.5">
+                        {(stats as any).expiredStoresCount ?? 0}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-2xl font-black text-white mb-1">{stats.totalProfiles}</p>
-                <span className="text-[10px] text-indigo-400 font-bold font-mono flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block animate-pulse"></span>
-                  <span>100% en vivo</span>
-                </span>
+
+                <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
+                  <span className="text-gray-400 font-bold">Total:</span>
+                  <span className="text-white font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[11px]">
+                    {((stats as any).activeStoresCount ?? stats.totalProfiles ?? 0) + ((stats as any).expiredStoresCount ?? 0)} tiendas
+                  </span>
+                </div>
               </div>
 
               <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
@@ -1408,24 +1522,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     <span>Limpiar Usuarios Test</span>
                   </button>
 
-                  <span className="text-xs text-gray-400 font-semibold font-mono ml-2">Filtrar:</span>
+                  <span className="text-xs text-gray-400 font-semibold font-mono ml-2">Filtrar por Estado:</span>
                   <select 
-                    value={selectedStoreFilter}
-                    onChange={(e) => setSelectedStoreFilter(e.target.value)}
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl py-1.5 px-3 text-xs outline-none cursor-pointer"
+                    value={selectedSubscriptionStatusFilter}
+                    onChange={(e) => setSelectedSubscriptionStatusFilter(e.target.value)}
+                    className="bg-gray-950 border border-gray-800 text-white rounded-xl py-1.5 px-3 text-xs outline-none cursor-pointer focus:border-indigo-500 font-medium"
                   >
-                    <option value="all">Todas las Tiendas</option>
-                    {allStoresList.length > 0 ? (
-                      allStoresList.map(s => (
-                        <option key={s.uid} value={s.username || s.uid}>
-                          {s.name} {s.username ? `(@${s.username})` : ''}
-                        </option>
-                      ))
-                    ) : (
-                      users.filter(u => u.storeName || u.username).map(u => (
-                        <option key={u.uid} value={u.username}>{(u.storeName || u.username)}</option>
-                      ))
-                    )}
+                    <option value="all">Todos los Estados</option>
+                    <option value="active">🟢 Activas</option>
+                    <option value="trial">🆓 Estado Gratuito (7 Días)</option>
+                    <option value="expired">🔴 Expiradas</option>
+                    <option value="suspended">⚠️ Suspendidas</option>
+                    <option value="pending_payment">🟡 Pendiente de Pago</option>
                   </select>
                 </div>
               </div>
@@ -1447,6 +1555,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       const anchorDay = getSubscriptionAnchorDay(user);
                       const daysRemaining = getSubscriptionDaysRemaining(user.subscriptionPaidUntil);
                       const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
+                      const trialDaysRemaining = getSubscriptionDaysRemaining(user.subscriptionTrialExpires || (user.createdAt ? new Date(new Date(user.createdAt).getTime() + 7 * 86400000).toISOString() : null));
                       const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
                       const isClosedNow = checkIsStoreClosed(user);
 
@@ -1512,13 +1621,23 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <div>
                               <span className="text-[10px] font-bold text-gray-550 uppercase block mb-0.5">Días Restantes:</span>
                               <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black font-mono ${
-                                isExpired || isSuspended
+                                effectiveStatus === 'suspended'
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                  : effectiveStatus === 'expired'
                                   ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                                  : effectiveStatus === 'trial'
+                                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                                   : daysRemaining <= 3
                                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
                                   : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
                               }`}>
-                                {isExpired || isSuspended ? '0 días (Suspendida)' : `${daysRemaining} días`}
+                                {effectiveStatus === 'suspended'
+                                  ? '0 días (Suspendida)'
+                                  : effectiveStatus === 'expired'
+                                  ? '0 días (Expirada)'
+                                  : effectiveStatus === 'trial'
+                                  ? `${trialDaysRemaining} días (Gratis)`
+                                  : `${daysRemaining} días`}
                               </span>
                             </div>
                           </div>
@@ -1526,11 +1645,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-900/30">
                             <div>
                               <span className="text-[10px] font-bold text-gray-550 uppercase block mb-0.5">Próximo Vencimiento:</span>
-                              <span className={`font-mono text-[11px] block ${isExpired || isSuspended ? 'text-red-400 font-black' : 'text-emerald-400 font-semibold'}`}>
-                                {user.subscriptionPaidUntil ? formatSpanishDate(user.subscriptionPaidUntil) : 'No registrada'}
+                              <span className={`font-mono text-[11px] block ${
+                                effectiveStatus === 'suspended'
+                                  ? 'text-amber-400 font-bold'
+                                  : effectiveStatus === 'expired' 
+                                  ? 'text-red-400 font-black' 
+                                  : effectiveStatus === 'trial'
+                                  ? 'text-cyan-400 font-bold'
+                                  : 'text-emerald-400 font-semibold'
+                              }`}>
+                                {effectiveStatus === 'suspended'
+                                  ? '⚠️ Suspendida por Admin'
+                                  : effectiveStatus === 'expired'
+                                  ? '🔴 Expirada / Vencida'
+                                  : effectiveStatus === 'trial'
+                                  ? `Prueba 7 Días`
+                                  : user.subscriptionPaidUntil ? formatSpanishDate(user.subscriptionPaidUntil) : 'Sin pago activo'}
                               </span>
                               <span className="inline-block mt-1 px-1.5 py-0.2 bg-gray-900 text-gray-400 border border-gray-800 rounded text-[9px] font-mono">
-                                Día de corte: {anchorDay}
+                                {effectiveStatus === 'trial' && user.subscriptionTrialExpires
+                                  ? `Vence: ${formatSpanishDate(user.subscriptionTrialExpires)}`
+                                  : `Día de corte: ${anchorDay}`}
                               </span>
                             </div>
                             <div>
@@ -1559,29 +1694,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <div>
                               <span className="text-[10px] font-bold text-gray-550 uppercase block mb-1">Suscripción:</span>
                               <select
-                                value={isSuspended ? 'suspended' : effectiveStatus}
-                                onChange={(e) => {
-                                  if (e.target.value === 'suspended') {
-                                    if (!user.suspended) handleToggleSuspension(user);
-                                  } else {
-                                    if (user.suspended) handleToggleSuspension(user);
-                                    handleUpdateSubscriptionStatus(user.uid, e.target.value);
-                                  }
-                                }}
+                                value={effectiveStatus}
+                                onChange={(e) => handleUpdateSubscriptionStatus(user.uid, e.target.value)}
                                 className={`w-full rounded-xl py-2 px-2 text-[10.5px] uppercase font-black border cursor-pointer outline-none text-center ${
-                                  isSuspended || effectiveStatus === 'suspended'
+                                  effectiveStatus === 'suspended'
                                     ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-black'
+                                    : effectiveStatus === 'expired' 
+                                    ? 'bg-red-500/20 text-red-400 border-red-500/40 font-black'
                                     : effectiveStatus === 'active' 
                                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                                    : effectiveStatus === 'expired' 
-                                    ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                                    : effectiveStatus === 'trial'
+                                    ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-black'
                                     : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                 }`}
                               >
-                                <option value="active" className="bg-gray-950 text-white">🟢 ACTIVA</option>
+                                <option value="active" className="bg-gray-950 text-emerald-400">🟢 ACTIVA</option>
+                                <option value="trial" className="bg-gray-950 text-cyan-300 font-bold">🆓 ESTADO GRATUITO</option>
                                 <option value="suspended" className="bg-gray-950 text-amber-300">⚠️ SUSPENDIDA</option>
-                                <option value="expired" className="bg-gray-950 text-white">🔴 EXPIRADA</option>
-                                <option value="pending_payment" className="bg-gray-950 text-white">🟡 PENDIENTE</option>
+                                <option value="expired" className="bg-gray-950 text-red-400">🔴 EXPIRADA</option>
+                                <option value="pending_payment" className="bg-gray-950 text-amber-400">🟡 PENDIENTE</option>
                               </select>
                             </div>
                           </div>
@@ -1653,6 +1784,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           const anchorDay = getSubscriptionAnchorDay(user);
                           const daysRemaining = getSubscriptionDaysRemaining(user.subscriptionPaidUntil);
                           const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
+                          const trialDaysRemaining = getSubscriptionDaysRemaining(user.subscriptionTrialExpires || (user.createdAt ? new Date(new Date(user.createdAt).getTime() + 7 * 86400000).toISOString() : null));
                           const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
                           const isClosedNow = checkIsStoreClosed(user);
 
@@ -1715,24 +1847,50 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 {formatSpanishDate(user.createdAt)}
                               </td>
                               <td className="py-3.5 px-4 font-mono text-gray-300">
-                                <div className={`font-mono text-xs ${isExpired || isSuspended ? 'text-red-400 font-black' : 'text-emerald-400 font-semibold'}`}>
-                                  {user.subscriptionPaidUntil ? formatSpanishDate(user.subscriptionPaidUntil) : 'Sin pago activo'}
+                                <div className={`font-mono text-xs ${
+                                  effectiveStatus === 'suspended'
+                                    ? 'text-amber-400 font-bold'
+                                    : effectiveStatus === 'expired' 
+                                    ? 'text-red-400 font-black' 
+                                    : effectiveStatus === 'trial'
+                                    ? 'text-cyan-400 font-bold'
+                                    : 'text-emerald-400 font-semibold'
+                                }`}>
+                                  {effectiveStatus === 'suspended'
+                                    ? '⚠️ Suspendida por Admin'
+                                    : effectiveStatus === 'expired'
+                                    ? '🔴 Expirada / Vencida'
+                                    : effectiveStatus === 'trial'
+                                    ? `Prueba 7 Días`
+                                    : user.subscriptionPaidUntil ? formatSpanishDate(user.subscriptionPaidUntil) : 'Sin pago activo'}
                                 </div>
                                 <div className="mt-1">
                                   <span className="px-2 py-0.5 bg-gray-900 text-gray-400 border border-gray-800 rounded text-[9.5px] font-mono font-bold">
-                                    Día de corte: {anchorDay}
+                                    {effectiveStatus === 'trial' && user.subscriptionTrialExpires
+                                      ? `Vence: ${formatSpanishDate(user.subscriptionTrialExpires)}`
+                                      : `Día de corte: ${anchorDay}`}
                                   </span>
                                 </div>
                               </td>
                               <td className="py-3.5 px-4 text-center">
                                 <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black font-mono ${
-                                  isExpired || isSuspended
+                                  effectiveStatus === 'suspended'
+                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                    : effectiveStatus === 'expired'
                                     ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                    : effectiveStatus === 'trial'
+                                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
                                     : daysRemaining <= 3
                                     ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 animate-pulse'
                                     : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                                 }`}>
-                                  {isExpired || isSuspended ? '0 días (Suspendida)' : `${daysRemaining} días`}
+                                  {effectiveStatus === 'suspended'
+                                    ? '0 días (Suspendida)'
+                                    : effectiveStatus === 'expired'
+                                    ? '0 días (Expirada)'
+                                    : effectiveStatus === 'trial'
+                                    ? `${trialDaysRemaining} días (Gratis)`
+                                    : `${daysRemaining} días`}
                                 </span>
                               </td>
                               <td className="py-3.5 px-4 text-center">
@@ -1764,29 +1922,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               </td>
                               <td className="py-3.5 px-4 text-center">
                                 <select
-                                  value={isSuspended ? 'suspended' : effectiveStatus}
-                                  onChange={(e) => {
-                                    if (e.target.value === 'suspended') {
-                                      if (!user.suspended) handleToggleSuspension(user);
-                                    } else {
-                                      if (user.suspended) handleToggleSuspension(user);
-                                      handleUpdateSubscriptionStatus(user.uid, e.target.value);
-                                    }
-                                  }}
+                                  value={effectiveStatus}
+                                  onChange={(e) => handleUpdateSubscriptionStatus(user.uid, e.target.value)}
                                   className={`rounded-lg py-1 px-2 text-[10px] uppercase font-black border cursor-pointer outline-none ${
-                                    isSuspended || effectiveStatus === 'suspended'
+                                    effectiveStatus === 'suspended'
                                       ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-black'
+                                      : effectiveStatus === 'expired' 
+                                      ? 'bg-red-500/20 text-red-400 border-red-500/40 font-black'
                                       : effectiveStatus === 'active' 
                                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
-                                      : effectiveStatus === 'expired' 
-                                      ? 'bg-red-500/10 text-red-400 border-red-500/20' 
+                                      : effectiveStatus === 'trial'
+                                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-black'
                                       : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                   }`}
                                 >
-                                  <option value="active" className="bg-gray-950 text-white">🟢 ACTIVA</option>
+                                  <option value="active" className="bg-gray-950 text-emerald-400">🟢 ACTIVA</option>
+                                  <option value="trial" className="bg-gray-950 text-cyan-300 font-bold">🆓 ESTADO GRATUITO</option>
                                   <option value="suspended" className="bg-gray-950 text-amber-300">⚠️ SUSPENDIDA</option>
-                                  <option value="expired" className="bg-gray-950 text-white">🔴 EXPIRADA</option>
-                                  <option value="pending_payment" className="bg-gray-950 text-white">🟡 PENDIENTE</option>
+                                  <option value="expired" className="bg-gray-950 text-red-400">🔴 EXPIRADA</option>
+                                  <option value="pending_payment" className="bg-gray-950 text-amber-400">🟡 PENDIENTE</option>
                                 </select>
                               </td>
                               <td className="py-3.5 px-4 text-right">

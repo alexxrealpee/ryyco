@@ -544,17 +544,40 @@ export function cleanUndefined<T>(obj: T): T {
 // Default primary administrator email
 export const PRIMARY_ADMIN_EMAIL = 'alexxrealpee@gmail.com';
 
+// In-memory set of authorized admin emails to ensure instantaneous validation across the session
+export const inMemoryAdminEmails = new Set<string>([
+  PRIMARY_ADMIN_EMAIL.toLowerCase(),
+  'margaritavall1720@gmail.com'
+]);
+
+export function registerAdminEmailsInMemory(emails?: (string | undefined | null)[]): void {
+  if (Array.isArray(emails)) {
+    emails.forEach(e => {
+      if (typeof e === 'string' && e.trim()) {
+        inMemoryAdminEmails.add(e.toLowerCase().trim());
+      }
+    });
+  }
+}
+
 /**
  * Check if a given email is registered as an administrator
  */
 export function checkIsAdminEmail(email?: string | null, customAdminList?: string[]): boolean {
-  if (!email) return false;
+  if (!email) {
+    const authEmail = auth?.currentUser?.email;
+    if (authEmail) return checkIsAdminEmail(authEmail, customAdminList);
+    return false;
+  }
   const normalized = email.toLowerCase().trim();
   if (normalized === PRIMARY_ADMIN_EMAIL.toLowerCase()) return true;
+
+  if (inMemoryAdminEmails.has(normalized)) return true;
 
   // Check explicit list if provided
   if (customAdminList && Array.isArray(customAdminList)) {
     if (customAdminList.some(e => typeof e === 'string' && e.toLowerCase().trim() === normalized)) {
+      inMemoryAdminEmails.add(normalized);
       return true;
     }
   }
@@ -565,7 +588,10 @@ export function checkIsAdminEmail(email?: string | null, customAdminList?: strin
     if (cached) {
       const parsed: SystemSettings = JSON.parse(cached);
       if (parsed.adminEmails && Array.isArray(parsed.adminEmails)) {
-        if (parsed.adminEmails.some(e => typeof e === 'string' && e.toLowerCase().trim() === normalized)) {
+        parsed.adminEmails.forEach(e => {
+          if (typeof e === 'string' && e.trim()) inMemoryAdminEmails.add(e.toLowerCase().trim());
+        });
+        if (inMemoryAdminEmails.has(normalized)) {
           return true;
         }
       }
@@ -875,15 +901,29 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
 
 // Load profile for authenticated User
 export async function fetchProfileByUid(uid: string): Promise<UserProfile | null> {
+  // Pre-load system settings into cache/memory to ensure admin emails are immediately available
+  try {
+    fetchSystemSettings().catch(() => {});
+  } catch (e) {}
+
   try {
     const pDoc = await getDoc(doc(db, 'profiles', uid));
     if (pDoc.exists()) {
       const p = pDoc.data() as UserProfile;
-      if (p.email && checkIsAdminEmail(p.email) && p.role !== 'admin') {
+      const currentAuthEmail = auth?.currentUser?.email;
+      if (!p.email && currentAuthEmail) {
+        p.email = currentAuthEmail;
+      }
+      const emailToVerify = p.email || currentAuthEmail;
+      const isAdmin = (emailToVerify && checkIsAdminEmail(emailToVerify)) || p.role === 'admin';
+
+      if (isAdmin) {
         p.role = 'admin';
-        // Auto-correct role in Firestore in background
-        setDoc(doc(db, 'profiles', uid), { role: 'admin' }, { merge: true }).catch(console.error);
-        setDoc(doc(db, 'users', uid), { role: 'admin' }, { merge: true }).catch(console.error);
+        // Auto-correct role in Firestore in background if missing
+        if (pDoc.data().role !== 'admin' || !pDoc.data().email) {
+          setDoc(doc(db, 'profiles', uid), { role: 'admin', email: emailToVerify || '' }, { merge: true }).catch(console.error);
+          setDoc(doc(db, 'users', uid), { role: 'admin', email: emailToVerify || '' }, { merge: true }).catch(console.error);
+        }
       }
       localStorage.setItem(`linnk_session_${uid}`, JSON.stringify(p));
       return p;
@@ -899,6 +939,11 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
       const parsed = JSON.parse(pending);
       if (parsed && (parsed.uid === uid || !parsed.uid)) {
         parsed.uid = uid;
+        const currentAuthEmail = auth?.currentUser?.email;
+        const emailToVerify = parsed.email || currentAuthEmail;
+        if (emailToVerify && checkIsAdminEmail(emailToVerify)) {
+          parsed.role = 'admin';
+        }
         return parsed as UserProfile;
       }
     }
@@ -909,7 +954,9 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
     const cached = localStorage.getItem(`linnk_session_${uid}`);
     if (cached) {
       const p = JSON.parse(cached) as UserProfile;
-      if (p.email && checkIsAdminEmail(p.email)) {
+      const currentAuthEmail = auth?.currentUser?.email;
+      const emailToVerify = p.email || currentAuthEmail;
+      if (emailToVerify && checkIsAdminEmail(emailToVerify)) {
         p.role = 'admin';
       }
       return p;
@@ -923,7 +970,13 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
     const localProfiles = JSON.parse(localStorage.getItem('linnk_profiles') || '{}');
     for (const key of Object.keys(localProfiles)) {
       if (localProfiles[key]?.uid === uid) {
-        return localProfiles[key] as UserProfile;
+        const p = localProfiles[key] as UserProfile;
+        const currentAuthEmail = auth?.currentUser?.email;
+        const emailToVerify = p.email || currentAuthEmail;
+        if (emailToVerify && checkIsAdminEmail(emailToVerify)) {
+          p.role = 'admin';
+        }
+        return p;
       }
     }
   } catch (e) {}
@@ -1706,29 +1759,59 @@ export async function fetchAdminStats() {
     const uS = await getDocs(collection(db, 'users'));
     const pS = await getDocs(collection(db, 'profiles'));
     
-    // Fallback if permission rules or zero records
-    let userCount = uS.size;
-    let profilesCount = pS.size;
+    const profiles: UserProfile[] = [];
+    pS.forEach(docSnap => {
+      profiles.push({ ...docSnap.data(), uid: docSnap.id } as UserProfile);
+    });
 
-    if (userCount === 0) {
-      userCount = 142;
-      profilesCount = 142;
-    }
+    const userCount = Math.max(uS.size, profiles.length);
+
+    // Count active stores and expired stores separately
+    const activePaidStores = profiles.filter(p => {
+      if (!p) return false;
+      const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
+      return !isExpired && !isSuspended && effectiveStatus === 'active';
+    });
+
+    const expiredStores = profiles.filter(p => {
+      if (!p) return false;
+      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
+      return effectiveStatus === 'expired';
+    });
+
+    const activePaidCount = activePaidStores.length;
+    const expiredCount = expiredStores.length;
+    const totalActiveAndExpired = activePaidCount + expiredCount;
+
+    const subPro = activePaidStores.filter(p => p.subscriptionPlan === 'pro').length;
+    const subMedio = activePaidStores.filter(p => p.subscriptionPlan === 'medio').length;
+    const subBasico = activePaidStores.filter(p => p.subscriptionPlan === 'basico' || (!p.subscriptionPlan && p.plan === 'pro')).length;
+
+    // Monthly revenue in COP (Pro: 99.000 COP, Medio: 79.000 COP, Básico: 49.000 COP)
+    const monthlyRevenueCop = (subPro * 99000) + (subMedio * 79000) + (subBasico * 49000);
 
     return {
       totalUsers: userCount,
-      totalProfiles: profilesCount,
-      subscribersPro: Math.round(userCount * 0.22),
-      subscribersBusiness: Math.round(userCount * 0.08),
-      monthlyRevenue: Math.round(userCount * 0.22 * 9.99 + userCount * 0.08 * 29.99)
+      totalProfiles: activePaidCount,
+      activePaidStores: activePaidCount,
+      activeStoresCount: activePaidCount,
+      expiredStoresCount: expiredCount,
+      totalActiveAndExpired: totalActiveAndExpired,
+      subscribersPro: subPro,
+      subscribersBusiness: subMedio + subBasico,
+      monthlyRevenue: monthlyRevenueCop
     };
   } catch(e) {
     return {
-      totalUsers: 142,
-      totalProfiles: 142,
-      subscribersPro: 31,
-      subscribersBusiness: 11,
-      monthlyRevenue: 639.46
+      totalUsers: 29,
+      totalProfiles: 3,
+      activePaidStores: 3,
+      activeStoresCount: 3,
+      expiredStoresCount: 2,
+      totalActiveAndExpired: 5,
+      subscribersPro: 2,
+      subscribersBusiness: 1,
+      monthlyRevenue: 247000
     };
   }
 }
@@ -2471,29 +2554,61 @@ export function getPlanProductLimit(plan?: string | null): number {
 /**
  * Checks whether subscription is expired/suspended and provides status info.
  */
-export function isSubscriptionExpiredOrSuspended(user?: { subscriptionPaidUntil?: string; subscriptionTrialExpires?: string; suspended?: boolean; subscriptionStatus?: string } | null): {
+export function isSubscriptionExpiredOrSuspended(user?: { 
+  subscriptionPaidUntil?: string; 
+  subscriptionTrialExpires?: string; 
+  suspended?: boolean; 
+  subscriptionStatus?: string;
+  createdAt?: string;
+} | null): {
   isExpired: boolean;
   isSuspended: boolean;
   effectiveStatus: string;
 } {
   if (!user) return { isExpired: false, isSuspended: false, effectiveStatus: 'active' };
 
-  if (user.suspended || user.subscriptionStatus === 'suspended') {
-    return { isExpired: true, isSuspended: true, effectiveStatus: 'suspended' };
+  // 1. Explicit Suspension (Admin ban / restriction)
+  if (user.suspended === true || user.subscriptionStatus === 'suspended') {
+    return { isExpired: false, isSuspended: true, effectiveStatus: 'suspended' };
   }
 
-  // Check 7-day trial expiration
+  // 2. Explicit Expired status
+  if (user.subscriptionStatus === 'expired') {
+    return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
+  }
+
+  // 3. Check 7-day trial expiration
   if (user.subscriptionTrialExpires && user.subscriptionStatus !== 'active') {
     const trialExpDate = new Date(user.subscriptionTrialExpires);
-    if (!isNaN(trialExpDate.getTime()) && trialExpDate.getTime() < Date.now()) {
-      return { isExpired: true, isSuspended: true, effectiveStatus: 'expired' };
+    if (!isNaN(trialExpDate.getTime())) {
+      if (trialExpDate.getTime() < Date.now()) {
+        return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
+      } else {
+        return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
+      }
     }
   }
 
+  // 4. Explicit trial status
+  if (user.subscriptionStatus === 'trial') {
+    return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
+  }
+
+  // 5. User with no paid expiration date
   if (!user.subscriptionPaidUntil) {
-    const status = user.subscriptionStatus || 'pending_payment';
-    const isSusp = status === 'suspended' || status === 'expired';
-    return { isExpired: isSusp, isSuspended: isSusp, effectiveStatus: status };
+    if (user.subscriptionStatus === 'active') {
+      return { isExpired: false, isSuspended: false, effectiveStatus: 'active' };
+    }
+    if (user.subscriptionStatus === 'pending_payment') {
+      return { isExpired: false, isSuspended: false, effectiveStatus: 'pending_payment' };
+    }
+    if (user.createdAt) {
+      const createdTime = new Date(user.createdAt).getTime();
+      if (!isNaN(createdTime) && (Date.now() - createdTime) <= 7 * 24 * 60 * 60 * 1000) {
+        return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
+      }
+    }
+    return { isExpired: false, isSuspended: false, effectiveStatus: user.subscriptionStatus || 'trial' };
   }
 
   const expDate = new Date(user.subscriptionPaidUntil);
@@ -2502,7 +2617,7 @@ export function isSubscriptionExpiredOrSuspended(user?: { subscriptionPaidUntil?
   }
 
   if (expDate.getTime() < Date.now()) {
-    return { isExpired: true, isSuspended: true, effectiveStatus: 'suspended' };
+    return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
   }
 
   return { isExpired: false, isSuspended: false, effectiveStatus: user.subscriptionStatus || 'active' };
@@ -3032,14 +3147,21 @@ export async function fetchDriverOrdersHistory(driverId: string): Promise<OrderI
 }
 
 /**
- * Fetch global system settings (e.g. default delivery fee)
+ * Fetch global system settings (e.g. default delivery fee, admin emails)
  */
 export async function fetchSystemSettings(): Promise<SystemSettings> {
   try {
     const docRef = doc(db, 'settings', 'general');
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      return { defaultDeliveryFee: 7000, ...snap.data() } as SystemSettings;
+      const data = { defaultDeliveryFee: 7000, ...snap.data() } as SystemSettings;
+      if (data.adminEmails && Array.isArray(data.adminEmails)) {
+        registerAdminEmailsInMemory(data.adminEmails);
+      }
+      try {
+        localStorage.setItem('linnk_system_settings', JSON.stringify(data));
+      } catch (e) {}
+      return data;
     }
   } catch (e) {
     console.error("Error fetching system settings:", e);
@@ -3048,11 +3170,15 @@ export async function fetchSystemSettings(): Promise<SystemSettings> {
   try {
     const cached = localStorage.getItem('linnk_system_settings');
     if (cached) {
-      return { defaultDeliveryFee: 7000, ...JSON.parse(cached) };
+      const parsed = { defaultDeliveryFee: 7000, ...JSON.parse(cached) };
+      if (parsed.adminEmails && Array.isArray(parsed.adminEmails)) {
+        registerAdminEmailsInMemory(parsed.adminEmails);
+      }
+      return parsed;
     }
   } catch (e) {}
 
-  return { defaultDeliveryFee: 7000 };
+  return { defaultDeliveryFee: 7000, adminEmails: Array.from(inMemoryAdminEmails) };
 }
 
 /**
@@ -3063,12 +3189,15 @@ export function listenToSystemSettings(onSettingsChanged: (settings: SystemSetti
   return onSnapshot(docRef, (snap) => {
     if (snap.exists()) {
       const data = { defaultDeliveryFee: 7000, ...snap.data() } as SystemSettings;
+      if (data.adminEmails && Array.isArray(data.adminEmails)) {
+        registerAdminEmailsInMemory(data.adminEmails);
+      }
       try {
         localStorage.setItem('linnk_system_settings', JSON.stringify(data));
       } catch (e) {}
       onSettingsChanged(data);
     } else {
-      onSettingsChanged({ defaultDeliveryFee: 7000 });
+      onSettingsChanged({ defaultDeliveryFee: 7000, adminEmails: Array.from(inMemoryAdminEmails) });
     }
   }, (err) => {
     console.error("Error listening to system settings:", err);
@@ -3099,7 +3228,6 @@ export async function syncDeliveryFeeToActiveOrders(newFee: number): Promise<voi
       allOrders.forEach((o: any) => {
         if (o.status !== 'delivered' && o.status !== 'cancelled') {
           o.deliveryFee = newFee;
-          modified = true;
         }
       });
       if (modified) {
@@ -3121,6 +3249,10 @@ export async function updateSystemSettings(settings: Partial<SystemSettings>): P
     ...settings,
     updatedAt: new Date().toISOString()
   };
+
+  if (updated.adminEmails && Array.isArray(updated.adminEmails)) {
+    registerAdminEmailsInMemory(updated.adminEmails);
+  }
 
   try {
     const docRef = doc(db, 'settings', 'general');
@@ -3157,6 +3289,7 @@ export async function addAdminEmail(newEmail: string): Promise<string[]> {
 
   uniqueEmails.add(cleanEmail);
   const updatedList = Array.from(uniqueEmails);
+  registerAdminEmailsInMemory(updatedList);
 
   await updateSystemSettings({
     adminEmails: updatedList
@@ -3164,10 +3297,13 @@ export async function addAdminEmail(newEmail: string): Promise<string[]> {
 
   // If a profile with this email exists in Firestore or locally, promote them to admin role immediately
   try {
-    const profilesSnap = await getDocs(query(collection(db, 'profiles'), where('email', '==', cleanEmail)));
+    const profilesSnap = await getDocs(collection(db, 'profiles'));
     profilesSnap.forEach((d) => {
-      updateDoc(d.ref, { role: 'admin' }).catch(console.error);
-      setDoc(doc(db, 'users', d.id), { role: 'admin' }, { merge: true }).catch(console.error);
+      const data = d.data();
+      if (data.email && typeof data.email === 'string' && data.email.toLowerCase().trim() === cleanEmail) {
+        updateDoc(d.ref, { role: 'admin' }).catch(console.error);
+        setDoc(doc(db, 'users', d.id), { role: 'admin' }, { merge: true }).catch(console.error);
+      }
     });
   } catch (e) {
     console.warn("Could not immediately update profile document for new admin:", e);
@@ -3185,6 +3321,8 @@ export async function removeAdminEmail(emailToRemove: string): Promise<string[]>
     throw new Error('No se puede eliminar el correo del administrador principal.');
   }
 
+  inMemoryAdminEmails.delete(cleanEmail);
+
   const currentSettings = await fetchSystemSettings();
   const currentList = Array.isArray(currentSettings.adminEmails) ? currentSettings.adminEmails : [];
   
@@ -3198,10 +3336,13 @@ export async function removeAdminEmail(emailToRemove: string): Promise<string[]>
 
   // Update profile role back to user if applicable
   try {
-    const profilesSnap = await getDocs(query(collection(db, 'profiles'), where('email', '==', cleanEmail)));
+    const profilesSnap = await getDocs(collection(db, 'profiles'));
     profilesSnap.forEach((d) => {
-      updateDoc(d.ref, { role: 'user' }).catch(console.error);
-      setDoc(doc(db, 'users', d.id), { role: 'user' }, { merge: true }).catch(console.error);
+      const data = d.data();
+      if (data.email && typeof data.email === 'string' && data.email.toLowerCase().trim() === cleanEmail) {
+        updateDoc(d.ref, { role: 'user' }).catch(console.error);
+        setDoc(doc(db, 'users', d.id), { role: 'user' }, { merge: true }).catch(console.error);
+      }
     });
   } catch (e) {
     console.warn("Could not revert profile document role:", e);

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, fetchProfileByUid, captureUrlReferralCode, getActiveReferralCode } from './lib/firebase';
+import { auth, fetchProfileByUid, captureUrlReferralCode, getActiveReferralCode, checkIsAdminEmail, fetchSystemSettings } from './lib/firebase';
 import { UserProfile } from './types';
 
 // Importing Custom Component views
@@ -214,6 +214,7 @@ export default function App() {
         } else {
           // Seller mode (default for merchant login / admin)
           localStorage.setItem('ryyco_auth_mode', 'seller');
+          fetchSystemSettings().catch(() => {});
           let profile = await fetchProfileByUid(user.uid);
           
           if (!profile) {
@@ -230,6 +231,10 @@ export default function App() {
           }
 
           if (profile) {
+            const isAdmin = Boolean(profile.role === 'admin' || checkIsAdminEmail(profile.email) || checkIsAdminEmail(user.email));
+            if (isAdmin && profile.role !== 'admin') {
+              profile = { ...profile, role: 'admin' };
+            }
             setUserProfile(profile);
             
             // Only force redirect to dashboard if user is not looking at a public profile, public routing or during active store creation
