@@ -763,7 +763,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
-                    {/* Historias */}
+                    {/* Reels / Historias */}
                     <button
                       type="button"
                       onClick={() => {
@@ -773,15 +773,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       }}
                       className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <Sparkles className="w-4 h-4 text-purple-400" />
+                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#E63946] to-[#F4B400] flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-md">
+                        <Flame className="w-4 h-4 text-white fill-white" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-purple-300 transition">
-                          Historias de Comida
+                        <span className="font-bold text-xs text-white block group-hover:text-[#F4B400] transition flex items-center gap-1.5">
+                          Reels de Comida
+                          <span className="text-[9px] bg-[#E63946] text-white px-1.5 py-0.2 rounded font-black tracking-wider">TIKTOK</span>
                         </span>
                         <p className="text-[10px] text-gray-400 leading-tight">
-                          Ver platos destacados y videos
+                          Ver platos y menús en formato video / reels
                         </p>
                       </div>
                     </button>
@@ -941,11 +942,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   window.history.pushState({}, '', '/carruselproduc');
                   window.dispatchEvent(new Event('popstate'));
                 }}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#E63946]/10 hover:bg-[#E63946]/20 border border-[#E63946] rounded-full text-[#E63946] transition cursor-pointer text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-md active:scale-95"
-                title="Ver historias"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#E63946] to-[#F4B400] text-white rounded-full transition cursor-pointer text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-lg shadow-[#E63946]/20 active:scale-95 border border-white/20"
+                title="Ver Reels de comida estilo TikTok"
               >
-                <Sparkles className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#E63946] animate-pulse" />
-                <span>HISTORIAS</span>
+                <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-white text-white animate-bounce" />
+                <span>REELS</span>
               </button>
 
               {/* Social Media Links */}
