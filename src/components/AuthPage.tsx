@@ -27,7 +27,7 @@ import StoreTermsModal from './StoreTermsModal';
 interface AuthPageProps {
   initialView: 'login' | 'signup';
   usernameClaimed?: string;
-  onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin') => void;
+  onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'tienda') => void;
   onSuccess: (userProfile: UserProfile) => void;
 }
 
@@ -477,7 +477,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
         )}
 
         <button 
-          onClick={() => onNavigate('landing')}
+          onClick={() => onNavigate('tienda')}
           className="absolute top-6 left-6 text-[#A9B2C3] hover:text-white flex items-center gap-1 text-sm font-semibold transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" /> Volver
@@ -486,7 +486,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
         <div className="flex flex-col items-center mb-8 mt-2">
           <div className="mb-4">
             <LinnkProLogo 
-              onClick={() => onNavigate('landing')}
+              onClick={() => onNavigate('tienda')}
               height={50}
               imgClassName="h-11 sm:h-12"
             />

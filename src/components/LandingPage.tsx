@@ -253,7 +253,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <header className="border-b border-[#232B3A] backdrop-blur-md sticky top-0 z-50 bg-[#090B12]/95">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
           <LinnkProLogo 
-            onClick={() => onNavigate('landing')}
+            onClick={() => onNavigate('tienda')}
             height={42}
             imgClassName="h-7.5 sm:h-[42px]"
           />

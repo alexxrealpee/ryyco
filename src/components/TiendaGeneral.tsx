@@ -863,7 +863,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           {/* Center: Centered Logo with Dedicated Protected Clearance */}
           <div className="flex items-center justify-center shrink-0 px-2 z-20">
             <LinnkProLogo 
-              onClick={onNavigateHome} 
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('all');
+                setSelectedStore('all');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                onNavigateHome();
+              }} 
               height={40}
               imgClassName="h-7 sm:h-[38px] md:h-[42px]"
             />

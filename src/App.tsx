@@ -253,7 +253,7 @@ export default function App() {
                 return 'admin';
               }
               if (!activeUserProfileUrl && !isPublicRoute) {
-                return profile.suspended ? 'landing' : 'dashboard';
+                return profile.suspended ? 'tienda' : 'dashboard';
               }
               return prevView;
             });
@@ -299,10 +299,11 @@ export default function App() {
         }
       } else {
         setUserProfile(null);
-        // Only return back to landing page if user is currently inside protected vistas
+        // Return back to tienda general if user was inside protected views
         setView(prev => {
           if (prev === 'dashboard' || prev === 'admin') {
-            return 'landing';
+            window.history.pushState({}, document.title, '/tienda');
+            return 'tienda';
           }
           return prev;
         });
@@ -318,21 +319,22 @@ export default function App() {
       localStorage.removeItem('ryyco_auth_mode');
       await signOut(auth);
       setUserProfile(null);
-      setView('landing');
+      window.history.pushState({}, document.title, '/tienda');
+      setView('tienda');
     } catch (e) {
       console.error(e);
     }
   };
 
   const handleNavigateHome = (claimUsername?: string) => {
-    // Return to root workspace and strip query parameters safely
-    window.history.pushState({}, document.title, window.location.origin);
+    // Return to /tienda as the primary landing address
+    window.history.pushState({}, document.title, '/tienda');
     setTargetUsername(null);
     if (claimUsername && typeof claimUsername === 'string') {
       setClaimedUsername(claimUsername);
       setView('signup');
     } else {
-      setView('landing');
+      setView('tienda');
     }
   };
 
@@ -371,7 +373,17 @@ export default function App() {
         <AuthPage 
           initialView={view} 
           usernameClaimed={claimedUsername}
-          onNavigate={(targetView) => setView(targetView)} 
+          onNavigate={(targetView) => {
+            if (targetView === 'tienda') {
+              window.history.pushState({}, '', '/tienda');
+              setView('tienda');
+            } else if (targetView === 'landing') {
+              window.history.pushState({}, '', '/landing');
+              setView('landing');
+            } else {
+              setView(targetView);
+            }
+          }} 
           onSuccess={handleAuthSuccess}
         />
       )}
