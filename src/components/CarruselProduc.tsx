@@ -15,14 +15,9 @@ import {
   Share2,
   Utensils,
   Heart,
-  Music,
   CheckCircle2,
   Tag,
   Flame,
-  Volume2,
-  VolumeX,
-  Sparkles,
-  ExternalLink,
   Plus
 } from 'lucide-react';
 import PwaLoadingScreen from './PwaLoadingScreen';
@@ -50,7 +45,6 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   const [isPaused, setIsPaused] = useState(false);
   const [showPauseIndicator, setShowPauseIndicator] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
   
   // Likes storage & state
@@ -640,32 +634,6 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     )}
                   </div>
 
-                  {/* TikTok Rotating Vinyl Disc Audio Icon */}
-                  <div className="relative mt-2">
-                    <div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (profile) onNavigateToStore(profile.username);
-                      }}
-                      className="w-10 h-10 rounded-full bg-gradient-to-tr from-gray-900 via-black to-gray-800 border-2 border-white/30 p-1 flex items-center justify-center animate-[spin_4s_linear_infinite] shadow-xl cursor-pointer"
-                      title="Audio original"
-                    >
-                      {profile?.photoURL ? (
-                        <img 
-                          src={profile.photoURL} 
-                          alt="disc" 
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <Music className="w-4 h-4 text-[#F4B400]" />
-                      )}
-                    </div>
-                    {/* Floating mini music notes */}
-                    <div className="absolute -top-3 -left-2 text-[#F4B400] animate-bounce text-[10px] pointer-events-none">
-                      🎵
-                    </div>
-                  </div>
-
                 </aside>
 
                 {/* 5. Bottom Left Overlay Info & Direct CTA (TikTok Description Bar) */}
@@ -725,14 +693,6 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       )}
                     </div>
                   )}
-
-                  {/* TikTok Scrolling Music / Audio Ticker */}
-                  <div className="flex items-center gap-2 text-xs text-gray-300 mb-3 opacity-90">
-                    <Music className="w-3.5 h-3.5 text-[#F4B400] animate-pulse shrink-0" />
-                    <div className="overflow-hidden whitespace-nowrap text-[11px] font-medium text-gray-200">
-                      <span>🎵 Menú & Platos de Ipiales • @{profile?.username || 'ryyco'}</span>
-                    </div>
-                  </div>
 
                   {/* Direct Store Action Button (Without WhatsApp in Reel) */}
                   <div className="flex items-center gap-2 pt-1">
