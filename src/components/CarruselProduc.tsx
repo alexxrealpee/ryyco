@@ -180,7 +180,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     }, 450);
   };
 
-  // 3. Auto-play story timer: Advance automatically every 3 seconds (3000 ms)
+  // 3. Auto-play story timer: Advance automatically every 3 seconds and return to beginning when finished
   useEffect(() => {
     if (isPaused || total <= 1) return;
 
@@ -455,29 +455,36 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                 key={product.id}
                 className="w-full h-[100dvh] snap-start snap-always relative flex items-center justify-center bg-black overflow-hidden"
               >
-                {/* 1. Immersive Blurred Ambient Background */}
+                {/* 1. Immersive Blurred Ambient Colorful Glow Background */}
                 {product.imageURL ? (
-                  <div 
-                    className="absolute inset-0 bg-cover bg-center filter blur-2xl opacity-40 scale-125 transition-transform duration-1000 ease-out"
-                    style={{ backgroundImage: `url(${product.imageURL})` }}
-                  />
+                  <div className="absolute inset-0 overflow-hidden pointer-events-none">
+                    {/* Underlying warm tint */}
+                    <div className="absolute inset-0 bg-[#0d111a]" />
+                    {/* High-saturation, wide-spread blurred image bringing vibrant natural food colors */}
+                    <div 
+                      className="absolute -inset-12 bg-cover bg-center filter blur-3xl opacity-80 scale-150 transition-all duration-700 ease-out saturate-150"
+                      style={{ backgroundImage: `url(${product.imageURL})` }}
+                    />
+                    {/* Radial warm lighting layer */}
+                    <div className="absolute inset-0 bg-radial from-transparent via-black/20 to-black/60" />
+                  </div>
                 ) : (
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#1E293B] via-[#0F172A] to-black" />
+                  <div className="absolute inset-0 bg-gradient-to-b from-[#E63946]/40 via-[#1E293B] to-[#0F172A]" />
                 )}
 
-                {/* 2. Top & Bottom Cinematic Vignette Gradients */}
-                <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent via-50% to-black/95 pointer-events-none z-10" />
+                {/* 2. Top & Bottom Soft Vignettes for readability while keeping vibrant colors */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent via-45% to-black/85 pointer-events-none z-10" />
 
                 {/* 3. Main Center Stage Media */}
                 <div 
                   onClick={(e) => handleMediaTouchOrClick(e, product.id)}
-                  className="relative z-20 w-full h-full flex items-center justify-center cursor-pointer select-none"
+                  className="relative z-20 w-full h-full flex items-center justify-center cursor-pointer select-none p-2"
                 >
                   {product.imageURL ? (
                     <img
                       src={product.imageURL}
                       alt={product.name}
-                      className="w-full h-full object-contain drop-shadow-2xl transition-transform duration-700"
+                      className="w-full h-full object-contain drop-shadow-[0_15px_35px_rgba(0,0,0,0.65)] transition-transform duration-700"
                       loading={idx <= 1 ? "eager" : "lazy"}
                     />
                   ) : (
