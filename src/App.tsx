@@ -23,7 +23,11 @@ import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
 import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
-const detectInitialRouteFromUrl = (): { view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'; username: string | null } => {
+const detectInitialRouteFromUrl = (): { 
+  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'; 
+  username: string | null;
+  reelId: string | null;
+} => {
   let search = window.location.search;
   let pathname = window.location.pathname;
 
@@ -65,7 +69,7 @@ const detectInitialRouteFromUrl = (): { view: 'landing' | 'login' | 'signup' | '
   while (hashUser.endsWith('/')) hashUser = hashUser.substring(0, hashUser.length - 1);
   if (hashUser.startsWith('@')) hashUser = hashUser.substring(1);
 
-  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'api', 'assets'];
+  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets'];
 
   const pathLower = pathUser.toLowerCase();
   const hashLower = hashUser.toLowerCase();
@@ -80,35 +84,62 @@ const detectInitialRouteFromUrl = (): { view: 'landing' | 'login' | 'signup' | '
     searchParams.has('admin') ||
     (searchTab && ['users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general'].includes(searchTab))
   ) {
-    return { view: 'admin', username: null };
+    return { view: 'admin', username: null, reelId: null };
   }
 
   // 2. Dashboard and Authentication routes
   if (['dashboard'].includes(pathLower) || ['dashboard'].includes(hashLower)) {
-    return { view: 'dashboard', username: null };
+    return { view: 'dashboard', username: null, reelId: null };
   }
   if (['login', 'ingresar'].includes(pathLower) || ['login', 'ingresar'].includes(hashLower)) {
-    return { view: 'login', username: null };
+    return { view: 'login', username: null, reelId: null };
   }
   if (['signup', 'registro'].includes(pathLower) || ['signup', 'registro'].includes(hashLower)) {
-    return { view: 'signup', username: null };
+    return { view: 'signup', username: null, reelId: null };
   }
 
-  // 3. Other system views
-  if (['landing', 'vender', 'crear-tienda'].includes(pathLower) || ['landing', 'vender', 'crear-tienda'].includes(hashLower)) {
-    return { view: 'landing', username: null };
+  // 3. Reels / Stories / Carrusel de productos route with direct reel ID detection
+  const isReelsRoute = 
+    ['carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia'].includes(pathLower) ||
+    pathLower.startsWith('reels/') ||
+    pathLower.startsWith('reel/') ||
+    pathLower.startsWith('carruselproduc/') ||
+    pathLower.startsWith('historias/') ||
+    ['carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia'].includes(hashLower) ||
+    hashLower.startsWith('reels/') ||
+    hashLower.startsWith('reel/') ||
+    hashLower.startsWith('carruselproduc/') ||
+    hashLower.startsWith('historias/') ||
+    searchParams.has('reel') ||
+    searchParams.has('reels') ||
+    searchParams.has('story');
+
+  if (isReelsRoute) {
+    let extractedReelId: string | null = searchParams.get('id') || searchParams.get('reel') || searchParams.get('p') || searchParams.get('story') || null;
+    if (!extractedReelId) {
+      if (pathUser.includes('/')) {
+        const parts = pathUser.split('/');
+        if (parts.length > 1 && parts[1]) extractedReelId = parts[1];
+      } else if (hashUser.includes('/')) {
+        const parts = hashUser.split('/');
+        if (parts.length > 1 && parts[1]) extractedReelId = parts[1];
+      }
+    }
+    return { view: 'carruselproduc', username: null, reelId: extractedReelId };
   }
-  if (['carruselproduc', 'carrusel-productos'].includes(pathLower) || ['carruselproduc', 'carrusel-productos'].includes(hashLower)) {
-    return { view: 'carruselproduc', username: null };
+
+  // 4. Other system views
+  if (['landing', 'vender', 'crear-tienda'].includes(pathLower) || ['landing', 'vender', 'crear-tienda'].includes(hashLower)) {
+    return { view: 'landing', username: null, reelId: null };
   }
   if (['domiciliario', 'domiciliarios', 'driver-portal'].includes(pathLower) || ['domiciliario', 'domiciliarios', 'driver-portal'].includes(hashLower)) {
-    return { view: 'driver-portal', username: null };
+    return { view: 'driver-portal', username: null, reelId: null };
   }
   if (['driver-register'].includes(pathLower) || ['driver-register'].includes(hashLower)) {
-    return { view: 'driver-register', username: null };
+    return { view: 'driver-register', username: null, reelId: null };
   }
   if (['tienda', 'tiendas', 'catalogo', ''].includes(pathLower) || ['tienda', 'tiendas', 'catalogo'].includes(hashLower)) {
-    return { view: 'tienda', username: null };
+    return { view: 'tienda', username: null, reelId: null };
   }
 
   const cleanedPath = pathUser && !systemRoutes.includes(pathLower) ? pathUser : null;
@@ -116,10 +147,10 @@ const detectInitialRouteFromUrl = (): { view: 'landing' | 'login' | 'signup' | '
   const username = queryUser || cleanedPath || cleanedHash || null;
 
   if (username) {
-    return { view: 'profile', username };
+    return { view: 'profile', username, reelId: null };
   }
 
-  return { view: 'tienda', username: null };
+  return { view: 'tienda', username: null, reelId: null };
 };
 
 export default function App() {
@@ -127,6 +158,7 @@ export default function App() {
   const initialRoute = detectInitialRouteFromUrl();
   const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'>(initialRoute.view);
   const [targetUsername, setTargetUsername] = useState<string | null>(initialRoute.username);
+  const [targetReelId, setTargetReelId] = useState<string | null>(initialRoute.reelId);
   const [activeDriverSession, setActiveDriverSession] = useState<DriverProfile | null>(null);
   
   // Auth state
@@ -147,6 +179,7 @@ export default function App() {
       const route = detectInitialRouteFromUrl();
       setView(route.view);
       setTargetUsername(route.username);
+      setTargetReelId(route.reelId);
     };
 
     // Run on mount
@@ -241,8 +274,8 @@ export default function App() {
             const activeUserProfileUrl = getUsernameFromUrl();
             const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
             const hashVal = window.location.hash.toLowerCase();
-            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
-              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
 
             setView(prevView => {
               if (prevView === 'signup') {
@@ -279,8 +312,8 @@ export default function App() {
             const activeUserProfileUrl = getUsernameFromUrl();
             const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
             const hashVal = window.location.hash.toLowerCase();
-            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc'].includes(pathUser) ||
-              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc'].includes(hashVal);
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
 
             setView(prevView => {
               if (prevView === 'signup') {
@@ -448,19 +481,23 @@ export default function App() {
 
       {view === 'carruselproduc' && (
         <CarruselProduc
+          initialReelId={targetReelId}
           onNavigateHome={() => {
             window.history.pushState({}, '', '/tienda');
             setTargetUsername(null);
+            setTargetReelId(null);
             setView('tienda');
           }}
           onNavigateToStore={(username) => {
             window.history.pushState({}, '', '/' + username);
             setTargetUsername(username);
+            setTargetReelId(null);
             setView('profile');
           }}
           onNavigateToTienda={() => {
             window.history.pushState({}, '', '/tienda');
             setTargetUsername(null);
+            setTargetReelId(null);
             setView('tienda');
           }}
         />

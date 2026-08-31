@@ -31,6 +31,7 @@ import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
 
 interface CarruselProducProps {
+  initialReelId?: string | null;
   onNavigateHome: () => void;
   onNavigateToStore: (username: string) => void;
   onNavigateToTienda?: () => void;
@@ -41,7 +42,7 @@ interface LikeState {
   isLiked: boolean;
 }
 
-export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNavigateToTienda }: CarruselProducProps) {
+export default function CarruselProduc({ initialReelId, onNavigateHome, onNavigateToStore, onNavigateToTienda }: CarruselProducProps) {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(true);
@@ -62,6 +63,7 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isProgrammaticScroll = useRef(false);
+  const initialScrolledRef = useRef(false);
 
   // 1. Fetch active products and profiles
   useEffect(() => {
@@ -104,9 +106,26 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
           };
         });
 
+        // Determine if there is a target initial product ID from prop or search params
+        const targetId = initialReelId || 
+          new URLSearchParams(window.location.search).get('id') || 
+          new URLSearchParams(window.location.search).get('reel') || 
+          new URLSearchParams(window.location.search).get('p');
+
+        let initialIdx = 0;
+        if (targetId) {
+          const matchIdx = sorted.findIndex(
+            p => p.id === targetId || p.id.toLowerCase() === targetId.toLowerCase()
+          );
+          if (matchIdx !== -1) {
+            initialIdx = matchIdx;
+          }
+        }
+
         setLikesMap(initialLikesMap);
         setProfiles(fetchedProfiles);
         setProducts(sorted);
+        setCurrentIndex(initialIdx);
       } catch (err) {
         console.error('Error cargando reels de productos:', err);
       } finally {
@@ -117,7 +136,35 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialReelId]);
+
+  // Initial scroll to target reel on first mount
+  useEffect(() => {
+    if (!loading && products.length > 0 && !initialScrolledRef.current) {
+      initialScrolledRef.current = true;
+      if (currentIndex > 0 && containerRef.current) {
+        const container = containerRef.current;
+        const targetTop = currentIndex * container.clientHeight;
+        container.scrollTo({
+          top: targetTop,
+          behavior: 'instant'
+        });
+      }
+    }
+  }, [loading, products, currentIndex]);
+
+  // Keep browser address bar in sync with current reel ID
+  useEffect(() => {
+    if (products[currentIndex]) {
+      const activeId = products[currentIndex].id;
+      const targetUrl = `/reels?id=${encodeURIComponent(activeId)}`;
+      if (window.location.pathname + window.location.search !== targetUrl) {
+        try {
+          window.history.replaceState(null, '', targetUrl);
+        } catch (e) {}
+      }
+    }
+  }, [currentIndex, products]);
 
   const total = products.length;
 
@@ -284,21 +331,30 @@ export default function CarruselProduc({ onNavigateHome, onNavigateToStore, onNa
     }
   };
 
-  // 8. Share Reel
+  // 8. Share Reel directly with deep-link to the exact dish/reel
   const handleShare = async (product: ProductItem, profile?: UserProfile | null) => {
-    const url = window.location.origin + (profile?.username ? `/${profile.username}` : '/tienda');
+    const url = `${window.location.origin}/reels?id=${encodeURIComponent(product.id)}`;
     const text = `🔥 Mira este reel gastronómico en Ryyco: ${product.name} de ${profile?.displayName || 'Ryyco'}`;
 
     if (navigator.share) {
       try {
         await navigator.share({ title: product.name, text, url });
-      } catch (err) {
-        // Fallback to clipboard
+      } catch (err: any) {
+        // Fallback to clipboard if share cancelled or unavailable
+        if (err?.name !== 'AbortError') {
+          try {
+            await navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch (e) {}
+        }
       }
     } else {
-      navigator.clipboard.writeText(url);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      try {
+        await navigator.clipboard.writeText(url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (e) {}
     }
   };
 
