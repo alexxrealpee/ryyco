@@ -477,7 +477,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     <img
                       src={product.imageURL}
                       alt={product.name}
-                      className="w-full h-full object-cover sm:object-contain drop-shadow-2xl transition-transform duration-700 hover:scale-105"
+                      className="w-full h-full object-contain drop-shadow-2xl transition-transform duration-700"
                       loading={idx <= 1 ? "eager" : "lazy"}
                     />
                   ) : (
