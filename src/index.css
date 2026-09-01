@@ -59,3 +59,9 @@ body {
 .font-serif {
   font-family: 'Playfair Display', Georgia, serif;
 }
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}

@@ -22,7 +22,7 @@ import {
   Plus,
   Check
 } from 'lucide-react';
-import PwaLoadingScreen from './PwaLoadingScreen';
+import ReelSkeleton from './ReelSkeleton';
 import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduct } from '../lib/firebase';
 import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
@@ -411,7 +411,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   };
 
   if (loading) {
-    return <PwaLoadingScreen message="Cargando Reels de comida en Ipiales..." />;
+    return <ReelSkeleton />;
   }
 
   if (total === 0) {

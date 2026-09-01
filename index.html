@@ -13,7 +13,10 @@
     <meta name="title" content="Ryyco | Pide comida, descubre restaurantes y recibe recomendaciones" />
     <meta name="description" content="Descubre restaurantes, explora platos, recibe recomendaciones personalizadas y pide comida a domicilio con Ryyco. Una nueva forma inteligente de disfrutar lo que te gusta." />
     <meta name="keywords" content="Ryyco, pedir comida, comida a domicilio, domicilios de comida, restaurantes, restaurantes cerca de mí, pedir comida online, menú de restaurantes, platos de comida, comida a domicilio Colombia, restaurantes Colombia, recomendaciones de comida, qué comer hoy, pedir comida online Colombia" />
-    <meta name="robots" content="index, follow" />
+    <!-- SEO Canonical & Indexing -->
+    <link rel="canonical" href="https://ryyco.com/" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1" />
     <meta name="language" content="Spanish" />
     <meta name="author" content="Ryyco" />
 
@@ -47,20 +50,34 @@
 
     <!-- Schema.org JSON-LD Structured Data -->
     <script type="application/ld+json">
-      {
-        "@context": "https://schema.org",
-        "@type": "WebSite",
-        "name": "Ryyco",
-        "alternateName": "Ryyco Gastronomía y Domicilios",
-        "url": "https://ryyco.com/",
-        "image": "https://ryyco.com/logoryyco.png",
-        "description": "Descubre restaurantes, explora platos, recibe recomendaciones personalizadas y pide comida a domicilio con Ryyco. Una nueva forma inteligente de disfrutar lo que te gusta.",
-        "potentialAction": {
-          "@type": "SearchAction",
-          "target": "https://ryyco.com/?q={search_term_string}",
-          "query-input": "required name=search_term_string"
+      [
+        {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "name": "Ryyco",
+          "alternateName": "Ryyco Gastronomía y Domicilios",
+          "url": "https://ryyco.com/",
+          "image": "https://ryyco.com/logoryyco.png",
+          "description": "Descubre restaurantes, explora platos, recibe recomendaciones personalizadas y pide comida a domicilio con Ryyco. Una nueva forma inteligente de disfrutar lo que te gusta.",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://ryyco.com/?q={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        },
+        {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "Ryyco",
+          "url": "https://ryyco.com/",
+          "logo": "https://ryyco.com/logoryyco.png",
+          "sameAs": [
+            "https://www.instagram.com/ryyco_oficial",
+            "https://www.tiktok.com/@ryyco_oficial",
+            "https://www.facebook.com/ryyco"
+          ]
         }
-      }
+      ]
     </script>
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-5DZY5FQ42X"></script>
