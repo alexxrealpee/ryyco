@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Store, 
-  ShoppingBag, 
+  ShoppingBag,
+  ShoppingCart, 
   ChevronUp, 
   ChevronDown, 
   ArrowLeft, 
@@ -18,12 +19,14 @@ import {
   CheckCircle2,
   Tag,
   Flame,
-  Plus
+  Plus,
+  Check
 } from 'lucide-react';
 import PwaLoadingScreen from './PwaLoadingScreen';
 import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduct } from '../lib/firebase';
 import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
+import { addProductToCart, getStoredCart, CART_UPDATED_EVENT } from '../lib/cartHelper';
 
 interface CarruselProducProps {
   initialReelId?: string | null;
@@ -46,6 +49,32 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   const [showPauseIndicator, setShowPauseIndicator] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
+  const [addedProductId, setAddedProductId] = useState<string | null>(null);
+  const [toastNotification, setToastNotification] = useState<{ show: boolean; product?: ProductItem }>({ show: false });
+  const [cartCount, setCartCount] = useState<number>(() => {
+    try {
+      const stored = getStoredCart();
+      return stored.reduce((sum, item) => sum + item.quantity, 0);
+    } catch {
+      return 0;
+    }
+  });
+
+  // Sync cart count with storage updates
+  useEffect(() => {
+    const handleCartSync = () => {
+      try {
+        const stored = getStoredCart();
+        setCartCount(stored.reduce((sum, item) => sum + item.quantity, 0));
+      } catch (e) {}
+    };
+    window.addEventListener(CART_UPDATED_EVENT, handleCartSync);
+    window.addEventListener('storage', handleCartSync);
+    return () => {
+      window.removeEventListener(CART_UPDATED_EVENT, handleCartSync);
+      window.removeEventListener('storage', handleCartSync);
+    };
+  }, []);
   
   // Likes storage & state
   const [likesMap, setLikesMap] = useState<Record<string, LikeState>>({});
@@ -352,7 +381,25 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     }
   };
 
-  // 9. Dedicated navigation to Tienda General
+  // 9. Add product to general cart directly from Reel
+  const handleAddToCart = (product: ProductItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const updated = addProductToCart(product, 1);
+    const totalCount = updated.reduce((sum, item) => sum + item.quantity, 0);
+    setCartCount(totalCount);
+    setAddedProductId(product.id);
+    setToastNotification({ show: true, product });
+
+    setTimeout(() => {
+      setAddedProductId(prev => prev === product.id ? null : prev);
+    }, 2500);
+
+    setTimeout(() => {
+      setToastNotification(prev => ({ ...prev, show: false }));
+    }, 3500);
+  };
+
+  // 10. Dedicated navigation to Tienda General
   const handleGoToTienda = () => {
     if (onNavigateToTienda) {
       onNavigateToTienda();
@@ -410,7 +457,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
               onClick={handleGoToTienda}
               className="text-gray-400 hover:text-white transition cursor-pointer text-xs"
             >
-              Tienda
+              Menú
             </button>
             <div className="h-3 w-[1px] bg-white/20" />
             <div className="relative cursor-pointer text-white flex items-center gap-1">
@@ -420,23 +467,64 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
             </div>
           </div>
 
-          {/* Play / Pause Toggle Button */}
-          <button
-            onClick={() => {
-              setIsPaused(!isPaused);
-              setShowPauseIndicator(true);
-              setTimeout(() => setShowPauseIndicator(false), 900);
-            }}
-            className={`w-9 h-9 rounded-full backdrop-blur-md border flex items-center justify-center transition active:scale-90 cursor-pointer shadow-md ${
-              isPaused 
-                ? 'bg-[#F4B400]/20 text-[#F4B400] border-[#F4B400]/40' 
-                : 'bg-black/40 text-white border-white/15 hover:bg-black/80'
-            }`}
-            title={isPaused ? "Reanudar auto-reproducción (3s)" : "Pausar auto-reproducción"}
-          >
-            {isPaused ? <Play className="w-4 h-4 fill-[#F4B400]" /> : <Pause className="w-4 h-4" />}
-          </button>
+          {/* Right Action Controls: Cart & Play/Pause */}
+          <div className="flex items-center gap-2">
+            {/* Cart Button with Counter Badge */}
+            <button
+              onClick={handleGoToTienda}
+              className="relative w-9 h-9 rounded-full bg-black/40 backdrop-blur-md border border-white/15 flex items-center justify-center text-white hover:bg-black/80 transition active:scale-90 cursor-pointer shadow-md"
+              title="Ver Carrito"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-[#E63946] text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-black shadow">
+                  {cartCount > 99 ? '99+' : cartCount}
+                </span>
+              )}
+            </button>
+
+            {/* Play / Pause Toggle Button */}
+            <button
+              onClick={() => {
+                setIsPaused(!isPaused);
+                setShowPauseIndicator(true);
+                setTimeout(() => setShowPauseIndicator(false), 900);
+              }}
+              className={`w-9 h-9 rounded-full backdrop-blur-md border flex items-center justify-center transition active:scale-90 cursor-pointer shadow-md ${
+                isPaused 
+                  ? 'bg-[#F4B400]/20 text-[#F4B400] border-[#F4B400]/40' 
+                  : 'bg-black/40 text-white border-white/15 hover:bg-black/80'
+              }`}
+              title={isPaused ? "Reanudar auto-reproducción (3s)" : "Pausar auto-reproducción"}
+            >
+              {isPaused ? <Play className="w-4 h-4 fill-[#F4B400]" /> : <Pause className="w-4 h-4" />}
+            </button>
+          </div>
         </header>
+
+        {/* Floating Notification Toast when adding to cart */}
+        {toastNotification.show && toastNotification.product && (
+          <div className="absolute top-16 left-4 right-4 z-50 bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center justify-between border border-white/20 animate-fade-in backdrop-blur-md">
+            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                <ShoppingCart className="w-4 h-4 text-white" />
+              </div>
+              <div className="truncate text-xs">
+                <p className="font-bold truncate">¡{toastNotification.product.name} añadido!</p>
+                <p className="text-[10px] text-emerald-100">Listo en tu carrito de compras</p>
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleGoToTienda();
+              }}
+              className="px-3 py-1.5 bg-white text-emerald-800 text-[11px] font-black uppercase tracking-wider rounded-xl shadow shrink-0 active:scale-95 transition hover:bg-emerald-50 cursor-pointer"
+            >
+              Ver Carrito
+            </button>
+          </div>
+        )}
 
         {/* Vertical Feed Container (Scroll Snap Vertical) */}
         <div
@@ -600,24 +688,22 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     </span>
                   </div>
 
-                  {/* Ver en Tienda Button */}
-                  {profile && (
-                    <div className="flex flex-col items-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onNavigateToStore(profile.username);
-                        }}
-                        className="w-11 h-11 rounded-full bg-black/50 backdrop-blur-md border border-white/15 text-[#F4B400] hover:text-amber-300 flex items-center justify-center shadow-xl transition hover:scale-110 active:scale-95 cursor-pointer"
-                        title="Ver Tienda"
-                      >
-                        <Store className="w-5 h-5" />
-                      </button>
-                      <span className="text-[10px] font-black text-gray-200 mt-1 drop-shadow-md">
-                        Tienda
-                      </span>
-                    </div>
-                  )}
+                  {/* Ver Menú Button (Takes user to home / general store catalog) */}
+                  <div className="flex flex-col items-center">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleGoToTienda();
+                      }}
+                      className="w-11 h-11 rounded-full bg-black/50 backdrop-blur-md border border-white/15 text-[#F4B400] hover:text-amber-300 flex items-center justify-center shadow-xl transition hover:scale-110 active:scale-95 cursor-pointer"
+                      title="Ver Menú / Inicio"
+                    >
+                      <Utensils className="w-5 h-5" />
+                    </button>
+                    <span className="text-[10px] font-black text-gray-200 mt-1 drop-shadow-md">
+                      Menú
+                    </span>
+                  </div>
 
                   {/* Share Button */}
                   <div className="flex flex-col items-center relative">
@@ -701,25 +787,28 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     </div>
                   )}
 
-                  {/* Direct Store Action Button (Without WhatsApp in Reel) */}
+                  {/* Direct Purchase / Add to Cart Action Button */}
                   <div className="flex items-center gap-2 pt-1">
-                    {profile ? (
-                      <button
-                        onClick={() => onNavigateToStore(profile.username)}
-                        className="flex-1 py-2.5 px-4 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/30 transition active:scale-95 cursor-pointer"
-                      >
-                        <Store className="w-4 h-4" />
-                        <span>Ver en la Tienda</span>
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleGoToTienda}
-                        className="flex-1 py-2.5 px-4 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/30 transition active:scale-95 cursor-pointer"
-                      >
-                        <ShoppingBag className="w-4 h-4" />
-                        <span>Explorar Tienda</span>
-                      </button>
-                    )}
+                    <button
+                      onClick={(e) => handleAddToCart(product, e)}
+                      className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition active:scale-95 cursor-pointer font-black text-sm uppercase tracking-wider ${
+                        addedProductId === product.id
+                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-600/40 animate-pulse'
+                          : 'bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white shadow-[#E63946]/30'
+                      }`}
+                    >
+                      {addedProductId === product.id ? (
+                        <>
+                          <Check className="w-5 h-5 text-white" />
+                          <span>¡Añadido al Carrito!</span>
+                        </>
+                      ) : (
+                        <>
+                          <ShoppingCart className="w-5 h-5" />
+                          <span>Comprar</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                 </div>

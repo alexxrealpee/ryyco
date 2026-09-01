@@ -30,12 +30,12 @@ import {
   MoreVertical,
   Layers,
   Flame,
-  User
+  User,
+  Utensils
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem } from '../types';
 import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
-import PwaLoadingScreen from './PwaLoadingScreen';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
@@ -121,6 +121,88 @@ export const isFoodProduct = (product: { name?: string; description?: string; ca
 
   return matchesFoodKeyword && !isPureAlcohol;
 };
+
+// --- Skeleton Screen Components ---
+function ProductCardSkeleton() {
+  return (
+    <div className="bg-[#111827] border border-[#232B3A] rounded-2xl overflow-hidden flex flex-col relative animate-pulse shadow-sm">
+      {/* Top Store Badge Skeleton */}
+      <div className="absolute top-3 left-3 z-20">
+        <div className="h-5 w-20 bg-[#090B12]/80 border border-[#232B3A] rounded-full" />
+      </div>
+
+      {/* Product Image Skeleton */}
+      <div className="relative aspect-square w-full bg-gradient-to-br from-[#0D111A] via-[#1E293B]/70 to-[#0D111A] overflow-hidden shrink-0 flex items-center justify-center">
+        <div className="w-10 h-10 rounded-2xl bg-[#111827]/80 flex items-center justify-center border border-white/5">
+          <Utensils className="w-5 h-5 text-gray-600/40" />
+        </div>
+      </div>
+
+      {/* Card Information Skeleton */}
+      <div className="p-3 sm:p-4.5 flex flex-col flex-grow justify-between space-y-3 sm:space-y-4">
+        <div className="space-y-2">
+          {/* Category Pill Line */}
+          <div className="h-2 w-16 bg-[#F4B400]/20 rounded-full" />
+          {/* Title Line */}
+          <div className="h-3.5 w-4/5 bg-[#2B3548] rounded" />
+          {/* Description Lines */}
+          <div className="space-y-1.5 pt-0.5">
+            <div className="h-2.5 w-full bg-[#1F2937] rounded" />
+            <div className="h-2.5 w-3/5 bg-[#1F2937] rounded" />
+          </div>
+        </div>
+
+        {/* Price & Action Button Bar */}
+        <div className="pt-2 border-t border-[#232B3A] flex items-center justify-between">
+          <div className="h-4 w-16 bg-[#2B3548] rounded" />
+          <div className="h-7 w-16 bg-[#E63946]/30 rounded-lg border border-[#E63946]/20" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StoresSkeleton() {
+  return (
+    <div className="space-y-2 border-t border-[#232B3A] pt-4 animate-pulse">
+      <div className="flex items-center gap-2 px-1">
+        <Store className="w-4 h-4 text-[#E63946]" />
+        <span className="text-xs font-black uppercase text-white tracking-wider">Tiendas</span>
+        <div className="h-3 w-8 bg-[#1F2937] rounded-full" />
+      </div>
+      <div className="flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 px-1 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5 flex-shrink-0">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-[#111827] via-[#1E293B] to-[#111827] border-2 border-[#232B3A] p-0.5 relative overflow-hidden">
+              <div className="w-full h-full rounded-full bg-[#1F2937]/70" />
+            </div>
+            <div className="h-2.5 w-12 bg-[#1F2937] rounded-full" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CategoriesSkeleton() {
+  return (
+    <div className="border-t border-[#232B3A] pt-3 space-y-2 animate-pulse">
+      <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
+        <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
+        <span>Categorías:</span>
+      </div>
+      <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        {[75, 115, 90, 85, 105, 95].map((w, idx) => (
+          <div 
+            key={idx} 
+            className="h-8 rounded-xl bg-gradient-to-r from-[#111827] via-[#1E293B] to-[#111827] border border-[#232B3A] shrink-0" 
+            style={{ width: `${w}px` }} 
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface TiendaGeneralProps {
   onNavigateHome: () => void;
@@ -425,28 +507,46 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     });
   }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy]);
 
-  const [visibleLimit, setVisibleLimit] = useState(8);
+  // Smart 4-by-4 progressive loading
+  const [visibleLimit, setVisibleLimit] = useState(4);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-  // Reset limit when filter/search/sort changes
+  // Reset limit to 4 when filter/search/sort changes
   useEffect(() => {
-    setVisibleLimit(8);
+    setVisibleLimit(4);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
-  // Infinite Scroll scroll listener
+  // Infinite Scroll scroll listener (loads 4 by 4)
   useEffect(() => {
+    let timeoutId: any = null;
     const handleScroll = () => {
-      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 300) {
-        setVisibleLimit(prev => {
-          if (prev < filteredProducts.length) {
-            return prev + 8;
-          }
-          return prev;
-        });
-      }
+      if (timeoutId) return;
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 350) {
+          setVisibleLimit(prev => {
+            if (prev < filteredProducts.length) {
+              return prev + 4;
+            }
+            return prev;
+          });
+        }
+      }, 150);
     };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [filteredProducts.length]);
+
+  const handleLoadMoreFour = () => {
+    setIsLoadingMore(true);
+    setTimeout(() => {
+      setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length));
+      setIsLoadingMore(false);
+    }, 200);
+  };
 
   const displayedProducts = useMemo(() => {
     return filteredProducts.slice(0, visibleLimit);
@@ -1101,8 +1201,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
           </div>
 
-          {/* Horizontal Store Logos Carousel */}
-          {uniqueStores.length > 0 && (
+          {/* Horizontal Store Logos Carousel / Skeleton */}
+          {loading ? (
+            <StoresSkeleton />
+          ) : uniqueStores.length > 0 ? (
             <div className="space-y-2 border-t border-[#232B3A] pt-4">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
@@ -1216,45 +1318,54 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 })}
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Quick Categories section */}
-          <div className="border-t border-[#232B3A] pt-3 space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
-              <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
-              <span>Categorías:</span>
+          {/* Quick Categories section / Skeleton */}
+          {loading ? (
+            <CategoriesSkeleton />
+          ) : (
+            <div className="border-t border-[#232B3A] pt-3 space-y-2">
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
+                <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
+                <span>Categorías:</span>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
+                {categories.map((cat) => {
+                  const isAll = cat === 'all';
+                  const isSelected = selectedCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 uppercase tracking-wide cursor-pointer shrink-0 whitespace-nowrap ${
+                        isAll && isSelected
+                          ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20 font-black'
+                          : isSelected
+                          ? 'bg-[#F4B400] text-black shadow-md shadow-[#F4B400]/20 font-black'
+                          : 'bg-transparent border border-[#232B3A] text-white hover:border-[#E63946]/60 hover:text-white'
+                      }`}
+                    >
+                      {isAll ? 'VER TODO' : cat}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
-              {categories.map((cat) => {
-                const isAll = cat === 'all';
-                const isSelected = selectedCategory === cat;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 uppercase tracking-wide cursor-pointer shrink-0 whitespace-nowrap ${
-                      isAll && isSelected
-                        ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20 font-black'
-                        : isSelected
-                        ? 'bg-[#F4B400] text-black shadow-md shadow-[#F4B400]/20 font-black'
-                        : 'bg-transparent border border-[#232B3A] text-white hover:border-[#E63946]/60 hover:text-white'
-                    }`}
-                  >
-                    {isAll ? 'VER TODO' : cat}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* 4. Products Display / Loading */}
+        {/* 4. Products Display / Skeleton Screens */}
         {loading ? (
-          <div className="py-12 my-4 bg-[#090B12] rounded-3xl border border-[#232B3A] overflow-hidden">
-            <PwaLoadingScreen 
-              message="Cargando directorio gastronómico de Ipiales..." 
-              subtext="Obteniendo los mejores restaurantes, promociones y platos locales"
-            />
+          <div className="space-y-4">
+            <div className="flex items-center justify-between px-1">
+              <div className="h-4 w-32 bg-[#1F2937] rounded-full animate-pulse" />
+              <div className="h-3 w-16 bg-[#1F2937] rounded-full animate-pulse" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <ProductCardSkeleton key={`skel-init-${i}`} />
+              ))}
+            </div>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="bg-[#111827] border border-[#232B3A] rounded-3xl py-16 px-4 text-center max-w-md mx-auto space-y-4">
@@ -1392,15 +1503,57 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 </motion.div>
               );
             })}
+
+            {/* Progressive Skeleton Cards when loading the next 4 items */}
+            {isLoadingMore && [1, 2, 3, 4].map((i) => (
+              <ProductCardSkeleton key={`skel-more-${i}`} />
+            ))}
           </div>
 
-          {/* Infinite Scroll loading indicator */}
-          {visibleLimit < filteredProducts.length && (
-            <div className="w-full flex flex-col items-center justify-center py-10 gap-2.5 mt-6 border-t border-dashed border-gray-900">
-              <div className="w-6 h-6 border-2 border-[#E63946] border-t-transparent animate-spin rounded-full" />
-              <p className="text-[10px] text-gray-400 font-extrabold tracking-widest uppercase animate-pulse">Cargando más productos...</p>
+          {/* Smart 4-by-4 Progressive Loading indicator & control */}
+          {visibleLimit < filteredProducts.length ? (
+            <div className="w-full flex flex-col items-center justify-center py-8 gap-3 mt-6 border-t border-dashed border-[#232B3A]">
+              <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
+                <span>Mostrando</span>
+                <span className="text-[#F4B400] font-black">{Math.min(visibleLimit, filteredProducts.length)}</span>
+                <span>de</span>
+                <span className="text-white font-black">{filteredProducts.length}</span>
+                <span>productos</span>
+              </div>
+
+              {/* Progress bar */}
+              <div className="w-48 h-1.5 bg-[#1F2937] rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-[#F4B400] to-[#E63946] rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(100, Math.round((visibleLimit / filteredProducts.length) * 100))}%` }}
+                />
+              </div>
+
+              <button
+                onClick={handleLoadMoreFour}
+                disabled={isLoadingMore}
+                className="px-6 py-2.5 bg-[#1F2937] hover:bg-[#374151] border border-white/10 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-[#E63946] border-t-transparent animate-spin rounded-full" />
+                    <span>Cargando 4 más...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Cargar 4 productos más</span>
+                    <span className="text-[10px] bg-[#E63946]/30 text-[#E63946] px-1.5 py-0.5 rounded font-black border border-[#E63946]/40">+4</span>
+                  </>
+                )}
+              </button>
+              
+              <p className="text-[10px] text-gray-500 tracking-wide">o desliza hacia abajo para carga automática</p>
             </div>
-          )}
+          ) : filteredProducts.length > 4 ? (
+            <div className="w-full text-center py-8 text-xs font-medium text-gray-500 border-t border-dashed border-[#232B3A] mt-6">
+              ✨ Has llegado al final — Mostrando todos los {filteredProducts.length} productos
+            </div>
+          ) : null}
         </>
         )}
       </main>

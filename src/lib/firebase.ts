@@ -2177,9 +2177,18 @@ export function findStoreForProduct(
   };
 }
 
+// In-memory cache for products & stores to minimize Firestore reads
+let _cachedProductsData: { products: ProductItem[]; profiles: Record<string, UserProfile>; timestamp: number } | null = null;
+const PRODUCTS_CACHE_TTL_MS = 120 * 1000; // 2 minutes cache
+
 // Fetch all active products and profiles from Firestore and local cache
-export async function fetchAllActiveProductsAndStores(): Promise<{ products: ProductItem[]; profiles: Record<string, UserProfile> }> {
+export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = false): Promise<{ products: ProductItem[]; profiles: Record<string, UserProfile> }> {
   try {
+    const now = Date.now();
+    if (!forceRefresh && _cachedProductsData && (now - _cachedProductsData.timestamp < PRODUCTS_CACHE_TTL_MS) && _cachedProductsData.products.length > 0) {
+      return { products: _cachedProductsData.products, profiles: _cachedProductsData.profiles };
+    }
+
     const profilesMap: Record<string, UserProfile> = {};
 
     // 1. Fetch profiles from Firestore
@@ -2321,6 +2330,12 @@ export async function fetchAllActiveProductsAndStores(): Promise<{ products: Pro
       }
       return true;
     });
+
+    _cachedProductsData = {
+      products: activeProductsForClients,
+      profiles: profilesMap,
+      timestamp: Date.now()
+    };
 
     return { products: activeProductsForClients, profiles: profilesMap };
   } catch (e) {

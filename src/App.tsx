@@ -377,7 +377,7 @@ export default function App() {
     setView('dashboard');
   };
 
-  if (initLoading) {
+  if (initLoading && (view === 'dashboard' || view === 'admin')) {
     return <PwaLoadingScreen />;
   }
 
