@@ -15,7 +15,6 @@ import {
   MessageCircle, 
   Filter, 
   Tag, 
-  ArrowUpDown, 
   SlidersHorizontal,
   X,
   MapPin,
@@ -167,7 +166,7 @@ function StoresSkeleton() {
     <div className="space-y-2 border-t border-[#232B3A] pt-4 animate-pulse">
       <div className="flex items-center gap-2 px-1">
         <Store className="w-4 h-4 text-[#E63946]" />
-        <span className="text-xs font-black uppercase text-white tracking-wider">Tiendas</span>
+        <span className="text-xs font-black uppercase text-white tracking-wider">Restaurantes</span>
         <div className="h-3 w-8 bg-[#1F2937] rounded-full" />
       </div>
       <div className="flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 px-1 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -1154,51 +1153,34 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         {/* Filter bar card */}
         <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-3xl space-y-5 shadow-xl">
           
-          {/* Top Row: Prominent Search Input & Sorting Selector */}
-          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-            {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
-            <div 
+          {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
+          <div 
+            onClick={() => setIsFullScreenSearchOpen(true)}
+            className="relative w-full cursor-pointer"
+          >
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 pointer-events-none" />
+            <input
+              type="text"
+              readOnly
+              value={searchTerm}
               onClick={() => setIsFullScreenSearchOpen(true)}
-              className="relative flex-grow cursor-pointer"
-            >
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 pointer-events-none" />
-              <input
-                type="text"
-                readOnly
-                value={searchTerm}
-                onClick={() => setIsFullScreenSearchOpen(true)}
-                onFocus={() => setIsFullScreenSearchOpen(true)}
-                placeholder="Buscar restaurantes, platos, comida a domicilio o menús..."
-                className="w-full bg-white border-2 border-[#E63946] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#E63946] focus:ring-4 focus:ring-[#E63946]/20 shadow-md transition cursor-pointer"
-              />
-              {searchTerm && (
-                <button 
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSearchTerm('');
-                  }} 
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg text-gray-600 transition cursor-pointer"
-                  title="Limpiar filtro"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Sorting selector */}
-            <div className="flex items-center gap-1.5 bg-[#090B12] border border-[#232B3A] rounded-2xl py-2 px-3 shrink-0">
-              <ArrowUpDown className="w-3.5 h-3.5 text-[#A9B2C3] shrink-0" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="bg-transparent text-xs text-white font-bold outline-none cursor-pointer w-full"
+              onFocus={() => setIsFullScreenSearchOpen(true)}
+              placeholder="Buscar restaurantes, platos, comida a domicilio o menús..."
+              className="w-full bg-white border-2 border-[#E63946] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#E63946] focus:ring-4 focus:ring-[#E63946]/20 shadow-md transition cursor-pointer"
+            />
+            {searchTerm && (
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSearchTerm('');
+                }} 
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg text-gray-600 transition cursor-pointer"
+                title="Limpiar filtro"
               >
-                <option value="latest" className="bg-[#090B12] text-white">Más Recientes</option>
-                <option value="price_asc" className="bg-[#090B12] text-white">Precio: Menor a Mayor</option>
-                <option value="price_desc" className="bg-[#090B12] text-white">Precio: Mayor a Menor</option>
-              </select>
-            </div>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
           {/* Horizontal Store Logos Carousel / Skeleton */}
@@ -1210,7 +1192,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <div className="flex items-center gap-2">
                   <Store className="w-4 h-4 text-[#E63946]" />
                   <span className="text-xs font-black uppercase text-white tracking-wider">
-                    Tiendas ({uniqueStores.length})
+                    Restaurantes ({uniqueStores.length})
                   </span>
                 </div>
                 {selectedStore !== 'all' && (
@@ -1218,7 +1200,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     onClick={() => setSelectedStore('all')}
                     className="text-[11px] font-bold text-[#E63946] hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <span>Ver todas</span>
+                    <span>Ver todos</span>
                   </button>
                 )}
               </div>
@@ -1879,7 +1861,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         <span className="font-mono text-white">{curr}{subtotal.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
-                        <span>Domicilio ({uniqueSellersCount} {uniqueSellersCount === 1 ? 'tienda' : 'tiendas'}):</span>
+                        <span>Domicilio ({uniqueSellersCount} {uniqueSellersCount === 1 ? 'restaurante' : 'restaurantes'}):</span>
                         <span className="font-mono text-[#F4B400]">{curr}{totalDeliveryFee.toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between items-baseline pt-2 border-t border-dashed border-[#232B3A]">
