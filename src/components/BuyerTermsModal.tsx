@@ -5,29 +5,30 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, ShieldCheck, FileText, CheckCircle, Store, MessageCircle, Scale, BookOpen, AlertCircle, Search } from 'lucide-react';
-import { SELLER_TERMS_PREAMBLE, SELLER_TERMS_SECTIONS } from '../data/sellerTermsData';
+import { X, ShieldCheck, CheckCircle, MessageCircle, Scale, Search, ShoppingBag } from 'lucide-react';
+import { BUYER_TERMS_PREAMBLE, BUYER_TERMS_SECTIONS } from '../data/buyerTermsData';
 
-interface StoreTermsModalProps {
+interface BuyerTermsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAccept?: () => void;
   showAcceptButton?: boolean;
 }
 
-export default function StoreTermsModal({
+export default function BuyerTermsModal({
   isOpen,
   onClose,
   onAccept,
   showAcceptButton = true
-}: StoreTermsModalProps) {
+}: BuyerTermsModalProps) {
   const [filterText, setFilterText] = useState('');
 
   if (!isOpen) return null;
 
-  const filteredSections = SELLER_TERMS_SECTIONS.filter(s => 
+  const filteredSections = BUYER_TERMS_SECTIONS.filter(s => 
     s.title.toLowerCase().includes(filterText.toLowerCase()) ||
-    s.content.toLowerCase().includes(filterText.toLowerCase())
+    s.content.toLowerCase().includes(filterText.toLowerCase()) ||
+    (s.points && s.points.some(p => p.toLowerCase().includes(filterText.toLowerCase())))
   );
 
   return (
@@ -44,14 +45,14 @@ export default function StoreTermsModal({
           <div className="px-6 py-5 bg-[#141b2d] border-b border-[#232B3A] flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center text-[#E63946] shrink-0">
-                <Scale className="w-5 h-5" />
+                <ShoppingBag className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-base sm:text-lg font-black text-white leading-tight">
-                  Términos y Condiciones para Vendedores
+                  Términos y Condiciones para Usuarios y Compradores
                 </h3>
                 <p className="text-[11px] sm:text-xs text-[#A9B2C3]">
-                  Registro, identificación y responsabilidad legal en RYYCO (Colombia)
+                  RYYCO / Rico • Plataforma tecnológica de domicilios y restaurantes
                 </p>
               </div>
             </div>
@@ -69,7 +70,7 @@ export default function StoreTermsModal({
           <div className="bg-[#E63946]/10 border-b border-[#E63946]/20 px-6 py-3 flex items-center gap-3 shrink-0">
             <ShieldCheck className="w-4 h-4 text-[#E63946] shrink-0" />
             <p className="text-xs text-white/90 font-medium leading-tight">
-              Marco legal aplicable: <strong className="text-[#F4B400]">Ley 1480 de 2011</strong> (Estatuto del Consumidor, arts. 49, 50 y 53), <strong className="text-[#F4B400]">Ley 1581 de 2012</strong> (Habeas Data) y <strong className="text-[#F4B400]">Ley 527 de 1999</strong>.
+              Última actualización: <strong className="text-[#F4B400]">{BUYER_TERMS_PREAMBLE.lastUpdated}</strong> • Conforme a la <strong className="text-[#F4B400]">Ley 1480 de 2011</strong> (Estatuto del Consumidor), <strong className="text-[#F4B400]">Ley 1581 de 2012</strong> y <strong className="text-[#F4B400]">Ley 527 de 1999</strong>.
             </p>
           </div>
 
@@ -80,7 +81,7 @@ export default function StoreTermsModal({
               type="text"
               value={filterText}
               onChange={(e) => setFilterText(e.target.value)}
-              placeholder="Buscar en los términos y condiciones..."
+              placeholder="Buscar cláusulas, pedidos, entregas, cancelaciones o pagos..."
               className="w-full bg-transparent text-xs text-white placeholder-gray-500 outline-none"
             />
             {filterText && (
@@ -100,17 +101,17 @@ export default function StoreTermsModal({
             <div className="p-4 bg-[#090B12] rounded-2xl border border-[#232B3A] space-y-2">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 rounded bg-[#E63946]/20 border border-[#E63946]/40 text-[#E63946] font-black text-[10px] tracking-wider uppercase">
-                  Normativa Colombiana
+                  Usuarios y Compradores
                 </span>
                 <span className="text-[10px] uppercase font-bold text-gray-400">
-                  Actualización Vigente 2026
+                  Vigencia: {BUYER_TERMS_PREAMBLE.lastUpdated}
                 </span>
               </div>
               <h2 className="text-sm sm:text-base font-black text-white tracking-wide uppercase pt-1">
-                {SELLER_TERMS_PREAMBLE.title}
+                {BUYER_TERMS_PREAMBLE.title}
               </h2>
-              <p className="text-xs text-[#A9B2C3] leading-relaxed">
-                {SELLER_TERMS_PREAMBLE.text}
+              <p className="text-xs text-[#A9B2C3] leading-relaxed whitespace-pre-line">
+                {BUYER_TERMS_PREAMBLE.text}
               </p>
             </div>
 
@@ -159,20 +160,20 @@ export default function StoreTermsModal({
               </div>
             ))}
 
-            {/* Support Box */}
+            {/* Support & Claims Box */}
             <div className="p-4 bg-[#141b2d] rounded-2xl border border-[#232B3A] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="space-y-0.5">
-                <span className="text-xs font-bold text-white block">¿Dudas o consultas sobre estos términos?</span>
-                <span className="text-[11px] text-gray-400">Canal de atención al comerciante y departamento legal de RYYCO.</span>
+                <span className="text-xs font-bold text-white block">¿Reclamaciones, novedades con tu pedido o dudas?</span>
+                <span className="text-[11px] text-gray-400">Canal de atención al usuario y centro de soporte RYYCO.</span>
               </div>
               <a
-                href="https://wa.me/573219730865?text=Hola!%20Tengo%20una%20consulta%20sobre%20los%20términos%20y%20condiciones%20para%20vendedores%20en%20Ryyco"
+                href="https://wa.me/573219730865?text=Hola!%20Tengo%20una%20consulta%20o%20reclamación%20sobre%20los%20términos%20y%20condiciones%20de%20comprador%20en%20Ryyco"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-[#E63946]/20 hover:bg-[#E63946] text-[#E63946] hover:text-white border border-[#E63946]/40 rounded-xl text-xs font-bold transition whitespace-nowrap"
               >
                 <MessageCircle className="w-3.5 h-3.5" />
-                <span>WhatsApp Soporte Legal</span>
+                <span>Atención al Comprador</span>
               </a>
             </div>
           </div>
@@ -180,7 +181,7 @@ export default function StoreTermsModal({
           {/* Footer Actions */}
           <div className="px-6 py-4 bg-[#141b2d] border-t border-[#232B3A] flex items-center justify-between gap-3 shrink-0">
             <div className="text-[11px] text-gray-400 hidden sm:block">
-              RYYCO Colombia • Vigencia y cumplimiento normativo
+              RYYCO / Rico Colombia • Estatuto del Consumidor (Ley 1480 de 2011)
             </div>
 
             <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">

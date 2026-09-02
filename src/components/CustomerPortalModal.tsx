@@ -11,8 +11,9 @@ import {
   Star, Copy, Check, Utensils, Award, RefreshCw, 
   MessageCircle, ShieldCheck, Ticket, LogOut, ArrowRight,
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
-  Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle
+  Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale
 } from 'lucide-react';
+import BuyerTermsModal from './BuyerTermsModal';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
   CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory 
@@ -111,6 +112,8 @@ export default function CustomerPortalModal({
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [authError, setAuthError] = useState('');
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [acceptedBuyerTerms, setAcceptedBuyerTerms] = useState(false);
+  const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
 
   // Wheel animation state
   const [isSpinning, setIsSpinning] = useState(false);
@@ -282,6 +285,10 @@ export default function CustomerPortalModal({
       setAuthError("Por favor ingresa tu dirección de entrega / domicilio.");
       return;
     }
+    if (!acceptedBuyerTerms) {
+      setAuthError("Debes aceptar los Términos y Condiciones para Usuarios y Compradores para registrarte.");
+      return;
+    }
 
     setLoading(true);
     setAuthError('');
@@ -379,6 +386,10 @@ export default function CustomerPortalModal({
     }
     if (!passwordInput.trim() || passwordInput.trim().length < 4) {
       setAuthError("Por favor crea una contraseña de al menos 4 caracteres.");
+      return;
+    }
+    if (!acceptedBuyerTerms) {
+      setAuthError("Debes aceptar los Términos y Condiciones para Usuarios y Compradores para registrarte.");
       return;
     }
 
@@ -705,6 +716,18 @@ export default function CustomerPortalModal({
                 </p>
               </div>
 
+              <div className="text-[10.5px] text-gray-400 text-center px-2">
+                Al continuar o ingresar con Google, aceptas los{' '}
+                <button
+                  type="button"
+                  onClick={() => setIsBuyerTermsModalOpen(true)}
+                  className="text-[#E63946] hover:underline font-bold inline cursor-pointer"
+                >
+                  Términos y Condiciones para Usuarios y Compradores
+                </button>
+                {' '}de Ryyco.
+              </div>
+
               {/* DIVIDER */}
               <div className="relative flex py-1 items-center">
                 <div className="flex-grow border-t border-gray-800"></div>
@@ -873,6 +896,35 @@ export default function CustomerPortalModal({
                       />
                     </div>
                   </div>
+
+                  {/* Términos y Condiciones para Compradores */}
+                  <div className="pt-1">
+                    <label className="flex items-start gap-2.5 cursor-pointer select-none bg-[#090D16] p-3 rounded-xl border border-[#232E42] hover:border-[#E63946]/50 transition">
+                      <input
+                        type="checkbox"
+                        checked={acceptedBuyerTerms}
+                        onChange={(e) => {
+                          setAcceptedBuyerTerms(e.target.checked);
+                          if (authError && authError.includes('Términos')) setAuthError('');
+                        }}
+                        className="w-4 h-4 mt-0.5 accent-[#E63946] rounded cursor-pointer shrink-0"
+                      />
+                      <span className="text-[11px] text-gray-300 leading-snug">
+                        He leído y acepto los{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsBuyerTermsModalOpen(true);
+                          }}
+                          className="text-[#E63946] hover:underline font-bold inline cursor-pointer"
+                        >
+                          Términos y Condiciones para Usuarios y Compradores
+                        </button>
+                        {' '}y la Política de Tratamiento de Datos Personales de Ryyco.
+                      </span>
+                    </label>
+                  </div>
                 </>
               )}
 
@@ -895,6 +947,18 @@ export default function CustomerPortalModal({
                   </>
                 )}
               </button>
+
+              {/* Botón para consultar términos */}
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => setIsBuyerTermsModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-gray-400 hover:text-white transition cursor-pointer"
+                >
+                  <Scale className="w-3.5 h-3.5 text-[#F4B400]" />
+                  <span>Consultar Términos y Condiciones para Usuarios y Compradores</span>
+                </button>
+              </div>
             </form>
           </div>
         ) : (
@@ -1712,6 +1776,35 @@ export default function CustomerPortalModal({
                 />
               </div>
 
+              {/* Aceptación de Términos para Comprador */}
+              <div className="pt-1">
+                <label className="flex items-start gap-2.5 cursor-pointer select-none bg-[#090D16] p-3 rounded-xl border border-[#232E42] hover:border-[#E63946]/50 transition">
+                  <input
+                    type="checkbox"
+                    checked={acceptedBuyerTerms}
+                    onChange={(e) => {
+                      setAcceptedBuyerTerms(e.target.checked);
+                      if (authError && authError.includes('Términos')) setAuthError('');
+                    }}
+                    className="w-4 h-4 mt-0.5 accent-[#E63946] rounded cursor-pointer shrink-0"
+                  />
+                  <span className="text-[11px] text-gray-300 leading-snug">
+                    He leído y acepto los{' '}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsBuyerTermsModalOpen(true);
+                      }}
+                      className="text-[#E63946] hover:underline font-bold inline cursor-pointer"
+                    >
+                      Términos y Condiciones para Usuarios y Compradores
+                    </button>
+                    {' '}y la Política de Tratamiento de Datos Personales de Ryyco.
+                  </span>
+                </label>
+              </div>
+
               <div className="pt-2 flex items-center gap-3">
                 <button
                   type="button"
@@ -1825,6 +1918,20 @@ export default function CustomerPortalModal({
           </div>
         </div>
       )}
+
+      {/* MODAL DE TÉRMINOS Y CONDICIONES PARA USUARIOS Y COMPRADORES */}
+      <BuyerTermsModal
+        isOpen={isBuyerTermsModalOpen}
+        onClose={() => setIsBuyerTermsModalOpen(false)}
+        onAccept={() => {
+          setAcceptedBuyerTerms(true);
+          setIsBuyerTermsModalOpen(false);
+          if (authError && authError.includes('Términos')) {
+            setAuthError('');
+          }
+        }}
+        showAcceptButton={true}
+      />
 
     </div>
   );

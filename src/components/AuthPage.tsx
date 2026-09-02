@@ -150,7 +150,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
     e.preventDefault();
     if (!email || !password || !username) return;
     if (!acceptedTerms) {
-      setError('Debes aceptar los Términos y Condiciones para registrar tu tienda en Ryyco.');
+      setError('Debes aceptar los Términos y Condiciones para registrarte como vendedor en Ryyco.');
       return;
     }
     if (usernameStatus !== 'available') {
@@ -543,13 +543,13 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
 
             {view === 'signup' && (
               <p className="text-[11px] text-center text-[#A9B2C3] leading-snug px-1">
-                Al registrar tu tienda con Google o correo, aceptas nuestros{' '}
+                Al registrarte como vendedor con Google o correo, aceptas nuestros{' '}
                 <button
                   type="button"
                   onClick={() => setIsTermsModalOpen(true)}
                   className="text-white underline font-semibold hover:text-[#E63946] transition cursor-pointer"
                 >
-                  Términos y Condiciones para Tiendas
+                  Términos y Condiciones para Vendedores
                 </button>.
               </p>
             )}
@@ -737,7 +737,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
                     }}
                     className="text-white font-bold underline hover:text-[#E63946] transition cursor-pointer"
                   >
-                    Términos y Condiciones para Tiendas
+                    Términos y Condiciones para Vendedores
                   </button>{' '}
                   y las Políticas de Privacidad de Ryyco.
                 </span>
@@ -814,7 +814,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
                 onClick={() => setIsTermsModalOpen(true)}
                 className="text-[11px] text-[#A9B2C3]/80 hover:text-white underline underline-offset-2 transition cursor-pointer"
               >
-                Consultar Términos y Condiciones para Tiendas
+                Consultar Términos y Condiciones para Vendedores
               </button>
             </div>
           </div>

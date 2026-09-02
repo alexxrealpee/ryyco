@@ -77,8 +77,10 @@ import {
   Gift,
   Sparkles,
   Star,
-  Ticket
+  Ticket,
+  Scale
 } from 'lucide-react';
+import BuyerTermsModal from './BuyerTermsModal';
 import { QRCodeCanvas } from 'qrcode.react';
 import StoreQRModal from './StoreQRModal';
 import { getFontClass } from './ThemeStyles';
@@ -166,6 +168,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('whatsapp');
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
+  const [acceptedBuyerTermsInCheckout, setAcceptedBuyerTermsInCheckout] = useState(true);
+  const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
 
   // Customer Portal & Rewards State
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
@@ -532,6 +536,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const cleanedPhone = cleanColombianPhone(custPhone);
     if (!custName.trim() || (deliveryType === 'delivery' && !custAddress.trim())) {
       alert("Por favor, completa todos los campos requeridos (*)");
+      return;
+    }
+
+    if (!acceptedBuyerTermsInCheckout) {
+      alert("Debes aceptar los Términos y Condiciones para Usuarios y Compradores para realizar tu pedido.");
       return;
     }
 
@@ -2667,6 +2676,33 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             </div>
 
+            {/* Términos y Condiciones para Compradores / Clientes */}
+            <div className="bg-gray-900/60 border border-gray-800 p-3 rounded-2xl space-y-1.5 text-left">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  checked={acceptedBuyerTermsInCheckout} 
+                  onChange={(e) => setAcceptedBuyerTermsInCheckout(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-emerald-400 rounded cursor-pointer shrink-0"
+                />
+                <span className="text-[11px] text-gray-300 leading-snug">
+                  He leído y acepto los{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsBuyerTermsModalOpen(true);
+                    }}
+                    className="text-emerald-400 hover:underline font-bold inline cursor-pointer"
+                  >
+                    Términos y Condiciones para Usuarios y Compradores
+                  </button>
+                  {' '}y autorizo el tratamiento de mis datos para el despacho del pedido (Ley 1480 de 2011 y Ley 1581 de 2012).
+                </span>
+              </label>
+            </div>
+
             {/* Action buttons */}
             <div className="flex gap-2.5 pt-2">
               <button
@@ -2811,6 +2847,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           </div>
         </div>
       )}
+
+      {/* MODAL DE TÉRMINOS Y CONDICIONES PARA USUARIOS Y COMPRADORES */}
+      <BuyerTermsModal
+        isOpen={isBuyerTermsModalOpen}
+        onClose={() => setIsBuyerTermsModalOpen(false)}
+        onAccept={() => {
+          setAcceptedBuyerTermsInCheckout(true);
+          setIsBuyerTermsModalOpen(false);
+        }}
+        showAcceptButton={true}
+      />
 
     </div>
   );

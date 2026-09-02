@@ -44,12 +44,18 @@ import {
   Activity,
   DollarSign,
   Calendar,
-  MessageSquare
+  MessageSquare,
+  Scale,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import LinnkProLogo from './LinnkProLogo';
 import { fetchAllStoresMap } from '../lib/firebase';
 import { UserProfile } from '../types';
 import StoreTermsModal from './StoreTermsModal';
+import BuyerTermsModal from './BuyerTermsModal';
+import { SELLER_TERMS_PREAMBLE, SELLER_TERMS_SECTIONS } from '../data/sellerTermsData';
+import { BUYER_TERMS_PREAMBLE, BUYER_TERMS_SECTIONS } from '../data/buyerTermsData';
 
 interface LandingPageProps {
   onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal', usernameToClaim?: string) => void;
@@ -60,6 +66,9 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   const [checking, setChecking] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
+  const [showFooterTerms, setShowFooterTerms] = useState(false);
+  const [footerTermsTab, setFooterTermsTab] = useState<'buyers' | 'sellers'>('buyers');
 
   // Partner stores in Ipiales with logos and names
   const [partnerStores, setPartnerStores] = useState<Array<{
@@ -1252,11 +1261,24 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <span>Ser Domiciliario</span>
           </button>
           <button 
-            onClick={() => setIsTermsModalOpen(true)}
+            onClick={() => {
+              setFooterTermsTab('buyers');
+              setIsBuyerTermsModalOpen(true);
+            }}
             className="inline-flex items-center gap-1.5 text-gray-300 hover:text-white font-extrabold text-xs transition bg-[#182030] hover:bg-[#232B3A] px-4 py-2.5 rounded-xl border border-[#232B3A] active:scale-[0.98] cursor-pointer"
           >
-            <FileText className="w-4 h-4 text-[#F4B400]" />
-            <span>Términos y Condiciones Tiendas</span>
+            <ShoppingBag className="w-4 h-4 text-[#E63946]" />
+            <span>Términos Compradores</span>
+          </button>
+          <button 
+            onClick={() => {
+              setFooterTermsTab('sellers');
+              setIsTermsModalOpen(true);
+            }}
+            className="inline-flex items-center gap-1.5 text-gray-300 hover:text-white font-extrabold text-xs transition bg-[#182030] hover:bg-[#232B3A] px-4 py-2.5 rounded-xl border border-[#232B3A] active:scale-[0.98] cursor-pointer"
+          >
+            <Scale className="w-4 h-4 text-[#F4B400]" />
+            <span>Términos Vendedores</span>
           </button>
           <a 
             href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20Ryyco"
@@ -1267,6 +1289,191 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <MessageCircle className="w-3.5 h-3.5" />
             Atención al Cliente: 3219730865
           </a>
+        </div>
+
+        {/* Sección de Términos y Condiciones al Pie de Página (Compradores y Vendedores) */}
+        <div className="max-w-4xl mx-auto text-left mt-8 pt-6 border-t border-[#232B3A]/70">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111827] border border-[#232B3A] rounded-2xl p-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center text-[#E63946] shrink-0">
+                <Scale className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <h4 className="text-white font-extrabold text-xs sm:text-sm">
+                  {footerTermsTab === 'buyers' 
+                    ? 'Términos y Condiciones para Usuarios y Compradores' 
+                    : 'Términos y Condiciones de Registro para Vendedores'}
+                </h4>
+                <p className="text-[11px] text-gray-400">
+                  De conformidad con la Ley 1480 de 2011 (Estatuto del Consumidor), Ley 1581 de 2012 y Ley 527 de 1999
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowFooterTerms(!showFooterTerms)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1f293d] hover:bg-[#2c3a54] text-gray-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                <span>{showFooterTerms ? 'Ocultar términos' : 'Consultar en el pie de página'}</span>
+                {showFooterTerms ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (footerTermsTab === 'buyers') {
+                    setIsBuyerTermsModalOpen(true);
+                  } else {
+                    setIsTermsModalOpen(true);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E63946]/20 hover:bg-[#E63946] text-[#E63946] hover:text-white border border-[#E63946]/30 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Modal completo</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Selector de pestañas para el pie de página */}
+          {showFooterTerms && (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setFooterTermsTab('buyers')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+                  footerTermsTab === 'buyers'
+                    ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20'
+                    : 'bg-[#182030] text-gray-400 hover:text-white border border-[#232B3A]'
+                }`}
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>Para Usuarios y Compradores (20 Numerales)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFooterTermsTab('sellers')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+                  footerTermsTab === 'sellers'
+                    ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20'
+                    : 'bg-[#182030] text-gray-400 hover:text-white border border-[#232B3A]'
+                }`}
+              >
+                <Scale className="w-3.5 h-3.5" />
+                <span>Para Tiendas y Vendedores (9 Numerales)</span>
+              </button>
+            </div>
+          )}
+
+          {showFooterTerms && footerTermsTab === 'buyers' && (
+            <div className="mt-4 p-5 bg-[#0d121f] border border-[#232B3A] rounded-2xl space-y-5 text-xs text-gray-300">
+              <div className="p-3.5 bg-[#090B12] rounded-xl border border-[#232B3A] space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-[#E63946] tracking-wider block">
+                  Marco Legal Colombiano para Compradores
+                </span>
+                <h5 className="text-xs sm:text-sm font-black text-white uppercase">
+                  {BUYER_TERMS_PREAMBLE.title}
+                </h5>
+                <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">
+                  {BUYER_TERMS_PREAMBLE.text}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {BUYER_TERMS_SECTIONS.map((sec) => (
+                  <div key={sec.id} className="p-3.5 bg-[#141b2d]/60 rounded-xl border border-[#232B3A]/80 space-y-2">
+                    <h6 className="font-extrabold text-white text-xs flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-[#E63946]/20 text-[#E63946] text-[10px] font-black flex items-center justify-center border border-[#E63946]/30 shrink-0">
+                        {sec.number}
+                      </span>
+                      <span>{sec.title}</span>
+                    </h6>
+                    <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">
+                      {sec.content}
+                    </p>
+                    {sec.points && sec.points.length > 0 && (
+                      <ul className="space-y-1 pt-1 text-[11px]">
+                        {sec.points.map((p, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-gray-300">
+                            <span className="text-[#F4B400] font-bold">•</span>
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {sec.subsections && sec.subsections.length > 0 && (
+                      <div className="space-y-1.5 pt-1.5">
+                        {sec.subsections.map((sub, i) => (
+                          <div key={i} className="p-2 bg-[#090B12] rounded-lg border border-[#232B3A] text-[10px] text-gray-300 space-y-0.5">
+                            <div className="font-bold text-white flex items-center gap-1">
+                              {sub.letter && <span className="text-[#E63946]">{sub.letter}.</span>}
+                              <span>{sub.label}</span>
+                            </div>
+                            <p className="text-gray-400">{sub.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showFooterTerms && footerTermsTab === 'sellers' && (
+            <div className="mt-4 p-5 bg-[#0d121f] border border-[#232B3A] rounded-2xl space-y-5 text-xs text-gray-300">
+              <div className="p-3.5 bg-[#090B12] rounded-xl border border-[#232B3A] space-y-1.5">
+                <span className="text-[10px] uppercase font-black text-[#E63946] tracking-wider block">
+                  Marco Legal Colombiano Aplicable para Vendedores
+                </span>
+                <h5 className="text-xs sm:text-sm font-black text-white uppercase">
+                  {SELLER_TERMS_PREAMBLE.title}
+                </h5>
+                <p className="text-[11px] text-gray-300 leading-relaxed">
+                  {SELLER_TERMS_PREAMBLE.text}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {SELLER_TERMS_SECTIONS.map((sec) => (
+                  <div key={sec.id} className="p-3.5 bg-[#141b2d]/60 rounded-xl border border-[#232B3A]/80 space-y-2">
+                    <h6 className="font-extrabold text-white text-xs flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded-full bg-[#E63946]/20 text-[#E63946] text-[10px] font-black flex items-center justify-center border border-[#E63946]/30 shrink-0">
+                        {sec.number}
+                      </span>
+                      <span>{sec.title}</span>
+                    </h6>
+                    <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">
+                      {sec.content}
+                    </p>
+                    {sec.points && sec.points.length > 0 && (
+                      <ul className="space-y-1 pt-1 text-[11px]">
+                        {sec.points.map((p, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-gray-300">
+                            <span className="text-[#F4B400] font-bold">•</span>
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {sec.subsections && sec.subsections.length > 0 && (
+                      <div className="space-y-1.5 pt-1.5">
+                        {sec.subsections.map((sub, i) => (
+                          <div key={i} className="p-2 bg-[#090B12] rounded-lg border border-[#232B3A] text-[10px] text-gray-300 space-y-0.5">
+                            <div className="font-bold text-white flex items-center gap-1">
+                              {sub.letter && <span className="text-[#E63946]">{sub.letter}.</span>}
+                              <span>{sub.label}</span>
+                            </div>
+                            <p className="text-gray-400">{sub.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </footer>
 
@@ -1484,6 +1691,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       <StoreTermsModal
         isOpen={isTermsModalOpen}
         onClose={() => setIsTermsModalOpen(false)}
+        showAcceptButton={false}
+      />
+
+      {/* Buyer Terms and Conditions Modal */}
+      <BuyerTermsModal
+        isOpen={isBuyerTermsModalOpen}
+        onClose={() => setIsBuyerTermsModalOpen(false)}
         showAcceptButton={false}
       />
 
