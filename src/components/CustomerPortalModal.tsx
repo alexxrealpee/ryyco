@@ -753,7 +753,7 @@ export default function CustomerPortalModal({
                     required
                     value={phoneInput}
                     onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="Ej: 3123456789"
+                    placeholder="Ej: 3106502043"
                     className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                   />
                 </div>
@@ -807,7 +807,7 @@ export default function CustomerPortalModal({
                         required
                         value={nameInput}
                         onChange={(e) => setNameInput(e.target.value)}
-                        placeholder="Ej: Carlos Gómez"
+                        placeholder="Ej: Alex Realpe"
                         className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                       />
                     </div>
@@ -1715,7 +1715,7 @@ export default function CustomerPortalModal({
                     required
                     value={phoneInput}
                     onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="Ej: 3123456789"
+                    placeholder="Ej: 3106502043"
                     className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                   />
                 </div>
@@ -1736,7 +1736,7 @@ export default function CustomerPortalModal({
                     required
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
-                    placeholder="Ej: Carlos Gómez"
+                    placeholder="Ej: Alex Realpe"
                     className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                   />
                 </div>

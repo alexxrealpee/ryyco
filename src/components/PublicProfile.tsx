@@ -2258,7 +2258,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 required
                 value={custName}
                 onChange={(e) => setCustName(e.target.value)}
-                placeholder="Ej: Laura Bermúdez"
+                placeholder="Ej: Alex Realpe"
                 className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
               />
             </div>
@@ -2285,7 +2285,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     setPhoneError("");
                   }
                 }}
-                placeholder="Ej: 3157785706"
+                placeholder="Ej: 3106502043"
                 className={`w-full h-11 bg-white border ${
                   phoneError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-gray-300 focus:border-indigo-500 focus:ring-indigo-500/20'
                 } rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1`}

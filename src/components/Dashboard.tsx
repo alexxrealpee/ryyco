@@ -779,7 +779,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     cleanOwner = cleanOwner.slice(0, 10);
 
     if (cleanOwner.length < 7) {
-      setQuickWhatsAppError('Por favor ingresa un número de WhatsApp del propietario válido (mínimo 7 a 10 dígitos, ej: 3157785706).');
+      setQuickWhatsAppError('Por favor ingresa un número de WhatsApp del propietario válido (mínimo 7 a 10 dígitos, ej: 3106502043).');
       return;
     }
 
@@ -2855,7 +2855,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               type="tel"
                               required
                               value={profile.ownerWhatsapp || profile.whatsapp || profile.phone || ''}
-                              placeholder="Ej: 3157785706"
+                              placeholder="Ej: 3106502043"
                               onChange={(e) => {
                                 let val = e.target.value.replace(/\D/g, '');
                                 if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
@@ -5679,7 +5679,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         required
                         autoFocus
                         value={quickOwnerWhatsAppInput}
-                        placeholder="Ej: 3157785706"
+                        placeholder="Ej: 3106502043"
                         onChange={(e) => {
                           let val = e.target.value.replace(/\D/g, '');
                           if (val.startsWith('57') && val.length >= 12) val = val.slice(2);

@@ -18,6 +18,8 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
+  setLogLevel,
   doc, 
   setDoc, 
   getDoc, 
@@ -52,7 +54,20 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Configure Firestore with resilient long-polling transport for web/iframe environments
+if (typeof window !== 'undefined') {
+  try {
+    setLogLevel('error');
+    initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+      ignoreUndefinedProperties: true
+    }, firebaseConfig.firestoreDatabaseId);
+  } catch (e) {
+    // If instance is already initialized
+  }
+}
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const googleProvider = new GoogleAuthProvider();
 
 // Available Predefined Themes
