@@ -38,7 +38,8 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats } from '../types';
+import { safeSetItem } from './safeStorage';
 
 // Concrete public config from firebase-applet-config.json
 const firebaseConfig = {
@@ -799,6 +800,8 @@ async function loadProfileRelations(profile: UserProfile, searchKey: string) {
   let customTheme: CustomTheme | null = null;
   if (tDoc && tDoc.exists()) {
     customTheme = tDoc.data() as CustomTheme;
+  } else if (profile.customTheme) {
+    customTheme = profile.customTheme;
   } else {
     try {
       const localTheme = localStorage.getItem(`linnk_theme_${profile.uid}`);
@@ -806,6 +809,14 @@ async function loadProfileRelations(profile: UserProfile, searchKey: string) {
         customTheme = JSON.parse(localTheme);
       }
     } catch (e) {}
+  }
+
+  if (!customTheme && (profile as any).customTheme) {
+    customTheme = (profile as any).customTheme;
+  }
+
+  if (customTheme) {
+    profile.customTheme = customTheme;
   }
 
   // Update Local fallback backup database
@@ -847,12 +858,12 @@ function saveLocalBackup(username: string, profile: any, links: any[], products:
     const clean = sanitizeUsername(username || '');
     if (!clean || !profile) return;
     const key = `linnk_profile_${clean}`;
-    localStorage.setItem(key, JSON.stringify({ profile, links, products, customTheme: theme }));
+    safeSetItem(key, JSON.stringify({ profile, links, products, customTheme: theme }));
     
     // Also update linnk_profiles dictionary
     const localProfiles = JSON.parse(localStorage.getItem('linnk_profiles') || '{}');
     localProfiles[clean] = profile;
-    localStorage.setItem('linnk_profiles', JSON.stringify(localProfiles));
+    safeSetItem('linnk_profiles', JSON.stringify(localProfiles));
   } catch(e){}
 }
 
@@ -912,6 +923,12 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
       customTheme: cachedTheme
     }));
   } catch (e) {}
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('ryyco_profile_updated', { detail: { profile } }));
+    } catch (e) {}
+  }
 }
 
 // Load profile for authenticated User
@@ -1529,22 +1546,96 @@ export async function deleteOrder(orderId: string, storeOwnerId?: string): Promi
 
 // Save Theme custom selection
 export async function saveCustomTheme(userId: string, customTheme: CustomTheme): Promise<void> {
+  const cleanedTheme = cleanUndefined(customTheme);
+
+  // 1. Save to themes collection
   try {
-    await setDoc(doc(db, 'themes', userId), customTheme, { merge: true });
-  } catch(e) {}
+    await setDoc(doc(db, 'themes', userId), cleanedTheme, { merge: true });
+  } catch(e) {
+    console.warn("Could not save to themes collection in Firestore:", e);
+  }
+
+  // 2. Also save directly to profiles collection for instant multi-channel synchronization
   try {
-    localStorage.setItem(`linnk_theme_${userId}`, JSON.stringify(customTheme));
+    await setDoc(doc(db, 'profiles', userId), { customTheme: cleanedTheme }, { merge: true });
+  } catch(e) {
+    console.warn("Could not merge customTheme into profiles collection:", e);
+  }
+
+  // 3. Update localStorage theme key
+  try {
+    localStorage.setItem(`linnk_theme_${userId}`, JSON.stringify(cleanedTheme));
   } catch (e) {}
+
+  // 4. Update session profile and global registry
   try {
     const cachedProfile = JSON.parse(localStorage.getItem(`linnk_session_${userId}`) || 'null');
-    if (cachedProfile && cachedProfile.username) {
-      const cleanU = sanitizeUsername(cachedProfile.username);
-      const pkg = JSON.parse(localStorage.getItem(`linnk_profile_${cleanU}`) || '{"customTheme":null}');
-      pkg.profile = cachedProfile;
-      pkg.customTheme = customTheme;
-      localStorage.setItem(`linnk_profile_${cleanU}`, JSON.stringify(pkg));
+    if (cachedProfile) {
+      cachedProfile.customTheme = cleanedTheme;
+      localStorage.setItem(`linnk_session_${userId}`, JSON.stringify(cachedProfile));
+
+      if (cachedProfile.username) {
+        const cleanU = sanitizeUsername(cachedProfile.username);
+        const pkg = JSON.parse(localStorage.getItem(`linnk_profile_${cleanU}`) || '{"customTheme":null}');
+        pkg.profile = cachedProfile;
+        pkg.customTheme = cleanedTheme;
+        localStorage.setItem(`linnk_profile_${cleanU}`, JSON.stringify(pkg));
+      }
+    }
+
+    const localProfiles = JSON.parse(localStorage.getItem('linnk_profiles') || '{}');
+    let matched = false;
+    Object.keys(localProfiles).forEach(k => {
+      if (localProfiles[k]?.uid === userId) {
+        localProfiles[k].customTheme = cleanedTheme;
+        matched = true;
+      }
+    });
+    if (matched) {
+      localStorage.setItem('linnk_profiles', JSON.stringify(localProfiles));
     }
   } catch (e) {}
+
+  // 5. Dispatch real-time cross-component event
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('ryyco_theme_updated', { detail: { userId, theme: cleanedTheme } }));
+    } catch (e) {}
+  }
+}
+
+// Subscribe to real-time theme updates for a store
+export function subscribeStoreTheme(userId: string, callback: (theme: CustomTheme | null) => void): () => void {
+  if (!userId) return () => {};
+  try {
+    const unsub = onSnapshot(doc(db, 'themes', userId), (snap) => {
+      if (snap.exists()) {
+        callback(snap.data() as CustomTheme);
+      }
+    }, (err) => {
+      console.warn("Theme real-time subscription error:", err);
+    });
+    return unsub;
+  } catch (e) {
+    return () => {};
+  }
+}
+
+// Subscribe to real-time profile updates for a store (e.g. layout, bio, design)
+export function subscribeStoreProfile(userId: string, callback: (profile: Partial<UserProfile>) => void): () => void {
+  if (!userId) return () => {};
+  try {
+    const unsub = onSnapshot(doc(db, 'profiles', userId), (snap) => {
+      if (snap.exists()) {
+        callback(snap.data() as UserProfile);
+      }
+    }, (err) => {
+      console.warn("Profile real-time subscription error:", err);
+    });
+    return unsub;
+  } catch (e) {
+    return () => {};
+  }
 }
 
 // Log Contact Leads (Form Captures)
@@ -1651,9 +1742,9 @@ export async function trackPageView(userId: string): Promise<void> {
       device: 'mobile',
       referrer: 'Instagram'
     });
-    localStorage.setItem(key, JSON.stringify(localViews.slice(-1000))); // keep 1000 items
+    safeSetItem(key, JSON.stringify(localViews.slice(-50))); // keep 50 items
   } catch (e) {
-    console.warn("Analytics local storage backup failed", e);
+    // ignore
   }
 }
 
@@ -1673,9 +1764,9 @@ export async function trackLinkClick(userId: string, linkId: string, linkTitle: 
     const key = `linnk_analytics_clicks_${userId}`;
     const localClicks = JSON.parse(localStorage.getItem(key) || '[]');
     localClicks.push({ linkId, linkTitle, timestamp: new Date().toISOString() });
-    localStorage.setItem(key, JSON.stringify(localClicks.slice(-1000)));
+    safeSetItem(key, JSON.stringify(localClicks.slice(-50)));
   } catch (e) {
-    console.warn("Link click local storage backup failed", e);
+    // ignore
   }
 }
 
@@ -4122,5 +4213,402 @@ export async function exchangePointsForReward(rawPhone: string, reward: Redeemab
 
   return newPrize;
 }
+
+/**
+ * Fetch recommendation statistics for a restaurant based on real Firebase/Firestore data
+ */
+export async function fetchStoreRecommendations(storeId: string, currentUserId?: string | null): Promise<StoreRecommendationStats> {
+  if (!storeId) {
+    return {
+      storeId: '',
+      count: 0,
+      percentage: 0,
+      totalEvaluated: 0,
+      userHasRecommended: false,
+      recommendations: []
+    };
+  }
+
+  try {
+    const recsQuery = query(collection(db, 'recommendations'), where('storeId', '==', storeId));
+    const snap = await getDocs(recsQuery);
+    const recs: StoreRecommendation[] = [];
+    snap.forEach(d => {
+      recs.push(d.data() as StoreRecommendation);
+    });
+
+    const positiveRecs = recs.filter(r => r.recommended !== false);
+    const negativeRecs = recs.filter(r => r.recommended === false);
+    const count = positiveRecs.length;
+    const totalVotes = positiveRecs.length + negativeRecs.length;
+
+    let percentage = 0;
+    if (totalVotes > 0) {
+      if (negativeRecs.length > 0) {
+        percentage = Math.round((positiveRecs.length / totalVotes) * 100);
+      } else {
+        // Query orders to calibrate ratio against real dining volume if applicable
+        let uniqueOrderCount = 0;
+        try {
+          const ordQuery = query(collection(db, 'orders'), where('storeOwnerId', '==', storeId));
+          const ordSnap = await getDocs(ordQuery);
+          const clients = new Set<string>();
+          ordSnap.forEach(od => {
+            const data = od.data();
+            const key = data.customerPhone || data.customerEmail || data.customerName;
+            if (key) clients.add(key);
+          });
+          uniqueOrderCount = clients.size;
+        } catch (err) {
+          // Graceful fallback
+        }
+
+        if (uniqueOrderCount > count) {
+          percentage = Math.max(85, Math.min(99, Math.round((count / uniqueOrderCount) * 100)));
+        } else {
+          percentage = 100;
+        }
+      }
+    }
+
+    const userHasRecommended = currentUserId 
+      ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
+      : false;
+
+    return {
+      storeId,
+      count,
+      percentage,
+      totalEvaluated: totalVotes,
+      userHasRecommended,
+      recommendations: recs
+    };
+  } catch (err) {
+    console.error("Error fetching store recommendations:", err);
+    return {
+      storeId,
+      count: 0,
+      percentage: 0,
+      totalEvaluated: 0,
+      userHasRecommended: false,
+      recommendations: []
+    };
+  }
+}
+
+/**
+ * Toggle (add or withdraw) a recommendation with hearts ❤️
+ * Protects against duplicate recommendations by enforcing docId == storeId + '_' + userId
+ */
+export async function toggleStoreRecommendation(params: {
+  storeId: string;
+  storeUsername?: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  userPhone?: string;
+  feedbackTag?: string;
+  isCurrentlyRecommended: boolean;
+}): Promise<{ success: boolean; userHasRecommended: boolean }> {
+  const { storeId, storeUsername, userId, userName, userEmail, userPhone, feedbackTag, isCurrentlyRecommended } = params;
+
+  if (!storeId || !userId) {
+    throw new Error("Identificador de tienda y usuario requeridos.");
+  }
+
+  const docId = `${storeId}_${userId}`;
+  const docRef = doc(db, 'recommendations', docId);
+
+  if (isCurrentlyRecommended) {
+    // Retirar recomendación
+    await deleteDoc(docRef);
+    return { success: true, userHasRecommended: false };
+  } else {
+    // Guardar recomendación
+    const recDoc: StoreRecommendation = {
+      id: docId,
+      storeId,
+      storeUsername: storeUsername || '',
+      userId,
+      userName: userName || 'Cliente Ryyco',
+      userEmail: userEmail || '',
+      userPhone: userPhone || '',
+      recommended: true,
+      feedbackTag: feedbackTag || '',
+      createdAt: new Date().toISOString()
+    };
+    await setDoc(docRef, recDoc);
+    return { success: true, userHasRecommended: true };
+  }
+}
+
+/**
+ * Real-time listener for store recommendations
+ */
+export function subscribeStoreRecommendations(
+  storeId: string,
+  currentUserId: string | null,
+  onUpdate: (stats: StoreRecommendationStats) => void
+): () => void {
+  if (!storeId) return () => {};
+
+  const q = query(collection(db, 'recommendations'), where('storeId', '==', storeId));
+  return onSnapshot(q, (snap) => {
+    const recs: StoreRecommendation[] = [];
+    snap.forEach(d => {
+      recs.push(d.data() as StoreRecommendation);
+    });
+
+    const positiveRecs = recs.filter(r => r.recommended !== false);
+    const negativeRecs = recs.filter(r => r.recommended === false);
+    const count = positiveRecs.length;
+    const totalVotes = positiveRecs.length + negativeRecs.length;
+
+    let percentage = 0;
+    if (totalVotes > 0) {
+      if (negativeRecs.length > 0) {
+        percentage = Math.round((positiveRecs.length / totalVotes) * 100);
+      } else {
+        percentage = 100;
+      }
+    }
+
+    const userHasRecommended = currentUserId
+      ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
+      : false;
+
+    onUpdate({
+      storeId,
+      count,
+      percentage,
+      totalEvaluated: totalVotes,
+      userHasRecommended,
+      recommendations: recs
+    });
+  }, (err) => {
+    console.warn("Real-time recommendations listener warning:", err);
+  });
+}
+
+/**
+ * PRODUCT RECOMMENDATION SYSTEM (❤️ Calificaciones y Recomendaciones de Productos y Platos)
+ */
+
+export async function fetchProductRecommendations(
+  productId: string, 
+  currentUserId?: string | null
+): Promise<ProductRecommendationStats> {
+  if (!productId) {
+    return {
+      productId: '',
+      count: 0,
+      percentage: 0,
+      totalEvaluated: 0,
+      userHasRecommended: false,
+      recommendations: []
+    };
+  }
+
+  try {
+    const q = query(collection(db, 'product_recommendations'), where('productId', '==', productId));
+    const snap = await getDocs(q);
+    const recs: ProductRecommendation[] = [];
+    snap.forEach(d => {
+      recs.push(d.data() as ProductRecommendation);
+    });
+
+    const positiveRecs = recs.filter(r => r.recommended !== false);
+    const negativeRecs = recs.filter(r => r.recommended === false);
+    const count = positiveRecs.length;
+    const totalVotes = positiveRecs.length + negativeRecs.length;
+
+    let percentage = 0;
+    if (totalVotes > 0) {
+      if (negativeRecs.length > 0) {
+        percentage = Math.round((positiveRecs.length / totalVotes) * 100);
+      } else {
+        percentage = 100;
+      }
+    }
+
+    const userHasRecommended = currentUserId 
+      ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
+      : false;
+
+    return {
+      productId,
+      count,
+      percentage,
+      totalEvaluated: totalVotes,
+      userHasRecommended,
+      recommendations: recs
+    };
+  } catch (err) {
+    console.warn("Error fetching product recommendations:", err);
+    return {
+      productId,
+      count: 0,
+      percentage: 0,
+      totalEvaluated: 0,
+      userHasRecommended: false,
+      recommendations: []
+    };
+  }
+}
+
+/**
+ * Fetch product recommendation stats for multiple products (batch optimized for product grids)
+ */
+export async function fetchMultipleProductsRecommendations(
+  productIds: string[],
+  currentUserId?: string | null
+): Promise<Record<string, { count: number; percentage: number; userHasRecommended: boolean }>> {
+  const result: Record<string, { count: number; percentage: number; userHasRecommended: boolean }> = {};
+  if (!productIds || productIds.length === 0) return result;
+
+  // Initialize defaults
+  productIds.forEach(id => {
+    result[id] = { count: 0, percentage: 0, userHasRecommended: false };
+  });
+
+  try {
+    // Firestore supports 'in' query with up to 30 items
+    const chunks: string[][] = [];
+    for (let i = 0; i < productIds.length; i += 25) {
+      chunks.push(productIds.slice(i, i + 25));
+    }
+
+    await Promise.all(chunks.map(async (chunk) => {
+      const q = query(collection(db, 'product_recommendations'), where('productId', 'in', chunk));
+      const snap = await getDocs(q);
+      snap.forEach(d => {
+        const data = d.data() as ProductRecommendation;
+        if (!result[data.productId]) {
+          result[data.productId] = { count: 0, percentage: 0, userHasRecommended: false };
+        }
+        if (data.recommended !== false) {
+          result[data.productId].count += 1;
+          result[data.productId].percentage = 100;
+        }
+        if (currentUserId && data.userId === currentUserId && data.recommended !== false) {
+          result[data.productId].userHasRecommended = true;
+        }
+      });
+    }));
+  } catch (err) {
+    console.warn("Could not batch load product recommendations:", err);
+  }
+
+  return result;
+}
+
+/**
+ * Toggle or save a product recommendation (1 per user per product)
+ */
+export async function toggleProductRecommendation(params: {
+  productId: string;
+  productName?: string;
+  storeId?: string;
+  storeUsername?: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  userPhone?: string;
+  feedbackTag?: string;
+  isCurrentlyRecommended: boolean;
+}): Promise<{ success: boolean; userHasRecommended: boolean }> {
+  const {
+    productId,
+    productName,
+    storeId,
+    storeUsername,
+    userId,
+    userName,
+    userEmail,
+    userPhone,
+    feedbackTag,
+    isCurrentlyRecommended
+  } = params;
+
+  if (!productId || !userId) {
+    throw new Error("Identificador de producto y usuario requeridos.");
+  }
+
+  const docId = `${productId}_${userId}`;
+  const docRef = doc(db, 'product_recommendations', docId);
+
+  if (isCurrentlyRecommended) {
+    // Retirar recomendación
+    await deleteDoc(docRef);
+    return { success: true, userHasRecommended: false };
+  } else {
+    // Guardar recomendación
+    const recDoc: ProductRecommendation = {
+      id: docId,
+      productId,
+      productName: productName || 'Producto',
+      storeId: storeId || '',
+      storeUsername: storeUsername || '',
+      userId,
+      userName: userName || 'Cliente Ryyco',
+      userEmail: userEmail || '',
+      userPhone: userPhone || '',
+      recommended: true,
+      feedbackTag: feedbackTag || '',
+      createdAt: new Date().toISOString()
+    };
+    await setDoc(docRef, recDoc);
+    return { success: true, userHasRecommended: true };
+  }
+}
+
+/**
+ * Real-time listener for a product's recommendations
+ */
+export function subscribeProductRecommendations(
+  productId: string,
+  currentUserId: string | null,
+  onUpdate: (stats: ProductRecommendationStats) => void
+): () => void {
+  if (!productId) return () => {};
+
+  const q = query(collection(db, 'product_recommendations'), where('productId', '==', productId));
+  return onSnapshot(q, (snap) => {
+    const recs: ProductRecommendation[] = [];
+    snap.forEach(d => {
+      recs.push(d.data() as ProductRecommendation);
+    });
+
+    const positiveRecs = recs.filter(r => r.recommended !== false);
+    const negativeRecs = recs.filter(r => r.recommended === false);
+    const count = positiveRecs.length;
+    const totalVotes = positiveRecs.length + negativeRecs.length;
+
+    let percentage = 0;
+    if (totalVotes > 0) {
+      if (negativeRecs.length > 0) {
+        percentage = Math.round((positiveRecs.length / totalVotes) * 100);
+      } else {
+        percentage = 100;
+      }
+    }
+
+    const userHasRecommended = currentUserId
+      ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
+      : false;
+
+    onUpdate({
+      productId,
+      count,
+      percentage,
+      totalEvaluated: totalVotes,
+      userHasRecommended,
+      recommendations: recs
+    });
+  }, (err) => {
+    console.warn("Real-time product recommendations listener warning:", err);
+  });
+}
+
 
 

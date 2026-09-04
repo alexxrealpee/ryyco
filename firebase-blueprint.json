@@ -168,6 +168,44 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "phone", "name", "points", "totalOrdersCount", "spinsAvailable"]
+    },
+    "StoreRecommendation": {
+      "title": "StoreRecommendation",
+      "description": "Stores user recommendations and hearts for merchant stores",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "storeUsername": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "recommended": { "type": "boolean" },
+        "feedbackTag": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "storeId", "userId", "recommended", "createdAt"]
+    },
+    "ProductRecommendation": {
+      "title": "ProductRecommendation",
+      "description": "Stores user recommendations and hearts for individual products and dishes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "productId": { "type": "string" },
+        "productName": { "type": "string" },
+        "storeId": { "type": "string" },
+        "storeUsername": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "recommended": { "type": "boolean" },
+        "feedbackTag": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "productId", "userId", "recommended", "createdAt"]
     }
   },
   "firestore": {
@@ -182,6 +220,14 @@
     "/customers/{customerId}": {
       "schema": "CustomerProfile",
       "description": "Customer shopper profiles, points and reward vouchers"
+    },
+    "/recommendations/{recId}": {
+      "schema": "StoreRecommendation",
+      "description": "Store recommendations and verified customer hearts"
+    },
+    "/product_recommendations/{recId}": {
+      "schema": "ProductRecommendation",
+      "description": "Product recommendations and verified diner hearts"
     },
     "/subscription_payments/{paymentId}": {
       "schema": "SubscriptionPayment",

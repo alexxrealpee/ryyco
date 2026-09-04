@@ -14,7 +14,10 @@ import {
   fetchSystemSettings,
   checkIsStoreClosed,
   saveCustomerProfile,
-  fetchCustomerProfileByPhone
+  fetchCustomerProfileByPhone,
+  subscribeStoreTheme,
+  subscribeStoreProfile,
+  PREDEFINED_THEMES
 } from '../lib/firebase';
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
 import CustomerPortalModal from './CustomerPortalModal';
@@ -29,6 +32,8 @@ import {
   BankAccount,
   CustomerProfile
 } from '../types';
+import { RecommendationHeartButton } from './RecommendationHeartButton';
+import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { 
   Share2, 
   Copy, 
@@ -374,7 +379,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         let finalProfile = res?.profile || null;
         let finalLinks = (res?.profile && res?.links) ? res.links.filter(l => l && l.active) : [];
         let finalProducts = (res?.profile && res?.products) ? res.products.filter(p => p && p.active) : [];
-        let finalTheme = res?.profile ? res?.customTheme : null;
+        let finalTheme = res?.customTheme || (res?.profile as any)?.customTheme || null;
 
         // Fallback Tier 2: Check localized index registry
         if (!finalProfile) {
@@ -385,12 +390,22 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               const uid = finalProfile.uid;
               finalLinks = JSON.parse(localStorage.getItem(`linnk_links_${uid}`) || '[]').filter((l: any) => l && l.active);
               finalProducts = JSON.parse(localStorage.getItem(`linnk_products_${uid}`) || '[]').filter((p: any) => p && p.active);
-              finalTheme = JSON.parse(localStorage.getItem(`linnk_theme_${uid}`) || 'null');
+              finalTheme = JSON.parse(localStorage.getItem(`linnk_theme_${uid}`) || 'null') || (finalProfile as any)?.customTheme || null;
               console.log("Loaded public profile via local sandbox fallback registry", clean);
             }
           } catch (e) {
             console.warn("Registry fallback parse failed", e);
           }
+        }
+
+        // Fallback Tier 3: Direct local theme key if not loaded yet
+        if (!finalTheme && finalProfile?.uid) {
+          try {
+            const localTheme = localStorage.getItem(`linnk_theme_${finalProfile.uid}`);
+            if (localTheme) {
+              finalTheme = JSON.parse(localTheme);
+            }
+          } catch (e) {}
         }
 
         if (finalProfile) {
@@ -425,6 +440,62 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       isSubscribed = false;
     };
   }, [username, retryCount]);
+
+  // Real-time synchronization for instant seller design updates (theme and layout)
+  useEffect(() => {
+    if (!profile?.uid) return;
+
+    // 1. Listen for Firestore real-time updates to theme
+    const unsubTheme = subscribeStoreTheme(profile.uid, (newTheme) => {
+      if (newTheme) {
+        setTheme(newTheme);
+      }
+    });
+
+    // 2. Listen for Firestore real-time updates to profile (e.g. layout changes)
+    const unsubProfile = subscribeStoreProfile(profile.uid, (updatedProfileData) => {
+      if (updatedProfileData) {
+        setProfile(prev => prev ? ({ ...prev, ...updatedProfileData }) : prev);
+        if (updatedProfileData.customTheme) {
+          setTheme(updatedProfileData.customTheme);
+        }
+      }
+    });
+
+    // 3. Local cross-event listeners (immediate <1ms response across same tab or window)
+    const handleThemeEvent = (e: any) => {
+      if (e.detail?.userId === profile.uid && e.detail?.theme) {
+        setTheme(e.detail.theme);
+      }
+    };
+    const handleProfileEvent = (e: any) => {
+      if (e.detail?.profile?.uid === profile.uid) {
+        setProfile(prev => prev ? ({ ...prev, ...e.detail.profile }) : prev);
+        if (e.detail.profile.customTheme) {
+          setTheme(e.detail.profile.customTheme);
+        }
+      }
+    };
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === `linnk_theme_${profile.uid}` && e.newValue) {
+        try {
+          setTheme(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener('ryyco_theme_updated', handleThemeEvent);
+    window.addEventListener('ryyco_profile_updated', handleProfileEvent);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      unsubTheme();
+      unsubProfile();
+      window.removeEventListener('ryyco_theme_updated', handleThemeEvent);
+      window.removeEventListener('ryyco_profile_updated', handleProfileEvent);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, [profile?.uid]);
 
   const copyUrl = () => {
     const u = `${window.location.origin}/${username}`;
@@ -816,17 +887,39 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   }
 
   // Fallback Theme values
-  const activeTheme: CustomTheme = theme || {
-    id: 'midnight',
-    name: 'Midnight Elegance',
+  const activeTheme: CustomTheme = theme || profile?.customTheme || {
+    id: 'fuego-burger',
+    name: 'Fuego Grill & Burger',
     bgType: 'flat',
-    bgColor: '#090d16',
+    bgColor: '#0c0d12',
     textColor: '#ffffff',
-    cardBg: '#111625',
-    cardBorder: 'rgba(255, 255, 255, 0.08)',
+    cardBg: '#151722',
+    cardBorder: 'rgba(249, 115, 22, 0.35)',
     cardTextColor: '#ffffff',
-    fontFamily: 'font-sans',
+    fontFamily: 'font-display',
     buttonStyle: 'rounded',
+    accentColor: '#f97316',
+  };
+
+  // Resolve the store accent color chosen by the administrator/vendor
+  const resolvedPredefinedTheme = PREDEFINED_THEMES.find(t => t.id === activeTheme.id);
+  const storeAccent = 
+    activeTheme.accentColor || 
+    profile?.customTheme?.accentColor || 
+    resolvedPredefinedTheme?.accentColor || 
+    (activeTheme.cardBorder && activeTheme.cardBorder.startsWith('#') ? activeTheme.cardBorder : null) ||
+    '#f97316';
+
+  const getContrastText = (hexColor?: string) => {
+    if (!hexColor || !hexColor.startsWith('#')) return '#ffffff';
+    const c = hexColor.substring(1);
+    const rgb = parseInt(c.length === 3 ? c.split('').map(x => x + x).join('') : c, 16);
+    if (isNaN(rgb)) return '#ffffff';
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = (rgb >> 0) & 0xff;
+    const luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    return luma > 160 ? '#000000' : '#ffffff';
   };
 
   const getStoreCurrency = () => profile.currency || '$';
@@ -911,12 +1004,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder, color: activeTheme.cardTextColor }}
       >
         <h3 className="text-xs font-black uppercase tracking-wider mb-2 flex items-center gap-1.5 opacity-80">
-          <Mail className="w-4 h-4 text-emerald-400" /> Enviar Mensaje
+          <Mail className="w-4 h-4" style={{ color: storeAccent }} /> Enviar Mensaje
         </h3>
         <p className="text-[11px] opacity-70 mb-4 font-semibold leading-relaxed">¿Tienes alguna duda o quieres coordinar un pedido especial? Envíame tus datos:</p>
         
         {leadSuccess ? (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 p-4 rounded-xl text-xs font-bold text-center animate-fade-in">
+          <div 
+            className="p-4 rounded-xl text-xs font-bold text-center animate-fade-in"
+            style={{ backgroundColor: `${storeAccent}15`, border: `1px solid ${storeAccent}40`, color: storeAccent }}
+          >
             ✓ ¡Mensaje recibido! Nos comunicaremos contigo muy pronto.
           </div>
         ) : (
@@ -927,7 +1023,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               placeholder="Tu nombre completo"
               value={leadName}
               onChange={(e) => setLeadName(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 p-3 rounded-xl text-xs font-semibold outline-none focus:ring-1 focus:ring-emerald-500/30 text-white"
+              className="w-full bg-black/40 border border-white/5 p-3 rounded-xl text-xs font-semibold outline-none focus:border-white/30 text-white"
             />
             <input 
               type="email" 
@@ -935,7 +1031,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               placeholder="Tu correo electrónico"
               value={leadEmail}
               onChange={(e) => setLeadEmail(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 p-3 rounded-xl text-xs font-semibold outline-none focus:ring-1 focus:ring-emerald-500/30 text-white"
+              className="w-full bg-black/40 border border-white/5 p-3 rounded-xl text-xs font-semibold outline-none focus:border-white/30 text-white"
             />
             <textarea 
               placeholder="Escribe tu consulta detallada acá..."
@@ -943,12 +1039,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               rows={2}
               value={leadMsg}
               onChange={(e) => setLeadMsg(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 p-3 rounded-xl text-xs font-semibold outline-none focus:ring-1 focus:ring-emerald-500/30 text-white resize-none"
+              className="w-full bg-black/40 border border-white/5 p-3 rounded-xl text-xs font-semibold outline-none focus:border-white/30 text-white resize-none"
             />
             <button 
               type="submit"
               disabled={leadSubmitting}
-              className="w-full py-2.5 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow cursor-pointer"
+              className="w-full py-2.5 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow cursor-pointer"
+              style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
             >
               <Send className="w-3.5 h-3.5" /> 
               {leadSubmitting ? 'Enviando...' : 'Enviar Mensaje'}
@@ -1029,7 +1126,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             onClick={() => scrollToSection('store-hero')}
             className="flex items-center gap-3 cursor-pointer group"
           >
-            <div className={`w-13 h-13 sm:w-14 sm:h-14 md:w-15 md:h-15 ${profile.photoURL ? 'rounded-full border-2 border-emerald-400/40 shadow-sm' : 'rounded-xl border-r-4 border-emerald-400'} bg-black text-white dark:bg-white dark:text-black font-extrabold flex items-center justify-center text-sm tracking-tighter group-hover:scale-105 transition-transform overflow-hidden shrink-0`}>
+            <div 
+              className={`w-13 h-13 sm:w-14 sm:h-14 md:w-15 md:h-15 ${profile.photoURL ? 'rounded-full border-2 shadow-sm' : 'rounded-xl border-r-4'} bg-black text-white dark:bg-white dark:text-black font-extrabold flex items-center justify-center text-sm tracking-tighter group-hover:scale-105 transition-transform overflow-hidden shrink-0`}
+              style={{ borderColor: storeAccent }}
+            >
               {profile.photoURL ? (
                 <img src={profile.photoURL} alt={profile.displayName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
@@ -1047,27 +1147,27 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           <nav className="hidden md:flex items-center gap-8 text-[11px] font-bold tracking-widest text-inherit/90">
             <button 
               onClick={() => scrollToSection('store-hero')} 
-              className="hover:text-emerald-400 transition cursor-pointer uppercase opacity-80 hover:opacity-100"
+              className="hover:opacity-100 opacity-80 transition cursor-pointer uppercase"
             >
               Inicio
             </button>
             <button 
               onClick={() => scrollToSection('store-category-row')} 
-              className="hover:text-emerald-400 transition cursor-pointer uppercase opacity-80 hover:opacity-100"
+              className="hover:opacity-100 opacity-80 transition cursor-pointer uppercase"
             >
               Categorías
             </button>
             {products.length > 0 && (
               <button 
                 onClick={() => { setSelectedCategory('Todos'); scrollToSection('store-catalog'); }} 
-                className="hover:text-emerald-400 transition cursor-pointer uppercase opacity-80 hover:opacity-100"
+                className="hover:opacity-100 opacity-80 transition cursor-pointer uppercase"
               >
                 Nuevos Llegados
               </button>
             )}
             <button 
               onClick={() => scrollToSection('store-contact')} 
-              className="hover:text-emerald-400 transition cursor-pointer uppercase opacity-80 hover:opacity-100"
+              className="hover:opacity-100 opacity-80 transition cursor-pointer uppercase"
             >
               Contacto
             </button>
@@ -1079,7 +1179,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             {/* Search toggler */}
             <button 
               onClick={() => setIsSearchBarOpen(!isSearchBarOpen)}
-              className={`p-2 rounded-full hover:bg-white/5 active:scale-95 transition relative cursor-pointer ${isSearchBarOpen ? 'text-emerald-400' : ''}`}
+              className="p-2 rounded-full hover:bg-white/5 active:scale-95 transition relative cursor-pointer"
+              style={{ color: isSearchBarOpen ? storeAccent : undefined }}
               title="Buscar"
             >
               <Search className="w-[19px] h-[19px]" />
@@ -1094,20 +1195,26 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <QrCode className="w-[19px] h-[19px]" />
             </button>
 
-            {/* Favourited Heart Widget indicator */}
-            <div className="relative group cursor-pointer p-2 hidden sm:block">
-              <Heart className="w-[19px] h-[19px] group-hover:text-red-500 group-hover:fill-red-500 transition" />
-              <span className="absolute top-0 right-0 w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
-            </div>
+            {/* Recommendation Heart Widget in Header Navbar */}
+            <RecommendationHeartButton
+              storeId={profile.uid}
+              storeName={profile.displayName || profile.name || `@${profile.username}`}
+              storeUsername={profile.username}
+              activeCustomer={activeCustomer}
+              onCustomerUpdate={setActiveCustomer}
+              onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+              variant="header"
+            />
 
             {/* Shoppable cart badge element */}
             <button 
               onClick={() => setIsCartOpen(true)}
-              className="p-2 bg-emerald-400 hover:bg-emerald-300 text-black rounded-full flex items-center justify-center gap-1.5 transition shadow cursor-pointer"
+              className="p-2 hover:opacity-90 rounded-full flex items-center justify-center gap-1.5 transition shadow cursor-pointer"
+              style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
               title="Ver Carrito de Pedido"
             >
-              <ShoppingBag className="w-4 h-4 text-black stroke-[2.5]" />
-              <span className="text-[10px] font-black px-1.5 py-0.5 bg-black text-emerald-400 rounded-full leading-none">
+              <ShoppingBag className="w-4 h-4 stroke-[2.5]" style={{ color: getContrastText(storeAccent) }} />
+              <span className="text-[10px] font-black px-1.5 py-0.5 bg-black rounded-full leading-none" style={{ color: storeAccent }}>
                 {totalCartUnitsCount}
               </span>
             </button>
@@ -1128,12 +1235,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="w-full max-w-lg relative">
                 <input 
                   type="text"
-                  placeholder="Escribe para buscar camisetas, chaquetas, accesorios o calzado..."
+                  placeholder="Escribe para buscar productos o platos..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-black/50 border border-white/10 px-4 py-2.5 pl-10 pr-10 rounded-xl text-xs font-semibold text-white focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                  className="w-full bg-black/50 border border-white/10 px-4 py-2.5 pl-10 pr-10 rounded-xl text-xs font-semibold text-white focus:outline-none"
+                  style={{ borderColor: isSearchBarOpen ? `${storeAccent}80` : undefined }}
                 />
-                <Search className="w-4 h-4 text-emerald-400 absolute left-3.5 top-3.5" />
+                <Search className="w-4 h-4 absolute left-3.5 top-3.5" style={{ color: storeAccent }} />
                 {searchQuery && (
                   <button 
                     onClick={() => setSearchQuery('')} 
@@ -1324,6 +1432,19 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         </section>
       )}
 
+      {/* 2.5 RESTAURANT RECOMMENDATION SECTION (❤️ 96% lo recomienda) */}
+      <section className="w-full max-w-7xl mx-auto px-4 md:px-8 mt-6">
+        <RecommendationHeartButton
+          storeId={profile.uid}
+          storeName={profile.displayName || profile.name || `@${profile.username}`}
+          storeUsername={profile.username}
+          activeCustomer={activeCustomer}
+          onCustomerUpdate={setActiveCustomer}
+          onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+          variant="hero"
+        />
+      </section>
+
       {/* 3. COHESIVE CATEGORIES BAR (VISUAL CHIPS WITH OUTLINE DESIGN) */}
       <section 
         id="store-category-row" 
@@ -1347,19 +1468,19 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <button
                 key={cat}
                 onClick={() => { setSelectedCategory(cat); scrollToSection('store-catalog'); }}
-                className="flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer hover:border-emerald-400/50 group text-left shadow-sm"
+                className="flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer hover:opacity-90 group text-left shadow-sm"
                 style={{ 
                   backgroundColor: isSelected ? activeTheme.cardBg : 'rgba(255,255,255,0.02)', 
-                  borderColor: isSelected ? '#10b981' : activeTheme.cardBorder,
+                  borderColor: isSelected ? storeAccent : activeTheme.cardBorder,
                   color: isSelected ? activeTheme.textColor : undefined
                 }}
               >
                 <div 
-                  className={`p-3 rounded-xl transition ${
-                    isSelected 
-                      ? 'bg-emerald-400 text-black' 
-                      : 'bg-black/25 text-gray-400 group-hover:text-emerald-400'
-                  }`}
+                  className="p-3 rounded-xl transition"
+                  style={{
+                    backgroundColor: isSelected ? storeAccent : 'rgba(0,0,0,0.25)',
+                    color: isSelected ? getContrastText(storeAccent) : undefined
+                  }}
                 >
                   {getCategoryIcon(cat)}
                 </div>
@@ -1386,7 +1507,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           {searchQuery && (
             <div className="p-3 bg-white/5 border rounded-xl flex items-center justify-between text-xs" style={{ borderColor: activeTheme.cardBorder }}>
               <span className="font-semibold text-gray-300">
-                Filtro de búsqueda: &ldquo;<strong className="text-emerald-400">{searchQuery}</strong>&rdquo;
+                Filtro de búsqueda: &ldquo;<strong style={{ color: storeAccent }}>{searchQuery}</strong>&rdquo;
               </span>
               <button 
                 onClick={() => setSearchQuery('')}
@@ -1428,8 +1549,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       <div
                         key={p.id}
                         onClick={() => handleOpenProductSelection(p)}
-                        className="group hover:border-amber-400 border-2 rounded-none overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_10px_20px_rgba(245,158,11,0.15)] relative bg-[#0c0f16]"
-                        style={{ borderColor: activeTheme.cardBorder }}
+                        className="group hover:border-amber-400 border-2 rounded-none overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_10px_20px_rgba(245,158,11,0.15)] relative"
+                        style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder, color: activeTheme.cardTextColor }}
                       >
                         {/* Off ribbon tag */}
                         {isDiscounted && (
@@ -1440,6 +1561,19 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                         <div>
                           <div className="w-full aspect-square bg-gradient-to-b from-[#111625] to-[#1a233a] rounded-none mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5">
+                            {/* Product Heart Recommendation Button */}
+                            <div className="absolute top-2 right-2 z-20">
+                              <ProductRecommendationHeartButton
+                                productId={p.id}
+                                productName={p.name}
+                                storeId={profile?.uid || profile?.id || ''}
+                                storeUsername={profile?.username || ''}
+                                activeCustomer={activeCustomer}
+                                onCustomerUpdate={setActiveCustomer}
+                                onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                            </div>
                             {p.imageURL ? (
                               <img 
                                 src={p.imageURL} 
@@ -1462,14 +1596,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                             </span>
                           </div>
 
-                          <h4 className="text-xs font-black line-clamp-2 text-white leading-tight min-h-[2rem] uppercase italic tracking-tight">
+                          <h4 className="text-xs font-black line-clamp-2 leading-tight min-h-[2rem] uppercase italic tracking-tight" style={{ color: activeTheme.cardTextColor }}>
                             {p.name}
                           </h4>
                         </div>
 
-                        <div className="flex items-center justify-between gap-1 mt-4 pt-3.5 border-t border-gray-900">
+                        <div className="flex items-center justify-between gap-1 mt-4 pt-3.5 border-t border-gray-800/40">
                           <div className="flex flex-col">
-                            <span className="text-sm font-black text-white italic">
+                            <span className="text-sm font-black italic" style={{ color: activeTheme.accentColor || '#f59e0b' }}>
                               {getStoreCurrency()}{Number(p.price || 0).toLocaleString()}
                             </span>
                             {p.compareAtPrice && (
@@ -1480,7 +1614,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           </div>
                           
                           {/* Sporty bold add button */}
-                          <div className="px-3 py-2 bg-amber-400 text-black font-extrabold text-[10px] uppercase tracking-wider skew-x-[-10deg] group-hover:bg-white transition duration-300">
+                          <div 
+                            className="px-3 py-2 font-extrabold text-[10px] uppercase tracking-wider skew-x-[-10deg] group-hover:scale-105 transition duration-300 shadow-sm"
+                            style={{ backgroundColor: activeTheme.accentColor || '#f59e0b', color: activeTheme.accentColor === '#ffffff' ? '#000000' : '#000000' }}
+                          >
                             <span className="inline-block skew-x-[10deg] flex items-center gap-1">
                               COMPRAR <Plus className="w-3 h-3 stroke-[3]" />
                             </span>
@@ -1497,8 +1634,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       <div
                         key={p.id}
                         onClick={() => handleOpenProductSelection(p)}
-                        className="group hover:border-purple-400/80 border rounded-3xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_12px_25px_rgba(168,85,247,0.2)] relative bg-[#120a1f]/80 border-purple-900/40 backdrop-blur-sm"
-                        style={{ borderColor: activeTheme.cardBorder }}
+                        className="group hover:border-purple-400/80 border rounded-3xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_12px_25px_rgba(168,85,247,0.2)] relative backdrop-blur-sm"
+                        style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder, color: activeTheme.cardTextColor }}
                       >
                         {isDiscounted && (
                           <span className="absolute top-3.5 left-3.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest z-10 shadow-md">
@@ -1507,7 +1644,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         )}
 
                         <div>
-                          <div className="w-full aspect-square bg-[#0b0514] rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-purple-900/30 p-2">
+                          <div className="w-full aspect-square bg-black/40 rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-2">
+                            {/* Product Heart Recommendation Button */}
+                            <div className="absolute top-2.5 right-2.5 z-20">
+                              <ProductRecommendationHeartButton
+                                productId={p.id}
+                                productName={p.name}
+                                storeId={profile?.uid || profile?.id || ''}
+                                storeUsername={profile?.username || ''}
+                                activeCustomer={activeCustomer}
+                                onCustomerUpdate={setActiveCustomer}
+                                onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                            </div>
                             {p.imageURL ? (
                               <img 
                                 src={p.imageURL} 
@@ -1525,34 +1675,37 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                             <span className="text-[9px] font-black text-amber-400 uppercase tracking-widest block font-mono">
                               🍷 {p.category || 'LICORES'}
                             </span>
-                            <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-0.5">
+                            <span className="text-[8px] font-bold uppercase tracking-wider flex items-center gap-0.5" style={{ color: storeAccent }}>
                               • FRÍO & EXPRESS
                             </span>
                           </div>
 
-                          <h4 className="text-xs font-extrabold line-clamp-2 text-white leading-tight min-h-[2.2rem] group-hover:text-purple-300 transition-colors">
+                          <h4 className="text-xs font-extrabold line-clamp-2 leading-tight min-h-[2.2rem] group-hover:opacity-80 transition-colors" style={{ color: activeTheme.cardTextColor }}>
                             {p.name}
                           </h4>
                           {p.description && (
-                            <p className="text-[10px] text-gray-400 line-clamp-1 leading-normal mt-1 mb-2">
+                            <p className="text-[10px] opacity-70 line-clamp-1 leading-normal mt-1 mb-2">
                               {p.description}
                             </p>
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between gap-1 mt-3 pt-3 border-t border-purple-900/40">
+                        <div className="flex items-center justify-between gap-1 mt-3 pt-3 border-t border-white/10">
                           <div className="flex flex-col">
-                            <span className="text-xs font-extrabold text-white">
+                            <span className="text-xs font-extrabold" style={{ color: activeTheme.accentColor || '#a855f7' }}>
                               {getStoreCurrency()}{Number(p.price || 0).toLocaleString()}
                             </span>
                             {p.compareAtPrice && (
-                              <span className="text-[9px] text-gray-500 line-through">
+                              <span className="text-[9px] opacity-60 line-through">
                                 {getStoreCurrency()}{Number(p.compareAtPrice || 0).toLocaleString()}
                               </span>
                             )}
                           </div>
                           
-                          <div className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-extrabold text-[9px] rounded-full uppercase tracking-wider group-hover:from-purple-500 group-hover:to-pink-500 active:scale-[0.97] transition flex items-center gap-1 shadow-md shadow-purple-600/20">
+                          <div 
+                            className="px-3 py-1.5 font-extrabold text-[9px] rounded-full uppercase tracking-wider active:scale-[0.97] transition flex items-center gap-1 shadow-md"
+                            style={{ backgroundColor: activeTheme.accentColor || '#9333ea', color: activeTheme.accentColor === '#ffffff' ? '#000000' : '#ffffff' }}
+                          >
                             PEDIR <Wine className="w-3 h-3 text-amber-300" />
                           </div>
                         </div>
@@ -1567,8 +1720,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       <div
                         key={p.id}
                         onClick={() => handleOpenProductSelection(p)}
-                        className="group hover:border-amber-500 border rounded-3xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_12px_24px_rgba(245,158,11,0.12)] relative bg-stone-900/40 border-stone-800 backdrop-blur-sm"
-                        style={{ borderColor: activeTheme.cardBorder }}
+                        className="group hover:border-amber-500 border rounded-3xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_12px_24px_rgba(245,158,11,0.12)] relative backdrop-blur-sm"
+                        style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder, color: activeTheme.cardTextColor }}
                       >
                         {/* Discount or promo tag */}
                         {isDiscounted && (
@@ -1579,7 +1732,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                         <div>
                           {/* Round circular gourmet plate container layout */}
-                          <div className="w-full aspect-square bg-[#15120e] rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-stone-800/40 p-2">
+                          <div className="w-full aspect-square bg-black/40 rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-2">
+                            {/* Product Heart Recommendation Button */}
+                            <div className="absolute top-2.5 right-2.5 z-20">
+                              <ProductRecommendationHeartButton
+                                productId={p.id}
+                                productName={p.name}
+                                storeId={profile?.uid || profile?.id || ''}
+                                storeUsername={profile?.username || ''}
+                                activeCustomer={activeCustomer}
+                                onCustomerUpdate={setActiveCustomer}
+                                onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                            </div>
                             {p.imageURL ? (
                               <img 
                                 src={p.imageURL} 
@@ -1594,39 +1760,39 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           </div>
 
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest block font-mono">
+                            <span className="text-[9px] font-black uppercase tracking-widest block font-mono" style={{ color: storeAccent }}>
                               🍽️ {p.category || 'MENÚ'}
-                            </span>
-                            <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-0.5">
-                              • FRESCO AL INSTANTE
                             </span>
                           </div>
 
-                          <h4 className="text-xs font-extrabold line-clamp-2 text-white leading-tight min-h-[2.2rem] group-hover:text-amber-400 transition-colors">
+                          <h4 className="text-xs font-extrabold line-clamp-2 leading-tight min-h-[2.2rem] group-hover:opacity-80 transition-colors" style={{ color: activeTheme.cardTextColor }}>
                             {p.name}
                           </h4>
                           {p.description && (
-                            <p className="text-[10px] text-gray-400 line-clamp-1 leading-normal mt-1 mb-2">
+                            <p className="text-[10px] opacity-70 line-clamp-1 leading-normal mt-1 mb-2">
                               {p.description}
                             </p>
                           )}
                         </div>
 
-                        <div className="flex items-center justify-between gap-1 mt-3 pt-3 border-t border-stone-800/60">
+                        <div className="flex items-center justify-between gap-1 mt-3 pt-3 border-t border-white/10">
                           <div className="flex flex-col">
-                            <span className="text-xs font-extrabold text-white">
+                            <span className="text-xs font-extrabold" style={{ color: storeAccent }}>
                               {getStoreCurrency()}{Number(p.price || 0).toLocaleString()}
                             </span>
                             {p.compareAtPrice && (
-                              <span className="text-[9px] text-gray-500 line-through">
+                              <span className="text-[9px] opacity-60 line-through">
                                 {getStoreCurrency()}{Number(p.compareAtPrice || 0).toLocaleString()}
                               </span>
                             )}
                           </div>
                           
                           {/* Round interactive pediment or restaurant order button */}
-                          <div className="px-3 py-1.5 bg-amber-500 text-white font-extrabold text-[9px] rounded-full uppercase tracking-wider group-hover:bg-amber-400 active:scale-[0.97] transition flex items-center gap-1 shadow-md shadow-amber-500/10">
-                            PEDIR <Utensils className="w-3 h-3 text-white" />
+                          <div 
+                            className="px-3 py-1.5 font-extrabold text-[9px] rounded-full uppercase tracking-wider active:scale-[0.97] transition flex items-center gap-1 shadow-md hover:opacity-90"
+                            style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
+                          >
+                            PEDIR <Utensils className="w-3 h-3" style={{ color: getContrastText(storeAccent) }} />
                           </div>
                         </div>
 
@@ -1640,13 +1806,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       <div
                         key={p.id}
                         onClick={() => handleOpenProductSelection(p)}
-                        className="group hover:border-indigo-500/80 border rounded-2xl overflow-hidden p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-[0_0_20px_rgba(99,102,241,0.25)] relative bg-black/60 backdrop-blur-sm"
-                        style={{ borderColor: activeTheme.cardBorder }}
+                        className="group hover:border-indigo-500/80 border rounded-2xl overflow-hidden p-4 flex flex-col justify-between cursor-pointer transition-all duration-300 hover:shadow-[0_0_20px_rgba(99,102,241,0.25)] relative backdrop-blur-sm"
+                        style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder, color: activeTheme.cardTextColor }}
                       >
                         {/* High tech top marker */}
                         <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-60 group-hover:opacity-100 transition">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          <span className="text-[8px] text-gray-400 font-extrabold uppercase tracking-widest">Original</span>
+                          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: storeAccent }} />
+                          <span className="text-[8px] opacity-70 font-extrabold uppercase tracking-widest">Original</span>
                         </div>
 
                         {isDiscounted && p.compareAtPrice && p.compareAtPrice > (p.price || 0) && (
@@ -1656,7 +1822,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         )}
 
                         <div>
-                          <div className="w-full aspect-square bg-[#080b11] rounded-xl mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-1.5">
+                          <div className="w-full aspect-square bg-black/40 rounded-xl mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-1.5">
+                            {/* Product Heart Recommendation Button */}
+                            <div className="absolute top-2 right-2 z-20">
+                              <ProductRecommendationHeartButton
+                                productId={p.id}
+                                productName={p.name}
+                                storeId={profile?.uid || profile?.id || ''}
+                                storeUsername={profile?.username || ''}
+                                activeCustomer={activeCustomer}
+                                onCustomerUpdate={setActiveCustomer}
+                                onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                            </div>
                             {p.imageURL ? (
                               <img 
                                 src={p.imageURL} 
@@ -1670,28 +1849,31 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                             )}
                           </div>
 
-                          <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest block mb-1">
+                          <span className="text-[8px] font-black uppercase tracking-widest block mb-1" style={{ color: activeTheme.accentColor || '#818cf8' }}>
                             {p.category?.toUpperCase() || 'DISPOSITIVO'}
                           </span>
-                          <h4 className="text-xs font-extrabold line-clamp-2 text-white leading-tight min-h-[2rem]">
+                          <h4 className="text-xs font-extrabold line-clamp-2 leading-tight min-h-[2rem]" style={{ color: activeTheme.cardTextColor }}>
                             {p.name}
                           </h4>
                         </div>
 
-                        <div className="flex items-center justify-between gap-1 mt-4 pt-3 border-t border-indigo-950/40">
+                        <div className="flex items-center justify-between gap-1 mt-4 pt-3 border-t border-white/10">
                           <div className="flex flex-col">
-                            <span className="text-sm font-black text-white">
+                            <span className="text-sm font-black" style={{ color: activeTheme.accentColor || '#818cf8' }}>
                               {getStoreCurrency()}{Number(p.price || 0).toLocaleString()}
                             </span>
                             {p.compareAtPrice && (
-                              <span className="text-[10px] text-gray-500 line-through">
+                              <span className="text-[10px] opacity-60 line-through">
                                 {getStoreCurrency()}{Number(p.compareAtPrice || 0).toLocaleString()}
                               </span>
                             )}
                           </div>
                           
                           {/* Modern interactive purchase button */}
-                          <div className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-wider group-hover:bg-indigo-500 active:scale-95 transition duration-300 flex items-center gap-1">
+                          <div 
+                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider active:scale-95 transition duration-300 flex items-center gap-1 shadow-sm"
+                            style={{ backgroundColor: activeTheme.accentColor || '#4f46e5', color: activeTheme.accentColor === '#ffffff' ? '#000000' : '#ffffff' }}
+                          >
                             Pedir <Smartphone className="w-3 h-3 text-white" />
                           </div>
                         </div>
@@ -1705,18 +1887,38 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     <div
                       key={p.id}
                       onClick={() => handleOpenProductSelection(p)}
-                      className="group hover:border-emerald-500/50 border rounded-2xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-lg relative"
-                      style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder }}
+                      className="group border rounded-2xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-lg relative"
+                      style={{ 
+                        backgroundColor: activeTheme.cardBg, 
+                        borderColor: activeTheme.cardBorder,
+                        color: activeTheme.cardTextColor 
+                      }}
                     >
                       {/* Off ribbon tag helper */}
                       {p.compareAtPrice && p.compareAtPrice > p.price && (
-                        <span className="absolute top-3 right-3 bg-pink-500 text-white font-extrabold text-[8px] px-2.5 py-0.5 rounded uppercase tracking-wider z-10 animate-pulse">
+                        <span 
+                          className="absolute top-3 right-3 text-white font-extrabold text-[8px] px-2.5 py-0.5 rounded uppercase tracking-wider z-10 animate-pulse shadow-sm"
+                          style={{ backgroundColor: storeAccent }}
+                        >
                           Oferta
                         </span>
                       )}
 
                       <div>
                         <div className="w-full aspect-square bg-[#0c101d] rounded-xl mb-3 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5">
+                          {/* Product Heart Recommendation Button */}
+                          <div className="absolute top-2 right-2 z-20">
+                            <ProductRecommendationHeartButton
+                              productId={p.id}
+                              productName={p.name}
+                              storeId={profile?.uid || profile?.id || ''}
+                              storeUsername={profile?.username || ''}
+                              activeCustomer={activeCustomer}
+                              onCustomerUpdate={setActiveCustomer}
+                              onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                              variant="card-overlay"
+                            />
+                          </div>
                           {p.imageURL ? (
                             <img 
                               src={p.imageURL} 
@@ -1730,13 +1932,26 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           )}
                         </div>
 
-                        <span className="text-[8px] font-black text-indigo-400 uppercase tracking-widest block mb-0.5">{p.category || 'General'}</span>
-                        <h4 className="text-xs font-black line-clamp-2 text-white leading-tight min-h-[2rem]" style={{ color: activeTheme.cardTextColor }}>{p.name}</h4>
+                        <span 
+                          className="text-[8px] font-black uppercase tracking-widest block mb-0.5"
+                          style={{ color: storeAccent }}
+                        >
+                          {p.category || 'General'}
+                        </span>
+                        <h4 
+                          className="text-xs font-black line-clamp-2 leading-tight min-h-[2rem]" 
+                          style={{ color: activeTheme.cardTextColor }}
+                        >
+                          {p.name}
+                        </h4>
                       </div>
 
                       <div className="flex items-center justify-between gap-1 mt-3">
                         <div className="flex flex-col">
-                          <span className="text-xs font-black text-emerald-400">
+                          <span 
+                            className="text-xs font-black"
+                            style={{ color: storeAccent }}
+                          >
                             {getStoreCurrency()}{Number(p.price || 0).toLocaleString()}
                           </span>
                           {p.compareAtPrice && (
@@ -1747,7 +1962,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         </div>
                         
                         {/* Interactive Add button element */}
-                        <div className="p-1.5 rounded-lg bg-emerald-500/10 group-hover:bg-emerald-400 group-hover:text-black text-emerald-400 transition duration-300">
+                        <div 
+                          className="p-1.5 rounded-lg transition duration-300 shadow-sm flex items-center justify-center"
+                          style={{ 
+                            backgroundColor: `${storeAccent}25`, 
+                            color: storeAccent,
+                            border: `1px solid ${storeAccent}40`
+                          }}
+                        >
                           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                         </div>
                       </div>
@@ -1815,7 +2037,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           
           {/* Brand & Owner presentation detail */}
           <div className="flex flex-col md:flex-row items-center gap-4 text-center md:text-left">
-            <div className="w-14 h-14 rounded-full border-2 border-emerald-400 shadow bg-gray-950 flex items-center justify-center overflow-hidden font-black text-sm text-emerald-400 shrink-0">
+            <div 
+              className="w-14 h-14 rounded-full border-2 shadow bg-gray-950 flex items-center justify-center overflow-hidden font-black text-sm shrink-0"
+              style={{ borderColor: storeAccent, color: storeAccent }}
+            >
               {profile.photoURL ? (
                 <img src={profile.photoURL} alt={profile.displayName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
               ) : (
@@ -1829,10 +2054,22 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 href={`https://ryyco.com/${profile.username}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[11px] font-bold text-emerald-400 hover:underline block"
+                className="text-[11px] font-bold hover:underline block"
+                style={{ color: storeAccent }}
               >
                 ryyco.com/{profile.username}
               </a>
+              <div className="mt-2 flex justify-center md:justify-start">
+                <RecommendationHeartButton
+                  storeId={profile.uid}
+                  storeName={profile.displayName || profile.name || `@${profile.username}`}
+                  storeUsername={profile.username}
+                  activeCustomer={activeCustomer}
+                  onCustomerUpdate={setActiveCustomer}
+                  onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                  variant="badge"
+                />
+              </div>
             </div>
           </div>
 
@@ -1849,8 +2086,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           <div className="flex flex-col items-center md:items-end gap-3.5 min-w-[220px]">
             {(profile.location || profile.email) && (
               <div className="flex flex-col gap-1.5 text-xs font-semibold opacity-75 items-center md:items-end">
-                {profile.location && <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {profile.location}</span>}
-                {profile.email && <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {profile.email}</span>}
+                {profile.location && <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: storeAccent }} /> {profile.location}</span>}
+                {profile.email && <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 shrink-0" style={{ color: storeAccent }} /> {profile.email}</span>}
               </div>
             )}
 
@@ -1909,11 +2146,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           <button
             type="button"
             onClick={() => setIsCartOpen(true)}
-            className="p-4 bg-emerald-405 hover:bg-emerald-300 text-black font-black rounded-full flex items-center justify-center gap-2.5 shadow-2xl shadow-emerald-500/30 transition border-2 border-black"
-            style={{ backgroundColor: '#10b981' }}
+            className="p-4 rounded-full flex items-center justify-center gap-2.5 shadow-2xl transition border-2 border-black active:scale-95 cursor-pointer hover:opacity-90"
+            style={{ 
+              backgroundColor: storeAccent, 
+              color: getContrastText(storeAccent),
+              boxShadow: `0 12px 28px ${storeAccent}60`
+            }}
           >
-            <ShoppingBag className="w-5 h-5 text-black stroke-[2.5]" />
-            <span className="text-xs font-extrabold px-1.5 py-0.5 bg-black text-emerald-400 rounded-full">
+            <ShoppingBag className="w-5 h-5 stroke-[2.5]" style={{ color: getContrastText(storeAccent) }} />
+            <span className="text-xs font-extrabold px-1.5 py-0.5 bg-black rounded-full" style={{ color: storeAccent }}>
               {totalCartUnitsCount}
             </span>
           </button>
@@ -1999,10 +2240,24 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <h3 className="text-lg font-black text-white leading-tight mb-1.5">{selectedProduct.name}</h3>
                   
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg font-extrabold text-emerald-400">{getStoreCurrency()}{Number(selectedProduct.price || 0).toLocaleString()}</span>
+                    <span className="text-lg font-extrabold" style={{ color: storeAccent }}>{getStoreCurrency()}{Number(selectedProduct.price || 0).toLocaleString()}</span>
                     {selectedProduct.compareAtPrice && (
                       <span className="text-xs text-gray-500 line-through font-bold">{getStoreCurrency()}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}</span>
                     )}
+                  </div>
+
+                  {/* Recommendation Heart Banner for Product */}
+                  <div className="mb-3.5">
+                    <ProductRecommendationHeartButton
+                      productId={selectedProduct.id}
+                      productName={selectedProduct.name}
+                      storeId={profile?.uid || profile?.id || ''}
+                      storeUsername={profile?.username || ''}
+                      activeCustomer={activeCustomer}
+                      onCustomerUpdate={setActiveCustomer}
+                      onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                      variant="modal-banner"
+                    />
                   </div>
 
                   <p className="text-xs text-gray-400 leading-relaxed font-semibold bg-gray-900/40 border border-gray-900 p-3.5 rounded-xl mb-4">
@@ -2016,7 +2271,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       <select
                         value={chosenVariant}
                         onChange={(e) => setChosenVariant(e.target.value)}
-                        className="w-full h-10 bg-gray-900 border border-gray-800 focus:border-emerald-500 text-xs px-3 rounded-lg outline-none text-white font-semibold"
+                        className="w-full h-10 bg-gray-900 border border-gray-800 focus:border-indigo-500 text-xs px-3 rounded-lg outline-none text-white font-semibold"
                       >
                         {selectedProduct.variantsText.split(',').map((vari, vIdx) => (
                           <option key={vIdx} value={vari.trim()}>{vari.trim()}</option>
@@ -2074,9 +2329,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     <button
                       type="button"
                       onClick={handleAddProductToCart}
-                      className="w-full py-3.5 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                      className="w-full py-3.5 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
+                      style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
                     >
-                      <ShoppingBag className="w-4 h-4 text-black stroke-[3]" />
+                      <ShoppingBag className="w-4 h-4 stroke-[3]" style={{ color: getContrastText(storeAccent) }} />
                       Añadir al Carrito ({getStoreCurrency()}{Number((selectedProduct.price || 0) * buyQuantity).toLocaleString()})
                     </button>
                   )}
@@ -2097,7 +2353,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             <div>
               <div className="flex items-center justify-between border-b border-gray-900 pb-3 mb-4">
                 <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-emerald-400" />
+                  <ShoppingBag className="w-5 h-5" style={{ color: storeAccent }} />
                   <h3 className="font-extrabold text-sm uppercase">Mi Carrito de Compras</h3>
                 </div>
                 <button
@@ -2136,7 +2392,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           {item.selectedVariant && (
                             <span className="text-[10px] text-indigo-400 font-extrabold block">Opción: {item.selectedVariant}</span>
                           )}
-                          <span className="font-mono text-[11px] text-emerald-400 font-semibold">{getStoreCurrency()}{item.product.price.toLocaleString()}</span>
+                          <span className="font-mono text-[11px] font-semibold" style={{ color: storeAccent }}>{getStoreCurrency()}{item.product.price.toLocaleString()}</span>
                         </div>
                       </div>
 
@@ -2185,14 +2441,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <div className="flex items-center justify-between font-bold text-xs text-gray-400">
                   <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : ''}:</span>
                   {deliveryType === 'pickup' ? (
-                    <span className="font-mono text-emerald-400 font-bold">GRATIS ($0)</span>
+                    <span className="font-mono font-bold" style={{ color: storeAccent }}>GRATIS ($0)</span>
                   ) : (
                     <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
                   )}
                 </div>
                 <div className="flex items-center justify-between font-extrabold text-sm text-white pt-1 border-t border-dashed border-gray-900">
                   <span>Total estimado:</span>
-                  <span className="text-emerald-400 text-base font-mono">
+                  <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
                     {getStoreCurrency()}{(totalCartCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee)).toLocaleString()}
                   </span>
                 </div>
@@ -2213,7 +2469,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     <button
                       type="button"
                       onClick={() => { setIsCartOpen(false); setIsCheckoutOpen(true); }}
-                      className="col-span-2 py-4 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow"
+                      className="col-span-2 py-4 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow cursor-pointer"
+                      style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
                     >
                       <span>Proceder al Registro</span>
                       <ArrowRight className="w-4 h-4 stroke-[3.5]" />
@@ -2324,30 +2581,34 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   onClick={() => setDeliveryType('pickup')}
                   className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
                     deliveryType === 'pickup'
-                      ? 'bg-emerald-500/10 border-emerald-500 text-white'
+                      ? 'text-white'
                       : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:border-gray-700'
                   }`}
+                  style={deliveryType === 'pickup' ? { backgroundColor: `${storeAccent}15`, borderColor: storeAccent } : undefined}
                 >
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
-                      {deliveryType === 'pickup' && <div className="w-2 h-2 bg-emerald-500 rounded-full" />}
+                      {deliveryType === 'pickup' && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: storeAccent }} />}
                     </div>
                     <span className="text-xs font-black text-white">🛍️ Recoger en Restaurante</span>
                   </div>
-                  <span className="text-[10px] text-emerald-400 font-bold pl-6">¡Sin costo de envío! ($0)</span>
+                  <span className="text-[10px] font-bold pl-6" style={{ color: storeAccent }}>¡Sin costo de envío! ($0)</span>
                 </button>
               </div>
             </div>
 
             {/* Pickup Location Info Banner */}
             {deliveryType === 'pickup' && (
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-1">
-                <p className="text-[11px] font-bold text-emerald-300 flex items-center gap-1.5">
+              <div 
+                className="p-3 rounded-xl space-y-1"
+                style={{ backgroundColor: `${storeAccent}15`, border: `1px solid ${storeAccent}35` }}
+              >
+                <p className="text-[11px] font-bold flex items-center gap-1.5" style={{ color: storeAccent }}>
                   <span>🛍️</span> <span>Recogida en {profile?.displayName || 'el restaurante'}</span>
                 </p>
                 {profile?.address && (
                   <p className="text-[10px] text-gray-300 font-semibold flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <MapPin className="w-3 h-3 shrink-0" style={{ color: storeAccent }} />
                     <span>Ubicación: {profile.address}</span>
                   </p>
                 )}
@@ -2386,17 +2647,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             <div>
               <label className="text-[10px] font-black uppercase text-gray-500 block mb-2">Método de Coordinación de Pago</label>
               <div className="grid grid-cols-1 gap-2">
-                <label className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition ${
-                  payMethod === 'whatsapp' ? 'border-emerald-500 bg-emerald-500/5' : 'border-gray-900 hover:border-gray-800'
-                }`}>
+                <label 
+                  className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition ${
+                    payMethod === 'whatsapp' ? '' : 'border-gray-900 hover:border-gray-800'
+                  }`}
+                  style={payMethod === 'whatsapp' ? { borderColor: storeAccent, backgroundColor: `${storeAccent}10` } : undefined}
+                >
                   <div className="flex items-center gap-2.5">
-                    <MessageCircle className="w-5 h-5 text-emerald-400" />
+                    <MessageCircle className="w-5 h-5" style={{ color: storeAccent }} />
                     <div className="text-left">
                       <h4 className="text-xs font-extrabold text-white">Pedir por WhatsApp</h4>
                       <p className="text-[9px] text-gray-500">Coordinar pago por chat</p>
                     </div>
                   </div>
-                  <input type="radio" checked={payMethod === 'whatsapp'} onChange={() => setPayMethod('whatsapp')} className="w-4 h-4 accent-emerald-500 pointer-events-auto" />
+                  <input type="radio" checked={payMethod === 'whatsapp'} onChange={() => setPayMethod('whatsapp')} className="w-4 h-4 pointer-events-auto" style={{ accentColor: storeAccent }} />
                 </label>
 
                 {(!profile?.bankAccounts || profile.bankAccounts.length === 0) ? (
@@ -2412,7 +2676,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 ) : (
                   <label className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition ${
                     payMethod === 'transfer' ? 'border-indigo-400 bg-indigo-500/5' : 'border-gray-900 hover:border-gray-800'
-                  }`}>
+                  }`}
+                  >
                     <div className="flex items-center gap-2.5">
                       <Wallet className="w-5 h-5 text-indigo-400" />
                       <div className="text-left">
@@ -2471,7 +2736,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         >
                           {copiedAccountId === acc.id ? (
                             <>
-                              <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                              <Check className="w-3 h-3 stroke-[3]" style={{ color: storeAccent }} />
                               Copiado!
                             </>
                           ) : (
@@ -2544,7 +2809,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       className="w-12 h-12 object-cover rounded-lg border border-indigo-500/10" 
                     />
                     <div className="flex-grow text-left">
-                      <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest block">¡Imagen Cargada!</span>
+                      <span className="text-[10px] font-black uppercase tracking-widest block" style={{ color: storeAccent }}>¡Imagen Cargada!</span>
                       <span className="text-[9px] text-gray-400 font-semibold truncate block max-w-[150px]">Imagen lista para registrar</span>
                     </div>
                     <button
@@ -2642,7 +2907,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 </button>
               </div>
               {rewardDiscountAmount > 0 && (
-                <p className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                <p className="text-[10px] font-bold flex items-center gap-1" style={{ color: storeAccent }}>
                   <Check className="w-3 h-3" /> Descuento aplicado: -${rewardDiscountAmount.toLocaleString('es-CO')} COP
                 </p>
               )}
@@ -2657,20 +2922,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="flex justify-between items-center text-xs text-gray-400 font-bold">
                 <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : ''}:</span>
                 {deliveryType === 'pickup' ? (
-                  <span className="font-mono text-emerald-400 font-bold">GRATIS ($0)</span>
+                  <span className="font-mono font-bold" style={{ color: storeAccent }}>GRATIS ($0)</span>
                 ) : (
                   <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
                 )}
               </div>
               {rewardDiscountAmount > 0 && (
-                <div className="flex justify-between items-center text-xs text-emerald-400 font-bold">
+                <div className="flex justify-between items-center text-xs font-bold" style={{ color: storeAccent }}>
                   <span>Descuento Premio / Cupón:</span>
                   <span className="font-mono">-{getStoreCurrency()}{Math.min(totalCartCost, rewardDiscountAmount).toLocaleString()}</span>
                 </div>
               )}
               <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-gray-900 pt-2 text-white">
                 <span>Monto Total a Pagar:</span>
-                <span className="text-emerald-400 text-base font-mono">
+                <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
                   {getStoreCurrency()}{Math.max(0, totalCartCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
                 </span>
               </div>
@@ -2683,7 +2948,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   type="checkbox" 
                   checked={acceptedBuyerTermsInCheckout} 
                   onChange={(e) => setAcceptedBuyerTermsInCheckout(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 accent-emerald-400 rounded cursor-pointer shrink-0"
+                  className="w-4 h-4 mt-0.5 rounded cursor-pointer shrink-0"
+                  style={{ accentColor: storeAccent }}
                 />
                 <span className="text-[11px] text-gray-300 leading-snug">
                   He leído y acepto los{' '}
@@ -2694,7 +2960,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       e.stopPropagation();
                       setIsBuyerTermsModalOpen(true);
                     }}
-                    className="text-emerald-400 hover:underline font-bold inline cursor-pointer"
+                    className="hover:underline font-bold inline cursor-pointer"
+                    style={{ color: storeAccent }}
                   >
                     Términos y Condiciones para Usuarios y Compradores
                   </button>
@@ -2715,7 +2982,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <button
                 type="submit"
                 disabled={orderSubmitting}
-                className="flex-1 py-3 bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer"
+                className="flex-1 py-3 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50"
+                style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
               >
                 {orderSubmitting ? 'Procesando...' : 'Hacer Mi Pedido 🚀'}
               </button>
@@ -2727,9 +2995,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       {/* 5. SUCCESS OUTCOME ORDER RECEIVED SCREEN */}
       {submittedOrder && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-gray-950 border border-emerald-500/20 rounded-3xl max-w-sm w-full p-6 text-gray-100 text-center relative shadow-2xl animate-fade-in space-y-4">
+          <div 
+            className="bg-gray-950 rounded-3xl max-w-sm w-full p-6 text-gray-100 text-center relative shadow-2xl animate-fade-in space-y-4 border"
+            style={{ borderColor: `${storeAccent}35` }}
+          >
             
-            <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-400 mb-2">
+            <div 
+              className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-2"
+              style={{ backgroundColor: `${storeAccent}15`, border: `1px solid ${storeAccent}40`, color: storeAccent }}
+            >
               <Check className="w-7 h-7 stroke-[3.5]" />
             </div>
 
@@ -2770,9 +3044,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <button
                 type="button"
                 onClick={() => triggerShopperWhatsAppMessage(submittedOrder)}
-                className="w-full py-4 bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow shadow-emerald-500/10 active:scale-95 cursor-pointer"
+                className="w-full py-4 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow active:scale-95 cursor-pointer hover:opacity-90"
+                style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
               >
-                <MessageCircle className="w-5 h-5 text-black stroke-[2.5]" />
+                <MessageCircle className="w-5 h-5 stroke-[2.5]" style={{ color: getContrastText(storeAccent) }} />
                 Enviar Pedido por WhatsApp
               </button>
 

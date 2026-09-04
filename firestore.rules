@@ -41,10 +41,10 @@ service cloud.firestore {
       allow delete: if isAuth() && resource.data.userId == request.auth.uid;
     }
     
-    // Themes rules (Publicly readable, write is owner-only)
+    // Themes rules (Publicly readable, write is owner-only or admin)
     match /themes/{userId} {
       allow read: if true;
-      allow write: if isOwner(userId);
+      allow write: if isOwner(userId) || isAdmin();
     }
     
     // Products rules (Public read, author writes)
@@ -127,6 +127,30 @@ service cloud.firestore {
     match /customers/{customerId} {
       allow read, create, update: if true;
       allow delete: if isAdmin();
+    }
+
+    // Store Recommendations rules (❤️ recommendation system)
+    // Allows public read for all recommendations & stats
+    // Protects against duplicates by enforcing docId == storeId + '_' + userId
+    match /recommendations/{recId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.storeId is string &&
+                              request.resource.data.userId is string &&
+                              request.resource.data.recommended is bool &&
+                              recId == request.resource.data.storeId + '_' + request.resource.data.userId;
+      allow delete: if true;
+    }
+
+    // Product Recommendations rules (❤️ recommendation system for dishes/products)
+    // Allows public read for all product recommendations & stats
+    // Protects against duplicates by enforcing recId == productId + '_' + userId
+    match /product_recommendations/{recId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.productId is string &&
+                              request.resource.data.userId is string &&
+                              request.resource.data.recommended is bool &&
+                              recId == request.resource.data.productId + '_' + request.resource.data.userId;
+      allow delete: if true;
     }
   }
 }

@@ -4,6 +4,7 @@
  */
 
 import { ProductItem } from '../types';
+import { safeGetItem, safeSetItem } from './safeStorage';
 
 export interface GeneralCartItem {
   id: string; // Composite ID: `${productId}_${variant || 'none'}`
@@ -15,26 +16,60 @@ export interface GeneralCartItem {
 const CART_STORAGE_KEY = 'linnkpro_general_cart';
 export const CART_UPDATED_EVENT = 'linnkpro_cart_updated';
 
-// Get current cart from localStorage
+// Compaction to prevent quota exceeded errors from heavy base64 strings or unnecessary fields
+function compactCartItem(item: GeneralCartItem): GeneralCartItem {
+  if (!item || !item.product) return item;
+  const p = item.product;
+  
+  // If imageURL is a multi-megabyte base64 string, don't store raw large base64 payload into localStorage
+  let cleanImage = p.imageURL;
+  if (cleanImage && cleanImage.startsWith('data:') && cleanImage.length > 20000) {
+    cleanImage = undefined;
+  }
+
+  return {
+    id: item.id,
+    selectedVariant: item.selectedVariant,
+    quantity: item.quantity,
+    product: {
+      id: p.id,
+      userId: p.userId,
+      name: p.name,
+      price: p.price,
+      compareAtPrice: p.compareAtPrice,
+      imageURL: cleanImage,
+      category: p.category,
+      variantsText: p.variantsText,
+      active: p.active,
+      stock: p.stock,
+      storeName: p.storeName,
+      storeUsername: p.storeUsername
+    } as ProductItem
+  };
+}
+
+// Get current cart safely
 export function getStoredCart(): GeneralCartItem[] {
   try {
-    const stored = localStorage.getItem(CART_STORAGE_KEY);
+    const stored = safeGetItem(CART_STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored);
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
-    console.error("Error reading cart from localStorage:", e);
     return [];
   }
 }
 
-// Save cart and notify all listeners in the app
+// Save cart safely and notify all listeners in the app
 export function saveStoredCart(cart: GeneralCartItem[]): void {
   try {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
-    window.dispatchEvent(new CustomEvent(CART_UPDATED_EVENT, { detail: { cart } }));
+    const compacted = (cart || []).map(compactCartItem);
+    safeSetItem(CART_STORAGE_KEY, JSON.stringify(compacted));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(CART_UPDATED_EVENT, { detail: { cart } }));
+    }
   } catch (e) {
-    console.error("Error saving cart to localStorage:", e);
+    // Gracefully handled by safeSetItem fallback
   }
 }
 

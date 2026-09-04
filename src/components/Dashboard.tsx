@@ -713,11 +713,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // Select Preset Theme
   const handleSelectTheme = async (theme: CustomTheme) => {
     setCustomTheme(theme);
+    setProfile(prev => ({ ...prev, customTheme: theme }));
     setIsSavingTheme(true);
     try {
       await saveCustomTheme(profile.uid, theme);
       setThemeSavedSuccess(true);
-      setTimeout(() => setThemeSavedSuccess(false), 2500);
+      setTimeout(() => setThemeSavedSuccess(false), 3000);
     } catch (e) {
       console.error("Error saving theme:", e);
     } finally {
@@ -734,9 +735,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         id: customTheme.id === 'custom' ? 'custom' : `custom-${Date.now()}`
       };
       setCustomTheme(themeToSave);
+      setProfile(prev => ({ ...prev, customTheme: themeToSave }));
       await saveCustomTheme(profile.uid, themeToSave);
       setThemeSavedSuccess(true);
-      setTimeout(() => setThemeSavedSuccess(false), 2500);
+      setTimeout(() => setThemeSavedSuccess(false), 3000);
     } catch (e) {
       console.error("Error saving custom theme:", e);
       alert("Error al guardar la personalización de tema.");
@@ -754,6 +756,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       };
       setProfile(updatedProfile);
       await saveProfile(updatedProfile);
+      setThemeSavedSuccess(true);
+      setTimeout(() => setThemeSavedSuccess(false), 3000);
     } catch (err) {
       console.error(err);
       alert("Error al actualizar la plantilla.");
@@ -3424,11 +3428,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       <div className="lg:col-span-5 space-y-5">
                         {/* Status notification */}
                         {themeSavedSuccess && (
-                          <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center gap-2.5 text-emerald-400 text-xs font-bold animate-fadeIn">
-                            <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center justify-between gap-2.5 text-emerald-400 text-xs font-bold animate-fadeIn">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                                <Check className="w-4 h-4 text-emerald-400" />
+                              </div>
+                              <span className="truncate">¡Diseño y colores actualizados y aplicados en tu tienda!</span>
                             </div>
-                            <span>¡Tema y colores actualizados exitosamente en tu tienda!</span>
+                            {profile.username && (
+                              <a
+                                href={`/${profile.username}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-emerald-500 text-black font-black text-[10px] rounded-lg hover:bg-emerald-400 transition shrink-0 flex items-center gap-1 cursor-pointer shadow-sm"
+                              >
+                                <span>Ver Tienda</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
                           </div>
                         )}
 
@@ -3439,27 +3456,32 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <p className="text-[11px] text-gray-500 font-medium">Elige la plantilla que mejor se adapte a tu tipo de negocio y productos.</p>
                           </div>
                           
-                          <div className="grid grid-cols-1 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {/* Option 1: Restaurante */}
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('food')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition ${
-                                (profile.layout || 'food') !== 'liquor'
-                                  ? 'border-emerald-500 bg-emerald-500/5'
+                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                                (profile.layout || 'food') === 'food'
+                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
                               <div className="flex gap-3">
-                                <div className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-amber-500 mt-0.5 shrink-0">
+                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-500 mt-0.5 shrink-0">
                                   <Utensils className="w-4 h-4 text-amber-500" />
                                 </div>
                                 <div>
-                                  <h4 className="text-xs font-extrabold text-white">Diseño Restaurante</h4>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Menú gastronómico cálido, apetitoso y de alta legibilidad. Ideal para restaurantes, comidas rápidas, cafeterías, reposterías y entrega a domicilio.</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-extrabold text-white">Restaurante & Menú</h4>
+                                    {(profile.layout || 'food') === 'food' && (
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Menú gastronómico gourmet, platos, fotos de comida y botón directo de pedido.</p>
                                 </div>
                               </div>
-                              {(profile.layout || 'food') !== 'liquor' && (
+                              {(profile.layout || 'food') === 'food' && (
                                 <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
                               )}
                             </button>
@@ -3468,22 +3490,114 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('liquor')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition ${
+                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
                                 profile.layout === 'liquor'
-                                  ? 'border-emerald-500 bg-emerald-500/5'
+                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
                               <div className="flex gap-3">
-                                <div className="p-2 rounded-lg bg-gray-900 border border-gray-800 text-purple-400 mt-0.5 shrink-0">
+                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-purple-400 mt-0.5 shrink-0">
                                   <Wine className="w-4 h-4 text-purple-400" />
                                 </div>
                                 <div>
-                                  <h4 className="text-xs font-extrabold text-white">Diseño Licorera</h4>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Interfaz moderna y atractiva para licores, cervezas, coctelería y snacks. Destaca ofertas, combos y envíos express.</p>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-extrabold text-white">Licorera & Bar</h4>
+                                    {profile.layout === 'liquor' && (
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Diseño nocturno para licores, coctelería, cervezas frías y combos express.</p>
                                 </div>
                               </div>
                               {profile.layout === 'liquor' && (
+                                <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
+                              )}
+                            </button>
+
+                            {/* Option 3: Calzado & Deportes */}
+                            <button
+                              type="button"
+                              onClick={() => handleSelectLayout('shoes')}
+                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                                profile.layout === 'shoes'
+                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
+                                  : 'border-gray-900 bg-gray-920 hover:border-gray-800'
+                              }`}
+                            >
+                              <div className="flex gap-3">
+                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-400 mt-0.5 shrink-0">
+                                  <Flame className="w-4 h-4 text-amber-400" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-extrabold text-white">Calzado & Moda Deportiva</h4>
+                                    {profile.layout === 'shoes' && (
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Estilo atlético urbano, tarjetas con ofertas en ángulo, zapatillas y moda streetwear.</p>
+                                </div>
+                              </div>
+                              {profile.layout === 'shoes' && (
+                                <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
+                              )}
+                            </button>
+
+                            {/* Option 4: Tecnología */}
+                            <button
+                              type="button"
+                              onClick={() => handleSelectLayout('tech')}
+                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                                profile.layout === 'tech'
+                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
+                                  : 'border-gray-900 bg-gray-920 hover:border-gray-800'
+                              }`}
+                            >
+                              <div className="flex gap-3">
+                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-indigo-400 mt-0.5 shrink-0">
+                                  <Smartphone className="w-4 h-4 text-indigo-400" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-extrabold text-white">Tecnología & Dispositivos</h4>
+                                    {profile.layout === 'tech' && (
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Minimalismo de alta gama con sellos de original, celulares, audio y gadgets.</p>
+                                </div>
+                              </div>
+                              {profile.layout === 'tech' && (
+                                <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
+                              )}
+                            </button>
+
+                            {/* Option 5: Tienda General */}
+                            <button
+                              type="button"
+                              onClick={() => handleSelectLayout('default')}
+                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer md:col-span-2 ${
+                                profile.layout === 'default'
+                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
+                                  : 'border-gray-900 bg-gray-920 hover:border-gray-800'
+                              }`}
+                            >
+                              <div className="flex gap-3">
+                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-emerald-400 mt-0.5 shrink-0">
+                                  <ShoppingBag className="w-4 h-4 text-emerald-400" />
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <h4 className="text-xs font-extrabold text-white">Tienda General & Catálogo Universal</h4>
+                                    {profile.layout === 'default' && (
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Diseño versátil para farmacias, supermercados, ferreterías, regalos o tiendas con inventarios mixtos.</p>
+                                </div>
+                              </div>
+                              {profile.layout === 'default' && (
                                 <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
                               )}
                             </button>

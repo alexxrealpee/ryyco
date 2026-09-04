@@ -32,12 +32,15 @@ import {
   User,
   Utensils
 } from 'lucide-react';
-import { ProductItem, UserProfile, OrderItem } from '../types';
-import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct } from '../lib/firebase';
+import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
+import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
+import { RecommendationHeartButton } from './RecommendationHeartButton';
+import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
+import { getStoredCart, saveStoredCart, GeneralCartItem } from '../lib/cartHelper';
 
 export const isFoodCategory = (cat?: string): boolean => {
   if (!cat || cat === 'all' || cat === 'Todos') return false;
@@ -224,33 +227,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
 
   // Cart & Order states
-  const [cart, setCart] = useState<{ id: string; product: ProductItem; selectedVariant?: string; quantity: number }[]>(() => {
-    try {
-      const stored = localStorage.getItem('linnkpro_general_cart');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
+  const [cart, setCart] = useState<GeneralCartItem[]>(() => {
+    return getStoredCart();
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem('linnkpro_general_cart', JSON.stringify(cart));
-    } catch (err) {
-      console.error("Error saving cart:", err);
-    }
+    saveStoredCart(cart);
   }, [cart]);
 
   // Sync cart when modified externally (e.g. by LinnkPro AI Voice Assistant)
   useEffect(() => {
     const handleSync = () => {
       try {
-        const stored = localStorage.getItem('linnkpro_general_cart');
-        if (stored) {
-          setCart(JSON.parse(stored));
-        } else {
-          setCart([]);
-        }
+        const stored = getStoredCart();
+        setCart(stored);
       } catch (e) {}
     };
 
@@ -277,6 +267,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Customer Loyalty & Account Modal
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
+  const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
+
+  useEffect(() => {
+    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (savedPhone) {
+      fetchCustomerProfileByPhone(savedPhone).then(cust => {
+        if (cust) {
+          setActiveCustomer(cust);
+          if (!custPhone) setCustPhone(cust.phone);
+          if (!custName) setCustName(cust.name);
+          if (!custAddress && cust.address) setCustAddress(cust.address);
+        }
+      }).catch(() => {});
+    }
+  }, []);
   
   // Mobile 3-Dots Menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1299,6 +1304,45 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   );
                 })}
               </div>
+
+              {/* Active Filtered Store Recommendation Banner */}
+              {selectedStore !== 'all' && (() => {
+                const currentStore = uniqueStores.find(s => s.uid === selectedStore);
+                if (!currentStore) return null;
+                return (
+                  <div className="mt-2.5 p-3 rounded-2xl bg-[#111827] border border-[#232B3A] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#E63946]/50 bg-[#090B12]">
+                        {currentStore.photoURL ? (
+                          <img src={currentStore.photoURL} alt={currentStore.displayName || currentStore.username} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full text-[#E63946] flex items-center justify-center font-black text-xs uppercase">
+                            {(currentStore.displayName || currentStore.username || 'T').substring(0, 2)}
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-white flex items-center gap-2">
+                          <span>{currentStore.displayName || `@${currentStore.username}`}</span>
+                        </div>
+                        <button
+                          onClick={() => onNavigateToStore(currentStore.username)}
+                          className="text-[11px] text-[#E63946] hover:underline font-bold"
+                        >
+                          Ver perfil completo del restaurante →
+                        </button>
+                      </div>
+                    </div>
+
+                    <RecommendationHeartButton
+                      storeId={currentStore.uid}
+                      storeName={currentStore.displayName || `@${currentStore.username}`}
+                      storeUsername={currentStore.username}
+                      variant="compact"
+                    />
+                  </div>
+                );
+              })()}
             </div>
           ) : null}
 
@@ -1412,11 +1456,27 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     }}
                     className="relative aspect-square w-full bg-[#090B12] overflow-hidden shrink-0 cursor-pointer"
                   >
-                    {isOnSale && (
-                      <span className="absolute top-3 right-3 z-10 bg-[#E63946] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
-                        -{discountPercentage}% OFF
-                      </span>
-                    )}
+                    {/* Top right badges: Sale badge and Product Recommendation Heart */}
+                    <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
+                      {isOnSale && (
+                        <span className="bg-[#E63946] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
+                          -{discountPercentage}%
+                        </span>
+                      )}
+                      <ProductRecommendationHeartButton
+                        productId={product.id}
+                        productName={product.name}
+                        storeId={product.userId}
+                        storeUsername={profile?.username || ''}
+                        activeCustomer={activeCustomer}
+                        onCustomerUpdate={setActiveCustomer}
+                        onOpenCustomerPortal={() => {
+                          setCustomerPortalTab('rewards');
+                          setIsCustomerPortalOpen(true);
+                        }}
+                        variant="card-overlay"
+                      />
+                    </div>
 
                     {product.imageURL ? (
                       <img 
@@ -1627,6 +1687,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             {currency}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}
                           </span>
                         )}
+                      </div>
+
+                      {/* Product Recommendation Banner in Modal */}
+                      <div className="my-2">
+                        <ProductRecommendationHeartButton
+                          productId={selectedProduct.id}
+                          productName={selectedProduct.name}
+                          storeId={selectedProduct.userId}
+                          storeUsername={profile?.username || ''}
+                          activeCustomer={activeCustomer}
+                          onCustomerUpdate={setActiveCustomer}
+                          onOpenCustomerPortal={() => {
+                            setCustomerPortalTab('rewards');
+                            setIsCustomerPortalOpen(true);
+                          }}
+                          variant="modal-banner"
+                        />
                       </div>
 
                       {/* Description */}

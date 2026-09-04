@@ -119,6 +119,7 @@ export interface UserProfile {
   scheduleEnabled?: boolean;
   bankAccounts?: BankAccount[];
   coverOpacity?: number;
+  customTheme?: CustomTheme;
 }
 
 export interface BankAccount {
@@ -366,5 +367,51 @@ export interface RedeemableFoodReward {
   iconName: string;
   valueEstCop: number;
   category: PrizeCategory;
+}
+
+export interface StoreRecommendation {
+  id: string; // ${storeId}_${userId}
+  storeId: string;
+  storeUsername?: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  userPhone?: string;
+  recommended: boolean; // true
+  feedbackTag?: string; // e.g. "Sabor delicioso", "Excelente atención", "Rápido despacho"
+  createdAt: string;
+}
+
+export interface StoreRecommendationStats {
+  storeId: string;
+  count: number; // total positive recommendations (hearts)
+  percentage: number; // e.g. 96 (%)
+  totalEvaluated: number; // total interactions / evaluated diners
+  userHasRecommended: boolean;
+  recommendations: StoreRecommendation[];
+}
+
+export interface ProductRecommendation {
+  id: string; // ${productId}_${userId}
+  productId: string;
+  productName?: string;
+  storeId?: string;
+  storeUsername?: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  userPhone?: string;
+  recommended: boolean; // true
+  feedbackTag?: string; // e.g. "¡Sabor exquisito!", "¡Porción generosa!", "¡Excelente presentación!"
+  createdAt: string;
+}
+
+export interface ProductRecommendationStats {
+  productId: string;
+  count: number; // total positive recommendations (hearts)
+  percentage: number; // e.g. 97 (%)
+  totalEvaluated: number; // total interactions / reviews
+  userHasRecommended: boolean;
+  recommendations: ProductRecommendation[];
 }
 
