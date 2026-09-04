@@ -61,12 +61,12 @@ export function getStoredCart(): GeneralCartItem[] {
 }
 
 // Save cart safely and notify all listeners in the app
-export function saveStoredCart(cart: GeneralCartItem[]): void {
+export function saveStoredCart(cart: GeneralCartItem[], source?: string): void {
   try {
     const compacted = (cart || []).map(compactCartItem);
     safeSetItem(CART_STORAGE_KEY, JSON.stringify(compacted));
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(CART_UPDATED_EVENT, { detail: { cart } }));
+      window.dispatchEvent(new CustomEvent(CART_UPDATED_EVENT, { detail: { cart, source } }));
     }
   } catch (e) {
     // Gracefully handled by safeSetItem fallback

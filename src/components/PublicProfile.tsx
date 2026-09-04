@@ -284,13 +284,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   // Auto-reset category if no products match
   useEffect(() => {
-    if (selectedCategory !== 'Todos') {
+    if (products.length > 0 && selectedCategory !== 'Todos') {
       const hasProducts = products.some(p => matchesCategoryFilter(p.category, selectedCategory));
       if (!hasProducts) {
         setSelectedCategory('Todos');
       }
     }
-  }, [products, selectedCategory]);
+  }, [products]);
 
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
@@ -442,20 +442,28 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   }, [username, retryCount]);
 
   // Real-time synchronization for instant seller design updates (theme and layout)
+  const profileUid = profile?.uid;
   useEffect(() => {
-    if (!profile?.uid) return;
+    if (!profileUid) return;
 
     // 1. Listen for Firestore real-time updates to theme
-    const unsubTheme = subscribeStoreTheme(profile.uid, (newTheme) => {
+    const unsubTheme = subscribeStoreTheme(profileUid, (newTheme) => {
       if (newTheme) {
         setTheme(newTheme);
       }
     });
 
     // 2. Listen for Firestore real-time updates to profile (e.g. layout changes)
-    const unsubProfile = subscribeStoreProfile(profile.uid, (updatedProfileData) => {
+    const unsubProfile = subscribeStoreProfile(profileUid, (updatedProfileData) => {
       if (updatedProfileData) {
-        setProfile(prev => prev ? ({ ...prev, ...updatedProfileData }) : prev);
+        setProfile(prev => {
+          if (!prev) return prev;
+          const merged = { ...prev, ...updatedProfileData };
+          if (JSON.stringify(prev) === JSON.stringify(merged)) {
+            return prev;
+          }
+          return merged;
+        });
         if (updatedProfileData.customTheme) {
           setTheme(updatedProfileData.customTheme);
         }
@@ -464,20 +472,27 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
     // 3. Local cross-event listeners (immediate <1ms response across same tab or window)
     const handleThemeEvent = (e: any) => {
-      if (e.detail?.userId === profile.uid && e.detail?.theme) {
+      if (e.detail?.userId === profileUid && e.detail?.theme) {
         setTheme(e.detail.theme);
       }
     };
     const handleProfileEvent = (e: any) => {
-      if (e.detail?.profile?.uid === profile.uid) {
-        setProfile(prev => prev ? ({ ...prev, ...e.detail.profile }) : prev);
+      if (e.detail?.profile?.uid === profileUid) {
+        setProfile(prev => {
+          if (!prev) return prev;
+          const merged = { ...prev, ...e.detail.profile };
+          if (JSON.stringify(prev) === JSON.stringify(merged)) {
+            return prev;
+          }
+          return merged;
+        });
         if (e.detail.profile.customTheme) {
           setTheme(e.detail.profile.customTheme);
         }
       }
     };
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === `linnk_theme_${profile.uid}` && e.newValue) {
+      if (e.key === `linnk_theme_${profileUid}` && e.newValue) {
         try {
           setTheme(JSON.parse(e.newValue));
         } catch (err) {}
@@ -495,7 +510,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       window.removeEventListener('ryyco_profile_updated', handleProfileEvent);
       window.removeEventListener('storage', handleStorage);
     };
-  }, [profile?.uid]);
+  }, [profileUid]);
 
   const copyUrl = () => {
     const u = `${window.location.origin}/${username}`;

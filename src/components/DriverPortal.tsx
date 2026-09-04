@@ -75,6 +75,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
   // Incoming Order Modal Alert Popup
   const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<OrderItem | null>(null);
+  const selectedIncomingOrderRef = useRef<OrderItem | null>(null);
+  selectedIncomingOrderRef.current = selectedIncomingOrder;
   const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(7000);
   const [claimingLoading, setClaimingLoading] = useState<boolean>(false);
   const [claimStatusMsg, setClaimStatusMsg] = useState<string>('');
@@ -172,7 +174,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       if (pendingOrders.length > 0 && !activeDelivery) {
         const newest = pendingOrders[0];
         // If it's a new order id we haven't popped yet
-        if (!selectedIncomingOrder || selectedIncomingOrder.id !== newest.id) {
+        if (!selectedIncomingOrderRef.current || selectedIncomingOrderRef.current.id !== newest.id) {
           setSelectedIncomingOrder(newest);
           playNotificationChime();
         }
@@ -183,19 +185,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       unsubscribe();
     };
   }, [driver, isAvailable, activeDelivery]);
-
-  // Ensure activeDelivery clears if order is completed, delivered or cancelled
-  useEffect(() => {
-    if (activeDelivery) {
-      if (
-        activeDelivery.deliveryStep === 'delivered' || 
-        activeDelivery.status === 'delivered' || 
-        activeDelivery.status === 'cancelled'
-      ) {
-        setActiveDelivery(null);
-      }
-    }
-  }, [activeDelivery]);
 
   // Load order history and ratings for logged driver
   const loadHistoryAndRatings = async (driverId: string) => {

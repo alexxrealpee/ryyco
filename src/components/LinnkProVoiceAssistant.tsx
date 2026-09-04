@@ -163,11 +163,15 @@ export default function LinnkProVoiceAssistant({
   // 1. Sync Cart across events
   useEffect(() => {
     const handleCartUpdate = (e: any) => {
-      if (e?.detail?.cart) {
-        setCart(e.detail.cart);
-      } else {
-        setCart(getStoredCart());
-      }
+      try {
+        const newCart = e?.detail?.cart || getStoredCart();
+        setCart(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(newCart)) {
+            return prev;
+          }
+          return newCart;
+        });
+      } catch (err) {}
     };
 
     window.addEventListener(CART_UPDATED_EVENT, handleCartUpdate);

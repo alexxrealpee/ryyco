@@ -231,17 +231,37 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return getStoredCart();
   });
 
+  const isInitialCartMount = useRef(true);
+  const isSyncingCartRef = useRef(false);
+
   useEffect(() => {
-    saveStoredCart(cart);
+    if (isInitialCartMount.current) {
+      isInitialCartMount.current = false;
+      return;
+    }
+    if (isSyncingCartRef.current) {
+      isSyncingCartRef.current = false;
+      return;
+    }
+    saveStoredCart(cart, 'tienda_general');
   }, [cart]);
 
-  // Sync cart when modified externally (e.g. by LinnkPro AI Voice Assistant)
+  // Sync cart when modified externally (e.g. by LinnkPro AI Voice Assistant or another tab)
   useEffect(() => {
-    const handleSync = () => {
+    const handleSync = (e: any) => {
+      // Ignore updates dispatched by this component to avoid infinite update loops
+      if (e?.detail?.source === 'tienda_general') return;
+
       try {
-        const stored = getStoredCart();
-        setCart(stored);
-      } catch (e) {}
+        const stored = e?.detail?.cart || getStoredCart();
+        setCart(prev => {
+          if (JSON.stringify(prev) === JSON.stringify(stored)) {
+            return prev;
+          }
+          isSyncingCartRef.current = true;
+          return stored;
+        });
+      } catch (err) {}
     };
 
     window.addEventListener('linnkpro_cart_updated', handleSync);
@@ -286,22 +306,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Mobile 3-Dots Menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const isMobileMenuOpenRef = useRef(isMobileMenuOpen);
+  isMobileMenuOpenRef.current = isMobileMenuOpen;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      if (!isMobileMenuOpenRef.current) return;
       if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
         setIsMobileMenuOpen(false);
       }
     };
-    if (isMobileMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      document.addEventListener('touchstart', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [isMobileMenuOpen]);
+  }, []);
   
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [submittedOrders, setSubmittedOrders] = useState<OrderItem[]>([]);
@@ -416,7 +437,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         setSelectedCategory('all');
       }
     }
-  }, [availableBaseProducts, selectedCategory]);
+  }, [availableBaseProducts]);
 
   // Get list of unique store profiles with active products (memoized)
   const uniqueStores = useMemo(() => {
