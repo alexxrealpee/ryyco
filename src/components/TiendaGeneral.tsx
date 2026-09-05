@@ -32,7 +32,9 @@ import {
   User,
   Utensils,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Film,
+  Play
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone } from '../lib/firebase';
@@ -454,17 +456,18 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return Array.from(storeMap.values());
   }, [profiles, products]);
 
-  // Infinite loop repeat sets so carousel always exceeds screen width on PC/desktop
-  const repeatCount = useMemo(() => {
-    if (uniqueStores.length === 0) return 1;
-    return Math.max(3, Math.ceil(36 / uniqueStores.length));
-  }, [uniqueStores.length]);
+  // Stores repeated if needed so that carousel always exceeds screen width on PC/desktop
+  const repeatedStores = useMemo(() => {
+    if (uniqueStores.length === 0) return [];
+    const count = Math.max(1, Math.ceil(24 / uniqueStores.length));
+    const list: UserProfile[] = [];
+    for (let i = 0; i < count; i++) {
+      list.push(...uniqueStores);
+    }
+    return list;
+  }, [uniqueStores]);
 
-  const carouselSets = useMemo(() => {
-    return Array.from({ length: repeatCount }, (_, idx) => idx);
-  }, [repeatCount]);
-
-  // Auto-scroll store carousel smoothly across both PC and mobile
+  // Auto-scroll store carousel smoothly across both PC and mobile (oscillates automatically right and left)
   const storesScrollRef = useRef<HTMLDivElement>(null);
   const isStoresUserInteractingRef = useRef<boolean>(false);
   const storesResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -473,7 +476,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const startXStoresRef = useRef<number>(0);
   const startScrollLeftStoresRef = useRef<number>(0);
   const isHoveringStoresRef = useRef<boolean>(false);
-  const hasCenteredStoresRef = useRef<boolean>(false);
+  const scrollDirectionRef = useRef<1 | -1>(1); // 1 = moving to the right, -1 = moving to the left
+  const nextDirectionSwitchTimeRef = useRef<number>(0);
+  const turnPauseUntilRef = useRef<number>(0);
 
   // Manual scroll handler for PC navigation buttons (< and >)
   const scrollStores = (direction: 'left' | 'right') => {
@@ -482,11 +487,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     const offset = direction === 'left' ? -280 : 280;
     container.scrollBy({ left: offset, behavior: 'smooth' });
 
+    // Align automatic scroll direction with the clicked button
+    scrollDirectionRef.current = direction === 'left' ? -1 : 1;
+    nextDirectionSwitchTimeRef.current = performance.now() + 12000;
+
     isStoresUserInteractingRef.current = true;
     if (storesResumeTimeoutRef.current) clearTimeout(storesResumeTimeoutRef.current);
     storesResumeTimeoutRef.current = setTimeout(() => {
       isStoresUserInteractingRef.current = false;
-    }, 2500);
+    }, 2200);
   };
 
   useEffect(() => {
@@ -495,34 +504,41 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     let animationFrameId: number;
     let lastTime = performance.now();
+    nextDirectionSwitchTimeRef.current = performance.now() + 10000; // First switch in 10 seconds
 
     const scrollLoop = (currentTime: number) => {
       const delta = Math.min(currentTime - lastTime, 50);
       lastTime = currentTime;
 
-      const setWidth = container.scrollWidth / repeatCount;
-
-      // Start centered on the middle set so scrolling in either direction works seamlessly
-      if (!hasCenteredStoresRef.current && setWidth > 50) {
-        container.scrollLeft = setWidth;
-        hasCenteredStoresRef.current = true;
-      }
-
       const isInteracting = isStoresUserInteractingRef.current || isDraggingStoresRef.current;
+      const isPausedForTurn = currentTime < turnPauseUntilRef.current;
+      const maxScroll = container.scrollWidth - container.clientWidth;
 
-      if (!isInteracting && container && setWidth > 10) {
-        // Smooth auto-scroll speed (~26px/s, gently slowed to ~10px/s on hover so clicking is easy)
-        const speedMultiplier = isHoveringStoresRef.current ? 0.35 : 1.0;
-        const scrollIncrement = 0.026 * delta * speedMultiplier;
-        container.scrollLeft += scrollIncrement;
-      }
+      if (!isInteracting && maxScroll > 8) {
+        // Automatic periodic direction switch (both to the right and to the left)
+        if (currentTime >= nextDirectionSwitchTimeRef.current && !isPausedForTurn) {
+          scrollDirectionRef.current = scrollDirectionRef.current === 1 ? -1 : 1;
+          turnPauseUntilRef.current = currentTime + 1200; // Gentle 1.2s pause at turning points
+          nextDirectionSwitchTimeRef.current = currentTime + 12000; // Next turn in 12s
+        }
 
-      // Seamless infinite wrapping (both forward and backward)
-      if (setWidth > 10) {
-        if (container.scrollLeft >= setWidth * 2) {
-          container.scrollLeft -= setWidth;
-        } else if (container.scrollLeft <= 5) {
-          container.scrollLeft += setWidth;
+        // Boundary turning points
+        if (container.scrollLeft >= maxScroll - 4 && scrollDirectionRef.current === 1) {
+          scrollDirectionRef.current = -1;
+          turnPauseUntilRef.current = currentTime + 1200;
+          nextDirectionSwitchTimeRef.current = currentTime + 12000;
+        } else if (container.scrollLeft <= 4 && scrollDirectionRef.current === -1) {
+          scrollDirectionRef.current = 1;
+          turnPauseUntilRef.current = currentTime + 1200;
+          nextDirectionSwitchTimeRef.current = currentTime + 12000;
+        }
+
+        // Apply smooth motion if not paused for turn
+        if (currentTime >= turnPauseUntilRef.current) {
+          // Smooth auto-scroll speed (~26px/s, gently slowed to ~6px/s on PC hover for easy clicking)
+          const speedMultiplier = isHoveringStoresRef.current ? 0.22 : 1.0;
+          const scrollIncrement = 0.026 * delta * speedMultiplier * scrollDirectionRef.current;
+          container.scrollLeft += scrollIncrement;
         }
       }
 
@@ -537,7 +553,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         clearTimeout(storesResumeTimeoutRef.current);
       }
     };
-  }, [uniqueStores, repeatCount]);
+  }, [uniqueStores, repeatedStores.length]);
 
   // Filter & sort logic (food products prioritized first)
   const filteredProducts = useMemo(() => {
@@ -1371,79 +1387,106 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 className="flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 px-1 hide-scrollbar cursor-grab active:cursor-grabbing select-none" 
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}
               >
-                {carouselSets.map((setIdx) => (
-                  <React.Fragment key={`stores-set-${setIdx}`}>
-                    {/* All Stores Pill Button */}
+                {/* All Stores Pill Button */}
+                <button
+                  onClick={(e) => {
+                    if (hasMovedStoresRef.current) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    setSelectedStore('all');
+                  }}
+                  className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none"
+                  title="Ver todas las tiendas y restaurantes"
+                >
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-200 ${
+                    selectedStore === 'all'
+                      ? 'bg-[#E63946] text-white font-black ring-4 ring-[#E63946]/40 shadow-lg shadow-[#E63946]/20 scale-105'
+                      : 'bg-[#090B12] border-2 border-[#232B3A] group-hover:border-[#E63946]/50 text-[#A9B2C3] group-hover:text-[#E63946]'
+                  }`}>
+                    <Store className="w-6 h-6 sm:w-7 sm:h-7 pointer-events-none select-none" />
+                  </div>
+                  <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[70px] sm:max-w-[80px] text-center select-none ${
+                    selectedStore === 'all' ? 'text-[#E63946] font-extrabold' : 'text-[#A9B2C3] group-hover:text-white'
+                  }`}>
+                    Todas
+                  </span>
+                </button>
+
+                {/* Botón redondo: Recomendados (Lleva a los Reels) */}
+                <button
+                  type="button"
+                  id="store-carousel-recomendados-reels-btn"
+                  onClick={(e) => {
+                    if (hasMovedStoresRef.current) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    window.history.pushState({}, '', '/carruselproduc');
+                    window.dispatchEvent(new Event('popstate'));
+                  }}
+                  className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none relative"
+                  title="Ver Reels y videos recomendados"
+                >
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2.5px] bg-gradient-to-tr from-[#E63946] via-[#FF007A] to-[#F4B400] transition-all duration-200 group-hover:scale-105 shadow-md shadow-[#E63946]/25 ring-2 ring-transparent group-hover:ring-[#FF007A]/50 flex items-center justify-center">
+                    <div className="w-full h-full rounded-full bg-[#0D121F] group-hover:bg-[#161C2E] flex items-center justify-center transition-colors relative overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-tr from-[#E63946]/20 via-transparent to-[#F4B400]/20 pointer-events-none" />
+                      <div className="relative flex items-center justify-center">
+                        <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white text-white ml-0.5 group-hover:scale-110 transition-transform pointer-events-none drop-shadow-sm" />
+                      </div>
+                      <span className="absolute bottom-1 right-1 w-2 h-2 bg-[#E63946] rounded-full ring-1.5 ring-[#0D121F] animate-pulse" />
+                    </div>
+                  </div>
+                  <span className="text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[76px] sm:max-w-[88px] text-center select-none text-[#A9B2C3] group-hover:text-[#FF007A] transition">
+                    Recomendados
+                  </span>
+                </button>
+
+                {/* Individual Store Items */}
+                {repeatedStores.map((store, idx) => {
+                  const isSelected = selectedStore === store.uid;
+                  return (
                     <button
+                      key={`${store.uid}-${idx}`}
                       onClick={(e) => {
                         if (hasMovedStoresRef.current) {
                           e.preventDefault();
                           e.stopPropagation();
                           return;
                         }
-                        setSelectedStore('all');
+                        setSelectedStore(isSelected ? 'all' : store.uid);
                       }}
-                      className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none"
+                      className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group relative select-none"
+                      title={`Filtrar por ${store.displayName || `@${store.username}`}`}
                     >
-                      <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-200 ${
-                        selectedStore === 'all'
-                          ? 'bg-[#E63946] text-white font-black ring-4 ring-[#E63946]/40 shadow-lg shadow-[#E63946]/20 scale-105'
-                          : 'bg-[#090B12] border-2 border-[#232B3A] group-hover:border-[#E63946]/50 text-[#A9B2C3] group-hover:text-[#E63946]'
+                      <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 transition-all duration-200 ${
+                        isSelected
+                          ? 'bg-[#E63946] ring-4 ring-[#E63946]/50 shadow-lg shadow-[#E63946]/30 scale-105'
+                          : 'bg-[#111827] hover:bg-[#E63946]/20 ring-2 ring-[#232B3A] hover:ring-[#E63946] group-hover:scale-105'
                       }`}>
-                        <Store className="w-6 h-6 sm:w-7 sm:h-7 pointer-events-none select-none" />
+                        {store.photoURL ? (
+                          <img
+                            src={store.photoURL}
+                            alt={store.displayName || store.username}
+                            draggable={false}
+                            className="w-full h-full rounded-full object-cover bg-[#090B12] pointer-events-none select-none"
+                          />
+                        ) : (
+                          <div className="w-full h-full rounded-full bg-[#E63946]/20 text-[#E63946] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
+                            {(store.displayName || store.username || 'T').substring(0, 2)}
+                          </div>
+                        )}
                       </div>
-                      <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[70px] sm:max-w-[80px] text-center select-none ${
-                        selectedStore === 'all' ? 'text-[#E63946] font-extrabold' : 'text-[#A9B2C3] group-hover:text-white'
+                      <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
+                        isSelected ? 'text-[#E63946] font-black' : 'text-[#A9B2C3] group-hover:text-white'
                       }`}>
-                        Todas
+                        {store.displayName || `@${store.username}`}
                       </span>
                     </button>
-
-                    {/* Individual Store Items */}
-                    {uniqueStores.map((store) => {
-                      const isSelected = selectedStore === store.uid;
-                      return (
-                        <button
-                          key={`${store.uid}-set-${setIdx}`}
-                          onClick={(e) => {
-                            if (hasMovedStoresRef.current) {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              return;
-                            }
-                            setSelectedStore(isSelected ? 'all' : store.uid);
-                          }}
-                          className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group relative select-none"
-                          title={`Filtrar por ${store.displayName || `@${store.username}`}`}
-                        >
-                          <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 transition-all duration-200 ${
-                            isSelected
-                              ? 'bg-[#E63946] ring-4 ring-[#E63946]/50 shadow-lg shadow-[#E63946]/30 scale-105'
-                              : 'bg-[#111827] hover:bg-[#E63946]/20 ring-2 ring-[#232B3A] hover:ring-[#E63946] group-hover:scale-105'
-                          }`}>
-                            {store.photoURL ? (
-                              <img
-                                src={store.photoURL}
-                                alt={store.displayName || store.username}
-                                draggable={false}
-                                className="w-full h-full rounded-full object-cover bg-[#090B12] pointer-events-none select-none"
-                              />
-                            ) : (
-                              <div className="w-full h-full rounded-full bg-[#E63946]/20 text-[#E63946] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
-                                {(store.displayName || store.username || 'T').substring(0, 2)}
-                              </div>
-                            )}
-                          </div>
-                          <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
-                            isSelected ? 'text-[#E63946] font-black' : 'text-[#A9B2C3] group-hover:text-white'
-                          }`}>
-                            {store.displayName || `@${store.username}`}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </React.Fragment>
-                ))}
+                  );
+                })}
               </div>
 
               {/* Active Filtered Store Recommendation Banner */}
