@@ -1275,7 +1275,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     : '5.2';
 
   return (
-    <div className="min-h-screen bg-[#090b12] flex flex-col font-sans select-text">
+    <div className="min-h-screen bg-[#090b12] flex flex-col font-sans select-text w-full max-w-full overflow-x-hidden">
       
       {/* Top Navbar */}
       <nav className="border-b border-[#232B3A] bg-[#090b12]/95 px-6 py-4 flex flex-col md:flex-row gap-4 items-center justify-between sticky top-0 z-40 backdrop-blur-md">
@@ -1402,7 +1402,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         </div>
       )}
 
-      <div className="flex-grow flex flex-col md:flex-row">
+      <div className="flex-grow flex flex-col md:flex-row w-full min-w-0 max-w-full overflow-x-hidden">
         {/* Left Side Navigation Panel */}
         <aside className="hidden md:flex md:w-64 border-r border-[#232B3A] bg-[#090b12] p-6 flex-col gap-1 shrink-0">
           
@@ -1558,7 +1558,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         </aside>
 
         {/* Main Content Workspace */}
-        <main className="flex-1 p-4 md:p-8 pb-28 md:pb-8 bg-[#090b12] overflow-y-auto">
+        <main className="flex-1 w-full min-w-0 max-w-full p-3 sm:p-4 md:p-8 pb-36 md:pb-8 bg-[#090b12] overflow-y-auto overflow-x-hidden">
           {loadingResources ? (
             <div className="h-96 flex flex-col items-center justify-center gap-3">
               <div className="w-8 h-8 border-3 border-emerald-400 border-t-transparent rounded-full animate-spin" />
@@ -2795,22 +2795,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                 {/* 4. CUSTOM STORE DESIGNER TAB */}
                 {activeTab === 'design' && (
-                  <div className="space-y-6">
-                    <div className="border-b border-gray-900 pb-4">
-                      <h2 className="text-xl font-bold text-white">Diseño de Tienda & Preferencias</h2>
-                      <p className="text-xs text-gray-500 font-medium">Reconfigura logotipos, elige divisas, decora colores tipográficos, temas y slogans.</p>
+                  <div className="space-y-6 w-full min-w-0 max-w-full">
+                    <div className="border-b border-gray-900 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full min-w-0">
+                      <div className="min-w-0">
+                        <h2 className="text-lg sm:text-xl font-bold text-white truncate">Diseño de Tienda & Preferencias</h2>
+                        <p className="text-xs text-gray-400 font-medium mt-0.5">Reconfigura logotipos, elige divisas, decora colores tipográficos, temas y slogans.</p>
+                      </div>
                     </div>
 
-                    <div className="grid lg:grid-cols-12 gap-6 items-start">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full min-w-0 max-w-full">
                       
                       {/* Configuration values form */}
-                      <form id="store-profile-form" onSubmit={handleUpdateStoreProfile} className="lg:col-span-7 bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-5">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400">Datos del escaparate</span>
+                      <form id="store-profile-form" onSubmit={handleUpdateStoreProfile} className="lg:col-span-7 bg-gray-950 border border-gray-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-5 w-full min-w-0 max-w-full">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 block">Datos del escaparate</span>
                         
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Enlace / Nombre de Usuario de tu Tienda</label>
-                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-500">
-                            <span className="bg-gray-950 text-gray-400 px-3 py-2 flex items-center text-xs font-bold border-r border-gray-850 select-none">ryyco.com/</span>
+                        <div className="w-full min-w-0">
+                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Enlace / Nombre de Usuario de tu Tienda</label>
+                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-500 w-full min-w-0">
+                            <span className="bg-gray-950 text-gray-400 px-2.5 sm:px-3 py-2 flex items-center text-xs font-bold border-r border-gray-850 select-none shrink-0">ryyco.com/</span>
                             <input
                               type="text"
                               required
@@ -2819,7 +2821,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 setUsernameField(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''));
                                 setUsernameError('');
                               }}
-                              className="w-full h-11 bg-transparent px-3.5 text-xs font-semibold outline-none text-white focus:ring-0 placeholder:text-gray-700"
+                              className="flex-1 min-w-0 w-full h-11 bg-transparent px-3 text-xs font-semibold outline-none text-white focus:ring-0 placeholder:text-gray-700"
                               placeholder="mi-tienda"
                             />
                           </div>
@@ -2828,8 +2830,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           <p className="text-[9px] text-gray-500 mt-1 font-semibold">Este enlace define la URL pública de tu negocio (ej. ryyco.com/compratuuco).</p>
                         </div>
 
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Nombre de la tienda</label>
+                        <div className="w-full min-w-0">
+                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Nombre de la tienda</label>
                           <input
                             type="text"
                             required
@@ -2840,19 +2842,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         {/* 1. WHATSAPP DEL PROPIETARIO / ADMINISTRADOR - OBLIGATORIO */}
-                        <div className="p-4 bg-emerald-950/25 border-2 border-emerald-500/50 rounded-2xl space-y-2.5 shadow-lg shadow-emerald-950/30">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <label className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-2">
-                              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                              WhatsApp del Propietario / Administrador
+                        <div className="p-3.5 sm:p-4 bg-emerald-950/25 border-2 border-emerald-500/50 rounded-2xl space-y-2.5 shadow-lg shadow-emerald-950/30 w-full min-w-0">
+                          <div className="flex items-center justify-between flex-wrap gap-1.5">
+                            <label className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5 min-w-0">
+                              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span className="truncate">WhatsApp Propietario / Admin</span>
                             </label>
-                            <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-wider rounded-md border border-emerald-500/30">
-                              ⭐ Obligatorio / Administración
+                            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-wider rounded-md border border-emerald-500/30 shrink-0">
+                              ⭐ Obligatorio
                             </span>
                           </div>
 
-                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400/30">
-                            <div className="bg-gray-950 text-emerald-400 px-3.5 py-2.5 flex items-center gap-1.5 text-xs font-black border-r border-gray-850 select-none">
+                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400/30 w-full min-w-0">
+                            <div className="bg-gray-950 text-emerald-400 px-2.5 sm:px-3 py-2.5 flex items-center gap-1 text-xs font-black border-r border-gray-850 select-none shrink-0">
                               <span>🇨🇴 +57</span>
                             </div>
                             <input
@@ -2871,18 +2873,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   whatsapp: p.customerServiceWhatsapp || val 
                                 }));
                               }}
-                              className="w-full h-11 bg-transparent px-3.5 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
+                              className="flex-1 min-w-0 w-full h-11 bg-transparent px-2.5 sm:px-3 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
                             />
                             {(profile.ownerWhatsapp || profile.whatsapp || profile.phone) && (profile.ownerWhatsapp || profile.whatsapp || profile.phone)!.length >= 10 && (
                               <a
                                 href={`https://wa.me/57${(profile.ownerWhatsapp || profile.whatsapp || profile.phone)!.replace(/\D/g, '')}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-3.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 flex items-center gap-1.5 text-[11px] font-bold border-l border-emerald-500/30 transition-all whitespace-nowrap"
+                                className="px-2.5 sm:px-3.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 flex items-center gap-1 text-[11px] font-bold border-l border-emerald-500/30 transition-all whitespace-nowrap shrink-0"
                                 title="Verificar chat de WhatsApp del propietario"
                               >
-                                <span>Probar Chat</span>
-                                <ExternalLink className="w-3 h-3" />
+                                <span className="hidden sm:inline">Probar Chat</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             )}
                           </div>
@@ -2893,19 +2895,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         {/* 2. WHATSAPP DE ATENCIÓN AL CLIENTE - OPCIONAL */}
-                        <div className="p-4 bg-slate-900/50 border border-slate-700/60 rounded-2xl space-y-2.5">
-                          <div className="flex items-center justify-between flex-wrap gap-2">
-                            <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider flex items-center gap-2">
-                              <Headphones className="w-4 h-4 text-sky-400" />
-                              WhatsApp de Atención al Cliente / Pedidos
+                        <div className="p-3.5 sm:p-4 bg-slate-900/50 border border-slate-700/60 rounded-2xl space-y-2.5 w-full min-w-0">
+                          <div className="flex items-center justify-between flex-wrap gap-1.5">
+                            <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider flex items-center gap-1.5 min-w-0">
+                              <Headphones className="w-4 h-4 text-sky-400 shrink-0" />
+                              <span className="truncate">WhatsApp Atención / Pedidos</span>
                             </label>
-                            <span className="px-2.5 py-0.5 bg-slate-800 text-gray-400 text-[9px] font-black uppercase tracking-wider rounded-md border border-slate-700">
-                              💬 Opcional / Pedidos
+                            <span className="px-2 py-0.5 bg-slate-800 text-gray-400 text-[9px] font-black uppercase tracking-wider rounded-md border border-slate-700 shrink-0">
+                              💬 Opcional
                             </span>
                           </div>
 
-                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/30">
-                            <div className="bg-gray-950 text-gray-400 px-3.5 py-2.5 flex items-center gap-1.5 text-xs font-black border-r border-gray-850 select-none">
+                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/30 w-full min-w-0">
+                            <div className="bg-gray-950 text-gray-400 px-2.5 sm:px-3 py-2.5 flex items-center gap-1 text-xs font-black border-r border-gray-850 select-none shrink-0">
                               <span>🇨🇴 +57</span>
                             </div>
                             <input
@@ -2922,18 +2924,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   whatsapp: val || p.ownerWhatsapp || p.phone || ''
                                 }));
                               }}
-                              className="w-full h-11 bg-transparent px-3.5 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
+                              className="flex-1 min-w-0 w-full h-11 bg-transparent px-2.5 sm:px-3 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
                             />
                             {profile.customerServiceWhatsapp && profile.customerServiceWhatsapp.length >= 10 && (
                               <a
                                 href={`https://wa.me/57${profile.customerServiceWhatsapp}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="px-3.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 flex items-center gap-1.5 text-[11px] font-bold border-l border-sky-500/30 transition-all whitespace-nowrap"
+                                className="px-2.5 sm:px-3.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 flex items-center gap-1 text-[11px] font-bold border-l border-sky-500/30 transition-all whitespace-nowrap shrink-0"
                                 title="Verificar chat de atención al cliente"
                               >
-                                <span>Probar Chat</span>
-                                <ExternalLink className="w-3 h-3" />
+                                <span className="hidden sm:inline">Probar Chat</span>
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             )}
                           </div>
@@ -2943,17 +2945,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </p>
                         </div>
 
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Descripción corta o Slogan comercial</label>
+                        <div className="w-full min-w-0">
+                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Descripción corta o Slogan comercial</label>
                           <textarea
                             rows={2}
                             value={profile.bio}
                             onChange={(e) => setProfile(p => ({ ...p, bio: e.target.value }))}
-                            className="w-full bg-gray-900 border border-gray-800 focus:border-emerald-500 p-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20 resize-none"
+                            className="w-full bg-gray-900 border border-gray-800 focus:border-emerald-500 p-3 sm:p-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20 resize-none"
                           />
                         </div>
 
-                        <div>
+                        <div className="w-full min-w-0">
                           <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Título de Portada o Banner de tu Tienda</label>
                           <input
                             type="text"
@@ -2965,11 +2967,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           <p className="text-[9px] text-gray-500 mt-1 font-semibold">Si se deja vacío, se mostrará el título predeterminado de la plantilla de diseño seleccionada.</p>
                         </div>
 
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                        <div className="w-full min-w-0">
+                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
                             Dirección del Negocio / Punto de Recogida
                           </label>
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 w-full min-w-0">
                             <input
                               type="text"
                               value={profile.address || profile.location || ''}
@@ -2978,26 +2980,27 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 setProfile(p => ({ ...p, address: val, location: val }));
                               }}
                               placeholder="Ej: Carrera 6 # 14-25, Ipiales"
-                              className="flex-1 h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
+                              className="flex-1 min-w-0 w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3 sm:px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                             />
                             <button
                               type="button"
                               onClick={() => setIsMapPickerOpen(true)}
-                              className="h-11 px-3.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98]"
+                              className="h-11 px-2.5 sm:px-3.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98] shrink-0"
                               title="Colocar o mover el puntero en el mapa"
                             >
-                              <MapPin className="w-4 h-4 text-emerald-400" />
-                              <span>Fijar en Mapa</span>
+                              <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span className="hidden sm:inline">Fijar en Mapa</span>
+                              <span className="sm:hidden">Mapa</span>
                             </button>
                           </div>
-                          <div className="flex items-center justify-between mt-1 text-[9px] text-gray-500 font-semibold">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mt-1 text-[9px] text-gray-500 font-semibold">
                             <span>Fija el puntero en el mapa para la dirección exacta donde los domiciliarios recogerán.</span>
                             {(profile.mapUrl || (profile.lat && profile.lng)) && (
                               <a
                                 href={profile.mapUrl || `https://www.google.com/maps?q=${profile.lat},${profile.lng}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-emerald-400 hover:underline flex items-center gap-1 font-bold text-[10px]"
+                                className="text-emerald-400 hover:underline flex items-center gap-1 font-bold text-[10px] shrink-0"
                               >
                                 <ExternalLink className="w-3 h-3" /> Ver en Google Maps
                               </a>
@@ -3033,17 +3036,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         {/* HORARIO DE ATENCIÓN DE LA TIENDA */}
-                        <div className="border-t border-gray-800/60 pt-5 space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div>
+                        <div className="border-t border-gray-800/60 pt-5 space-y-4 w-full min-w-0">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 pr-1">
                               <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-indigo-400" /> Horario de Atención Automático
+                                <Clock className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> <span className="truncate">Horario de Atención Automático</span>
                               </h3>
-                              <p className="text-[10px] text-gray-500 mt-0.5 font-semibold">
+                              <p className="text-[10px] text-gray-400 mt-0.5 font-semibold">
                                 La tienda se abrirá y cerrará automáticamente todos los días según el horario asignado.
                               </p>
                             </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
+                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
                               <input
                                 type="checkbox"
                                 checked={profile.scheduleEnabled ?? Boolean(profile.openTime && profile.closeTime)}
@@ -3055,8 +3058,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </div>
 
                           {(profile.scheduleEnabled ?? Boolean(profile.openTime && profile.closeTime)) && (
-                            <div className="grid grid-cols-2 gap-4 bg-gray-900/60 p-3.5 rounded-2xl border border-gray-850">
-                              <div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-gray-900/60 p-3 sm:p-3.5 rounded-2xl border border-gray-850 w-full min-w-0">
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
                                   Hora de Apertura
                                 </label>
@@ -3068,7 +3071,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 />
                               </div>
 
-                              <div>
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
                                   Hora de Cierre
                                 </label>
@@ -3425,10 +3428,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       </form>
 
                       {/* Presets Theme Board & Color Studio */}
-                      <div className="lg:col-span-5 space-y-5">
+                      <div className="lg:col-span-5 space-y-5 w-full min-w-0 max-w-full">
                         {/* Status notification */}
                         {themeSavedSuccess && (
-                          <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center justify-between gap-2.5 text-emerald-400 text-xs font-bold animate-fadeIn">
+                          <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center justify-between gap-2.5 text-emerald-400 text-xs font-bold animate-fadeIn w-full min-w-0">
                             <div className="flex items-center gap-2.5 min-w-0">
                               <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
                                 <Check className="w-4 h-4 text-emerald-400" />
@@ -3450,35 +3453,35 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         )}
 
                         {/* Store Layout Selector */}
-                        <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4">
+                        <div className="bg-gray-950 border border-gray-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-4 w-full min-w-0 max-w-full">
                           <div>
                             <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 block mb-1">Diseño de la Interfaz (Plantillas)</span>
-                            <p className="text-[11px] text-gray-500 font-medium">Elige la plantilla que mejor se adapte a tu tipo de negocio y productos.</p>
+                            <p className="text-[11px] text-gray-400 font-medium">Elige la plantilla que mejor se adapte a tu tipo de negocio y productos.</p>
                           </div>
                           
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 w-full min-w-0">
                             {/* Option 1: Restaurante */}
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('food')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer w-full min-w-0 ${
                                 (profile.layout || 'food') === 'food'
                                   ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
-                              <div className="flex gap-3">
-                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-500 mt-0.5 shrink-0">
+                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
+                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-500 mt-0.5 shrink-0">
                                   <Utensils className="w-4 h-4 text-amber-500" />
                                 </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <h4 className="text-xs font-extrabold text-white">Restaurante & Menú</h4>
                                     {(profile.layout || 'food') === 'food' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
                                     )}
                                   </div>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Menú gastronómico gourmet, platos, fotos de comida y botón directo de pedido.</p>
+                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Menú gastronómico gourmet, platos, fotos de comida y botón directo de pedido.</p>
                                 </div>
                               </div>
                               {(profile.layout || 'food') === 'food' && (
@@ -3490,24 +3493,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('liquor')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer w-full min-w-0 ${
                                 profile.layout === 'liquor'
                                   ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
-                              <div className="flex gap-3">
-                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-purple-400 mt-0.5 shrink-0">
+                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
+                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-purple-400 mt-0.5 shrink-0">
                                   <Wine className="w-4 h-4 text-purple-400" />
                                 </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <h4 className="text-xs font-extrabold text-white">Licorera & Bar</h4>
                                     {profile.layout === 'liquor' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
                                     )}
                                   </div>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Diseño nocturno para licores, coctelería, cervezas frías y combos express.</p>
+                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Diseño nocturno para licores, coctelería, cervezas frías y combos express.</p>
                                 </div>
                               </div>
                               {profile.layout === 'liquor' && (
@@ -3519,24 +3522,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('shoes')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer w-full min-w-0 ${
                                 profile.layout === 'shoes'
                                   ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
-                              <div className="flex gap-3">
-                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-400 mt-0.5 shrink-0">
+                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
+                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-400 mt-0.5 shrink-0">
                                   <Flame className="w-4 h-4 text-amber-400" />
                                 </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <h4 className="text-xs font-extrabold text-white">Calzado & Moda Deportiva</h4>
                                     {profile.layout === 'shoes' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
                                     )}
                                   </div>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Estilo atlético urbano, tarjetas con ofertas en ángulo, zapatillas y moda streetwear.</p>
+                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Estilo atlético urbano, tarjetas con ofertas en ángulo, zapatillas y moda streetwear.</p>
                                 </div>
                               </div>
                               {profile.layout === 'shoes' && (
@@ -3548,24 +3551,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('tech')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer ${
+                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer w-full min-w-0 ${
                                 profile.layout === 'tech'
                                   ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
-                              <div className="flex gap-3">
-                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-indigo-400 mt-0.5 shrink-0">
+                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
+                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-indigo-400 mt-0.5 shrink-0">
                                   <Smartphone className="w-4 h-4 text-indigo-400" />
                                 </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <h4 className="text-xs font-extrabold text-white">Tecnología & Dispositivos</h4>
                                     {profile.layout === 'tech' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
                                     )}
                                   </div>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Minimalismo de alta gama con sellos de original, celulares, audio y gadgets.</p>
+                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Minimalismo de alta gama con sellos de original, celulares, audio y gadgets.</p>
                                 </div>
                               </div>
                               {profile.layout === 'tech' && (
@@ -3577,24 +3580,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <button
                               type="button"
                               onClick={() => handleSelectLayout('default')}
-                              className={`p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer md:col-span-2 ${
+                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer md:col-span-2 w-full min-w-0 ${
                                 profile.layout === 'default'
                                   ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
                                   : 'border-gray-900 bg-gray-920 hover:border-gray-800'
                               }`}
                             >
-                              <div className="flex gap-3">
-                                <div className="p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-emerald-400 mt-0.5 shrink-0">
+                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
+                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-emerald-400 mt-0.5 shrink-0">
                                   <ShoppingBag className="w-4 h-4 text-emerald-400" />
                                 </div>
-                                <div>
-                                  <div className="flex items-center gap-1.5">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
                                     <h4 className="text-xs font-extrabold text-white">Tienda General & Catálogo Universal</h4>
                                     {profile.layout === 'default' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded">Activo</span>
+                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
                                     )}
                                   </div>
-                                  <p className="text-[10px] text-gray-500 leading-normal mt-0.5">Diseño versátil para farmacias, supermercados, ferreterías, regalos o tiendas con inventarios mixtos.</p>
+                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Diseño versátil para farmacias, supermercados, ferreterías, regalos o tiendas con inventarios mixtos.</p>
                                 </div>
                               </div>
                               {profile.layout === 'default' && (
@@ -3605,20 +3608,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </div>
 
                         {/* Themes & Colors Presets */}
-                        <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-5">
-                          <div className="flex items-center justify-between">
-                            <div>
+                        <div className="bg-gray-950 border border-gray-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-5 w-full min-w-0 max-w-full">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full min-w-0">
+                            <div className="min-w-0">
                               <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 block mb-0.5">
                                 Paletas y Temas de Diseño
                               </span>
-                              <p className="text-[11px] text-gray-500 font-medium">
+                              <p className="text-[11px] text-gray-400 font-medium">
                                 Elige entre {PREDEFINED_THEMES.length} temas optimizados por categoría o personaliza colores a tu gusto.
                               </p>
                             </div>
                             <button
                               type="button"
                               onClick={() => setIsCustomThemeOpen(!isCustomThemeOpen)}
-                              className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition cursor-pointer ${
+                              className={`px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 ${
                                 isCustomThemeOpen 
                                   ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' 
                                   : 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
@@ -3798,29 +3801,29 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                         {/* Interactive Color Studio (Custom Color Palette) */}
                         {isCustomThemeOpen && (
-                          <div className="bg-gray-950 border border-indigo-500/30 p-6 rounded-3xl space-y-6 shadow-xl animate-fadeIn">
-                            <div className="flex items-center justify-between border-b border-gray-900 pb-4">
-                              <div>
+                          <div className="bg-gray-950 border border-indigo-500/30 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-5 sm:space-y-6 shadow-xl animate-fadeIn w-full min-w-0 max-w-full">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-900 pb-4 w-full min-w-0">
+                              <div className="min-w-0">
                                 <h3 className="text-xs font-extrabold text-white flex items-center gap-2 uppercase tracking-wider">
-                                  <Paintbrush className="w-4 h-4 text-indigo-400" />
-                                  Personalizador de Colores y Estilos
+                                  <Paintbrush className="w-4 h-4 text-indigo-400 shrink-0" />
+                                  <span>Personalizador de Colores y Estilos</span>
                                 </h3>
-                                <p className="text-[10px] text-gray-500 font-medium mt-0.5">
+                                <p className="text-[10px] text-gray-400 font-medium mt-0.5">
                                   Ajusta los colores exactos, fondo, bordes, tipografía y botones de tu tienda en tiempo real.
                                 </p>
                               </div>
-                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 self-start sm:self-auto shrink-0">
                                 Modo Libre
                               </span>
                             </div>
 
                             {/* 1. Color de Acento (Botones & Precios) */}
-                            <div className="space-y-2.5">
-                              <div className="flex items-center justify-between">
+                            <div className="space-y-2.5 w-full min-w-0">
+                              <div className="flex items-center justify-between gap-2">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300">
                                   Color de Acento Principal (Botones, Precios y Destacados)
                                 </label>
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 shrink-0">
                                   <input
                                     type="color"
                                     value={customTheme.accentColor || '#10b981'}
@@ -3834,7 +3837,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               </div>
 
                               {/* Quick Accent Swatches */}
-                              <div className="grid grid-cols-7 gap-2">
+                              <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 w-full min-w-0">
                                 {[
                                   { name: 'Esmeralda', hex: '#10b981' },
                                   { name: 'Naranja Fuego', hex: '#f97316' },
@@ -3872,12 +3875,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             {/* 2. Fondo de la Tienda */}
-                            <div className="space-y-2.5 pt-2 border-t border-gray-900">
-                              <div className="flex items-center justify-between">
+                            <div className="space-y-2.5 pt-2 border-t border-gray-900 w-full min-w-0">
+                              <div className="flex items-center justify-between gap-2">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300">
                                   Fondo General de la Tienda
                                 </label>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
                                   <button
                                     type="button"
                                     onClick={() => setCustomTheme({ ...customTheme, bgType: 'flat' })}
@@ -3900,25 +3903,25 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               </div>
 
                               {customTheme.bgType === 'flat' ? (
-                                <div className="space-y-2">
+                                <div className="space-y-2 w-full min-w-0">
                                   <div className="flex items-center gap-2">
                                     <input
                                       type="color"
                                       value={customTheme.bgColor.startsWith('#') ? customTheme.bgColor : '#0c0d12'}
                                       onChange={(e) => setCustomTheme({ ...customTheme, bgColor: e.target.value })}
-                                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0"
+                                      className="w-8 h-8 rounded cursor-pointer bg-transparent border-0 shrink-0"
                                     />
                                     <input
                                       type="text"
                                       value={customTheme.bgColor}
                                       onChange={(e) => setCustomTheme({ ...customTheme, bgColor: e.target.value })}
                                       placeholder="#0c0d12"
-                                      className="w-full h-8 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-lg text-xs font-mono text-white"
+                                      className="w-full h-8 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-lg text-xs font-mono text-white min-w-0"
                                     />
                                   </div>
 
                                   {/* Quick Solid Backgrounds */}
-                                  <div className="grid grid-cols-6 gap-1.5">
+                                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 w-full min-w-0">
                                     {[
                                       { name: 'Obsidian Negro', hex: '#08080a' },
                                       { name: 'Carbón Grill', hex: '#0c0d12' },
@@ -3959,15 +3962,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   </div>
                                 </div>
                               ) : (
-                                <div className="space-y-2">
+                                <div className="space-y-2 w-full min-w-0">
                                   <input
                                     type="text"
                                     value={customTheme.bgColor}
                                     onChange={(e) => setCustomTheme({ ...customTheme, bgColor: e.target.value })}
                                     placeholder="linear-gradient(135deg, #090b14 0%, #2a0b38 100%)"
-                                    className="w-full h-8 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-lg text-xs font-mono text-white"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 focus:border-indigo-500 px-3 rounded-lg text-xs font-mono text-white min-w-0"
                                   />
-                                  <div className="grid grid-cols-4 gap-2">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full min-w-0">
                                     {[
                                       { name: 'Aurora Púrpura', grad: 'linear-gradient(135deg, #090b14 0%, #150d2a 50%, #2a0b38 100%)' },
                                       { name: 'Zafiro Real', grad: 'linear-gradient(135deg, #0f1c3f 0%, #3b0764 100%)' },
@@ -3990,8 +3993,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             {/* 3. Tarjetas de Productos & Textos */}
-                            <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-900">
-                              <div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-900 w-full min-w-0">
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
                                   Fondo de Tarjetas de Producto
                                 </label>
@@ -4000,19 +4003,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     type="color"
                                     value={customTheme.cardBg.startsWith('#') ? customTheme.cardBg : '#151722'}
                                     onChange={(e) => setCustomTheme({ ...customTheme, cardBg: e.target.value })}
-                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 shrink-0"
                                   />
                                   <input
                                     type="text"
                                     value={customTheme.cardBg}
                                     onChange={(e) => setCustomTheme({ ...customTheme, cardBg: e.target.value })}
                                     placeholder="#151722"
-                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white min-w-0"
                                   />
                                 </div>
                               </div>
 
-                              <div>
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
                                   Borde de Tarjetas
                                 </label>
@@ -4021,19 +4024,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     type="color"
                                     value={customTheme.cardBorder.startsWith('#') ? customTheme.cardBorder : '#f97316'}
                                     onChange={(e) => setCustomTheme({ ...customTheme, cardBorder: e.target.value })}
-                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 shrink-0"
                                   />
                                   <input
                                     type="text"
                                     value={customTheme.cardBorder}
                                     onChange={(e) => setCustomTheme({ ...customTheme, cardBorder: e.target.value })}
                                     placeholder="rgba(249,115,22,0.3)"
-                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white min-w-0"
                                   />
                                 </div>
                               </div>
 
-                              <div>
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
                                   Texto de Tarjetas y Título
                                 </label>
@@ -4042,19 +4045,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     type="color"
                                     value={customTheme.cardTextColor.startsWith('#') ? customTheme.cardTextColor : '#ffffff'}
                                     onChange={(e) => setCustomTheme({ ...customTheme, cardTextColor: e.target.value })}
-                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 shrink-0"
                                   />
                                   <input
                                     type="text"
                                     value={customTheme.cardTextColor}
                                     onChange={(e) => setCustomTheme({ ...customTheme, cardTextColor: e.target.value })}
                                     placeholder="#ffffff"
-                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white min-w-0"
                                   />
                                 </div>
                               </div>
 
-                              <div>
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
                                   Texto Principal de la Tienda
                                 </label>
@@ -4063,22 +4066,22 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     type="color"
                                     value={customTheme.textColor.startsWith('#') ? customTheme.textColor : '#ffffff'}
                                     onChange={(e) => setCustomTheme({ ...customTheme, textColor: e.target.value })}
-                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0"
+                                    className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 shrink-0"
                                   />
                                   <input
                                     type="text"
                                     value={customTheme.textColor}
                                     onChange={(e) => setCustomTheme({ ...customTheme, textColor: e.target.value })}
                                     placeholder="#ffffff"
-                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white"
+                                    className="w-full h-8 bg-gray-900 border border-gray-850 px-2.5 rounded-lg text-xs font-mono text-white min-w-0"
                                   />
                                 </div>
                               </div>
                             </div>
 
                             {/* 4. Tipografía y Estilo de Botón */}
-                            <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-900">
-                              <div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-gray-900 w-full min-w-0">
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
                                   Tipografía
                                 </label>
@@ -4094,7 +4097,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </select>
                               </div>
 
-                              <div>
+                              <div className="w-full min-w-0">
                                 <label className="text-[10px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
                                   Estilo de Botones
                                 </label>
@@ -4113,17 +4116,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             {/* Live Interactive Preview Card */}
-                            <div className="p-4 rounded-2xl border border-gray-800 space-y-2">
+                            <div className="p-3 sm:p-4 rounded-2xl border border-gray-800 space-y-2 w-full min-w-0">
                               <span className="text-[9px] font-black uppercase text-gray-400 tracking-wider block">
                                 Vista Previa de Producto en tu Tienda:
                               </span>
                               
                               <div 
-                                className="p-4 rounded-xl border transition-all"
+                                className="p-3 sm:p-4 rounded-xl border transition-all w-full min-w-0 overflow-hidden"
                                 style={customTheme.bgType === 'gradient' ? { backgroundImage: customTheme.bgColor } : { backgroundColor: customTheme.bgColor }}
                               >
                                 <div 
-                                  className={`p-3.5 border transition-all ${
+                                  className={`p-3 sm:p-3.5 border transition-all w-full min-w-0 ${
                                     customTheme.buttonStyle === 'square' ? 'rounded-none' : 'rounded-2xl'
                                   }`}
                                   style={{
@@ -4132,15 +4135,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     color: customTheme.cardTextColor
                                   }}
                                 >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div>
+                                  <div className="flex items-center justify-between gap-2.5 sm:gap-3">
+                                    <div className="min-w-0">
                                       <span 
-                                        className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block mb-1"
+                                        className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full inline-block mb-1 truncate"
                                         style={{ backgroundColor: `${customTheme.accentColor || '#10b981'}25`, color: customTheme.accentColor || '#10b981' }}
                                       >
                                         Especialidad
                                       </span>
-                                      <h4 className="text-xs font-black" style={{ color: customTheme.cardTextColor }}>
+                                      <h4 className="text-xs font-black truncate" style={{ color: customTheme.cardTextColor }}>
                                         Hamburguesa Artesanal Doble
                                       </h4>
                                       <span className="text-xs font-extrabold mt-1 block" style={{ color: customTheme.accentColor || '#10b981' }}>
@@ -4149,7 +4152,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     </div>
                                     <button
                                       type="button"
-                                      className={`px-3 py-2 text-xs font-black transition cursor-pointer ${
+                                      className={`px-3 py-2 text-xs font-black transition cursor-pointer shrink-0 ${
                                         customTheme.buttonStyle === 'pill' ? 'rounded-full' : customTheme.buttonStyle === 'square' ? 'rounded-none' : 'rounded-xl'
                                       }`}
                                       style={{
@@ -4165,19 +4168,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             {/* Save Custom Theme Button */}
-                            <div className="pt-2">
+                            <div className="pt-2 w-full min-w-0">
                               <button
                                 type="button"
                                 disabled={isSavingTheme}
                                 onClick={handleSaveCustomTheme}
-                                className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                                className="w-full py-3 px-3 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
                               >
                                 {isSavingTheme ? (
                                   <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin rounded-full" />
                                 ) : (
                                   <Save className="w-4 h-4" />
                                 )}
-                                <span>Guardar y Aplicar Colores Personalizados</span>
+                                <span className="truncate">Guardar y Aplicar Colores Personalizados</span>
                               </button>
                             </div>
                           </div>

@@ -20,13 +20,27 @@ import {
   Tag,
   Flame,
   Plus,
+  Minus,
+  Trash2,
+  ArrowRight,
+  X,
   Check
 } from 'lucide-react';
 import ReelSkeleton from './ReelSkeleton';
-import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduct } from '../lib/firebase';
+import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduct, fetchSystemSettings } from '../lib/firebase';
 import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
-import { addProductToCart, getStoredCart, CART_UPDATED_EVENT } from '../lib/cartHelper';
+import { 
+  addProductToCart, 
+  getStoredCart, 
+  updateCartQuantity, 
+  removeProductFromCart, 
+  calculateCartSummary, 
+  registerProductImages,
+  getProductImage,
+  GeneralCartItem, 
+  CART_UPDATED_EVENT 
+} from '../lib/cartHelper';
 
 interface CarruselProducProps {
   initialReelId?: string | null;
@@ -51,6 +65,16 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   const [expandedDesc, setExpandedDesc] = useState(false);
   const [addedProductId, setAddedProductId] = useState<string | null>(null);
   const [toastNotification, setToastNotification] = useState<{ show: boolean; product?: ProductItem }>({ show: false });
+  
+  // Cart state & in-reel cart drawer
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
+  const [cartItems, setCartItems] = useState<GeneralCartItem[]>(() => {
+    try {
+      return getStoredCart();
+    } catch {
+      return [];
+    }
+  });
   const [cartCount, setCartCount] = useState<number>(() => {
     try {
       const stored = getStoredCart();
@@ -60,11 +84,20 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     }
   });
 
-  // Sync cart count with storage updates
+  // Variant selector bottom sheet
+  const [variantSheetProduct, setVariantSheetProduct] = useState<ProductItem | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<string>('');
+  const [sheetQuantity, setSheetQuantity] = useState<number>(1);
+
+  // Delivery fee loaded from system settings (aligned with TiendaGeneral)
+  const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(5000);
+
+  // Sync cart count & cart items with storage updates
   useEffect(() => {
     const handleCartSync = () => {
       try {
         const stored = getStoredCart();
+        setCartItems(stored);
         setCartCount(stored.reduce((sum, item) => sum + item.quantity, 0));
       } catch (e) {}
     };
@@ -93,15 +126,67 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     let isMounted = true;
     async function loadProducts() {
       try {
-        const { products: fetchedProducts, profiles: fetchedProfiles } = await fetchAllActiveProductsAndStores();
+        const [{ products: fetchedProducts, profiles: fetchedProfiles }, sysSettings] = await Promise.all([
+          fetchAllActiveProductsAndStores(),
+          fetchSystemSettings().catch(() => null)
+        ]);
         if (!isMounted) return;
 
-        // Filter and sort products (Food / Restaurant products first for maximum engagement)
-        const activeList = fetchedProducts.filter(p => {
-          if (p.active === false) return false;
-          const prof = findStoreForProduct(p, fetchedProfiles);
-          return prof && !prof.suspended && !checkIsStoreClosed(prof);
+        if (sysSettings?.defaultDeliveryFee && typeof sysSettings.defaultDeliveryFee === 'number') {
+          setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
+        }
+
+        // Register all product images into persistent cache
+        registerProductImages(fetchedProducts);
+
+        // Rehydrate cart items in state if any was missing an image URL
+        setCartItems(prev => {
+          let changed = false;
+          const updated = prev.map(item => {
+            if (!item.product.imageURL) {
+              const found = fetchedProducts.find(p => p.id === item.product.id);
+              const img = found?.imageURL || getProductImage(item.product.id);
+              if (img) {
+                changed = true;
+                return {
+                  ...item,
+                  product: {
+                    ...item.product,
+                    imageURL: img
+                  }
+                };
+              }
+            }
+            return item;
+          });
+          return changed ? updated : prev;
         });
+
+        const normalizedProfiles: Record<string, UserProfile> = { ...fetchedProfiles };
+        Object.values(fetchedProfiles).forEach(p => {
+          if (p && p.uid) normalizedProfiles[p.uid] = p;
+          if (p && p.username) {
+            normalizedProfiles[p.username] = p;
+            normalizedProfiles[p.username.toLowerCase()] = p;
+          }
+        });
+
+        // Filter, enrich and sort products (Food / Restaurant products first for maximum engagement)
+        const activeList = fetchedProducts
+          .filter(p => {
+            if (p.active === false) return false;
+            const prof = findStoreForProduct(p, normalizedProfiles);
+            return prof && !prof.suspended && !checkIsStoreClosed(prof);
+          })
+          .map(p => {
+            const prof = findStoreForProduct(p, normalizedProfiles);
+            return {
+              ...p,
+              userId: prof?.uid || p.userId || '',
+              storeName: prof?.displayName || p.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante'),
+              storeUsername: prof?.username || p.storeUsername || ''
+            };
+          });
 
         const sorted = activeList.sort((a, b) => {
           const foodA = isFoodProduct(a);
@@ -146,7 +231,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
         }
 
         setLikesMap(initialLikesMap);
-        setProfiles(fetchedProfiles);
+        setProfiles(normalizedProfiles);
         setProducts(sorted);
         setCurrentIndex(initialIdx);
       } catch (err) {
@@ -381,14 +466,55 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     }
   };
 
-  // 9. Add product to general cart directly from Reel
-  const handleAddToCart = (product: ProductItem, e?: React.MouseEvent) => {
+  // 9. Cart handlers inside Reels
+  const handleUpdateItemQuantity = (cartItemId: string, change: number) => {
+    const item = cartItems.find(i => i.id === cartItemId);
+    if (!item) return;
+    const newQty = item.quantity + change;
+    const updated = updateCartQuantity(cartItemId, newQty);
+    setCartItems(updated);
+    setCartCount(updated.reduce((sum, i) => sum + i.quantity, 0));
+  };
+
+  const handleRemoveItem = (cartItemId: string) => {
+    const updated = removeProductFromCart(cartItemId);
+    setCartItems(updated);
+    setCartCount(updated.reduce((sum, i) => sum + i.quantity, 0));
+  };
+
+  const handleBuyClick = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const updated = addProductToCart(product, 1);
+    // If product has multiple variants, open bottom sheet selector
+    if (product.variantsText && product.variantsText.includes(',')) {
+      const firstVariant = product.variantsText.split(',')[0].trim();
+      setSelectedVariant(firstVariant);
+      setSheetQuantity(1);
+      setVariantSheetProduct(product);
+      return;
+    }
+
+    // Single variant or no variant
+    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
+    handleAddToCart(product, 1, firstVariant);
+  };
+
+  const handleAddToCart = (product: ProductItem, quantity: number = 1, variant?: string) => {
+    const prof = findStoreForProduct(product, profiles);
+    const prodImg = product.imageURL || getProductImage(product.id);
+    const enrichedProduct: ProductItem = {
+      ...product,
+      imageURL: prodImg,
+      userId: prof?.uid || product.userId || '',
+      storeName: prof?.displayName || product.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante'),
+      storeUsername: prof?.username || product.storeUsername || ''
+    };
+
+    const updated = addProductToCart(enrichedProduct, quantity, variant);
+    setCartItems(updated);
     const totalCount = updated.reduce((sum, item) => sum + item.quantity, 0);
     setCartCount(totalCount);
     setAddedProductId(product.id);
-    setToastNotification({ show: true, product });
+    setToastNotification({ show: true, product: enrichedProduct });
 
     setTimeout(() => {
       setAddedProductId(prev => prev === product.id ? null : prev);
@@ -399,7 +525,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     }, 3500);
   };
 
-  // 10. Dedicated navigation to Tienda General
+  // 10. Dedicated navigation to Tienda General / Cart
   const handleGoToTienda = () => {
     if (onNavigateToTienda) {
       onNavigateToTienda();
@@ -408,6 +534,24 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     } else {
       window.location.href = '/tienda';
     }
+  };
+
+  const handleProceedToCheckout = () => {
+    try {
+      localStorage.setItem('linnkpro_open_checkout', 'true');
+      sessionStorage.setItem('linnkpro_open_checkout', 'true');
+    } catch {}
+    setIsCartDrawerOpen(false);
+    handleGoToTienda();
+  };
+
+  const handleViewFullCartInTienda = () => {
+    try {
+      localStorage.setItem('linnkpro_open_cart', 'true');
+      sessionStorage.setItem('linnkpro_open_cart', 'true');
+    } catch {}
+    setIsCartDrawerOpen(false);
+    handleGoToTienda();
   };
 
   if (loading) {
@@ -471,9 +615,9 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
           <div className="flex items-center gap-2">
             {/* Cart Button with Counter Badge */}
             <button
-              onClick={handleGoToTienda}
+              onClick={() => setIsCartDrawerOpen(true)}
               className="relative w-9 h-9 rounded-full bg-black/40 backdrop-blur-md border border-white/15 flex items-center justify-center text-white hover:bg-black/80 transition active:scale-90 cursor-pointer shadow-md"
-              title="Ver Carrito"
+              title="Ver Carrito de Compras"
             >
               <ShoppingCart className="w-4 h-4" />
               {cartCount > 0 && (
@@ -517,7 +661,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleGoToTienda();
+                setIsCartDrawerOpen(true);
               }}
               className="px-3 py-1.5 bg-white text-emerald-800 text-[11px] font-black uppercase tracking-wider rounded-xl shadow shrink-0 active:scale-95 transition hover:bg-emerald-50 cursor-pointer"
             >
@@ -534,7 +678,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {products.map((product, idx) => {
-            const profile = profiles[product.userId];
+            const profile = findStoreForProduct(product, profiles);
             const isFood = isFoodProduct(product);
             const likeInfo = likesMap[product.id] || { count: 120, isLiked: false };
 
@@ -790,7 +934,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                   {/* Direct Purchase / Add to Cart Action Button */}
                   <div className="flex items-center gap-2 pt-1">
                     <button
-                      onClick={(e) => handleAddToCart(product, e)}
+                      onClick={(e) => handleBuyClick(product, e)}
                       className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition active:scale-95 cursor-pointer font-black text-sm uppercase tracking-wider ${
                         addedProductId === product.id
                           ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-600/40 animate-pulse'
@@ -805,7 +949,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       ) : (
                         <>
                           <ShoppingCart className="w-5 h-5" />
-                          <span>Comprar</span>
+                          <span>Pedir</span>
                         </>
                       )}
                     </button>
@@ -817,6 +961,297 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
             );
           })}
         </div>
+
+        {/* In-Reel Full Cart Drawer */}
+        {isCartDrawerOpen && (
+          <div 
+            className="absolute inset-0 z-50 bg-black/75 backdrop-blur-sm flex flex-col justify-end animate-fade-in"
+            onClick={() => setIsCartDrawerOpen(false)}
+          >
+            <div 
+              className="w-full max-h-[85vh] bg-[#0d121f] border-t border-[#232B3A] rounded-t-3xl shadow-2xl flex flex-col overflow-hidden text-white animate-slide-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Drawer Header */}
+              <div className="p-4 border-b border-[#232B3A] flex items-center justify-between bg-[#111827]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-[#E63946]/10 text-[#E63946] flex items-center justify-center border border-[#E63946]/20">
+                    <ShoppingBag className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-sm text-white">Mi Carrito de Compras</h3>
+                    <p className="text-[11px] text-[#A9B2C3]">
+                      {cartItems.length} {cartItems.length === 1 ? 'producto' : 'productos'} seleccionado{cartItems.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsCartDrawerOpen(false)}
+                  className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                  title="Cerrar"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Drawer Content */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 max-h-[50vh]">
+                {cartItems.length === 0 ? (
+                  <div className="py-12 text-center flex flex-col items-center justify-center space-y-3 text-[#A9B2C3]">
+                    <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center text-gray-500">
+                      <ShoppingBag className="w-7 h-7" />
+                    </div>
+                    <p className="font-bold text-sm text-white">Tu carrito está vacío</p>
+                    <p className="text-xs max-w-[240px]">Agrega platos o productos desde los Reels haciendo clic en "Pedir".</p>
+                    <button
+                      onClick={() => setIsCartDrawerOpen(false)}
+                      className="mt-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                    >
+                      Continuar viendo Reels
+                    </button>
+                  </div>
+                ) : (
+                  cartItems.map((item) => {
+                    const prof = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
+                    const storeDisplay = prof?.displayName || item.product.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante');
+                    const itemTotal = (item.product.price || 0) * (item.quantity || 1);
+
+                    return (
+                      <div 
+                        key={item.id}
+                        className="bg-[#151D2F] border border-[#232B3A] p-3 rounded-2xl flex gap-3 relative items-center"
+                      >
+                        {/* Image */}
+                        <div className="w-14 h-14 rounded-xl bg-[#090B12] overflow-hidden shrink-0 border border-[#232B3A] flex items-center justify-center">
+                          {(() => {
+                            const displayImage = item.product.imageURL || getProductImage(item.product.id) || products.find(p => p.id === item.product.id)?.imageURL;
+                            return displayImage ? (
+                              <img 
+                                src={displayImage} 
+                                alt={item.product.name} 
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover" 
+                              />
+                            ) : (
+                              <Utensils className="w-6 h-6 text-gray-600" />
+                            );
+                          })()}
+                        </div>
+
+                        {/* Details */}
+                        <div className="flex-1 min-w-0 pr-6 space-y-0.5">
+                          <span className="text-[9px] font-black uppercase text-[#E63946] tracking-wider truncate block">
+                            {storeDisplay}
+                          </span>
+                          <h4 className="font-bold text-xs text-white truncate">
+                            {item.product.name}
+                          </h4>
+                          {item.selectedVariant && (
+                            <span className="text-[10px] font-semibold text-[#A9B2C3] bg-[#090B12] px-1.5 py-0.5 rounded border border-[#232B3A] inline-block">
+                              {item.selectedVariant}
+                            </span>
+                          )}
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-xs font-black text-white">
+                              ${itemTotal.toLocaleString('es-CO')} COP
+                            </span>
+
+                            {/* Quantity Controls */}
+                            <div className="flex items-center gap-1.5 bg-[#090B12] border border-[#232B3A] rounded-lg p-0.5">
+                              <button
+                                onClick={() => handleUpdateItemQuantity(item.id, -1)}
+                                className="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="font-black text-xs px-1.5 text-white min-w-[20px] text-center">
+                                {item.quantity}
+                              </span>
+                              <button
+                                onClick={() => handleUpdateItemQuantity(item.id, 1)}
+                                className="w-6 h-6 rounded flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Remove button */}
+                        <button
+                          onClick={() => handleRemoveItem(item.id)}
+                          className="absolute top-2.5 right-2.5 p-1 text-gray-500 hover:text-[#E63946] transition cursor-pointer rounded-lg hover:bg-white/5"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Drawer Footer Summary & Checkout */}
+              {cartItems.length > 0 && (() => {
+                const summary = calculateCartSummary(cartItems, systemDeliveryFee);
+                return (
+                  <div className="p-4 border-t border-[#232B3A] bg-[#111827] space-y-3">
+                    <div className="space-y-1.5 text-xs text-[#A9B2C3]">
+                      <div className="flex justify-between">
+                        <span>Subtotal:</span>
+                        <span className="font-bold text-white">${summary.subtotal.toLocaleString('es-CO')} COP</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Domicilio estimado ({summary.storeCount} local{summary.storeCount === 1 ? '' : 'es'}):</span>
+                        <span className="font-bold text-white">${summary.deliveryFee.toLocaleString('es-CO')} COP</span>
+                      </div>
+                      <div className="flex justify-between text-sm font-black text-white pt-1 border-t border-white/10">
+                        <span>Total:</span>
+                        <span className="text-[#F4B400] text-base font-black">${summary.grandTotal.toLocaleString('es-CO')} COP</span>
+                      </div>
+                    </div>
+
+                    {/* Finalize Button */}
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => setIsCartDrawerOpen(false)}
+                        className="flex-1 py-3 px-3 bg-white/10 hover:bg-white/15 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                      >
+                        Seguir viendo
+                      </button>
+                      <button
+                        onClick={handleProceedToCheckout}
+                        className="flex-2 py-3 px-4 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center justify-center gap-2 active:scale-95 transition cursor-pointer"
+                      >
+                        <span>Finalizar Pedido</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleViewFullCartInTienda}
+                      className="w-full text-center text-[11px] text-gray-400 hover:text-white transition underline cursor-pointer"
+                    >
+                      Abrir Carrito en Vitrina General
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* Variant Selection Bottom Sheet */}
+        {variantSheetProduct && (
+          <div 
+            className="absolute inset-0 z-50 bg-black/75 backdrop-blur-sm flex flex-col justify-end animate-fade-in"
+            onClick={() => setVariantSheetProduct(null)}
+          >
+            <div 
+              className="w-full bg-[#0d121f] border-t border-[#232B3A] rounded-t-3xl shadow-2xl p-5 flex flex-col gap-4 text-white animate-slide-up"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-[#232B3A] pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#090B12] overflow-hidden border border-[#232B3A] shrink-0">
+                    {variantSheetProduct.imageURL ? (
+                      <img 
+                        src={variantSheetProduct.imageURL} 
+                        alt={variantSheetProduct.name} 
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      <Utensils className="w-6 h-6 text-gray-600 m-auto mt-3" />
+                    )}
+                  </div>
+                  <div>
+                    <h4 className="font-extrabold text-sm text-white line-clamp-1">{variantSheetProduct.name}</h4>
+                    <p className="text-xs font-bold text-[#E63946]">${(variantSheetProduct.price || 0).toLocaleString('es-CO')} COP</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setVariantSheetProduct(null)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Variant Selector */}
+              <div>
+                <label className="block text-xs font-bold text-[#A9B2C3] uppercase tracking-wider mb-2">
+                  Elige una opción / tamaño:
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {(variantSheetProduct.variantsText || '')
+                    .split(',')
+                    .map(v => v.trim())
+                    .filter(Boolean)
+                    .map((variantName) => {
+                      const isSelected = selectedVariant === variantName;
+                      return (
+                        <button
+                          key={variantName}
+                          type="button"
+                          onClick={() => setSelectedVariant(variantName)}
+                          className={`py-2 px-3.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                            isSelected
+                              ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white border-transparent shadow-md shadow-[#E63946]/30'
+                              : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
+                          }`}
+                        >
+                          {variantName}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              {/* Quantity Selector */}
+              <div className="flex items-center justify-between py-2 border-y border-[#232B3A]">
+                <span className="text-xs font-bold text-[#A9B2C3]">Cantidad:</span>
+                <div className="flex items-center gap-3 bg-[#151D2F] border border-[#232B3A] rounded-xl px-2 py-1">
+                  <button
+                    onClick={() => setSheetQuantity(q => Math.max(1, q - 1))}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="font-black text-sm text-white px-2">
+                    {sheetQuantity}
+                  </span>
+                  <button
+                    onClick={() => setSheetQuantity(q => q + 1)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Total & Add Button */}
+              <div className="flex items-center justify-between pt-1">
+                <div>
+                  <span className="text-[10px] text-gray-400 uppercase font-bold block">Total:</span>
+                  <span className="text-base font-black text-[#F4B400]">
+                    ${((variantSheetProduct.price || 0) * sheetQuantity).toLocaleString('es-CO')} COP
+                  </span>
+                </div>
+                <button
+                  onClick={() => {
+                    handleAddToCart(variantSheetProduct, sheetQuantity, selectedVariant);
+                    setVariantSheetProduct(null);
+                  }}
+                  className="py-3 px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-2 active:scale-95 transition cursor-pointer"
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span>Agregar al Carrito</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Desktop Up / Down Floating Navigation Arrows (Side controls for convenient mouse navigation) */}
         <div className="hidden md:flex absolute right-4 top-1/2 -translate-y-1/2 z-40 flex-col gap-2 pointer-events-auto">

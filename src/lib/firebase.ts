@@ -784,7 +784,11 @@ async function loadProfileRelations(profile: UserProfile, searchKey: string) {
   const products: ProductItem[] = [];
   if (pSnapshot) {
     pSnapshot.forEach(doc => {
-      products.push({ id: doc.id, ...doc.data() } as ProductItem);
+      const pData = doc.data() as ProductItem;
+      const cleanId = (pData?.id && String(pData.id).trim() && String(pData.id).trim() !== 'undefined')
+        ? String(pData.id).trim()
+        : doc.id;
+      products.push({ ...pData, id: cleanId } as ProductItem);
     });
     try {
       localStorage.setItem(`linnk_products_${profile.uid}`, JSON.stringify(products));
@@ -2374,9 +2378,12 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
         productsSnapshot.forEach(docSnap => {
           const data = docSnap.data() as ProductItem;
           if (data && data.active !== false) {
+            const cleanId = (data.id && String(data.id).trim() && String(data.id).trim() !== 'undefined' && String(data.id).trim() !== 'null')
+              ? String(data.id).trim()
+              : docSnap.id;
             products.push({
-              id: docSnap.id,
               ...data,
+              id: cleanId,
               name: data.name || 'Producto sin nombre',
               price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
               stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,

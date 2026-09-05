@@ -44,7 +44,18 @@ import CustomerPortalModal from './CustomerPortalModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
-import { getStoredCart, saveStoredCart, GeneralCartItem } from '../lib/cartHelper';
+import { 
+  getStoredCart, 
+  saveStoredCart, 
+  addProductToCart, 
+  updateCartQuantity, 
+  removeProductFromCart, 
+  clearAllCart, 
+  registerProductImages, 
+  getProductImage, 
+  GeneralCartItem, 
+  CART_UPDATED_EVENT 
+} from '../lib/cartHelper';
 
 export const isFoodCategory = (cat?: string): boolean => {
   if (!cat || cat === 'all' || cat === 'Todos') return false;
@@ -176,7 +187,7 @@ function StoresSkeleton() {
         <span className="text-xs font-black uppercase text-white tracking-wider">Restaurantes</span>
         <div className="h-3 w-8 bg-[#1F2937] rounded-full" />
       </div>
-      <div className="flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 px-1 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div className="-mx-5 px-2 sm:px-3 flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {[1, 2, 3, 4, 5, 6].map((i) => (
           <div key={i} className="flex flex-col items-center gap-1.5 flex-shrink-0">
             <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-[#111827] via-[#1E293B] to-[#111827] border-2 border-[#232B3A] p-0.5 relative overflow-hidden">
@@ -230,54 +241,77 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Quick View Modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
 
-  // Cart & Order states
+  // Cart & Order states - fully unified with Reels and LinnkPro Voice Assistant
   const [cart, setCart] = useState<GeneralCartItem[]>(() => {
     return getStoredCart();
   });
 
-  const isInitialCartMount = useRef(true);
-  const isSyncingCartRef = useRef(false);
-
+  // Real-time synchronization when cart is modified in Reels, another tab, or voice assistant
   useEffect(() => {
-    if (isInitialCartMount.current) {
-      isInitialCartMount.current = false;
-      return;
-    }
-    if (isSyncingCartRef.current) {
-      isSyncingCartRef.current = false;
-      return;
-    }
-    saveStoredCart(cart, 'tienda_general');
-  }, [cart]);
-
-  // Sync cart when modified externally (e.g. by LinnkPro AI Voice Assistant or another tab)
-  useEffect(() => {
-    const handleSync = (e: any) => {
-      // Ignore updates dispatched by this component to avoid infinite update loops
-      if (e?.detail?.source === 'tienda_general') return;
-
+    const handleSync = (e?: any) => {
       try {
         const stored = e?.detail?.cart || getStoredCart();
-        setCart(prev => {
-          if (JSON.stringify(prev) === JSON.stringify(stored)) {
-            return prev;
-          }
-          isSyncingCartRef.current = true;
-          return stored;
-        });
+        setCart(stored);
       } catch (err) {}
     };
 
-    window.addEventListener('linnkpro_cart_updated', handleSync);
+    window.addEventListener(CART_UPDATED_EVENT, handleSync);
     window.addEventListener('storage', handleSync);
     return () => {
-      window.removeEventListener('linnkpro_cart_updated', handleSync);
+      window.removeEventListener(CART_UPDATED_EVENT, handleSync);
       window.removeEventListener('storage', handleSync);
     };
   }, []);
 
-  const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(() => {
+    try {
+      const search = typeof window !== 'undefined' ? window.location.search : '';
+      return search.includes('cart=open') ||
+        localStorage.getItem('linnkpro_open_cart') === 'true' ||
+        sessionStorage.getItem('linnkpro_open_cart') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(() => {
+    try {
+      const search = typeof window !== 'undefined' ? window.location.search : '';
+      return search.includes('cart=checkout') ||
+        localStorage.getItem('linnkpro_open_checkout') === 'true' ||
+        sessionStorage.getItem('linnkpro_open_checkout') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Re-check navigation flags on mount / focus to guarantee opening drawer or checkout when coming from Reels
+  useEffect(() => {
+    const checkNavigationFlags = () => {
+      try {
+        if (localStorage.getItem('linnkpro_open_cart') === 'true' || sessionStorage.getItem('linnkpro_open_cart') === 'true') {
+          setIsCartOpen(true);
+          localStorage.removeItem('linnkpro_open_cart');
+          sessionStorage.removeItem('linnkpro_open_cart');
+        }
+        if (localStorage.getItem('linnkpro_open_checkout') === 'true' || sessionStorage.getItem('linnkpro_open_checkout') === 'true') {
+          setIsCheckoutOpen(true);
+          localStorage.removeItem('linnkpro_open_checkout');
+          sessionStorage.removeItem('linnkpro_open_checkout');
+        }
+        if (typeof window !== 'undefined' && window.location.search.includes('cart=')) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('cart');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+        }
+      } catch {}
+    };
+
+    checkNavigationFlags();
+    window.addEventListener('focus', checkNavigationFlags);
+    return () => {
+      window.removeEventListener('focus', checkNavigationFlags);
+    };
+  }, []);
 
   // Form fields
   const [custName, setCustName] = useState('');
@@ -359,6 +393,31 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         ]);
         setProducts(res.products);
         setProfiles(res.profiles);
+        registerProductImages(res.products);
+        
+        // Rehydrate any cart items that may be missing an image URL
+        setCart(prev => {
+          let changed = false;
+          const updated = prev.map(item => {
+            if (!item.product.imageURL) {
+              const found = res.products.find(p => p.id === item.product.id);
+              const img = found?.imageURL || getProductImage(item.product.id);
+              if (img) {
+                changed = true;
+                return {
+                  ...item,
+                  product: {
+                    ...item.product,
+                    imageURL: img
+                  }
+                };
+              }
+            }
+            return item;
+          });
+          return changed ? updated : prev;
+        });
+
         if (sysSettings?.defaultDeliveryFee) {
           setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
         }
@@ -640,72 +699,64 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const handleAddToCart = () => {
     if (!selectedProduct) return;
 
-    const cartItemId = `${selectedProduct.id}_${chosenVariant || 'none'}`;
+    const prof = findStoreForProduct(selectedProduct, profiles);
+    const img = selectedProduct.imageURL || getProductImage(selectedProduct.id);
+    const validProdId = (selectedProduct.id && String(selectedProduct.id).trim() && String(selectedProduct.id).trim() !== 'undefined')
+      ? String(selectedProduct.id).trim()
+      : `prod_${String(prof?.uid || selectedProduct.userId || 'store')}_${encodeURIComponent((selectedProduct.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
-    setCart(prev => {
-      const existing = prev.find(item => item.id === cartItemId);
-      if (existing) {
-        return prev.map(item => 
-          item.id === cartItemId 
-            ? { ...item, quantity: item.quantity + buyQuantity }
-            : item
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: cartItemId,
-          product: selectedProduct,
-          selectedVariant: chosenVariant || undefined,
-          quantity: buyQuantity
-        }
-      ];
-    });
+    const prodToSave: ProductItem = {
+      ...selectedProduct,
+      id: validProdId,
+      imageURL: img,
+      userId: prof?.uid || selectedProduct.userId || '',
+      storeName: prof?.displayName || selectedProduct.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante'),
+      storeUsername: prof?.username || selectedProduct.storeUsername || ''
+    };
 
+    if (img) registerProductImages([prodToSave]);
+
+    const updated = addProductToCart(prodToSave, buyQuantity, chosenVariant || undefined);
+    setCart(updated);
     setSelectedProduct(null);
     setIsCartOpen(true);
   };
 
   const handleAddToCartDirect = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
-    const cartItemId = `${product.id}_${firstVariant || 'none'}`;
+    const prof = findStoreForProduct(product, profiles);
+    const img = product.imageURL || getProductImage(product.id);
+    const validProdId = (product.id && String(product.id).trim() && String(product.id).trim() !== 'undefined')
+      ? String(product.id).trim()
+      : `prod_${String(prof?.uid || product.userId || 'store')}_${encodeURIComponent((product.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
-    setCart(prev => {
-      const existing = prev.find(item => item.id === cartItemId);
-      if (existing) {
-        return prev.map(item => 
-          item.id === cartItemId 
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        );
-      }
-      return [
-        ...prev,
-        {
-          id: cartItemId,
-          product,
-          selectedVariant: firstVariant,
-          quantity: 1
-        }
-      ];
-    });
+    const prodToSave: ProductItem = {
+      ...product,
+      id: validProdId,
+      imageURL: img,
+      userId: prof?.uid || product.userId || '',
+      storeName: prof?.displayName || product.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante'),
+      storeUsername: prof?.username || product.storeUsername || ''
+    };
+
+    if (img) registerProductImages([prodToSave]);
+
+    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
+    const updated = addProductToCart(prodToSave, 1, firstVariant);
+    setCart(updated);
   };
 
   const handleSetItemQuantity = (cartItemId: string, change: number) => {
-    setCart(prev => {
-      return prev.map(item => {
-        if (item.id === cartItemId) {
-          const nextVal = item.quantity + change;
-          return { ...item, quantity: nextVal > 0 ? nextVal : 1 };
-        }
-        return item;
-      });
-    });
+    const item = cart.find(i => i.id === cartItemId || i.product.id === cartItemId);
+    if (!item) return;
+    const nextVal = item.quantity + change;
+    const updated = updateCartQuantity(cartItemId, nextVal);
+    setCart(updated);
   };
 
   const handleRemoveFromCart = (cartItemId: string) => {
-    setCart(prev => prev.filter(item => item.id !== cartItemId));
+    const updated = removeProductFromCart(cartItemId);
+    setCart(updated);
   };
 
   const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
@@ -729,7 +780,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     // Group cart items by merchant userId
     const itemsBySeller: Record<string, typeof cart> = {};
     cart.forEach(item => {
-      const sellerId = item.product.userId;
+      const sellerProfile = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
+      const sellerId = sellerProfile?.uid || item.product.userId || 'default_seller';
       if (!itemsBySeller[sellerId]) {
         itemsBySeller[sellerId] = [];
       }
@@ -745,7 +797,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         const totalSum = subtotal + deliveryFee;
         const rNo = Math.floor(1000 + Math.random() * 9000);
 
-        const sellerProfile = profiles[sellerId];
+        const sellerProfile = profiles[sellerId] || findStoreForProduct(sellerCart[0]?.product, profiles);
+        const sellerStoreName = sellerProfile?.displayName || sellerCart[0]?.product.storeName || sellerProfile?.username || 'Tienda en la plataforma';
+        const sellerAddress = sellerProfile?.address || sellerProfile?.location || 'Dirección de la Tienda';
+        const sellerPhone = sellerProfile?.whatsapp || sellerProfile?.phone;
         const formattedPhone = formatColombianPhoneWith57(custPhone);
         const finalAddress = deliveryType === 'pickup' 
           ? (custAddress.trim() ? `Recoger en Restaurante / Local (Nota: ${custAddress.trim()})` : 'Recoger en Restaurante / Local')
@@ -753,10 +808,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
         const newOrder: OrderItem = {
           id: `order_${Date.now()}_${sellerId}`,
-          storeOwnerId: sellerId,
-          storeName: sellerProfile?.displayName || sellerProfile?.username || 'Tienda en la plataforma',
-          storeAddress: sellerProfile?.address || sellerProfile?.location || 'Dirección de la Tienda',
-          storePhone: sellerProfile?.whatsapp || sellerProfile?.phone,
+          storeOwnerId: sellerProfile?.uid || sellerId,
+          storeName: sellerStoreName,
+          storeAddress: sellerAddress,
+          storePhone: sellerPhone,
           orderNumber: rNo,
           customerName: custName.trim(),
           customerPhone: formattedPhone,
@@ -782,6 +837,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
 
       setSubmittedOrders(created);
+      clearAllCart();
       setCart([]);
       setIsCartOpen(false);
       setIsCheckoutOpen(false);
@@ -1236,7 +1292,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
         
         {/* Filter bar card */}
-        <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-3xl space-y-5 shadow-xl">
+        <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-3xl space-y-5 shadow-xl overflow-hidden">
           
           {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
           <div 
@@ -1384,7 +1440,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     isStoresUserInteractingRef.current = false;
                   }, 2000);
                 }}
-                className="flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 px-1 hide-scrollbar cursor-grab active:cursor-grabbing select-none" 
+                className="-mx-5 px-2 sm:px-3 flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 hide-scrollbar cursor-grab active:cursor-grabbing select-none" 
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}
               >
                 {/* All Stores Pill Button */}
@@ -1640,27 +1696,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     }}
                     className="relative aspect-square w-full bg-[#090B12] overflow-hidden shrink-0 cursor-pointer"
                   >
-                    {/* Top right badges: Sale badge and Product Recommendation Heart */}
-                    <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5">
-                      {isOnSale && (
+                    {/* Top right badges: Sale badge */}
+                    {isOnSale && (
+                      <div className="absolute top-3 right-3 z-20">
                         <span className="bg-[#E63946] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
                           -{discountPercentage}%
                         </span>
-                      )}
-                      <ProductRecommendationHeartButton
-                        productId={product.id}
-                        productName={product.name}
-                        storeId={product.userId}
-                        storeUsername={profile?.username || ''}
-                        activeCustomer={activeCustomer}
-                        onCustomerUpdate={setActiveCustomer}
-                        onOpenCustomerPortal={() => {
-                          setCustomerPortalTab('rewards');
-                          setIsCustomerPortalOpen(true);
-                        }}
-                        variant="card-overlay"
-                      />
-                    </div>
+                      </div>
+                    )}
 
                     {product.imageURL ? (
                       <img 
@@ -1688,11 +1731,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   {/* Card Information */}
                   <div className="p-3 sm:p-4.5 flex flex-col flex-grow justify-between space-y-3 sm:space-y-4">
                     <div className="space-y-1.5">
-                      {product.category && (
-                        <span className="text-[9px] font-black uppercase text-[#F4B400] tracking-widest block font-mono">
-                          {product.category}
-                        </span>
-                      )}
+                      <div className="flex items-center justify-between gap-2 min-h-[26px]">
+                        {product.category ? (
+                          <span className="text-[9px] font-black uppercase text-[#F4B400] tracking-widest block font-mono truncate">
+                            {product.category}
+                          </span>
+                        ) : (
+                          <div />
+                        )}
+                        <ProductRecommendationHeartButton
+                          productId={product.id}
+                          productName={product.name}
+                          storeId={product.userId}
+                          storeUsername={profile?.username || ''}
+                          activeCustomer={activeCustomer}
+                          onCustomerUpdate={setActiveCustomer}
+                          onOpenCustomerPortal={() => {
+                            setCustomerPortalTab('rewards');
+                            setIsCustomerPortalOpen(true);
+                          }}
+                          variant="card-overlay"
+                          className="shrink-0"
+                        />
+                      </div>
                       <h3 className="font-extrabold text-sm text-white group-hover:text-[#E63946] transition truncate leading-snug">
                         {product.name}
                       </h3>
@@ -2040,7 +2101,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   </div>
                 ) : (
                   cart.map((item) => {
-                    const profile = profiles[item.product.userId];
+                    const profile = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
                     const currency = profile?.currency || '$';
 
                     return (
@@ -2056,11 +2117,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                         {/* Image */}
                         <div className="w-16 h-16 rounded-xl bg-[#090B12] overflow-hidden shrink-0 border border-[#232B3A] flex items-center justify-center">
-                          {item.product.imageURL ? (
-                            <img src={item.product.imageURL} alt={item.product.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                          ) : (
-                            <ShoppingBag className="w-6 h-6 text-gray-600" />
-                          )}
+                          {(() => {
+                            const displayImg = item.product.imageURL || getProductImage(item.product.id) || products.find(p => p.id === item.product.id)?.imageURL;
+                            return displayImg ? (
+                              <img src={displayImg} alt={item.product.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                            ) : (
+                              <ShoppingBag className="w-6 h-6 text-gray-600" />
+                            );
+                          })()}
                         </div>
 
                         {/* Item Details */}

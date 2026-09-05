@@ -19,6 +19,17 @@ import {
   subscribeStoreProfile,
   PREDEFINED_THEMES
 } from '../lib/firebase';
+import { 
+  getStoredCart, 
+  saveStoredCart, 
+  addProductToCart, 
+  updateCartQuantity, 
+  removeProductFromCart, 
+  CART_UPDATED_EVENT, 
+  getProductImage, 
+  registerProductImages,
+  GeneralCartItem 
+} from '../lib/cartHelper';
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
 import CustomerPortalModal from './CustomerPortalModal';
 import { 
@@ -88,6 +99,7 @@ import {
 import BuyerTermsModal from './BuyerTermsModal';
 import { QRCodeCanvas } from 'qrcode.react';
 import StoreQRModal from './StoreQRModal';
+import RestaurantProfileSkeleton from './RestaurantProfileSkeleton';
 import { getFontClass } from './ThemeStyles';
 
 // Custom Tiktok Icon component to match lucide-react styling
@@ -151,15 +163,31 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [theme, setTheme] = useState<CustomTheme | null>(null);
   
-  // Custom Cart state
-  const [cart, setCart] = useState<{
-    id: string;
-    product: ProductItem;
-    selectedVariant: string;
-    quantity: number;
-  }[]>([]);
+  // Unified Cart state - synchronized with general cart across the entire app
+  const [cart, setCart] = useState<GeneralCartItem[]>(() => {
+    return getStoredCart();
+  });
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+
+  // Real-time synchronization with general cart (from Reels, Vitrina, Home, etc.)
+  useEffect(() => {
+    const handleCartSync = (e?: any) => {
+      try {
+        const stored = e?.detail?.cart || getStoredCart();
+        setCart(stored);
+      } catch (err) {
+        console.warn("Cart sync warning:", err);
+      }
+    };
+
+    window.addEventListener(CART_UPDATED_EVENT, handleCartSync);
+    window.addEventListener('storage', handleCartSync);
+    return () => {
+      window.removeEventListener(CART_UPDATED_EVENT, handleCartSync);
+      window.removeEventListener('storage', handleCartSync);
+    };
+  }, []);
 
   // Cart customer form details
   const [systemDeliveryFee, setSystemDeliveryFee] = useState(7000);
@@ -575,43 +603,71 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const handleAddProductToCart = () => {
     if (!selectedProduct) return;
     
-    const cartItemId = `${selectedProduct.id}_${chosenVariant}`;
-    setCart(prev => {
-      const matchIdx = prev.findIndex(item => item.id === cartItemId);
-      if (matchIdx > -1) {
-        const updated = [...prev];
-        updated[matchIdx].quantity += buyQuantity;
-        return updated;
-      }
-      return [
-        ...prev,
-        {
-          id: cartItemId,
-          product: selectedProduct,
-          selectedVariant: chosenVariant,
-          quantity: buyQuantity
-        }
-      ];
-    });
+    const validProdId = (selectedProduct.id && String(selectedProduct.id).trim() && String(selectedProduct.id).trim() !== 'undefined')
+      ? String(selectedProduct.id).trim()
+      : `prod_${String(profile?.uid || selectedProduct.userId || 'store')}_${encodeURIComponent((selectedProduct.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
+    const prodToSave: ProductItem = {
+      ...selectedProduct,
+      id: validProdId,
+      imageURL: selectedProduct.imageURL || getProductImage(selectedProduct.id),
+      userId: profile?.uid || selectedProduct.userId || '',
+      storeName: profile?.displayName || profile?.storeName || (profile?.username ? `@${profile.username}` : 'Restaurante'),
+      storeUsername: profile?.username || selectedProduct.storeUsername || ''
+    };
+
+    if (prodToSave.imageURL) {
+      registerProductImages([prodToSave]);
+    }
+
+    const updated = addProductToCart(prodToSave, buyQuantity, chosenVariant || undefined);
+    setCart(updated);
     setSelectedProduct(null);
     setIsCartOpen(true);
   };
 
+  const handleAddToCartDirect = (p: ProductItem, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const variants = p.variantsText ? p.variantsText.split(',').map(s => s.trim()).filter(Boolean) : [];
+    if (variants.length > 1) {
+      // Multiple variants require selection modal
+      handleOpenProductSelection(p);
+      return;
+    }
+    const firstVariant = variants.length > 0 ? variants[0] : undefined;
+    const validProdId = (p.id && String(p.id).trim() && String(p.id).trim() !== 'undefined')
+      ? String(p.id).trim()
+      : `prod_${String(profile?.uid || p.userId || 'store')}_${encodeURIComponent((p.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
+
+    const prodToSave: ProductItem = {
+      ...p,
+      id: validProdId,
+      imageURL: p.imageURL || getProductImage(p.id),
+      userId: profile?.uid || p.userId || '',
+      storeName: profile?.displayName || profile?.storeName || (profile?.username ? `@${profile.username}` : 'Restaurante'),
+      storeUsername: profile?.username || p.storeUsername || ''
+    };
+
+    if (prodToSave.imageURL) {
+      registerProductImages([prodToSave]);
+    }
+
+    const updated = addProductToCart(prodToSave, 1, firstVariant);
+    setCart(updated);
+    setIsCartOpen(true);
+  };
+
   const handleSetItemQuantity = (cartItemId: string, change: number) => {
-    setCart(prev => {
-      return prev.map(item => {
-        if (item.id === cartItemId) {
-          const nextVal = item.quantity + change;
-          return { ...item, quantity: nextVal > 0 ? nextVal : 1 };
-        }
-        return item;
-      });
-    });
+    const item = cart.find(i => i.id === cartItemId || i.product.id === cartItemId);
+    if (!item) return;
+    const nextVal = item.quantity + change;
+    const updated = updateCartQuantity(cartItemId, nextVal);
+    setCart(updated);
   };
 
   const handleRemoveFromCart = (cartItemId: string) => {
-    setCart(prev => prev.filter(item => item.id !== cartItemId));
+    const updated = removeProductFromCart(cartItemId);
+    setCart(updated);
   };
 
   // Complete Checkout Order placement
@@ -701,7 +757,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         } catch (e) {}
       }
       
-      // Clear out customer cart local states
+      // Clear out customer cart local states & shared storage
+      saveStoredCart([]);
       setCart([]);
       setUploadedOrderProofBase64('');
       setAppliedRewardCode('');
@@ -777,15 +834,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-[#090B12] flex items-center justify-center flex-col gap-4 text-gray-100">
-        <div className="relative w-12 h-12 flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full border-4 border-[#E63946]/20 border-t-[#E63946] animate-spin" />
-          <div className="w-6 h-6 rounded-full border-2 border-[#F4B400]/30 border-b-[#F4B400] animate-spin" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }} />
-        </div>
-        <p className="text-gray-300 font-bold animate-pulse text-sm">Cargando tienda virtual...</p>
-      </div>
-    );
+    return <RestaurantProfileSkeleton username={username} />;
   }
 
   if (!profile) {
@@ -1095,7 +1144,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     return <ShoppingBag className="w-5 h-5 text-inherit" />;
   };
 
-  const storeLayout = profile?.layout || 'default';
+  const storeLayout = profile?.layout || 'food';
 
   return (
     <div 
@@ -1629,14 +1678,16 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           </div>
                           
                           {/* Sporty bold add button */}
-                          <div 
-                            className="px-3 py-2 font-extrabold text-[10px] uppercase tracking-wider skew-x-[-10deg] group-hover:scale-105 transition duration-300 shadow-sm"
+                          <button 
+                            type="button"
+                            onClick={(e) => handleAddToCartDirect(p, e)}
+                            className="px-3 py-2 font-extrabold text-[10px] uppercase tracking-wider skew-x-[-10deg] hover:scale-105 active:scale-95 transition duration-300 shadow-sm cursor-pointer"
                             style={{ backgroundColor: activeTheme.accentColor || '#f59e0b', color: activeTheme.accentColor === '#ffffff' ? '#000000' : '#000000' }}
                           >
                             <span className="inline-block skew-x-[10deg] flex items-center gap-1">
                               COMPRAR <Plus className="w-3 h-3 stroke-[3]" />
                             </span>
-                          </div>
+                          </button>
                         </div>
 
                       </div>
@@ -1717,12 +1768,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                             )}
                           </div>
                           
-                          <div 
-                            className="px-3 py-1.5 font-extrabold text-[9px] rounded-full uppercase tracking-wider active:scale-[0.97] transition flex items-center gap-1 shadow-md"
+                          <button 
+                            type="button"
+                            onClick={(e) => handleAddToCartDirect(p, e)}
+                            className="px-3 py-1.5 font-extrabold text-[9px] rounded-full uppercase tracking-wider active:scale-[0.97] transition flex items-center gap-1 shadow-md hover:opacity-90 cursor-pointer"
                             style={{ backgroundColor: activeTheme.accentColor || '#9333ea', color: activeTheme.accentColor === '#ffffff' ? '#000000' : '#ffffff' }}
                           >
                             PEDIR <Wine className="w-3 h-3 text-amber-300" />
-                          </div>
+                          </button>
                         </div>
 
                       </div>
@@ -1735,21 +1788,37 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       <div
                         key={p.id}
                         onClick={() => handleOpenProductSelection(p)}
-                        className="group hover:border-amber-500 border rounded-3xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_12px_24px_rgba(245,158,11,0.12)] relative backdrop-blur-sm"
+                        className="group hover:border-amber-500 border rounded-3xl overflow-hidden flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-[0_12px_24px_rgba(245,158,11,0.12)] relative backdrop-blur-sm"
                         style={{ backgroundColor: activeTheme.cardBg, borderColor: activeTheme.cardBorder, color: activeTheme.cardTextColor }}
                       >
                         {/* Discount or promo tag */}
                         {isDiscounted && (
-                          <span className="absolute top-3.5 left-3.5 bg-red-600 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest z-10 shadow-md">
+                          <span className="absolute top-3 left-3 bg-red-600 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest z-10 shadow-md">
                             OFERTA MENÚ
                           </span>
                         )}
 
                         <div>
-                          {/* Round circular gourmet plate container layout */}
-                          <div className="w-full aspect-square bg-black/40 rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-2">
-                            {/* Product Heart Recommendation Button */}
-                            <div className="absolute top-2.5 right-2.5 z-20">
+                          {/* Full-bleed large gastronomy image */}
+                          <div className="w-full aspect-square bg-black/40 overflow-hidden flex items-center justify-center text-3xl font-bold relative border-b border-white/5">
+                            {p.imageURL ? (
+                              <img 
+                                src={p.imageURL} 
+                                alt={p.name} 
+                                className="w-full h-full object-cover group-hover:scale-105 group-hover:rotate-1 transition-all duration-500" 
+                                referrerPolicy="no-referrer"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <span>🍔</span>
+                            )}
+                          </div>
+
+                          <div className="p-3 sm:p-3.5 flex flex-col">
+                            <div className="flex items-center justify-between gap-2 mb-1 min-h-[26px]">
+                              <span className="text-[9px] font-black uppercase tracking-widest block font-mono truncate" style={{ color: storeAccent }}>
+                                🍽️ {p.category || 'MENÚ'}
+                              </span>
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -1759,38 +1828,22 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                 onCustomerUpdate={setActiveCustomer}
                                 onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
                                 variant="card-overlay"
+                                className="shrink-0"
                               />
                             </div>
-                            {p.imageURL ? (
-                              <img 
-                                src={p.imageURL} 
-                                alt={p.name} 
-                                className="w-full h-full object-cover rounded-2xl group-hover:scale-105 group-hover:rotate-1 transition-all duration-500" 
-                                referrerPolicy="no-referrer"
-                                loading="lazy"
-                              />
-                            ) : (
-                              <span>🍔</span>
+
+                            <h4 className="text-xs font-extrabold line-clamp-2 leading-tight min-h-[2.2rem] group-hover:opacity-80 transition-colors" style={{ color: activeTheme.cardTextColor }}>
+                              {p.name}
+                            </h4>
+                            {p.description && (
+                              <p className="text-[10px] opacity-70 line-clamp-1 leading-normal mt-1 mb-1">
+                                {p.description}
+                              </p>
                             )}
                           </div>
-
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-[9px] font-black uppercase tracking-widest block font-mono" style={{ color: storeAccent }}>
-                              🍽️ {p.category || 'MENÚ'}
-                            </span>
-                          </div>
-
-                          <h4 className="text-xs font-extrabold line-clamp-2 leading-tight min-h-[2.2rem] group-hover:opacity-80 transition-colors" style={{ color: activeTheme.cardTextColor }}>
-                            {p.name}
-                          </h4>
-                          {p.description && (
-                            <p className="text-[10px] opacity-70 line-clamp-1 leading-normal mt-1 mb-2">
-                              {p.description}
-                            </p>
-                          )}
                         </div>
 
-                        <div className="flex items-center justify-between gap-1 mt-3 pt-3 border-t border-white/10">
+                        <div className="px-3 sm:px-3.5 pb-3 sm:pb-3.5 pt-2 flex items-center justify-between gap-1 border-t border-white/10 mt-auto">
                           <div className="flex flex-col">
                             <span className="text-xs font-extrabold" style={{ color: storeAccent }}>
                               {getStoreCurrency()}{Number(p.price || 0).toLocaleString()}
@@ -1803,12 +1856,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           </div>
                           
                           {/* Round interactive pediment or restaurant order button */}
-                          <div 
-                            className="px-3 py-1.5 font-extrabold text-[9px] rounded-full uppercase tracking-wider active:scale-[0.97] transition flex items-center gap-1 shadow-md hover:opacity-90"
+                          <button 
+                            type="button"
+                            onClick={(e) => handleAddToCartDirect(p, e)}
+                            className="px-3 py-1.5 font-extrabold text-[9px] rounded-full uppercase tracking-wider active:scale-[0.97] transition flex items-center gap-1 shadow-md hover:opacity-90 cursor-pointer"
                             style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
                           >
                             PEDIR <Utensils className="w-3 h-3" style={{ color: getContrastText(storeAccent) }} />
-                          </div>
+                          </button>
                         </div>
 
                       </div>
@@ -1885,12 +1940,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           </div>
                           
                           {/* Modern interactive purchase button */}
-                          <div 
-                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider active:scale-95 transition duration-300 flex items-center gap-1 shadow-sm"
+                          <button 
+                            type="button"
+                            onClick={(e) => handleAddToCartDirect(p, e)}
+                            className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider active:scale-95 transition duration-300 flex items-center gap-1 shadow-sm hover:opacity-90 cursor-pointer"
                             style={{ backgroundColor: activeTheme.accentColor || '#4f46e5', color: activeTheme.accentColor === '#ffffff' ? '#000000' : '#ffffff' }}
                           >
                             Pedir <Smartphone className="w-3 h-3 text-white" />
-                          </div>
+                          </button>
                         </div>
 
                       </div>
@@ -1902,7 +1959,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     <div
                       key={p.id}
                       onClick={() => handleOpenProductSelection(p)}
-                      className="group border rounded-2xl overflow-hidden p-3.5 flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-lg relative"
+                      className="group border rounded-2xl overflow-hidden flex flex-col justify-between cursor-pointer transition-all hover:-translate-y-1 duration-300 hover:shadow-lg relative"
                       style={{ 
                         backgroundColor: activeTheme.cardBg, 
                         borderColor: activeTheme.cardBorder,
@@ -1912,7 +1969,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       {/* Off ribbon tag helper */}
                       {p.compareAtPrice && p.compareAtPrice > p.price && (
                         <span 
-                          className="absolute top-3 right-3 text-white font-extrabold text-[8px] px-2.5 py-0.5 rounded uppercase tracking-wider z-10 animate-pulse shadow-sm"
+                          className="absolute top-2.5 right-2.5 text-white font-extrabold text-[8px] px-2.5 py-0.5 rounded uppercase tracking-wider z-10 animate-pulse shadow-sm"
                           style={{ backgroundColor: storeAccent }}
                         >
                           Oferta
@@ -1920,20 +1977,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       )}
 
                       <div>
-                        <div className="w-full aspect-square bg-[#0c101d] rounded-xl mb-3 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5">
-                          {/* Product Heart Recommendation Button */}
-                          <div className="absolute top-2 right-2 z-20">
-                            <ProductRecommendationHeartButton
-                              productId={p.id}
-                              productName={p.name}
-                              storeId={profile?.uid || profile?.id || ''}
-                              storeUsername={profile?.username || ''}
-                              activeCustomer={activeCustomer}
-                              onCustomerUpdate={setActiveCustomer}
-                              onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
-                              variant="card-overlay"
-                            />
-                          </div>
+                        {/* Full-bleed large product image */}
+                        <div className="w-full aspect-square bg-[#0c101d] overflow-hidden flex items-center justify-center text-3xl font-bold relative border-b border-white/5">
                           {p.imageURL ? (
                             <img 
                               src={p.imageURL} 
@@ -1947,21 +1992,36 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           )}
                         </div>
 
-                        <span 
-                          className="text-[8px] font-black uppercase tracking-widest block mb-0.5"
-                          style={{ color: storeAccent }}
-                        >
-                          {p.category || 'General'}
-                        </span>
-                        <h4 
-                          className="text-xs font-black line-clamp-2 leading-tight min-h-[2rem]" 
-                          style={{ color: activeTheme.cardTextColor }}
-                        >
-                          {p.name}
-                        </h4>
+                        <div className="p-3 sm:p-3.5 flex flex-col flex-grow">
+                          <div className="flex items-center justify-between gap-2 mb-1 min-h-[26px]">
+                            <span 
+                              className="text-[8px] font-black uppercase tracking-widest block truncate"
+                              style={{ color: storeAccent }}
+                            >
+                              {p.category || 'General'}
+                            </span>
+                            <ProductRecommendationHeartButton
+                              productId={p.id}
+                              productName={p.name}
+                              storeId={profile?.uid || profile?.id || ''}
+                              storeUsername={profile?.username || ''}
+                              activeCustomer={activeCustomer}
+                              onCustomerUpdate={setActiveCustomer}
+                              onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                              variant="card-overlay"
+                              className="shrink-0"
+                            />
+                          </div>
+                          <h4 
+                            className="text-xs font-black line-clamp-2 leading-tight min-h-[2rem]" 
+                            style={{ color: activeTheme.cardTextColor }}
+                          >
+                            {p.name}
+                          </h4>
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-1 mt-3">
+                      <div className="px-3 sm:px-3.5 pb-3 sm:pb-3.5 pt-0 flex items-center justify-between gap-1 mt-auto">
                         <div className="flex flex-col">
                           <span 
                             className="text-xs font-black"
@@ -1977,16 +2037,19 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         </div>
                         
                         {/* Interactive Add button element */}
-                        <div 
-                          className="p-1.5 rounded-lg transition duration-300 shadow-sm flex items-center justify-center"
+                        <button 
+                          type="button"
+                          onClick={(e) => handleAddToCartDirect(p, e)}
+                          className="p-1.5 rounded-lg transition duration-300 shadow-sm flex items-center justify-center cursor-pointer active:scale-95 hover:opacity-90"
                           style={{ 
                             backgroundColor: `${storeAccent}25`, 
                             color: storeAccent,
                             border: `1px solid ${storeAccent}40`
                           }}
+                          title="Añadir al carrito"
                         >
                           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                        </div>
+                        </button>
                       </div>
 
                     </div>
@@ -2325,32 +2388,26 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                 {/* Add to Cart button */}
                 <div className="w-full sm:flex-1">
-                  {isStoreClosedNow ? (
-                    <div className="bg-red-500/10 border border-red-500/35 p-4 rounded-xl flex flex-col items-center gap-1.5 text-center text-red-400">
-                      <span className="font-extrabold text-xs flex items-center gap-2 uppercase animate-pulse">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                        </span>
-                        Tienda Cerrada
-                      </span>
-                      <p className="text-[10px] text-red-300/80 font-semibold">
+                  {isStoreClosedNow && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl mb-2.5 flex items-center gap-2 text-amber-300 text-[11px] font-semibold">
+                      <Clock className="w-4 h-4 shrink-0 text-amber-400" />
+                      <span>
                         {profile.scheduleEnabled && profile.openTime && profile.closeTime && !profile.isClosed
-                          ? `Horario de atención: ${profile.openTime} - ${profile.closeTime}`
-                          : 'No se pueden procesar pedidos en este momento.'}
-                      </p>
+                          ? `Fuera de horario (Atención: ${profile.openTime} - ${profile.closeTime}). Puedes armar tu pedido para programarlo o coordinar por WhatsApp.`
+                          : 'Tienda en pausa. Puedes armar tu pedido y coordinarlo por WhatsApp.'}
+                      </span>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleAddProductToCart}
-                      className="w-full py-3.5 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
-                      style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
-                    >
-                      <ShoppingBag className="w-4 h-4 stroke-[3]" style={{ color: getContrastText(storeAccent) }} />
-                      Añadir al Carrito ({getStoreCurrency()}{Number((selectedProduct.price || 0) * buyQuantity).toLocaleString()})
-                    </button>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={handleAddProductToCart}
+                    className="w-full py-3.5 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.98]"
+                    style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
+                  >
+                    <ShoppingBag className="w-4 h-4 stroke-[3]" style={{ color: getContrastText(storeAccent) }} />
+                    Añadir al Carrito ({getStoreCurrency()}{Number((selectedProduct.price || 0) * buyQuantity).toLocaleString()})
+                  </button>
                 </div>
               </div>
             </div>
@@ -2468,29 +2525,29 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2.5 pt-2">
-                  {isStoreClosedNow ? (
-                    <div className="col-span-2 bg-red-500/10 border border-red-500/35 p-3.5 rounded-xl text-center text-red-400">
-                      <span className="font-extrabold text-xs flex items-center justify-center gap-1.5 uppercase animate-pulse mb-1">
-                        🔴 Tienda Cerrada
+                <div className="flex flex-col gap-2 pt-2">
+                  {isStoreClosedNow && (
+                    <div className="bg-amber-500/10 border border-amber-500/35 p-3 rounded-xl text-center text-amber-300">
+                      <span className="font-extrabold text-xs flex items-center justify-center gap-1.5 uppercase mb-1">
+                        <Clock className="w-3.5 h-3.5 text-amber-400" />
+                        Tienda Fuera de Horario
                       </span>
-                      <p className="text-[10px] text-red-350 font-semibold">
+                      <p className="text-[10px] text-amber-200/90 font-semibold">
                         {profile.scheduleEnabled && profile.openTime && profile.closeTime && !profile.isClosed
-                          ? `Horario: ${profile.openTime} - ${profile.closeTime}`
-                          : 'No se pueden recibir pedidos temporalmente.'}
+                          ? `Atención: ${profile.openTime} - ${profile.closeTime}. Tu pedido quedará registrado para prepararlo en el horario habitual.`
+                          : 'Puedes registrar tu pedido y coordinar la entrega directamente por WhatsApp.'}
                       </p>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => { setIsCartOpen(false); setIsCheckoutOpen(true); }}
-                      className="col-span-2 py-4 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow cursor-pointer"
-                      style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
-                    >
-                      <span>Proceder al Registro</span>
-                      <ArrowRight className="w-4 h-4 stroke-[3.5]" />
-                    </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => { setIsCartOpen(false); setIsCheckoutOpen(true); }}
+                    className="w-full py-4 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow cursor-pointer transition active:scale-[0.98]"
+                    style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
+                  >
+                    <span>Proceder al Registro</span>
+                    <ArrowRight className="w-4 h-4 stroke-[3.5]" />
+                  </button>
                 </div>
               </div>
             )}

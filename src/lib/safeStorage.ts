@@ -21,7 +21,8 @@ const DISPOSABLE_KEY_PREFIXES = [
   'linnk_products_',
   'linnk_orders_',
   'linnk_payments_',
-  'linnk_links_'
+  'linnk_links_',
+  'linnkpro_cart_images_cache'
 ];
 
 /**
@@ -71,11 +72,13 @@ export function safeSetItem(key: string, value: string): boolean {
 
   if (typeof window === 'undefined') return false;
 
+  let localSuccess = false;
+
   // 1. Try setting in localStorage directly
   try {
     if (window.localStorage) {
       window.localStorage.setItem(key, value);
-      return true;
+      localSuccess = true;
     }
   } catch (err: any) {
     const isQuotaError = 
@@ -91,24 +94,32 @@ export function safeSetItem(key: string, value: string): boolean {
 
       try {
         window.localStorage.setItem(key, value);
-        return true;
+        localSuccess = true;
       } catch {
         // Still full after eviction, continue to fallback
       }
     }
   }
 
-  // 3. Fallback to sessionStorage
+  // 3. Always mirror to sessionStorage as high-reliability backup
   try {
     if (window.sessionStorage) {
       window.sessionStorage.setItem(key, value);
-      return true;
     }
   } catch {
     // sessionStorage also full or inaccessible
   }
 
-  // 4. Stored in memoryStorage map already
+  // If writing to localStorage failed, remove any stale copy from localStorage
+  // so safeGetItem doesn't serve outdated state over the updated sessionStorage
+  if (!localSuccess) {
+    try {
+      if (window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch {}
+  }
+
   return true;
 }
 
