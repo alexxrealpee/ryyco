@@ -22,6 +22,7 @@ import {
   PRIMARY_ADMIN_EMAIL,
   checkIsAdminEmail,
   checkIsStoreClosed,
+  getStoreOperatingScheduleInfo,
   getSubscriptionAnchorDay,
   calculateNextExpirationDate,
   getSubscriptionDaysRemaining,
@@ -30,7 +31,7 @@ import {
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
-import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile } from '../types';
+import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule } from '../types';
 import { 
   Users, 
   Settings, 
@@ -40,36 +41,39 @@ import {
   Lock, 
   Unlock, 
   Search, 
-  ArrowLeft,
-  DollarSign,
-  AlertTriangle,
-  RefreshCw,
-  Check,
-  X,
-  Eye,
-  Image as ImageIcon,
-  CreditCard,
-  Calendar,
-  History,
-  ShoppingBag,
-  Sparkles,
-  Store,
-  Download,
-  Bike,
-  Trash2,
-  FileText,
-  Phone,
-  Clock,
-  Share2,
-  Mail,
-  Plus,
-  UserCheck,
-  ShieldCheck,
-  Headphones,
-  MessageCircle,
-  Bell,
-  Volume2,
-  VolumeX
+  ArrowLeft, 
+  DollarSign, 
+  AlertTriangle, 
+  RefreshCw, 
+  Check, 
+  X, 
+  Eye, 
+  Image as ImageIcon, 
+  CreditCard, 
+  Calendar, 
+  History, 
+  ShoppingBag, 
+  Sparkles, 
+  Store, 
+  Download, 
+  Bike, 
+  Trash2, 
+  FileText, 
+  Phone, 
+  Clock, 
+  Share2, 
+  Mail, 
+  Plus, 
+  Minus, 
+  MinusCircle, 
+  UserCheck, 
+  ShieldCheck, 
+  Headphones, 
+  MessageCircle, 
+  Bell, 
+  Volume2, 
+  VolumeX,
+  Copy
 } from 'lucide-react';
 import { 
   collection, 
@@ -123,6 +127,8 @@ interface AdminUser {
   openTime?: string;
   closeTime?: string;
   scheduleEnabled?: boolean;
+  weeklySchedule?: WeeklySchedule;
+  restaurantDaysOpen?: string[];
 }
 
 const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' => {
@@ -864,18 +870,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
-  const handleExtendSubscription = async (user: AdminUser) => {
+  const handleModifySubscriptionMonths = async (user: AdminUser, monthsDelta: number = 1) => {
     try {
-      const { nextPaidUntil, anchorDay } = calculateNextExpirationDate(user, 1);
+      const { nextPaidUntil, anchorDay } = calculateNextExpirationDate(user, monthsDelta);
       const newPaidUntilStr = nextPaidUntil.toISOString();
+      const isNowActive = nextPaidUntil.getTime() > Date.now();
       
-      const updates = {
-        subscriptionStatus: 'active',
+      const updates: any = {
+        subscriptionStatus: isNowActive ? 'active' : 'expired',
         suspended: false,
-        isClosed: false,
         subscriptionPaidUntil: newPaidUntilStr,
         subscriptionAnchorDay: anchorDay
       };
+      if (isNowActive) {
+        updates.isClosed = false;
+      }
 
       const userRef = doc(db, 'profiles', user.uid);
       await setDoc(userRef, updates, { merge: true });
@@ -893,8 +902,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       // Synchronize stats in real-time
       setStats(prev => {
         const prevStatus = isSubscriptionExpiredOrSuspended(user).effectiveStatus;
-        const activeDiff = prevStatus !== 'active' ? 1 : 0;
-        const expiredDiff = prevStatus === 'expired' ? -1 : 0;
+        const newStatus = isNowActive ? 'active' : 'expired';
+        const activeDiff = (newStatus === 'active' ? 1 : 0) - (prevStatus === 'active' ? 1 : 0);
+        const expiredDiff = (newStatus === 'expired' ? 1 : 0) - (prevStatus === 'expired' ? 1 : 0);
 
         const currentActive = (prev as any).activeStoresCount ?? prev.activePaidStores ?? 0;
         const currentExpired = (prev as any).expiredStoresCount ?? 0;
@@ -912,11 +922,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         };
       });
 
-      setNotif(`Suscripción de @${user.username || 'tienda'} extendida hasta ${nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' })} (Día de corte: ${anchorDay}) y tienda ABIERTA.`);
+      const formattedDate = nextPaidUntil.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+      if (monthsDelta > 0) {
+        setNotif(`✅ Suscripción de @${user.username || 'tienda'} extendida (+1 mes) hasta ${formattedDate} (Día de corte: ${anchorDay}) y tienda ACTIVA.`);
+      } else {
+        setNotif(`🗓️ Suscripción de @${user.username || 'tienda'} reducida (-1 mes) hasta ${formattedDate} (Día de corte: ${anchorDay}). Estado: ${isNowActive ? 'ACTIVA' : 'EXPIRADA'}.`);
+      }
       setTimeout(() => setNotif(''), 4500);
     } catch (e) {
       console.error(e);
+      throw e;
     }
+  };
+
+  const handleExtendSubscription = async (user: AdminUser) => {
+    return handleModifySubscriptionMonths(user, 1);
   };
 
   const handleToggleStoreClosedStatus = async (user: AdminUser) => {
@@ -933,43 +953,165 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   };
 
   const [confirmExtendModalUser, setConfirmExtendModalUser] = useState<AdminUser | null>(null);
+  const [extendModalMonths, setExtendModalMonths] = useState<number>(1);
   const [extendingSubscription, setExtendingSubscription] = useState<boolean>(false);
 
   const handleExecuteExtendSubscription = async () => {
     if (!confirmExtendModalUser) return;
     setExtendingSubscription(true);
     try {
-      await handleExtendSubscription(confirmExtendModalUser);
+      await handleModifySubscriptionMonths(confirmExtendModalUser, extendModalMonths);
       setConfirmExtendModalUser(null);
     } catch (err) {
-      console.error("Error al extender suscripción:", err);
-      setNotif(`❌ Error al extender: ${err instanceof Error ? err.message : 'Intente nuevamente'}`);
+      console.error("Error al modificar suscripción:", err);
+      setNotif(`❌ Error al modificar: ${err instanceof Error ? err.message : 'Intente nuevamente'}`);
       setTimeout(() => setNotif(''), 4000);
     } finally {
       setExtendingSubscription(false);
     }
   };
 
+  const DAYS_OF_WEEK_LIST: Array<{ id: string; label: string; shortLabel: string }> = [
+    { id: 'lunes', label: 'Lunes', shortLabel: 'Lun' },
+    { id: 'martes', label: 'Martes', shortLabel: 'Mar' },
+    { id: 'miercoles', label: 'Miércoles', shortLabel: 'Mié' },
+    { id: 'jueves', label: 'Jueves', shortLabel: 'Jue' },
+    { id: 'viernes', label: 'Viernes', shortLabel: 'Vie' },
+    { id: 'sabado', label: 'Sábado', shortLabel: 'Sáb' },
+    { id: 'domingo', label: 'Domingo', shortLabel: 'Dom' }
+  ];
+
   const [scheduleModalUser, setScheduleModalUser] = useState<AdminUser | null>(null);
-  const [openTimeInput, setOpenTimeInput] = useState<string>('08:00');
-  const [closeTimeInput, setCloseTimeInput] = useState<string>('22:00');
   const [scheduleEnabledInput, setScheduleEnabledInput] = useState<boolean>(true);
+  const [weeklyScheduleInput, setWeeklyScheduleInput] = useState<WeeklySchedule>({});
+  const [copyFeedbackDay, setCopyFeedbackDay] = useState<string | null>(null);
   const [savingSchedule, setSavingSchedule] = useState<boolean>(false);
 
   const handleOpenScheduleModal = (user: AdminUser) => {
     setScheduleModalUser(user);
-    setOpenTimeInput(user.openTime || '08:00');
-    setCloseTimeInput(user.closeTime || '22:00');
     setScheduleEnabledInput(user.scheduleEnabled ?? Boolean(user.openTime && user.closeTime));
+
+    const base: WeeklySchedule = {};
+    const legacyDays = user.restaurantDaysOpen && user.restaurantDaysOpen.length > 0
+      ? user.restaurantDaysOpen
+      : ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+    const defOpen = user.openTime || '08:00';
+    const defClose = user.closeTime || '22:00';
+
+    DAYS_OF_WEEK_LIST.forEach(day => {
+      if (user.weeklySchedule && user.weeklySchedule[day.id]) {
+        base[day.id] = {
+          isOpen: user.weeklySchedule[day.id].isOpen ?? true,
+          openTime: user.weeklySchedule[day.id].openTime || defOpen,
+          closeTime: user.weeklySchedule[day.id].closeTime || defClose
+        };
+      } else {
+        base[day.id] = {
+          isOpen: legacyDays.includes(day.id),
+          openTime: defOpen,
+          closeTime: defClose
+        };
+      }
+    });
+
+    setWeeklyScheduleInput(base);
+    setCopyFeedbackDay(null);
+  };
+
+  const toggleDayStatus = (dayId: string) => {
+    setWeeklyScheduleInput(prev => ({
+      ...prev,
+      [dayId]: {
+        isOpen: !prev[dayId]?.isOpen,
+        openTime: prev[dayId]?.openTime || '08:00',
+        closeTime: prev[dayId]?.closeTime || '22:00'
+      }
+    }));
+  };
+
+  const updateDayTime = (dayId: string, field: 'openTime' | 'closeTime', val: string) => {
+    setWeeklyScheduleInput(prev => ({
+      ...prev,
+      [dayId]: {
+        isOpen: prev[dayId]?.isOpen ?? true,
+        openTime: prev[dayId]?.openTime || '08:00',
+        closeTime: prev[dayId]?.closeTime || '22:00',
+        [field]: val
+      }
+    }));
+  };
+
+  const copyDayScheduleToAll = (sourceDayId: string) => {
+    const source = weeklyScheduleInput[sourceDayId];
+    if (!source) return;
+    setWeeklyScheduleInput(prev => {
+      const next = { ...prev };
+      DAYS_OF_WEEK_LIST.forEach(d => {
+        next[d.id] = {
+          isOpen: prev[d.id]?.isOpen ?? true,
+          openTime: source.openTime,
+          closeTime: source.closeTime
+        };
+      });
+      return next;
+    });
+    setCopyFeedbackDay(sourceDayId);
+    setTimeout(() => setCopyFeedbackDay(null), 2500);
+  };
+
+  const applyQuickPreset = (preset: 'all_open' | 'weekdays_only' | 'weekend_only' | 'all_closed') => {
+    setWeeklyScheduleInput(prev => {
+      const next = { ...prev };
+      DAYS_OF_WEEK_LIST.forEach(d => {
+        let isOpen = true;
+        if (preset === 'all_closed') isOpen = false;
+        if (preset === 'weekdays_only') {
+          isOpen = d.id !== 'sabado' && d.id !== 'domingo';
+        }
+        if (preset === 'weekend_only') {
+          isOpen = d.id === 'sabado' || d.id === 'domingo';
+        }
+        next[d.id] = {
+          isOpen,
+          openTime: prev[d.id]?.openTime || '08:00',
+          closeTime: prev[d.id]?.closeTime || '22:00'
+        };
+      });
+      return next;
+    });
+  };
+
+  const applyTimePresetToAll = (open: string, close: string) => {
+    setWeeklyScheduleInput(prev => {
+      const next = { ...prev };
+      DAYS_OF_WEEK_LIST.forEach(d => {
+        next[d.id] = {
+          isOpen: prev[d.id]?.isOpen ?? true,
+          openTime: open,
+          closeTime: close
+        };
+      });
+      return next;
+    });
   };
 
   const handleSaveSchedule = async () => {
     if (!scheduleModalUser) return;
     setSavingSchedule(true);
     try {
+      const activeDaysList = (Object.entries(weeklyScheduleInput) as [string, DaySchedule][])
+        .filter(([_, s]) => s.isOpen)
+        .map(([dayId]) => dayId);
+
+      const firstActive = (Object.values(weeklyScheduleInput) as DaySchedule[]).find(s => s.isOpen);
+      const fallbackOpen = firstActive?.openTime || scheduleModalUser.openTime || '08:00';
+      const fallbackClose = firstActive?.closeTime || scheduleModalUser.closeTime || '22:00';
+
       const updatedData = {
-        openTime: openTimeInput,
-        closeTime: closeTimeInput,
+        weeklySchedule: weeklyScheduleInput,
+        restaurantDaysOpen: activeDaysList,
+        openTime: fallbackOpen,
+        closeTime: fallbackClose,
         scheduleEnabled: scheduleEnabledInput
       };
 
@@ -977,7 +1119,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
       setUsers(prev => prev.map(u => u.uid === scheduleModalUser.uid ? { ...u, ...updatedData } : u));
 
-      setNotif(`⏰ Horario guardado para ${scheduleModalUser.storeName || '@' + scheduleModalUser.username}: ${scheduleEnabledInput ? `${openTimeInput} - ${closeTimeInput}` : 'Desactivado'}`);
+      setNotif(`⏰ Horario guardado para ${scheduleModalUser.storeName || '@' + scheduleModalUser.username}: ${scheduleEnabledInput ? `${activeDaysList.length} días configurados` : 'Desactivado'}`);
       setTimeout(() => setNotif(''), 4000);
       setScheduleModalUser(null);
     } catch (err) {
@@ -987,6 +1129,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     } finally {
       setSavingSchedule(false);
     }
+  };
+
+  const getAdminUserScheduleSummary = (user: AdminUser) => {
+    if (!user.scheduleEnabled) {
+      return 'Inactivo';
+    }
+    if (user.weeklySchedule && Object.keys(user.weeklySchedule).length > 0) {
+      const activeCount = (Object.values(user.weeklySchedule) as DaySchedule[]).filter(d => d.isOpen).length;
+      if (activeCount === 0) return '0 días (Cerrado)';
+      return `${activeCount} días`;
+    }
+    if (user.restaurantDaysOpen && user.restaurantDaysOpen.length > 0) {
+      return `${user.restaurantDaysOpen.length} días`;
+    }
+    if (user.openTime && user.closeTime) {
+      return `${user.openTime} - ${user.closeTime}`;
+    }
+    return 'Configurar';
   };
 
   const handleApprovePayment = async (payment: SubscriptionPayment) => {
@@ -1954,30 +2114,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               className="w-full py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/20 rounded-xl text-[10.5px] font-extrabold transition cursor-pointer flex items-center justify-center gap-1.5"
                             >
                               <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                              <span>Horario: {user.scheduleEnabled && user.openTime && user.closeTime ? `${user.openTime} - ${user.closeTime}` : 'Configurar Horario'}</span>
+                              <span>Horario: {getAdminUserScheduleSummary(user)}</span>
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2 pt-2">
+                          <div className="grid grid-cols-3 gap-1.5 pt-2">
                             <button
                               type="button"
-                              onClick={() => setConfirmExtendModalUser(user)}
-                              title={`Extender 1 mes manteniendo el día de corte (${anchorDay})`}
-                              className="w-full py-2.5 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
+                              onClick={() => {
+                                setExtendModalMonths(1);
+                                setConfirmExtendModalUser(user);
+                              }}
+                              title={`Extender 1 mes (+1) manteniendo el día de corte (${anchorDay})`}
+                              className="py-2.5 px-1 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1"
                             >
-                              <Calendar className="w-4 h-4" /> +1 Mes (Corte: {anchorDay})
+                              <Plus className="w-3.5 h-3.5" /> +1 Mes
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setExtendModalMonths(-1);
+                                setConfirmExtendModalUser(user);
+                              }}
+                              title={`Quitar 1 mes (-1) manteniendo el día de corte (${anchorDay})`}
+                              className="py-2.5 px-1 bg-rose-500/15 hover:bg-rose-500 text-rose-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-rose-500/25 transition cursor-pointer flex items-center justify-center gap-1"
+                            >
+                              <Minus className="w-3.5 h-3.5" /> -1 Mes
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeletePage(user)}
                               disabled={deletingUserId === user.uid}
                               title="Eliminar esta página/tienda"
-                              className="w-full py-2.5 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-red-500/25 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                              className="py-2.5 px-1 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-red-500/25 transition cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
                             >
                               {deletingUserId === user.uid ? (
-                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               ) : (
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               )}
                               <span>Eliminar</span>
                             </button>
@@ -2146,7 +2320,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                     className="px-2 py-0.5 rounded-lg text-[9.5px] font-extrabold text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition cursor-pointer flex items-center gap-1"
                                   >
                                     <Clock className="w-3 h-3 text-indigo-400" />
-                                    <span>{user.scheduleEnabled && user.openTime && user.closeTime ? `${user.openTime} - ${user.closeTime}` : 'Horario'}</span>
+                                    <span>{getAdminUserScheduleSummary(user)}</span>
                                   </button>
                                 </div>
                               </td>
@@ -2177,11 +2351,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 <div className="flex items-center justify-end gap-1.5">
                                   <button
                                     type="button"
-                                    onClick={() => setConfirmExtendModalUser(user)}
-                                    title={`Extender 1 mes conservando el día de corte ${anchorDay}`}
+                                    onClick={() => {
+                                      setExtendModalMonths(1);
+                                      setConfirmExtendModalUser(user);
+                                    }}
+                                    title={`Extender 1 mes (+1) conservando el día de corte ${anchorDay}`}
                                     className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-indigo-500/25 transition cursor-pointer flex items-center gap-1"
                                   >
-                                    <Calendar className="w-3.5 h-3.5" /> +1 Mes (Corte)
+                                    <Plus className="w-3.5 h-3.5" /> +1 Mes
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setExtendModalMonths(-1);
+                                      setConfirmExtendModalUser(user);
+                                    }}
+                                    title={`Quitar 1 mes (-1) conservando el día de corte ${anchorDay}`}
+                                    className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-rose-500/25 transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    <Minus className="w-3.5 h-3.5" /> -1 Mes
                                   </button>
                                   <button
                                     type="button"
@@ -3069,7 +3257,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               className="px-2 py-0.5 rounded-lg text-[9.5px] font-extrabold text-indigo-300 hover:text-white bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition cursor-pointer flex items-center gap-1"
                             >
                               <Clock className="w-3 h-3 text-indigo-400" />
-                              <span>{user.scheduleEnabled && user.openTime && user.closeTime ? `${user.openTime} - ${user.closeTime}` : 'Horario'}</span>
+                              <span>{getAdminUserScheduleSummary(user)}</span>
                             </button>
                           </div>
                         </td>
@@ -3713,100 +3901,229 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
         {/* Schedule Modal for Store Opening and Closing Hours */}
         {scheduleModalUser && (
-          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
-              <div className="flex items-center justify-between border-b border-gray-850 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-gray-950 border border-gray-800 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-850 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 shadow-lg shadow-indigo-500/10">
                     <Clock className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-extrabold text-white">Horario de Apertura y Cierre</h3>
-                    <p className="text-[11px] text-gray-400 font-mono">@{scheduleModalUser.username || scheduleModalUser.storeName || scheduleModalUser.email}</p>
+                    <h3 className="text-sm sm:text-base font-extrabold text-white">Horario de Cocina y Servicio Semanal</h3>
+                    <p className="text-xs text-gray-400 font-mono">
+                      {scheduleModalUser.storeName || `@${scheduleModalUser.username}`} • <span className="text-indigo-400 font-bold">Administración de Tienda</span>
+                    </p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setScheduleModalUser(null)}
-                  className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-850 transition cursor-pointer"
+                  className="text-gray-400 hover:text-white p-2 rounded-xl hover:bg-gray-900 transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="space-y-4 pt-1">
+              {/* Modal Scrollable Body */}
+              <div className="overflow-y-auto p-4 sm:p-5 space-y-4">
                 {/* Toggle Schedule */}
-                <label className="flex items-center justify-between p-3.5 bg-gray-900/60 border border-gray-800/80 rounded-xl cursor-pointer hover:bg-gray-900 transition">
+                <label className="flex items-center justify-between p-4 bg-gray-900/60 border border-gray-800/80 rounded-2xl cursor-pointer hover:bg-gray-900 transition">
                   <div className="space-y-0.5 pr-2">
-                    <span className="text-xs font-extrabold text-white block">Activar Horario Programado</span>
-                    <span className="text-[10.5px] text-gray-400 block leading-tight">La tienda responderá automáticamente según las horas establecidas</span>
+                    <span className="text-xs sm:text-sm font-extrabold text-white block">Activar Horario Programado Semanal</span>
+                    <span className="text-[11px] text-gray-400 block leading-relaxed">
+                      La tienda abrirá y cerrará automáticamente según los horarios configurados de forma independiente para cada día.
+                    </span>
                   </div>
                   <input
                     type="checkbox"
                     checked={scheduleEnabledInput}
                     onChange={(e) => setScheduleEnabledInput(e.target.checked)}
-                    className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
+                    className="w-5 h-5 accent-indigo-500 rounded cursor-pointer shrink-0"
                   />
                 </label>
 
-                {/* Time Inputs */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-extrabold text-gray-300 block">Hora de Apertura:</label>
-                    <input
-                      type="time"
-                      value={openTimeInput}
-                      onChange={(e) => setOpenTimeInput(e.target.value)}
-                      disabled={!scheduleEnabledInput}
-                      className="w-full bg-gray-900 border border-gray-800 focus:border-indigo-500 text-white font-mono text-xs px-3 py-2.5 rounded-xl outline-none transition disabled:opacity-40"
-                    />
-                  </div>
+                {scheduleEnabledInput && (
+                  <>
+                    {/* Quick Presets */}
+                    <div className="p-3.5 bg-gray-900/40 border border-gray-850 rounded-2xl space-y-2.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] font-extrabold uppercase text-gray-400 tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-400" /> Atajos de Días:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => applyQuickPreset('all_open')}
+                            className="px-2.5 py-1 bg-gray-900 hover:bg-indigo-600/30 text-gray-300 hover:text-indigo-200 border border-gray-800 hover:border-indigo-500/40 rounded-lg text-[10.5px] font-bold transition cursor-pointer"
+                          >
+                            Todos Abiertos
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyQuickPreset('weekdays_only')}
+                            className="px-2.5 py-1 bg-gray-900 hover:bg-indigo-600/30 text-gray-300 hover:text-indigo-200 border border-gray-800 hover:border-indigo-500/40 rounded-lg text-[10.5px] font-bold transition cursor-pointer"
+                          >
+                            Lun a Vie
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => applyQuickPreset('weekend_only')}
+                            className="px-2.5 py-1 bg-gray-900 hover:bg-indigo-600/30 text-gray-300 hover:text-indigo-200 border border-gray-800 hover:border-indigo-500/40 rounded-lg text-[10.5px] font-bold transition cursor-pointer"
+                          >
+                            Solo Fin de Semana
+                          </button>
+                        </div>
+                      </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-extrabold text-gray-300 block">Hora de Cierre:</label>
-                    <input
-                      type="time"
-                      value={closeTimeInput}
-                      onChange={(e) => setCloseTimeInput(e.target.value)}
-                      disabled={!scheduleEnabledInput}
-                      className="w-full bg-gray-900 border border-gray-800 focus:border-indigo-500 text-white font-mono text-xs px-3 py-2.5 rounded-xl outline-none transition disabled:opacity-40"
-                    />
-                  </div>
-                </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-850/60">
+                        <span className="text-[11px] font-extrabold uppercase text-gray-400 tracking-wider flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-indigo-400" /> Horario a todos:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: '08:00 - 20:00', open: '08:00', close: '20:00' },
+                            { label: '09:00 - 22:00', open: '09:00', close: '22:00' },
+                            { label: '11:00 - 23:00', open: '11:00', close: '23:00' },
+                            { label: '12:00 - 00:00', open: '12:00', close: '00:00' }
+                          ].map(preset => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => applyTimePresetToAll(preset.open, preset.close)}
+                              className="px-2.5 py-1 bg-gray-900 hover:bg-indigo-600/30 text-gray-300 hover:text-indigo-200 border border-gray-800 hover:border-indigo-500/40 rounded-lg text-[10.5px] font-mono transition cursor-pointer"
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Quick presets */}
-                <div className="space-y-1.5 pt-1">
-                  <span className="text-[10px] font-extrabold uppercase text-gray-500 tracking-wider block">Atajos de Horario:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { label: '08:00 - 20:00', open: '08:00', close: '20:00' },
-                      { label: '09:00 - 22:00', open: '09:00', close: '22:00' },
-                      { label: '11:00 - 23:00', open: '11:00', close: '23:00' },
-                      { label: '12:00 - 00:00', open: '12:00', close: '00:00' }
-                    ].map(preset => (
-                      <button
-                        key={preset.label}
-                        type="button"
-                        onClick={() => {
-                          setOpenTimeInput(preset.open);
-                          setCloseTimeInput(preset.close);
-                          setScheduleEnabledInput(true);
-                        }}
-                        className="px-2.5 py-1 bg-gray-900 hover:bg-indigo-600/30 text-gray-300 hover:text-indigo-300 border border-gray-800 hover:border-indigo-500/40 rounded-lg text-[10px] font-mono transition cursor-pointer"
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                    {/* Independent Day Schedule List */}
+                    <div className="space-y-2">
+                      {DAYS_OF_WEEK_LIST.map((day) => {
+                        const schedule = weeklyScheduleInput[day.id] || { isOpen: true, openTime: '08:00', closeTime: '22:00' };
+                        const isOpen = schedule.isOpen ?? true;
+                        const isCopied = copyFeedbackDay === day.id;
+
+                        return (
+                          <div
+                            key={day.id}
+                            className={`p-3 sm:p-3.5 rounded-2xl border transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                              isOpen
+                                ? 'bg-gray-900/60 border-gray-800 hover:border-indigo-500/40'
+                                : 'bg-gray-950/40 border-gray-850/60 opacity-60'
+                            }`}
+                          >
+                            {/* Day Name & Status Toggle */}
+                            <div className="flex items-center justify-between sm:justify-start gap-3 min-w-[140px]">
+                              <span className="text-xs sm:text-sm font-extrabold text-white tracking-wide">
+                                {day.label}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleDayStatus(day.id)}
+                                className={`px-2.5 py-1 rounded-full text-[10.5px] font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+                                  isOpen
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
+                                    : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
+                                }`}
+                              >
+                                <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                                {isOpen ? 'Abierto' : 'Cerrado'}
+                              </button>
+                            </div>
+
+                            {/* Hours or Closed notice */}
+                            {isOpen ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex items-center gap-1.5 bg-gray-950/80 px-2.5 py-1.5 rounded-xl border border-gray-800">
+                                  <span className="text-[10px] uppercase font-bold text-gray-400">Abre:</span>
+                                  <input
+                                    type="time"
+                                    value={schedule.openTime || '08:00'}
+                                    onChange={(e) => updateDayTime(day.id, 'openTime', e.target.value)}
+                                    className="bg-transparent text-white font-mono text-xs outline-none cursor-pointer"
+                                  />
+                                </div>
+
+                                <span className="text-gray-500 font-bold text-xs">-</span>
+
+                                <div className="flex items-center gap-1.5 bg-gray-950/80 px-2.5 py-1.5 rounded-xl border border-gray-800">
+                                  <span className="text-[10px] uppercase font-bold text-gray-400">Cierra:</span>
+                                  <input
+                                    type="time"
+                                    value={schedule.closeTime || '22:00'}
+                                    onChange={(e) => updateDayTime(day.id, 'closeTime', e.target.value)}
+                                    className="bg-transparent text-white font-mono text-xs outline-none cursor-pointer"
+                                  />
+                                </div>
+
+                                {/* Copy to all button */}
+                                <button
+                                  type="button"
+                                  onClick={() => copyDayScheduleToAll(day.id)}
+                                  title="Copiar estas horas a los demás días"
+                                  className={`px-2.5 py-1.5 rounded-xl text-[10.5px] font-bold border transition cursor-pointer flex items-center gap-1 shrink-0 ${
+                                    isCopied
+                                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                      : 'bg-gray-900 hover:bg-indigo-600/20 text-gray-400 hover:text-indigo-300 border-gray-800 hover:border-indigo-500/30'
+                                  }`}
+                                >
+                                  {isCopied ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                      <span>¡Copiado!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3.5 h-3.5" />
+                                      <span className="hidden sm:inline">Copiar a todos</span>
+                                      <span className="sm:hidden">Copiar</span>
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between sm:justify-end gap-2 text-xs text-gray-500 py-1">
+                                <span>Sin servicio programado</span>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleDayStatus(day.id)}
+                                  className="text-xs text-indigo-400 hover:text-indigo-300 font-bold underline cursor-pointer"
+                                >
+                                  Habilitar día
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Summary Footer in content */}
+                    <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-400 pt-1 px-1">
+                      <span>
+                        Días activos configurados:{' '}
+                        <strong className="text-white font-bold">
+                          {(Object.values(weeklyScheduleInput) as DaySchedule[]).filter((s) => s.isOpen).length} de 7 días
+                        </strong>
+                      </span>
+                      <span className="text-gray-500">
+                        Zona horaria de referencia: Colombia (UTC-5)
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 pt-3 border-t border-gray-850">
+              {/* Action Buttons Footer */}
+              <div className="flex items-center gap-3 p-4 sm:p-5 border-t border-gray-850 bg-gray-950/80 shrink-0">
                 <button
                   type="button"
                   onClick={() => setScheduleModalUser(null)}
-                  className="flex-1 py-2.5 bg-gray-900 hover:bg-gray-850 text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer"
+                  className="flex-1 py-3 bg-gray-900 hover:bg-gray-850 text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -3814,43 +4131,49 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   type="button"
                   onClick={handleSaveSchedule}
                   disabled={savingSchedule}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 shadow-lg shadow-indigo-600/20"
                 >
                   {savingSchedule ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
                   ) : (
                     <Check className="w-4 h-4" />
                   )}
-                  <span>Guardar Horario</span>
+                  <span>Guardar Horario Semanal</span>
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Modal para Confirmar Extensión +1 Mes (Corte) */}
+        {/* Modal para Ajustar Meses de Suscripción (+1 Mes o -1 Mes) con Día de Corte */}
         {confirmExtendModalUser && (() => {
           const user = confirmExtendModalUser;
-          const { nextPaidUntil, anchorDay } = calculateNextExpirationDate(user, 1);
+          const isAdding = extendModalMonths > 0;
+          const { nextPaidUntil, anchorDay } = calculateNextExpirationDate(user, extendModalMonths);
           const formatSpanishDate = (dateStr?: string | null | Date) => {
             if (!dateStr) return 'Sin pago activo';
             const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
             if (isNaN(d.getTime())) return 'Sin pago activo';
             return d.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
           };
+          const isNextActive = nextPaidUntil.getTime() > Date.now();
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-              <div className="bg-[#0f1422] border border-indigo-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4">
+              <div className={`bg-[#0f1422] border ${isAdding ? 'border-indigo-500/40 shadow-indigo-950/50' : 'border-rose-500/40 shadow-rose-950/50'} rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 transition-all`}>
                 {/* Encabezado */}
                 <div className="flex items-center justify-between border-b border-gray-800 pb-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 rounded-xl">
-                      <Calendar className="w-5 h-5" />
+                    <div className={`p-2 ${isAdding ? 'bg-indigo-500/15 border border-indigo-500/30 text-indigo-400' : 'bg-rose-500/15 border border-rose-500/30 text-rose-400'} rounded-xl`}>
+                      {isAdding ? <Calendar className="w-5 h-5" /> : <MinusCircle className="w-5 h-5" />}
                     </div>
                     <div>
-                      <h3 className="text-sm font-black text-white">Confirmar Extensión (+1 Mes)</h3>
-                      <p className="text-[11px] text-gray-400">Renovación de suscripción con día de corte</p>
+                      <h3 className="text-sm font-black text-white">
+                        {isAdding ? 'Confirmar Extensión (+1 Mes)' : 'Confirmar Reducción (-1 Mes)'}
+                      </h3>
+                      <p className="text-[11px] text-gray-400">
+                        {isAdding ? 'Renovación de suscripción con día de corte' : 'Ajuste de suscripción con día de corte'}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -3859,6 +4182,32 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition cursor-pointer"
                   >
                     <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Selector rápido: +1 Mes o -1 Mes */}
+                <div className="grid grid-cols-2 gap-1.5 bg-gray-950 p-1 rounded-xl border border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setExtendModalMonths(1)}
+                    className={`py-2 text-xs font-black rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      isAdding
+                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Agregar 1 Mes (+1)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExtendModalMonths(-1)}
+                    className={`py-2 text-xs font-black rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                      !isAdding
+                        ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                    }`}
+                  >
+                    <Minus className="w-3.5 h-3.5" /> Quitar 1 Mes (-1)
                   </button>
                 </div>
 
@@ -3881,15 +4230,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between bg-emerald-500/10 -mx-4 px-4 py-2.5 border-y border-emerald-500/20">
-                    <span className="text-xs text-emerald-300 font-bold flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      Nuevo Vencimiento (+1 Mes):
-                    </span>
-                    <span className="text-xs font-mono font-black text-emerald-400">
-                      {formatSpanishDate(nextPaidUntil)}
-                    </span>
-                  </div>
+                  {isAdding ? (
+                    <div className="flex items-center justify-between bg-emerald-500/10 -mx-4 px-4 py-2.5 border-y border-emerald-500/20">
+                      <span className="text-xs text-emerald-300 font-bold flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                        Nuevo Vencimiento (+1 Mes):
+                      </span>
+                      <span className="text-xs font-mono font-black text-emerald-400">
+                        {formatSpanishDate(nextPaidUntil)}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between bg-rose-500/10 -mx-4 px-4 py-2.5 border-y border-rose-500/20">
+                      <span className="text-xs text-rose-300 font-bold flex items-center gap-1.5">
+                        <MinusCircle className="w-3.5 h-3.5 text-rose-400" />
+                        Nuevo Vencimiento (-1 Mes):
+                      </span>
+                      <span className="text-xs font-mono font-black text-rose-400">
+                        {formatSpanishDate(nextPaidUntil)}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="flex items-center justify-between pt-0.5">
                     <span className="text-xs text-gray-400 font-semibold">Día de Corte:</span>
@@ -3897,10 +4258,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       Día {anchorDay}
                     </span>
                   </div>
+
+                  {!isAdding && !isNextActive && (
+                    <div className="p-2 bg-amber-500/15 border border-amber-500/30 rounded-lg text-[10.5px] text-amber-300 font-semibold text-center">
+                      ⚠️ La nueva fecha queda en el pasado. El estado de la tienda pasará a <strong>EXPIRADO</strong>.
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-[11.5px] text-gray-300 text-center leading-relaxed">
-                  ¿Deseas confirmar la adición de <strong className="text-white font-black">+1 mes</strong> de servicio a esta tienda? El estado se activará automáticamente.
+                  {isAdding ? (
+                    <>¿Deseas confirmar la adición de <strong className="text-white font-black">+1 mes</strong> de servicio a esta tienda? El estado se activará automáticamente.</>
+                  ) : (
+                    <>¿Deseas confirmar la reducción de <strong className="text-white font-black">-1 mes</strong> de servicio a esta tienda? El día de corte ({anchorDay}) se mantendrá.</>
+                  )}
                 </p>
 
                 {/* Botones de acción */}
@@ -3917,14 +4288,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     type="button"
                     onClick={handleExecuteExtendSubscription}
                     disabled={extendingSubscription}
-                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/40 disabled:opacity-50"
+                    className={`flex-1 py-2.5 ${
+                      isAdding 
+                        ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/40' 
+                        : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-900/40'
+                    } font-extrabold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg disabled:opacity-50`}
                   >
                     {extendingSubscription ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
+                    ) : isAdding ? (
                       <Check className="w-4 h-4" />
+                    ) : (
+                      <Minus className="w-4 h-4" />
                     )}
-                    <span>Confirmar +1 Mes</span>
+                    <span>{isAdding ? 'Confirmar +1 Mes' : 'Confirmar -1 Mes'}</span>
                   </button>
                 </div>
               </div>

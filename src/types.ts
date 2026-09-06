@@ -117,10 +117,35 @@ export interface UserProfile {
   openTime?: string;
   closeTime?: string;
   scheduleEnabled?: boolean;
+  weeklySchedule?: WeeklySchedule;
   bankAccounts?: BankAccount[];
   coverOpacity?: number;
   customTheme?: CustomTheme;
+  // Restaurant specific fields
+  restaurantCuisine?: string;
+  restaurantDeliveryTime?: string;
+  restaurantAveragePrice?: string;
+  restaurantAddress?: string;
+  restaurantCity?: string;
+  restaurantReference?: string;
+  restaurantPhone?: string;
+  restaurantWifiPass?: string;
+  restaurantTableCount?: number;
+  restaurantAcceptsDelivery?: boolean;
+  restaurantAcceptsTakeaway?: boolean;
+  restaurantAcceptsTableOrders?: boolean;
+  restaurantPaymentMethods?: string[];
+  restaurantChefNote?: string;
+  restaurantDaysOpen?: string[];
 }
+
+export interface DaySchedule {
+  isOpen: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+export type WeeklySchedule = Record<string, DaySchedule>;
 
 export interface BankAccount {
   id: string;

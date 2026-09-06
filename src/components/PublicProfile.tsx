@@ -13,6 +13,7 @@ import {
   saveOrder,
   fetchSystemSettings,
   checkIsStoreClosed,
+  getStoreOperatingScheduleInfo,
   saveCustomerProfile,
   fetchCustomerProfileByPhone,
   subscribeStoreTheme,
@@ -381,6 +382,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   const isStoreClosedNow = useMemo(() => {
     return checkIsStoreClosed(profile);
+  }, [profile, nowTick]);
+
+  const scheduleInfo = useMemo(() => {
+    return getStoreOperatingScheduleInfo(profile);
   }, [profile, nowTick]);
 
   const [retryCount, setRetryCount] = useState(0);
@@ -1166,8 +1171,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           <span className="relative z-10 flex items-center gap-2 text-center leading-normal">
             <AlertTriangle className="w-4 h-4 animate-bounce shrink-0 text-white" />
             <span className="animate-pulse">
-              {profile?.scheduleEnabled && profile?.openTime && profile?.closeTime && !profile?.isClosed
-                ? `TIENDA CERRADA POR HORARIO (${profile.openTime} - ${profile.closeTime}) • NO SE RECIBEN PEDIDOS`
+              {profile?.scheduleEnabled && !profile?.isClosed && scheduleInfo.scheduleActive
+                ? (scheduleInfo.isOpenToday
+                    ? `TIENDA CERRADA POR HORARIO (HOY: ${scheduleInfo.todayScheduleText}) • NO SE RECIBEN PEDIDOS`
+                    : `TIENDA CERRADA HOY (${scheduleInfo.dayLabel.toUpperCase()}) • NO SE RECIBEN PEDIDOS`)
                 : 'TIENDA CERRADA TEMPORALMENTE • NO SE ESTÁN RECIBIENDO PEDIDOS'}
             </span>
           </span>
@@ -2392,8 +2399,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     <div className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl mb-2.5 flex items-center gap-2 text-amber-300 text-[11px] font-semibold">
                       <Clock className="w-4 h-4 shrink-0 text-amber-400" />
                       <span>
-                        {profile.scheduleEnabled && profile.openTime && profile.closeTime && !profile.isClosed
-                          ? `Fuera de horario (Atención: ${profile.openTime} - ${profile.closeTime}). Puedes armar tu pedido para programarlo o coordinar por WhatsApp.`
+                        {profile.scheduleEnabled && !profile.isClosed && scheduleInfo.scheduleActive
+                          ? (scheduleInfo.isOpenToday
+                              ? `Fuera de horario (Hoy: ${scheduleInfo.todayScheduleText}). Puedes armar tu pedido para programarlo o coordinar por WhatsApp.`
+                              : `Cerrado hoy (${scheduleInfo.dayLabel}). Puedes armar tu pedido para programarlo o coordinar por WhatsApp.`)
                           : 'Tienda en pausa. Puedes armar tu pedido y coordinarlo por WhatsApp.'}
                       </span>
                     </div>
@@ -2533,8 +2542,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         Tienda Fuera de Horario
                       </span>
                       <p className="text-[10px] text-amber-200/90 font-semibold">
-                        {profile.scheduleEnabled && profile.openTime && profile.closeTime && !profile.isClosed
-                          ? `Atención: ${profile.openTime} - ${profile.closeTime}. Tu pedido quedará registrado para prepararlo en el horario habitual.`
+                        {profile.scheduleEnabled && !profile.isClosed && scheduleInfo.scheduleActive
+                          ? (scheduleInfo.isOpenToday
+                              ? `Atención hoy: ${scheduleInfo.todayScheduleText}. Tu pedido quedará registrado para prepararlo en el horario habitual.`
+                              : `Cerrado hoy (${scheduleInfo.dayLabel}). Tu pedido quedará registrado para prepararlo en el horario habitual.`)
                           : 'Puedes registrar tu pedido y coordinar la entrega directamente por WhatsApp.'}
                       </p>
                     </div>

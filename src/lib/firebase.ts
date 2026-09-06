@@ -42,7 +42,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule } from '../types';
 import { safeSetItem } from './safeStorage';
 
 // Concrete public config from firebase-applet-config.json
@@ -2253,8 +2253,203 @@ export async function saveSubscriptionPayment(payment: SubscriptionPayment): Pro
 
 /**
  * Evaluates whether a store profile is currently closed,
- * taking into account both manual override (isClosed) and automated operating schedule (scheduleEnabled, openTime, closeTime).
+ * taking into account manual override (isClosed), weekly custom day schedules (weeklySchedule),
+ * and automated operating schedule (scheduleEnabled, openTime, closeTime, restaurantDaysOpen).
  */
+export const SPANISH_DAYS_MAP: { id: string; label: string; index: number }[] = [
+  { id: 'domingo', label: 'Domingo', index: 0 },
+  { id: 'lunes', label: 'Lunes', index: 1 },
+  { id: 'martes', label: 'Martes', index: 2 },
+  { id: 'miercoles', label: 'Miércoles', index: 3 },
+  { id: 'jueves', label: 'Jueves', index: 4 },
+  { id: 'viernes', label: 'Viernes', index: 5 },
+  { id: 'sabado', label: 'Sábado', index: 6 }
+];
+
+export function getColombiaCurrentDayAndMinutes(): { dayId: string; dayIndex: number; dayLabel: string; currentMinutes: number } {
+  const DAY_IDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const DAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(new Date());
+    const weekdayPart = parts.find(p => p.type === 'weekday')?.value;
+    const hourPart = parts.find(p => p.type === 'hour')?.value;
+    const minutePart = parts.find(p => p.type === 'minute')?.value;
+    
+    const weekdayMap: Record<string, number> = {
+      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6
+    };
+    const dayIndex = (weekdayPart && weekdayMap[weekdayPart] !== undefined) ? weekdayMap[weekdayPart] : new Date().getDay();
+    const dayId = DAY_IDS[dayIndex] || 'lunes';
+    const dayLabel = DAY_LABELS[dayIndex] || 'Lunes';
+    
+    const bH = hourPart ? parseInt(hourPart, 10) : new Date().getHours();
+    const bM = minutePart ? parseInt(minutePart, 10) : new Date().getMinutes();
+    const currentMinutes = (!isNaN(bH) && !isNaN(bM)) ? (bH % 24) * 60 + bM : (new Date().getHours() * 60 + new Date().getMinutes());
+
+    return { dayId, dayIndex, dayLabel, currentMinutes };
+  } catch {
+    const now = new Date();
+    const dayIndex = now.getDay();
+    const dayId = DAY_IDS[dayIndex] || 'lunes';
+    const dayLabel = DAY_LABELS[dayIndex] || 'Lunes';
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return { dayId, dayIndex, dayLabel, currentMinutes };
+  }
+}
+
+/**
+ * Returns operating schedule details for the current day and overall status
+ */
+export function getStoreOperatingScheduleInfo(profile?: {
+  scheduleEnabled?: boolean;
+  openTime?: string;
+  closeTime?: string;
+  restaurantDaysOpen?: string[];
+  weeklySchedule?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
+  isClosed?: boolean;
+  suspended?: boolean;
+  subscriptionStatus?: string;
+  subscriptionTrialExpires?: string;
+} | null): {
+  scheduleActive: boolean;
+  isClosedBySchedule: boolean;
+  isOpenToday: boolean;
+  todayScheduleText: string;
+  dayLabel: string;
+  openTime?: string;
+  closeTime?: string;
+} {
+  if (!profile || !profile.scheduleEnabled) {
+    return {
+      scheduleActive: false,
+      isClosedBySchedule: false,
+      isOpenToday: true,
+      todayScheduleText: '',
+      dayLabel: ''
+    };
+  }
+
+  const { dayId, dayIndex, dayLabel, currentMinutes } = getColombiaCurrentDayAndMinutes();
+  const DAY_IDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
+  // Check custom weeklySchedule first
+  if (profile.weeklySchedule && typeof profile.weeklySchedule === 'object') {
+    const todaySched = profile.weeklySchedule[dayId];
+    
+    // Check if the store was open yesterday night and closes today after midnight
+    const prevDayIndex = (dayIndex + 6) % 7;
+    const prevDayId = DAY_IDS[prevDayIndex];
+    const prevSched = profile.weeklySchedule[prevDayId];
+    let coveredByPrevDayOvernight = false;
+
+    if (prevSched && prevSched.isOpen && prevSched.openTime && prevSched.closeTime) {
+      const [pO_H, pO_M] = prevSched.openTime.split(':').map(n => parseInt(n, 10));
+      const [pC_H, pC_M] = prevSched.closeTime.split(':').map(n => parseInt(n, 10));
+      if (!isNaN(pO_H) && !isNaN(pO_M) && !isNaN(pC_H) && !isNaN(pC_M)) {
+        const prevOpenMins = pO_H * 60 + pO_M;
+        const prevCloseMins = pC_H * 60 + pC_M;
+        if (prevCloseMins < prevOpenMins && currentMinutes < prevCloseMins) {
+          // Store is currently running on yesterday night's shift!
+          coveredByPrevDayOvernight = true;
+          return {
+            scheduleActive: true,
+            isClosedBySchedule: false,
+            isOpenToday: true,
+            todayScheduleText: `Turno extendido hasta las ${prevSched.closeTime}`,
+            dayLabel,
+            openTime: prevSched.openTime,
+            closeTime: prevSched.closeTime
+          };
+        }
+      }
+    }
+
+    if (!todaySched || !todaySched.isOpen) {
+      return {
+        scheduleActive: true,
+        isClosedBySchedule: true,
+        isOpenToday: false,
+        todayScheduleText: `Cerrado los ${dayLabel}s`,
+        dayLabel
+      };
+    }
+
+    const openStr = todaySched.openTime || '11:00';
+    const closeStr = todaySched.closeTime || '23:00';
+    const [oH, oM] = openStr.split(':').map(n => parseInt(n, 10));
+    const [cH, cM] = closeStr.split(':').map(n => parseInt(n, 10));
+    const openMins = (!isNaN(oH) && !isNaN(oM)) ? oH * 60 + oM : 11 * 60;
+    const closeMins = (!isNaN(cH) && !isNaN(cM)) ? cH * 60 + cM : 23 * 60;
+
+    let isWithinHours = false;
+    if (closeMins > openMins) {
+      isWithinHours = currentMinutes >= openMins && currentMinutes < closeMins;
+    } else if (closeMins < openMins) {
+      // Overnight (e.g. 18:00 - 02:00)
+      isWithinHours = currentMinutes >= openMins || currentMinutes < closeMins;
+    } else {
+      isWithinHours = true; // 24 hours
+    }
+
+    return {
+      scheduleActive: true,
+      isClosedBySchedule: !isWithinHours,
+      isOpenToday: true,
+      todayScheduleText: `${openStr} - ${closeStr}`,
+      dayLabel,
+      openTime: openStr,
+      closeTime: closeStr
+    };
+  }
+
+  // Fallback to legacy single openTime/closeTime and restaurantDaysOpen
+  const daysList = profile.restaurantDaysOpen || ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
+  const isOpenToday = daysList.includes(dayId);
+
+  if (!isOpenToday) {
+    return {
+      scheduleActive: true,
+      isClosedBySchedule: true,
+      isOpenToday: false,
+      todayScheduleText: `Cerrado los ${dayLabel}s`,
+      dayLabel
+    };
+  }
+
+  const openStr = profile.openTime || '11:00';
+  const closeStr = profile.closeTime || '23:00';
+  const [oH, oM] = openStr.split(':').map(n => parseInt(n, 10));
+  const [cH, cM] = closeStr.split(':').map(n => parseInt(n, 10));
+  const openMins = (!isNaN(oH) && !isNaN(oM)) ? oH * 60 + oM : 11 * 60;
+  const closeMins = (!isNaN(cH) && !isNaN(cM)) ? cH * 60 + cM : 23 * 60;
+
+  let isWithinHours = false;
+  if (closeMins > openMins) {
+    isWithinHours = currentMinutes >= openMins && currentMinutes < closeMins;
+  } else if (closeMins < openMins) {
+    isWithinHours = currentMinutes >= openMins || currentMinutes < closeMins;
+  } else {
+    isWithinHours = true;
+  }
+
+  return {
+    scheduleActive: true,
+    isClosedBySchedule: !isWithinHours,
+    isOpenToday: true,
+    todayScheduleText: `${openStr} - ${closeStr}`,
+    dayLabel,
+    openTime: openStr,
+    closeTime: closeStr
+  };
+}
+
 export function checkIsStoreClosed(profile?: {
   isClosed?: boolean;
   suspended?: boolean;
@@ -2263,6 +2458,8 @@ export function checkIsStoreClosed(profile?: {
   scheduleEnabled?: boolean;
   openTime?: string;
   closeTime?: string;
+  restaurantDaysOpen?: string[];
+  weeklySchedule?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
 } | null): boolean {
   if (!profile) return false;
 
@@ -2287,57 +2484,12 @@ export function checkIsStoreClosed(profile?: {
   // 3. Manual override takes highest priority if explicitly set to true
   if (profile.isClosed === true) return true;
 
-  // 4. Automated schedule calculation if enabled and valid time strings exist
-  if (
-    profile.scheduleEnabled === true &&
-    typeof profile.openTime === 'string' &&
-    typeof profile.closeTime === 'string' &&
-    profile.openTime.includes(':') &&
-    profile.closeTime.includes(':')
-  ) {
+  // 4. Automated schedule calculation if enabled
+  if (profile.scheduleEnabled === true) {
     try {
-      // Calculate current minutes in Colombia timezone (America/Bogota)
-      let currentMinutes: number;
-      try {
-        const bogotaParts = new Intl.DateTimeFormat('en-US', {
-          timeZone: 'America/Bogota',
-          hour: 'numeric',
-          minute: 'numeric',
-          hour12: false
-        }).formatToParts(new Date());
-        
-        const hourPart = bogotaParts.find(p => p.type === 'hour')?.value;
-        const minutePart = bogotaParts.find(p => p.type === 'minute')?.value;
-        const bH = hourPart ? parseInt(hourPart, 10) : NaN;
-        const bM = minutePart ? parseInt(minutePart, 10) : NaN;
-        
-        currentMinutes = (!isNaN(bH) && !isNaN(bM)) ? (bH % 24) * 60 + bM : (new Date().getHours() * 60 + new Date().getMinutes());
-      } catch {
-        const now = new Date();
-        currentMinutes = now.getHours() * 60 + now.getMinutes();
-      }
-
-      const openParts = profile.openTime.split(':');
-      const closeParts = profile.closeTime.split(':');
-
-      if (openParts.length >= 2 && closeParts.length >= 2) {
-        const openH = parseInt(openParts[0], 10);
-        const openM = parseInt(openParts[1], 10);
-        const closeH = parseInt(closeParts[0], 10);
-        const closeM = parseInt(closeParts[1], 10);
-
-        if (!isNaN(openH) && !isNaN(openM) && !isNaN(closeH) && !isNaN(closeM)) {
-          const openMins = openH * 60 + openM;
-          const closeMins = closeH * 60 + closeM;
-
-          if (closeMins > openMins) {
-            // Standard day schedule e.g., 08:00 - 22:00
-            if (currentMinutes < openMins || currentMinutes >= closeMins) return true;
-          } else if (closeMins < openMins) {
-            // Overnight schedule e.g., 18:00 - 03:00 (crosses midnight)
-            if (currentMinutes < openMins && currentMinutes >= closeMins) return true;
-          }
-        }
+      const scheduleInfo = getStoreOperatingScheduleInfo(profile);
+      if (scheduleInfo.isClosedBySchedule) {
+        return true;
       }
     } catch (e) {
       console.error("Error evaluating store schedule:", e);
@@ -2753,8 +2905,12 @@ export function calculateNextExpirationDate(
   let baseDate: Date;
   if (user?.subscriptionPaidUntil) {
     const currentPaidUntil = new Date(user.subscriptionPaidUntil);
-    if (!isNaN(currentPaidUntil.getTime()) && currentPaidUntil.getTime() > Date.now()) {
-      baseDate = currentPaidUntil;
+    if (!isNaN(currentPaidUntil.getTime())) {
+      if (monthsToAdd < 0 || currentPaidUntil.getTime() > Date.now()) {
+        baseDate = currentPaidUntil;
+      } else {
+        baseDate = new Date();
+      }
     } else {
       baseDate = new Date();
     }
@@ -2885,6 +3041,8 @@ export interface PaginatedSubscriptionsResult {
     openTime?: string;
     closeTime?: string;
     scheduleEnabled?: boolean;
+    weeklySchedule?: WeeklySchedule;
+    restaurantDaysOpen?: string[];
   }>;
   lastDoc: QueryDocumentSnapshot | null;
   hasMore: boolean;
@@ -2939,7 +3097,9 @@ export async function fetchAdminSubscriptionsBatch(
         isClosed: d.isClosed || false,
         openTime: d.openTime || '',
         closeTime: d.closeTime || '',
-        scheduleEnabled: d.scheduleEnabled || false
+        scheduleEnabled: d.scheduleEnabled || false,
+        weeklySchedule: d.weeklySchedule || null,
+        restaurantDaysOpen: d.restaurantDaysOpen || []
       });
     });
 

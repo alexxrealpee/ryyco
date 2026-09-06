@@ -69,6 +69,7 @@ import {
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
+import { RestaurantDataTab } from './RestaurantDataTab';
 import { 
   saveProfile, 
   PREDEFINED_THEMES, 
@@ -88,6 +89,7 @@ import {
   fetchMySubscriptionPayments,
   saveSubscriptionPayment,
   checkIsStoreClosed,
+  getStoreOperatingScheduleInfo,
   getPlanProductLimit,
   checkIsAdminEmail,
   fetchSystemSettings,
@@ -215,7 +217,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'design' | 'analytics' | 'subscription' | 'bank'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank'>('overview');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -650,32 +652,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // Submit Profile update (Design Tab)
   const handleUpdateStoreProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUsernameError('');
     try {
-      const cleanUsername = usernameField.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-      if (cleanUsername.length < 3) {
-        setUsernameError('El nombre de usuario debe tener al menos 3 caracteres.');
-        return;
-      }
-      
-      if (cleanUsername !== profile.username) {
-        setCheckingUsername(true);
-        const available = await isUsernameAvailable(cleanUsername);
-        setCheckingUsername(false);
-        if (!available) {
-          setUsernameError('Este enlace de la tienda ya está ocupado por otro usuario.');
-          return;
-        }
-      }
-
-      const updatedProfile = {
-        ...profile,
-        username: cleanUsername
-      };
-
-      await saveProfile(updatedProfile);
-      setProfile(updatedProfile);
-      alert("¡Perfil de la tienda guardado con éxito!");
+      await saveProfile(profile);
+      alert("¡Diseño visual de la tienda guardado con éxito!");
     } catch (err) {
       console.error(err);
       alert("Ocurrió un error al guardar los cambios.");
@@ -1472,6 +1451,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             Diseñador de Tienda
           </button>
 
+          {/* Datos del restaurante */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('restaurant')}
+            className={`w-auto md:w-full text-start py-1.5 md:py-3 px-2 md:px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 shrink-0 transition ${
+              activeTab === 'restaurant' 
+                ? 'bg-amber-400/10 text-amber-400 border border-amber-500/20' 
+                : 'text-gray-400 hover:text-white hover:bg-gray-900 border border-transparent'
+            }`}
+          >
+            <Utensils className="w-4 h-4 text-amber-400" />
+            <span>Datos del restaurante</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('analytics')}
@@ -1596,6 +1589,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                     {(() => {
                       const isSuspended = profile.suspended || profile.subscriptionStatus === 'suspended';
                       const isClosedNow = checkIsStoreClosed(profile);
+                      const scheduleInfo = getStoreOperatingScheduleInfo(profile);
                       return (
                         <div className={`p-6 rounded-3xl border transition-all duration-300 ${
                           isSuspended
@@ -1613,10 +1607,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 <h3 className="text-base font-extrabold text-white tracking-tight">
                                   Tu tienda se encuentra: {isSuspended ? '🔴 CERRADA (SUSPENDIDA)' : isClosedNow ? '🔴 CERRADA' : '🟢 ABIERTA'}
                                 </h3>
-                                {profile.scheduleEnabled && profile.openTime && profile.closeTime && !isSuspended && (
+                                {profile.scheduleEnabled && scheduleInfo.scheduleActive && !isSuspended && (
                                   <span className="text-xs font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1 ml-2">
                                     <Clock className="w-3 h-3 text-indigo-400" />
-                                    Horario: {profile.openTime} - {profile.closeTime}
+                                    {scheduleInfo.isOpenToday ? `Hoy: ${scheduleInfo.todayScheduleText}` : `Hoy (${scheduleInfo.dayLabel}): Cerrado`}
                                   </span>
                                 )}
                               </div>
@@ -1626,7 +1620,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   : profile.isClosed 
                                   ? 'Tienda cerrada manualmente. Tus clientes verán un letrero animado de "Tienda Cerrada".'
                                   : isClosedNow
-                                  ? `Tienda cerrada automáticamente según el horario asignado (${profile.openTime} - ${profile.closeTime}). Se abrirá automáticamente dentro del horario.`
+                                  ? `Tienda cerrada automáticamente según el horario asignado (${scheduleInfo.isOpenToday ? `Hoy: ${scheduleInfo.todayScheduleText}` : `Hoy ${scheduleInfo.dayLabel}: Cerrado`}). Se abrirá automáticamente dentro del horario.`
                                   : 'Tus clientes pueden navegar por tu tienda, añadir productos al carrito y enviarte sus pedidos directo a tu WhatsApp.'
                                 }
                               </p>
@@ -2801,8 +2795,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   <div className="space-y-6 w-full min-w-0 max-w-full">
                     <div className="border-b border-gray-900 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 w-full min-w-0">
                       <div className="min-w-0">
-                        <h2 className="text-lg sm:text-xl font-bold text-white truncate">Diseño de Tienda & Preferencias</h2>
-                        <p className="text-xs text-gray-400 font-medium mt-0.5">Reconfigura logotipos, elige divisas, decora colores tipográficos, temas y slogans.</p>
+                        <h2 className="text-lg sm:text-xl font-bold text-white truncate">Diseño de Tienda & Apariencia</h2>
+                        <p className="text-xs text-gray-400 font-medium mt-0.5">Personaliza logotipos, banners de portada, paleta de colores, tipografías y temas visuales.</p>
                       </div>
                     </div>
 
@@ -2810,362 +2804,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       
                       {/* Configuration values form */}
                       <form id="store-profile-form" onSubmit={handleUpdateStoreProfile} className="lg:col-span-7 bg-gray-950 border border-gray-900 p-4 sm:p-6 rounded-2xl sm:rounded-3xl space-y-5 w-full min-w-0 max-w-full">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 block">Datos del escaparate</span>
-                        
-                        <div className="w-full min-w-0">
-                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Enlace / Nombre de Usuario de tu Tienda</label>
-                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-500 w-full min-w-0">
-                            <span className="bg-gray-950 text-gray-400 px-2.5 sm:px-3 py-2 flex items-center text-xs font-bold border-r border-gray-850 select-none shrink-0">ryyco.com/</span>
-                            <input
-                              type="text"
-                              required
-                              value={usernameField}
-                              onChange={(e) => {
-                                setUsernameField(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''));
-                                setUsernameError('');
-                              }}
-                              className="flex-1 min-w-0 w-full h-11 bg-transparent px-3 text-xs font-semibold outline-none text-white focus:ring-0 placeholder:text-gray-700"
-                              placeholder="mi-tienda"
-                            />
-                          </div>
-                          {checkingUsername && <p className="text-[10px] text-indigo-400 mt-1">Verificando disponibilidad...</p>}
-                          {usernameError && <p className="text-[10px] text-red-105 mt-1 font-semibold">{usernameError}</p>}
-                          <p className="text-[9px] text-gray-500 mt-1 font-semibold">Este enlace define la URL pública de tu negocio (ej. ryyco.com/compratuuco).</p>
-                        </div>
-
-                        <div className="w-full min-w-0">
-                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Nombre de la tienda</label>
-                          <input
-                            type="text"
-                            required
-                            value={profile.displayName}
-                            onChange={(e) => setProfile(p => ({ ...p, displayName: e.target.value }))}
-                            className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                          />
-                        </div>
-
-                        {/* 1. WHATSAPP DEL PROPIETARIO / ADMINISTRADOR - OBLIGATORIO */}
-                        <div className="p-3.5 sm:p-4 bg-emerald-950/25 border-2 border-emerald-500/50 rounded-2xl space-y-2.5 shadow-lg shadow-emerald-950/30 w-full min-w-0">
-                          <div className="flex items-center justify-between flex-wrap gap-1.5">
-                            <label className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5 min-w-0">
-                              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                              <span className="truncate">WhatsApp Propietario / Admin</span>
-                            </label>
-                            <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-wider rounded-md border border-emerald-500/30 shrink-0">
-                              ⭐ Obligatorio
-                            </span>
-                          </div>
-
-                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-emerald-400 focus-within:ring-1 focus-within:ring-emerald-400/30 w-full min-w-0">
-                            <div className="bg-gray-950 text-emerald-400 px-2.5 sm:px-3 py-2.5 flex items-center gap-1 text-xs font-black border-r border-gray-850 select-none shrink-0">
-                              <span>🇨🇴 +57</span>
-                            </div>
-                            <input
-                              type="tel"
-                              required
-                              value={profile.ownerWhatsapp || profile.whatsapp || profile.phone || ''}
-                              placeholder="Ej: 3106502043"
-                              onChange={(e) => {
-                                let val = e.target.value.replace(/\D/g, '');
-                                if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
-                                val = val.slice(0, 10);
-                                setProfile(p => ({ 
-                                  ...p, 
-                                  ownerWhatsapp: val,
-                                  phone: val,
-                                  whatsapp: p.customerServiceWhatsapp || val 
-                                }));
-                              }}
-                              className="flex-1 min-w-0 w-full h-11 bg-transparent px-2.5 sm:px-3 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
-                            />
-                            {(profile.ownerWhatsapp || profile.whatsapp || profile.phone) && (profile.ownerWhatsapp || profile.whatsapp || profile.phone)!.length >= 10 && (
-                              <a
-                                href={`https://wa.me/57${(profile.ownerWhatsapp || profile.whatsapp || profile.phone)!.replace(/\D/g, '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-2.5 sm:px-3.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 flex items-center gap-1 text-[11px] font-bold border-l border-emerald-500/30 transition-all whitespace-nowrap shrink-0"
-                                title="Verificar chat de WhatsApp del propietario"
-                              >
-                                <span className="hidden sm:inline">Probar Chat</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
-
-                          <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
-                            Número privado del dueño o administrador. Utilizado para la seguridad de tu cuenta, comprobantes de pago de suscripción y soporte directo de la plataforma.
-                          </p>
-                        </div>
-
-                        {/* 2. WHATSAPP DE ATENCIÓN AL CLIENTE - OPCIONAL */}
-                        <div className="p-3.5 sm:p-4 bg-slate-900/50 border border-slate-700/60 rounded-2xl space-y-2.5 w-full min-w-0">
-                          <div className="flex items-center justify-between flex-wrap gap-1.5">
-                            <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider flex items-center gap-1.5 min-w-0">
-                              <Headphones className="w-4 h-4 text-sky-400 shrink-0" />
-                              <span className="truncate">WhatsApp Atención / Pedidos</span>
-                            </label>
-                            <span className="px-2 py-0.5 bg-slate-800 text-gray-400 text-[9px] font-black uppercase tracking-wider rounded-md border border-slate-700 shrink-0">
-                              💬 Opcional
-                            </span>
-                          </div>
-
-                          <div className="flex rounded-xl overflow-hidden bg-gray-900 border border-gray-800 focus-within:border-sky-400 focus-within:ring-1 focus-within:ring-sky-400/30 w-full min-w-0">
-                            <div className="bg-gray-950 text-gray-400 px-2.5 sm:px-3 py-2.5 flex items-center gap-1 text-xs font-black border-r border-gray-850 select-none shrink-0">
-                              <span>🇨🇴 +57</span>
-                            </div>
-                            <input
-                              type="tel"
-                              value={profile.customerServiceWhatsapp || ''}
-                              placeholder="Ej: 3101234567 (Opcional)"
-                              onChange={(e) => {
-                                let val = e.target.value.replace(/\D/g, '');
-                                if (val.startsWith('57') && val.length >= 12) val = val.slice(2);
-                                val = val.slice(0, 10);
-                                setProfile(p => ({ 
-                                  ...p, 
-                                  customerServiceWhatsapp: val,
-                                  whatsapp: val || p.ownerWhatsapp || p.phone || ''
-                                }));
-                              }}
-                              className="flex-1 min-w-0 w-full h-11 bg-transparent px-2.5 sm:px-3 text-xs font-bold outline-none text-white focus:ring-0 placeholder:text-gray-600"
-                            />
-                            {profile.customerServiceWhatsapp && profile.customerServiceWhatsapp.length >= 10 && (
-                              <a
-                                href={`https://wa.me/57${profile.customerServiceWhatsapp}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="px-2.5 sm:px-3.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-400 flex items-center gap-1 text-[11px] font-bold border-l border-sky-500/30 transition-all whitespace-nowrap shrink-0"
-                                title="Verificar chat de atención al cliente"
-                              >
-                                <span className="hidden sm:inline">Probar Chat</span>
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
-
-                          <p className="text-[10px] text-gray-400 leading-relaxed font-medium">
-                            Línea pública donde tus clientes enviarán sus <strong className="text-gray-300">pedidos y consultas</strong> desde la tienda online. Si lo dejas vacío, se usará automáticamente el WhatsApp del propietario.
-                          </p>
-                        </div>
-
-                        <div className="w-full min-w-0">
-                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Descripción corta o Slogan comercial</label>
-                          <textarea
-                            rows={2}
-                            value={profile.bio}
-                            onChange={(e) => setProfile(p => ({ ...p, bio: e.target.value }))}
-                            className="w-full bg-gray-900 border border-gray-800 focus:border-emerald-500 p-3 sm:p-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20 resize-none"
-                          />
-                        </div>
-
-                        <div className="w-full min-w-0">
-                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Título de Portada o Banner de tu Tienda</label>
-                          <input
-                            type="text"
-                            value={profile.coverTitle || ''}
-                            onChange={(e) => setProfile(p => ({ ...p, coverTitle: e.target.value }))}
-                            placeholder="Ej: El Futuro en tus Manos, Define tu estilo, etc."
-                            className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                          />
-                          <p className="text-[9px] text-gray-500 mt-1 font-semibold">Si se deja vacío, se mostrará el título predeterminado de la plantilla de diseño seleccionada.</p>
-                        </div>
-
-                        <div className="w-full min-w-0">
-                          <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
-                            Dirección del Negocio / Punto de Recogida
-                          </label>
-                          <div className="flex gap-2 w-full min-w-0">
-                            <input
-                              type="text"
-                              value={profile.address || profile.location || ''}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setProfile(p => ({ ...p, address: val, location: val }));
-                              }}
-                              placeholder="Ej: Carrera 6 # 14-25, Ipiales"
-                              className="flex-1 min-w-0 w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3 sm:px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setIsMapPickerOpen(true)}
-                              className="h-11 px-2.5 sm:px-3.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98] shrink-0"
-                              title="Colocar o mover el puntero en el mapa"
-                            >
-                              <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-                              <span className="hidden sm:inline">Fijar en Mapa</span>
-                              <span className="sm:hidden">Mapa</span>
-                            </button>
-                          </div>
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mt-1 text-[9px] text-gray-500 font-semibold">
-                            <span>Fija el puntero en el mapa para la dirección exacta donde los domiciliarios recogerán.</span>
-                            {(profile.mapUrl || (profile.lat && profile.lng)) && (
-                              <a
-                                href={profile.mapUrl || `https://www.google.com/maps?q=${profile.lat},${profile.lng}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-emerald-400 hover:underline flex items-center gap-1 font-bold text-[10px] shrink-0"
-                              >
-                                <ExternalLink className="w-3 h-3" /> Ver en Google Maps
-                              </a>
-                            )}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Símbolo de Moneda</label>
-                          <div className="relative">
-                            <select
-                              value={profile.currency || '$'}
-                              onChange={(e) => setProfile(p => ({ ...p, currency: e.target.value }))}
-                              className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 pr-8 rounded-xl text-xs font-extrabold outline-none text-emerald-400 focus:ring-1 focus:ring-emerald-500/20 cursor-pointer appearance-none transition-all"
-                            >
-                              <option value="$" className="bg-gray-900 text-white">$ - Pesos / Dólar ($)</option>
-                              <option value="COP" className="bg-gray-900 text-white">COP - Peso Colombiano (COP)</option>
-                              <option value="USD" className="bg-gray-900 text-white">USD - Dólar Estadounidense (USD $)</option>
-                              <option value="€" className="bg-gray-900 text-white">€ - Euro (€)</option>
-                              <option value="MXN" className="bg-gray-900 text-white">MXN - Peso Mexicano (MXN $)</option>
-                              <option value="S/" className="bg-gray-900 text-white">S/ - Sol Peruano (S/)</option>
-                              <option value="CLP" className="bg-gray-900 text-white">CLP - Peso Chileno (CLP $)</option>
-                              <option value="ARS" className="bg-gray-900 text-white">ARS - Peso Argentino (ARS $)</option>
-                              <option value="Bs." className="bg-gray-900 text-white">Bs. - Boliviano (Bs.)</option>
-                            </select>
-                            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-gray-400">
-                              <svg className="w-4 h-4 fill-current" viewBox="0 0 20 20">
-                                <path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" />
-                              </svg>
-                            </div>
-                          </div>
-                          <p className="text-[9px] text-gray-500 mt-1 font-semibold">Selecciona la moneda principal que verán tus clientes.</p>
-                        </div>
-
-                        {/* HORARIO DE ATENCIÓN DE LA TIENDA */}
-                        <div className="border-t border-gray-800/60 pt-5 space-y-4 w-full min-w-0">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0 pr-1">
-                              <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-                                <Clock className="w-3.5 h-3.5 text-indigo-400 shrink-0" /> <span className="truncate">Horario de Atención Automático</span>
-                              </h3>
-                              <p className="text-[10px] text-gray-400 mt-0.5 font-semibold">
-                                La tienda se abrirá y cerrará automáticamente todos los días según el horario asignado.
-                              </p>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                              <input
-                                type="checkbox"
-                                checked={profile.scheduleEnabled ?? Boolean(profile.openTime && profile.closeTime)}
-                                onChange={(e) => setProfile(p => ({ ...p, scheduleEnabled: e.target.checked }))}
-                                className="sr-only peer"
-                              />
-                              <div className="w-9 h-5 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500"></div>
-                            </label>
-                          </div>
-
-                          {(profile.scheduleEnabled ?? Boolean(profile.openTime && profile.closeTime)) && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 bg-gray-900/60 p-3 sm:p-3.5 rounded-2xl border border-gray-850 w-full min-w-0">
-                              <div className="w-full min-w-0">
-                                <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
-                                  Hora de Apertura
-                                </label>
-                                <input
-                                  type="time"
-                                  value={profile.openTime || '08:00'}
-                                  onChange={(e) => setProfile(p => ({ ...p, openTime: e.target.value }))}
-                                  className="w-full h-10 bg-gray-950 border border-gray-800 focus:border-indigo-500 px-3 rounded-xl text-xs font-bold outline-none text-white font-mono"
-                                />
-                              </div>
-
-                              <div className="w-full min-w-0">
-                                <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
-                                  Hora de Cierre
-                                </label>
-                                <input
-                                  type="time"
-                                  value={profile.closeTime || '22:00'}
-                                  onChange={(e) => setProfile(p => ({ ...p, closeTime: e.target.value }))}
-                                  className="w-full h-10 bg-gray-950 border border-gray-800 focus:border-indigo-500 px-3 rounded-xl text-xs font-bold outline-none text-white font-mono"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* REDES SOCIALES */}
-                        <div className="border-t border-gray-800/60 pt-6 space-y-4">
-                          <div>
-                            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-1.5">
-                              <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> Redes Sociales de la Tienda
-                            </h3>
-                            <p className="text-[10px] text-gray-500 mt-1 font-semibold">
-                              Ingresa tu usuario o enlace de tus redes sociales para que tus clientes puedan seguirte y contactarte.
-                            </p>
-                          </div>
-
-                          <div className="grid sm:grid-cols-2 gap-4">
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider flex items-center gap-1.5 block mb-1">
-                                <Instagram className="w-3 h-3 text-pink-500" /> Instagram
-                              </label>
-                              <input
-                                type="text"
-                                value={profile.instagram || ''}
-                                placeholder="Ej: mitienda.oficial o link"
-                                onChange={(e) => setProfile(p => ({ ...p, instagram: e.target.value }))}
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider flex items-center gap-1.5 block mb-1">
-                                <Facebook className="w-3 h-3 text-blue-500" /> Facebook
-                              </label>
-                              <input
-                                type="text"
-                                value={profile.facebook || ''}
-                                placeholder="Ej: facebook.com/mitienda"
-                                onChange={(e) => setProfile(p => ({ ...p, facebook: e.target.value }))}
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider flex items-center gap-1.5 block mb-1">
-                                <Tiktok className="w-3 h-3 text-teal-400" /> TikTok
-                              </label>
-                              <input
-                                type="text"
-                                value={profile.tiktok || ''}
-                                placeholder="Ej: @mitienda o link"
-                                onChange={(e) => setProfile(p => ({ ...p, tiktok: e.target.value }))}
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider flex items-center gap-1.5 block mb-1">
-                                <Youtube className="w-3 h-3 text-red-500" /> YouTube
-                              </label>
-                              <input
-                                type="text"
-                                value={profile.youtube || ''}
-                                placeholder="Ej: canal o link completo"
-                                onChange={(e) => setProfile(p => ({ ...p, youtube: e.target.value }))}
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-550 tracking-wider flex items-center gap-1.5 block mb-1">
-                                <Twitter className="w-3 h-3 text-gray-400" /> Twitter / X
-                              </label>
-                              <input
-                                type="text"
-                                value={profile.twitter || ''}
-                                placeholder="Ej: mitienda"
-                                onChange={(e) => setProfile(p => ({ ...p, twitter: e.target.value }))}
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                              />
-                            </div>
-                          </div>
+                        <div className="border-b border-gray-900 pb-3">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-400 block">Identidad Visual & Recursos</span>
+                          <p className="text-[10px] text-gray-500 mt-0.5 font-medium">Personaliza el logo, portada y aspecto visual de tu tienda para tus comensales.</p>
                         </div>
 
                         <div className="grid sm:grid-cols-2 gap-6 pt-2">
@@ -4105,6 +3746,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                     </div>
                   </div>
+                )}
+
+                {/* 4.5 RESTAURANT DATA TAB */}
+                {activeTab === 'restaurant' && (
+                  <RestaurantDataTab
+                    profile={profile}
+                    setProfile={setProfile}
+                    onSave={async (updated) => {
+                      await saveProfile(updated);
+                      setProfile(updated);
+                    }}
+                    toggleStoreStatus={toggleStoreStatus}
+                    updatingStatus={updatingStatus}
+                    setIsMapPickerOpen={setIsMapPickerOpen}
+                  />
                 )}
 
                 {/* 5. VISITOR ANALYTICS TAB */}
@@ -5316,15 +4972,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         </div>
       )}
 
-      {/* FLOATING SAVE BUTTON FOR MOBILE (STORE DESIGN TAB) */}
-      {activeTab === 'design' && (
+      {/* FLOATING SAVE BUTTON FOR MOBILE (STORE DESIGN & RESTAURANT TAB) */}
+      {(activeTab === 'design' || activeTab === 'restaurant') && (
         <div className="md:hidden fixed bottom-[72px] left-3 right-3 z-40 bg-[#090b12]/95 backdrop-blur-xl border border-emerald-500/40 p-2.5 rounded-2xl shadow-[0_10px_25px_rgba(16,185,129,0.3)] flex items-center justify-between gap-3 animate-fade-in">
           <button
             type="submit"
-            form="store-profile-form"
+            form={activeTab === 'restaurant' ? "restaurant-profile-form" : "store-profile-form"}
             className="w-full py-3 bg-gradient-to-r from-emerald-400 via-emerald-450 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
           >
-            <Save className="w-4 h-4 stroke-[2.5]" /> Guardar Cambios de Tienda
+            <Save className="w-4 h-4 stroke-[2.5]" /> {activeTab === 'restaurant' ? 'Guardar Datos del Restaurante' : 'Guardar Cambios de Tienda'}
           </button>
         </div>
       )}
@@ -5461,6 +5117,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 >
                   <Palette className="w-4 h-4 text-emerald-400" />
                   <span>Diseñador de Tienda</span>
+                </button>
+
+                {/* Datos del restaurante */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('restaurant');
+                    setIsMobileMoreOpen(false);
+                  }}
+                  className={`w-full py-3 px-3 rounded-xl text-left text-xs font-bold flex items-center gap-3 transition ${
+                    activeTab === 'restaurant' ? 'bg-amber-450/10 text-amber-400 border border-amber-500/20' : 'text-gray-300 hover:bg-gray-900 border border-transparent'
+                  }`}
+                >
+                  <Utensils className="w-4 h-4 text-amber-400" />
+                  <span>Datos del restaurante</span>
                 </button>
 
                 {/* Suscripción y Pagos */}
