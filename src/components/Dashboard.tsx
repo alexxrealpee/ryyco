@@ -18,7 +18,6 @@ import {
   Copy, 
   LogOut, 
   Sparkles, 
-  Smartphone, 
   TrendingUp, 
   Package, 
   MessageCircle, 
@@ -54,7 +53,6 @@ import {
   Sliders,
   Paintbrush,
   Coffee,
-  Flame,
   Moon,
   Sun,
   Layers,
@@ -1336,14 +1334,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             title="Ver y compartir Código QR de la tienda"
           >
             <QrCode className="w-4 h-4 text-red-500" />
-            Código QR
+            <span className="hidden sm:inline">Código </span>QR
           </button>
 
           {/* Copy shop Url */}
           <button
             type="button"
             onClick={copyLinnkUrl}
-            className="px-3.5 py-2 bg-gray-900 hover:bg-gray-850 rounded-xl text-xs font-bold text-gray-300 flex items-center gap-1.5 border border-gray-800 transition"
+            className="hidden sm:flex px-3.5 py-2 bg-gray-900 hover:bg-gray-850 rounded-xl text-xs font-bold text-gray-300 items-center gap-1.5 border border-gray-800 transition"
           >
             <Copy className="w-4 h-4 text-indigo-400" />
             {copiedLink ? '¡Enlace Copiado!' : 'Copiar URL'}
@@ -2611,8 +2609,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         </div>
                                       )}
                                     </td>
-                                    <td className="py-3.5 px-2 text-gray-500 font-mono text-[10px]">
-                                      {new Date(order.createdAt).toLocaleDateString()}
+                                    <td className="py-3.5 px-2 text-gray-400 font-mono text-[10px]">
+                                      <div>{new Date(order.createdAt).toLocaleDateString('es-CO')}</div>
+                                      <div className="text-[9.5px] text-indigo-300 font-bold">{new Date(order.createdAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}</div>
                                     </td>
                                     <td className="py-3.5 px-4 text-center">
                                       <span className={`px-2 py-1 text-[9px] font-black uppercase rounded-lg border ${state.bg}`}>
@@ -2722,7 +2721,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     )}
                                   </div>
                                   <div className="text-[10.5px] text-gray-500 leading-normal">{order.customerAddress || 'Retiro local'}</div>
-                                  <div className="text-[9.5px] text-gray-500 font-mono">Fecha: {new Date(order.createdAt).toLocaleDateString()}</div>
+                                  <div className="text-[10.5px] text-gray-400 font-medium flex items-center gap-1.5 flex-wrap">
+                                    <span>Fecha: {new Date(order.createdAt).toLocaleDateString('es-CO')}</span>
+                                    <span className="text-gray-600">•</span>
+                                    <span>Hora: <strong className="text-gray-200 font-semibold">{new Date(order.createdAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}</strong></span>
+                                  </div>
                                   {order.deliveryDriverName && (
                                     <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 rounded-lg text-[10px] font-semibold">
                                       <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
@@ -3514,93 +3517,6 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </div>
                               </div>
                               {profile.layout === 'liquor' && (
-                                <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
-                              )}
-                            </button>
-
-                            {/* Option 3: Calzado & Deportes */}
-                            <button
-                              type="button"
-                              onClick={() => handleSelectLayout('shoes')}
-                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer w-full min-w-0 ${
-                                profile.layout === 'shoes'
-                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
-                                  : 'border-gray-900 bg-gray-920 hover:border-gray-800'
-                              }`}
-                            >
-                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
-                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-amber-400 mt-0.5 shrink-0">
-                                  <Flame className="w-4 h-4 text-amber-400" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h4 className="text-xs font-extrabold text-white">Calzado & Moda Deportiva</h4>
-                                    {profile.layout === 'shoes' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Estilo atlético urbano, tarjetas con ofertas en ángulo, zapatillas y moda streetwear.</p>
-                                </div>
-                              </div>
-                              {profile.layout === 'shoes' && (
-                                <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
-                              )}
-                            </button>
-
-                            {/* Option 4: Tecnología */}
-                            <button
-                              type="button"
-                              onClick={() => handleSelectLayout('tech')}
-                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer w-full min-w-0 ${
-                                profile.layout === 'tech'
-                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
-                                  : 'border-gray-900 bg-gray-920 hover:border-gray-800'
-                              }`}
-                            >
-                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
-                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-indigo-400 mt-0.5 shrink-0">
-                                  <Smartphone className="w-4 h-4 text-indigo-400" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h4 className="text-xs font-extrabold text-white">Tecnología & Dispositivos</h4>
-                                    {profile.layout === 'tech' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Minimalismo de alta gama con sellos de original, celulares, audio y gadgets.</p>
-                                </div>
-                              </div>
-                              {profile.layout === 'tech' && (
-                                <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
-                              )}
-                            </button>
-
-                            {/* Option 5: Tienda General */}
-                            <button
-                              type="button"
-                              onClick={() => handleSelectLayout('default')}
-                              className={`p-3.5 sm:p-4 rounded-xl border text-left flex items-start justify-between transition cursor-pointer md:col-span-2 w-full min-w-0 ${
-                                profile.layout === 'default'
-                                  ? 'border-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30'
-                                  : 'border-gray-900 bg-gray-920 hover:border-gray-800'
-                              }`}
-                            >
-                              <div className="flex gap-2.5 sm:gap-3 min-w-0">
-                                <div className="p-2 sm:p-2.5 rounded-lg bg-gray-900 border border-gray-800 text-emerald-400 mt-0.5 shrink-0">
-                                  <ShoppingBag className="w-4 h-4 text-emerald-400" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h4 className="text-xs font-extrabold text-white">Tienda General & Catálogo Universal</h4>
-                                    {profile.layout === 'default' && (
-                                      <span className="text-[9px] font-black uppercase text-emerald-400 bg-emerald-500/20 px-1.5 py-0.2 rounded shrink-0">Activo</span>
-                                    )}
-                                  </div>
-                                  <p className="text-[10px] text-gray-400 leading-normal mt-0.5">Diseño versátil para farmacias, supermercados, ferreterías, regalos o tiendas con inventarios mixtos.</p>
-                                </div>
-                              </div>
-                              {profile.layout === 'default' && (
                                 <Check className="w-4.5 h-4.5 text-emerald-400 shrink-0 ml-2" />
                               )}
                             </button>
@@ -5414,7 +5330,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       )}
 
       {/* MOBILE BOTTOM NAVIGATION MENU */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#090b12]/90 backdrop-blur-lg border-t border-[#232B3A] px-3 py-2 flex items-center gap-1.5 overflow-x-auto scroll-smooth no-scrollbar h-16 shadow-2xl">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#090b12]/90 backdrop-blur-lg border-t border-[#232B3A] px-2 py-2 flex items-center justify-around h-16 shadow-2xl">
         {/* Tab 1: Inicio */}
         <button
           type="button"
@@ -5422,7 +5338,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             setActiveTab('overview');
             setIsMobileMoreOpen(false);
           }}
-          className={`flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1 cursor-pointer transition-all duration-150 ${
+          className={`flex flex-col items-center justify-center flex-1 py-1 cursor-pointer transition-all duration-150 ${
             activeTab === 'overview' && !isMobileMoreOpen ? 'text-emerald-450 scale-105' : 'text-gray-400'
           }`}
         >
@@ -5437,7 +5353,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             setActiveTab('products');
             setIsMobileMoreOpen(false);
           }}
-          className={`flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1 cursor-pointer transition-all duration-150 ${
+          className={`flex flex-col items-center justify-center flex-1 py-1 cursor-pointer transition-all duration-150 ${
             activeTab === 'products' && !isMobileMoreOpen ? 'text-emerald-450 scale-105' : 'text-gray-400'
           }`}
         >
@@ -5457,7 +5373,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             setActiveTab('orders');
             setIsMobileMoreOpen(false);
           }}
-          className={`flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1 cursor-pointer transition-all duration-150 ${
+          className={`flex flex-col items-center justify-center flex-1 py-1 cursor-pointer transition-all duration-150 ${
             activeTab === 'orders' && !isMobileMoreOpen ? 'text-emerald-450 scale-105' : 'text-gray-400'
           }`}
         >
@@ -5472,27 +5388,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
           <span className="text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap">Pedidos</span>
         </button>
 
-        {/* Tab 4: Estadísticas */}
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('analytics');
-            setIsMobileMoreOpen(false);
-          }}
-          className={`flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1 cursor-pointer transition-all duration-150 ${
-            activeTab === 'analytics' && !isMobileMoreOpen ? 'text-emerald-450 scale-105' : 'text-gray-400'
-          }`}
-        >
-          <BarChart3 className="w-5 h-5 mb-0.5" />
-          <span className="text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap">Estadísticas</span>
-        </button>
-
-        {/* Tab 5: Más */}
+        {/* Tab 4: Más */}
         <button
           type="button"
           onClick={() => setIsMobileMoreOpen(!isMobileMoreOpen)}
-          className={`flex flex-col items-center justify-center min-w-[72px] shrink-0 py-1 cursor-pointer transition-all duration-150 ${
-            isMobileMoreOpen ? 'text-indigo-400 scale-105' : 'text-gray-400'
+          className={`flex flex-col items-center justify-center flex-1 py-1 cursor-pointer transition-all duration-150 ${
+            isMobileMoreOpen || ['analytics', 'design', 'subscription', 'bank'].includes(activeTab) ? 'text-indigo-400 scale-105' : 'text-gray-400'
           }`}
         >
           <MoreHorizontal className="w-5 h-5 mb-0.5" />
@@ -5532,6 +5433,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               </div>
 
               <div className="grid grid-cols-1 gap-1 pt-1.5">
+                {/* Estadísticas */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('analytics');
+                    setIsMobileMoreOpen(false);
+                  }}
+                  className={`w-full py-3 px-3 rounded-xl text-left text-xs font-bold flex items-center gap-3 transition ${
+                    activeTab === 'analytics' ? 'bg-emerald-450/10 text-emerald-400 border border-emerald-500/10' : 'text-gray-300 hover:bg-gray-900 border border-transparent'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4 text-emerald-400" />
+                  <span>Estadísticas</span>
+                </button>
+
                 {/* Diseñador de Tienda */}
                 <button
                   type="button"

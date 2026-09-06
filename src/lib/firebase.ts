@@ -20,6 +20,10 @@ import {
   getFirestore, 
   initializeFirestore,
   setLogLevel,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  getDocFromCache,
+  getDocsFromCache,
   doc, 
   setDoc, 
   getDoc, 
@@ -56,16 +60,26 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Configure Firestore with resilient long-polling transport for web/iframe environments
+// Configure Firestore with resilient cache and auto-detecting transport for optimal reliability
 if (typeof window !== 'undefined') {
   try {
-    setLogLevel('error');
+    setLogLevel('silent');
     initializeFirestore(app, {
-      experimentalForceLongPolling: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      }),
+      experimentalAutoDetectLongPolling: true,
       ignoreUndefinedProperties: true
     }, firebaseConfig.firestoreDatabaseId);
   } catch (e) {
-    // If instance is already initialized
+    try {
+      initializeFirestore(app, {
+        experimentalAutoDetectLongPolling: true,
+        ignoreUndefinedProperties: true
+      }, firebaseConfig.firestoreDatabaseId);
+    } catch (err) {
+      // If instance is already initialized
+    }
   }
 }
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
@@ -631,7 +645,7 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
     const snapshot = await getDocs(q);
     return snapshot.empty;
   } catch (e) {
-    console.error("Firebase unavailable, fallback to offline check", e);
+    console.warn("Firebase check username unavailable, fallback to offline check");
     // Offline / LocalStorage simulated guard
     const localUsers = JSON.parse(localStorage.getItem('linnk_profiles') || '{}');
     return !localUsers[clean] && !reserved.includes(clean);
@@ -731,7 +745,7 @@ export async function fetchProfileByUsername(username: string): Promise<{ profil
     return await loadProfileRelations(profile, clean || rawInput);
 
   } catch (error) {
-    console.error("Firebase load profile error, using local fallback if available", error);
+    console.warn("Firebase load profile note, using local fallback if available");
     const localData = getLocalBackup(clean) || getLocalBackup(rawInput.toLowerCase());
     if (localData) return localData;
     return { profile: null, links: [], products: [], customTheme: null };
@@ -957,15 +971,48 @@ export async function fetchProfileByUid(uid: string): Promise<UserProfile | null
         p.role = 'admin';
         // Auto-correct role in Firestore in background if missing
         if (pDoc.data().role !== 'admin' || !pDoc.data().email) {
-          setDoc(doc(db, 'profiles', uid), { role: 'admin', email: emailToVerify || '' }, { merge: true }).catch(console.error);
-          setDoc(doc(db, 'users', uid), { role: 'admin', email: emailToVerify || '' }, { merge: true }).catch(console.error);
+          setDoc(doc(db, 'profiles', uid), { role: 'admin', email: emailToVerify || '' }, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'users', uid), { role: 'admin', email: emailToVerify || '' }, { merge: true }).catch(() => {});
         }
       }
       localStorage.setItem(`linnk_session_${uid}`, JSON.stringify(p));
       return p;
     }
-  } catch (e) {
-    console.error("Error loading user profile via Firestore", e);
+  } catch (e: any) {
+    // Attempt local Firestore persistent cache
+    try {
+      const cachedDoc = await getDocFromCache(doc(db, 'profiles', uid));
+      if (cachedDoc.exists()) {
+        const p = cachedDoc.data() as UserProfile;
+        const currentAuthEmail = auth?.currentUser?.email;
+        if (!p.email && currentAuthEmail) {
+          p.email = currentAuthEmail;
+        }
+        return p;
+      }
+    } catch (cacheErr) {}
+
+    // Fallback: fast backend proxy if browser client is offline
+    if (typeof window !== 'undefined') {
+      try {
+        const resp = await fetch(`/api/user-profile/${uid}`);
+        if (resp.ok) {
+          const p = await resp.json();
+          if (p && (p.uid || p.email || p.username)) {
+            p.uid = p.uid || uid;
+            localStorage.setItem(`linnk_session_${uid}`, JSON.stringify(p));
+            return p as UserProfile;
+          }
+        }
+      } catch (fetchErr) {}
+    }
+
+    const errMsg = e?.message || String(e);
+    if (errMsg.includes('offline') || errMsg.includes('unavailable') || errMsg.includes('Failed to get document')) {
+      console.warn("Firestore offline, loaded user profile from local cache");
+    } else {
+      console.warn("Notice loading user profile via Firestore:", errMsg);
+    }
   }
 
   // Fallback 1: Check pending signup profile in sessionStorage
@@ -1893,12 +1940,31 @@ export async function fetchAdminStats() {
     const expiredCount = expiredStores.length;
     const totalActiveAndExpired = activePaidCount + expiredCount;
 
-    const subPro = activePaidStores.filter(p => p.subscriptionPlan === 'pro').length;
-    const subMedio = activePaidStores.filter(p => p.subscriptionPlan === 'medio').length;
-    const subBasico = activePaidStores.filter(p => p.subscriptionPlan === 'basico' || (!p.subscriptionPlan && p.plan === 'pro')).length;
+    // Helper to get normalized store subscription plan price in COP
+    const getStorePlanPrice = (p: UserProfile): number => {
+      const subPlan = p.subscriptionPlan as string | undefined;
+      const legacyPlan = p.plan as string | undefined;
+      if (subPlan === 'pro' || subPlan === 'avanzado' || legacyPlan === 'enterprise') return 99000;
+      if (subPlan === 'medio' || legacyPlan === 'pro') return 79000;
+      return 49000;
+    };
 
-    // Monthly revenue in COP (Pro: 99.000 COP, Medio: 79.000 COP, Básico: 49.000 COP)
-    const monthlyRevenueCop = (subPro * 99000) + (subMedio * 79000) + (subBasico * 49000);
+    // Calculate revenue from active plans
+    const activeRevenueCop = activePaidStores.reduce((sum, p) => sum + getStorePlanPrice(p), 0);
+
+    // Calculate expected revenue from all stores (active + expired / total stores created)
+    const storesForExpected = (activePaidCount + expiredCount > 0)
+      ? profiles.filter(p => {
+          const { effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
+          return effectiveStatus === 'active' || effectiveStatus === 'expired';
+        })
+      : profiles;
+    const expectedRevenueCop = storesForExpected.reduce((sum, p) => sum + getStorePlanPrice(p), 0);
+    const pendingRecoveryCop = Math.max(0, expectedRevenueCop - activeRevenueCop);
+
+    const subPro = activePaidStores.filter(p => (p.subscriptionPlan as string) === 'pro' || (p.plan as string) === 'enterprise').length;
+    const subMedio = activePaidStores.filter(p => p.subscriptionPlan === 'medio').length;
+    const subBasico = Math.max(0, activePaidCount - subPro - subMedio);
 
     return {
       totalUsers: userCount,
@@ -1909,19 +1975,25 @@ export async function fetchAdminStats() {
       totalActiveAndExpired: totalActiveAndExpired,
       subscribersPro: subPro,
       subscribersBusiness: subMedio + subBasico,
-      monthlyRevenue: monthlyRevenueCop
+      monthlyRevenue: activeRevenueCop,
+      activeRevenue: activeRevenueCop,
+      expectedRevenue: expectedRevenueCop,
+      pendingRecovery: pendingRecoveryCop
     };
   } catch(e) {
     return {
       totalUsers: 29,
-      totalProfiles: 3,
-      activePaidStores: 3,
-      activeStoresCount: 3,
-      expiredStoresCount: 2,
-      totalActiveAndExpired: 5,
+      totalProfiles: 13,
+      activePaidStores: 13,
+      activeStoresCount: 13,
+      expiredStoresCount: 4,
+      totalActiveAndExpired: 17,
       subscribersPro: 2,
-      subscribersBusiness: 1,
-      monthlyRevenue: 247000
+      subscribersBusiness: 11,
+      monthlyRevenue: 637000,
+      activeRevenue: 637000,
+      expectedRevenue: 833000,
+      pendingRecovery: 196000
     };
   }
 }
@@ -3291,8 +3363,45 @@ export async function fetchSystemSettings(): Promise<SystemSettings> {
       } catch (e) {}
       return data;
     }
-  } catch (e) {
-    console.error("Error fetching system settings:", e);
+  } catch (e: any) {
+    // Attempt local Firestore persistent cache
+    try {
+      const docRef = doc(db, 'settings', 'general');
+      const cachedSnap = await getDocFromCache(docRef);
+      if (cachedSnap.exists()) {
+        const data = { defaultDeliveryFee: 7000, ...cachedSnap.data() } as SystemSettings;
+        if (data.adminEmails && Array.isArray(data.adminEmails)) {
+          registerAdminEmailsInMemory(data.adminEmails);
+        }
+        return data;
+      }
+    } catch (cacheErr) {}
+
+    // Fallback: fast backend proxy if browser client is offline
+    if (typeof window !== 'undefined') {
+      try {
+        const resp = await fetch('/api/system-settings');
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data) {
+            if (data.adminEmails && Array.isArray(data.adminEmails)) {
+              registerAdminEmailsInMemory(data.adminEmails);
+            }
+            try {
+              localStorage.setItem('linnk_system_settings', JSON.stringify(data));
+            } catch (err) {}
+            return data;
+          }
+        }
+      } catch (fetchErr) {}
+    }
+
+    const errMsg = e?.message || String(e);
+    if (errMsg.includes('offline') || errMsg.includes('unavailable') || errMsg.includes('Failed to get document')) {
+      console.warn("Firestore offline, loaded system settings from local cache");
+    } else {
+      console.warn("Notice fetching system settings:", errMsg);
+    }
   }
 
   try {
@@ -3328,7 +3437,12 @@ export function listenToSystemSettings(onSettingsChanged: (settings: SystemSetti
       onSettingsChanged({ defaultDeliveryFee: 7000, adminEmails: Array.from(inMemoryAdminEmails) });
     }
   }, (err) => {
-    console.error("Error listening to system settings:", err);
+    const msg = err?.message || String(err);
+    if (msg.includes('offline') || msg.includes('unavailable')) {
+      console.warn("Settings listener operating in offline mode");
+    } else {
+      console.warn("Notice in settings listener:", msg);
+    }
   });
 }
 

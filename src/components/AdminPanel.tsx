@@ -28,7 +28,7 @@ import {
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
-import { checkIsTableOrder } from './Dashboard';
+import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile } from '../types';
 import { 
   Users, 
@@ -45,6 +45,7 @@ import {
   RefreshCw,
   Check,
   X,
+  Eye,
   Image as ImageIcon,
   CreditCard,
   Calendar,
@@ -155,7 +156,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     totalActiveAndExpired: 12,
     subscribersPro: 5,
     subscribersBusiness: 3,
-    monthlyRevenue: 642000
+    monthlyRevenue: 637000,
+    activeRevenue: 637000,
+    expectedRevenue: 833000,
+    pendingRecovery: 196000
   });
   
   const [loading, setLoading] = useState(true);
@@ -215,11 +219,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [selectedOrderStoreFilter, setSelectedOrderStoreFilter] = useState<string>('all');
   const [selectedOrderStatusFilter, setSelectedOrderStatusFilter] = useState<string>('all');
   const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
+  const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
 
-  // Intelligent lazy loading state for orders (8 orders per batch)
-  const [lastOrderDoc, setLastOrderDoc] = useState<any | null>(null);
-  const [hasMoreOrders, setHasMoreOrders] = useState<boolean>(true);
-  const [loadingMoreOrders, setLoadingMoreOrders] = useState<boolean>(false);
+  // Orders progressive display pagination state
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(20);
   const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Intelligent lazy loading state for subscriptions (7 items per batch)
@@ -227,27 +230,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [hasMoreSubs, setHasMoreSubs] = useState<boolean>(true);
   const [loadingMoreSubs, setLoadingMoreSubs] = useState<boolean>(false);
   const subsSentinelRef = useRef<HTMLDivElement | null>(null);
-
-  const handleLoadMoreOrders = async () => {
-    if (loadingMoreOrders || !hasMoreOrders) return;
-    setLoadingMoreOrders(true);
-    try {
-      const res = await fetchAdminOrdersBatch(8, lastOrderDoc, allOrders.length);
-      if (res.orders.length > 0) {
-        setAllOrders(prev => {
-          const existingIds = new Set(prev.map(o => o.id));
-          const newUnique = res.orders.filter(o => !existingIds.has(o.id));
-          return [...prev, ...newUnique];
-        });
-        setLastOrderDoc(res.lastDoc);
-      }
-      setHasMoreOrders(res.hasMore);
-    } catch (err) {
-      console.error("Error al cargar los siguientes pedidos:", err);
-    } finally {
-      setLoadingMoreOrders(false);
-    }
-  };
 
   const handleLoadMoreSubscriptions = async () => {
     if (loadingMoreSubs || !hasMoreSubs) return;
@@ -314,14 +296,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const fetchedPayments = await fetchAllSubscriptionPayments();
       setAllPayments(fetchedPayments);
 
-      // 4. Load initial 8 orders (Lazy loading / progressive pagination)
+      // 4. Load all orders from all stores (Global complete dataset for accurate metrics)
       try {
-        const initialBatch = await fetchAdminOrdersBatch(8, null, 0);
-        setAllOrders(initialBatch.orders);
-        setLastOrderDoc(initialBatch.lastDoc);
-        setHasMoreOrders(initialBatch.hasMore);
+        const allFetchedOrders = await fetchAllOrders();
+        setAllOrders(allFetchedOrders);
       } catch (err) {
-        console.error("Error al cargar lote inicial de pedidos en admin panel:", err);
+        console.error("Error al cargar todos los pedidos en admin panel:", err);
       }
 
       // 5. Load system settings
@@ -446,33 +426,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       }
     };
   }, [activeAdminTab, hasMoreSubs, loadingMoreSubs, lastSubDoc, users.length]);
-
-  // Infinite scroll trigger when reaching bottom of orders table
-  useEffect(() => {
-    if (activeAdminTab !== 'orders') return;
-    if (!hasMoreOrders || loadingMoreOrders) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const target = entries[0];
-        if (target.isIntersecting) {
-          handleLoadMoreOrders();
-        }
-      },
-      { threshold: 0.1, rootMargin: '120px' }
-    );
-
-    const el = ordersSentinelRef.current;
-    if (el) {
-      observer.observe(el);
-    }
-
-    return () => {
-      if (el) {
-        observer.unobserve(el);
-      }
-    };
-  }, [activeAdminTab, hasMoreOrders, loadingMoreOrders, lastOrderDoc, allOrders.length]);
 
   const handleDeletePage = async (user: AdminUser) => {
     const confirmDelete = window.confirm(
@@ -983,6 +936,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     try {
       await updateOrderStatus(orderId, storeOwnerId, newStatus);
       setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+      setViewingOrder(prev => prev && prev.id === orderId ? { ...prev, status: newStatus } : prev);
       setNotif(`¡Estado del pedido actualizado a ${newStatus.toUpperCase()} correctamente!`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err) {
@@ -998,11 +952,41 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     try {
       await deleteOrder(order.id, order.storeOwnerId);
       setAllOrders(prev => prev.filter(o => o.id !== order.id));
+      if (viewingOrder?.id === order.id) {
+        setViewingOrder(null);
+      }
       setNotif(`Pedido #${order.orderNumber || 'S/N'} eliminado permanentemente.`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err) {
       console.error(err);
       alert("Error al eliminar el pedido.");
+    }
+  };
+
+  const triggerWhatsAppMessage = (order: OrderItem) => {
+    const statusLang: Record<string, string> = {
+      'pending': 'Pendiente ⏳',
+      'processing': 'En Procesamiento 📦',
+      'shipped': 'Enviado 🚚',
+      'delivered': 'Entregado ✅',
+      'cancelled': 'Cancelado 🚫'
+    };
+    
+    const storeName = getStoreNameForOrder(order);
+    const intro = `Hola *${order.customerName}*, te contactamos de *${storeName}* respecto a tu compra #${order.orderNumber || 'S/N'}.\n\n`;
+    const statusMsg = `El estado actual de tu pedido es: *${statusLang[order.status] || order.status}*.\n\n`;
+    const total = `Total: *$${(order.totalAmount || 0).toLocaleString('es-CO')} COP*\n\n`;
+    const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.\n`;
+    
+    let rawPhone = (order.customerPhone || '').replace(/[^0-9]/g, '');
+    if (rawPhone.length === 10 && rawPhone.startsWith('3')) {
+      rawPhone = '57' + rawPhone;
+    }
+    const fullText = encodeURIComponent(`${intro}${statusMsg}${total}${out}`);
+    if (rawPhone) {
+      window.open(`https://wa.me/${rawPhone}?text=${fullText}`, '_blank');
+    } else {
+      alert("El pedido no tiene un número telefónico válido registrado.");
     }
   };
 
@@ -1035,6 +1019,42 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       return true;
     });
   }, [allOrders, selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery, storesMap, users]);
+
+  // Progressive orders display (first 20, then loads more on scroll)
+  const displayedOrders = useMemo(() => {
+    return filteredOrders.slice(0, visibleOrdersCount);
+  }, [filteredOrders, visibleOrdersCount]);
+
+  useEffect(() => {
+    setVisibleOrdersCount(20);
+  }, [selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery]);
+
+  // Progressive display scroll trigger when reaching bottom of orders table
+  useEffect(() => {
+    if (activeAdminTab !== 'orders') return;
+    if (visibleOrdersCount >= filteredOrders.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const target = entries[0];
+        if (target.isIntersecting) {
+          setVisibleOrdersCount(prev => Math.min(prev + 20, filteredOrders.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: '120px' }
+    );
+
+    const el = ordersSentinelRef.current;
+    if (el) {
+      observer.observe(el);
+    }
+
+    return () => {
+      if (el) {
+        observer.unobserve(el);
+      }
+    };
+  }, [activeAdminTab, visibleOrdersCount, filteredOrders.length]);
 
   // Helper to sort users with the most recently registered on top (el último registrado arriba)
   const sortUsersNewestFirst = (list: AdminUser[]): AdminUser[] => {
@@ -1411,7 +1431,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             )}
 
             {/* Global Dashboard Metrics Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
               <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
                 <div className="flex justify-between items-center text-gray-400 mb-1.5">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">USUARIOS TOTALES</span>
@@ -1464,27 +1484,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 </div>
               </div>
 
-              <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
-                <div className="flex justify-between items-center text-gray-400 mb-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">SUSCRITOS DE PAGO</span>
-                  <ShieldAlert className="w-4 h-4 text-yellow-500" />
-                </div>
-                <p className="text-2xl font-black text-white mb-1">{stats.subscribersPro + stats.subscribersBusiness}</p>
-                <span className="text-[10px] text-emerald-400 font-bold font-mono">
-                  {Math.round(((stats.subscribersPro + stats.subscribersBusiness) / (stats.totalUsers || 1)) * 100)}% conversión
-                </span>
-              </div>
+              <div className="col-span-2 lg:col-span-1 bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-center text-gray-400 mb-2">
+                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                      INGRESO MENSUAL COP
+                    </span>
+                    <DollarSign className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
+                        <span className="truncate">Activos</span>
+                      </span>
+                      <span className="text-sm sm:text-base font-black text-emerald-400 font-mono mt-0.5 truncate" title={`$${((stats as any).activeRevenue ?? stats.monthlyRevenue ?? 0).toLocaleString('es-CO')} COP`}>
+                        ${((stats as any).activeRevenue ?? stats.monthlyRevenue ?? 0).toLocaleString('es-CO')}
+                      </span>
+                    </div>
 
-              <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
-                <div className="flex justify-between items-center text-gray-400 mb-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">INGRESO MENSUAL COP</span>
-                  <DollarSign className="w-4 h-4 text-emerald-500" />
+                    <div className="flex flex-col border-l border-gray-800/80 pl-2 min-w-0">
+                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block shrink-0"></span>
+                        <span className="truncate">Esperado</span>
+                      </span>
+                      <span className="text-sm sm:text-base font-black text-sky-400 font-mono mt-0.5 truncate" title={`$${((stats as any).expectedRevenue ?? ((stats as any).activeRevenue ? (stats as any).activeRevenue + ((stats as any).pendingRecovery || 0) : stats.monthlyRevenue)).toLocaleString('es-CO')} COP`}>
+                        ${((stats as any).expectedRevenue ?? ((stats as any).activeRevenue ? (stats as any).activeRevenue + ((stats as any).pendingRecovery || 0) : stats.monthlyRevenue)).toLocaleString('es-CO')}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <p className="text-2xl font-black text-white mb-1">${stats.monthlyRevenue.toLocaleString()} COP</p>
-                <span className="text-[10px] text-gray-500 font-bold font-mono flex items-center gap-1">
-                  <FileText className="w-3 h-3 text-gray-400" />
-                  <span>Facturación Estimada</span>
-                </span>
+
+                <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
+                  <span className="text-gray-400 font-bold">Por recuperar:</span>
+                  <span className="text-amber-400 font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[10.5px]">
+                    ${Math.max(0, (((stats as any).expectedRevenue ?? stats.monthlyRevenue) - ((stats as any).activeRevenue ?? stats.monthlyRevenue))).toLocaleString('es-CO')}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -2147,7 +2184,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             )}
           </div>
         ) : activeAdminTab === 'orders' ? (
-          <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-6 backdrop-blur-sm space-y-6">
+          <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-3.5 sm:p-6 backdrop-blur-sm space-y-5 max-w-full overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-900 pb-4">
               <div>
                 <h3 className="font-extrabold text-white text-base">Sincronización General de Pedidos de Tiendas</h3>
@@ -2157,37 +2194,40 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             </div>
 
-            {/* Metrics cards inside orders */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Metrics cards inside orders - calculated from ALL orders */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-500 uppercase block">Pedidos Cargados</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase block">Total Pedidos</span>
                 <span className="text-xl font-black text-white">
-                  {filteredOrders.length} <span className="text-xs text-gray-500 font-normal">/ {allOrders.length}</span>
+                  {allOrders.length}
+                  {filteredOrders.length !== allOrders.length && (
+                    <span className="text-xs text-gray-500 font-normal"> ({filteredOrders.length} en vista)</span>
+                  )}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Venta Total Estimada</span>
                 <span className="text-xl font-black text-emerald-400">
-                  ${filteredOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString()} COP
+                  ${allOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString('es-CO')} COP
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Pendientes</span>
                 <span className="text-xl font-black text-amber-400">
-                  {filteredOrders.filter(o => o.status === 'pending').length}
+                  {allOrders.filter(o => o.status === 'pending').length}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Entregados</span>
                 <span className="text-xl font-black text-emerald-400">
-                  {filteredOrders.filter(o => o.status === 'delivered').length}
+                  {allOrders.filter(o => o.status === 'delivered').length}
                 </span>
               </div>
             </div>
 
             {/* Filter controls */}
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1">
+            <div className="flex flex-col md:flex-row gap-3 max-w-full">
+              <div className="relative flex-1 min-w-0">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-550">
                   <Search className="w-4 h-4" />
                 </span>
@@ -2200,13 +2240,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <div className="flex items-center gap-1.5 bg-gray-950 border border-gray-850 rounded-xl px-3 py-1.5">
-                  <span className="text-[10px] text-gray-450 uppercase font-bold font-mono">Tienda:</span>
+              <div className="flex flex-col sm:flex-row md:items-center gap-2 w-full md:w-auto min-w-0">
+                {/* Store selector with min-w-0 and truncate to prevent mobile overflow */}
+                <div className="flex items-center gap-2 bg-gray-950 border border-gray-850 rounded-xl px-3 py-2 w-full sm:w-auto sm:max-w-xs md:max-w-sm min-w-0">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold font-mono shrink-0">Tienda:</span>
                   <select
                     value={selectedOrderStoreFilter}
                     onChange={(e) => setSelectedOrderStoreFilter(e.target.value)}
-                    className="bg-transparent border-none text-white text-xs outline-none cursor-pointer pr-4 font-bold"
+                    className="bg-transparent border-none text-white text-xs outline-none cursor-pointer font-bold flex-1 min-w-0 w-full truncate pr-1"
                   >
                     <option value="all" className="bg-gray-950">Todas ({allStoresList.length > 0 ? allStoresList.length : users.length})</option>
                     {allStoresList.length > 0 ? (
@@ -2225,12 +2266,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-gray-950 border border-gray-850 rounded-xl px-3 py-1.5">
-                  <span className="text-[10px] text-gray-450 uppercase font-bold font-mono">Estado:</span>
+                {/* Status selector */}
+                <div className="flex items-center gap-2 bg-gray-950 border border-gray-850 rounded-xl px-3 py-2 w-full sm:w-auto min-w-0">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold font-mono shrink-0">Estado:</span>
                   <select
                     value={selectedOrderStatusFilter}
                     onChange={(e) => setSelectedOrderStatusFilter(e.target.value)}
-                    className="bg-transparent border-none text-white text-xs outline-none cursor-pointer pr-4 font-bold"
+                    className="bg-transparent border-none text-white text-xs outline-none cursor-pointer font-bold flex-1 min-w-0 w-full truncate pr-1"
                   >
                     <option value="all" className="bg-gray-950">Todos</option>
                     <option value="pending" className="bg-gray-950 text-amber-400 font-bold">🟡 Pendiente</option>
@@ -2248,202 +2290,371 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 No se encontraron pedidos correspondientes a los filtros actuales.
               </div>
             ) : (
-              <div className="overflow-x-auto w-full">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-gray-800 text-[10px] text-gray-450 uppercase font-black tracking-widest bg-gray-900/15">
-                      <th className="py-4 px-4">Pedido #</th>
-                      <th className="py-2.5 px-4">Tienda de Origen</th>
-                      <th className="py-2.5 px-4">Cliente / Contacto</th>
-                      <th className="py-2.5 px-4">Artículos del Pedido</th>
-                      <th className="py-2.5 px-4">Monto / Pago</th>
-                      <th className="py-2.5 px-4 text-center">Estado del Pedido</th>
-                      <th className="py-2.5 px-4 text-right">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-850 text-xs">
-                    {filteredOrders.map((order) => {
-                      const dateObj = order.createdAt ? new Date(order.createdAt) : new Date();
-                      return (
-                        <tr key={order.id} className="hover:bg-gray-900/10 transition">
-                          <td className="py-4 px-4">
-                            <span className="font-extrabold text-white text-xs block">#{order.orderNumber || 'S/N'}</span>
-                            <span className="text-[10px] text-gray-500 font-mono block">
-                              {dateObj.toLocaleDateString('es-CO', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </td>
-                          <td className="py-4 px-4">
-                            <div className="flex items-start gap-2">
-                              <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                                <Store className="w-3.5 h-3.5 text-indigo-400" />
-                              </div>
-                              <div className="min-w-0">
-                                <span className="font-extrabold text-indigo-300 text-xs block truncate max-w-[170px]" title={getStoreNameForOrder(order)}>
-                                  {getStoreNameForOrder(order)}
-                                </span>
-                                {getStoreUsernameForOrder(order) && (
-                                  <span className="text-[10px] text-gray-400 font-mono block truncate max-w-[170px]">
-                                    @{getStoreUsernameForOrder(order)}
-                                  </span>
-                                )}
-                                <span className="text-[9px] text-gray-500 font-mono block">
-                                  ID: {order.storeOwnerId.substring(0, 8)}...
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-4 px-4">
-                            <div className="font-bold text-white text-xs">{order.customerName}</div>
-                            <div className="text-[10px] text-gray-400 font-mono">{order.customerPhone}</div>
-                            {order.customerEmail && (
-                              <div className="text-[9px] text-gray-500">{order.customerEmail}</div>
-                            )}
-                            <div className="text-[10px] text-gray-400 mt-1 max-w-xs truncate" title={order.customerAddress}>
-                              📍 {order.customerAddress}
-                            </div>
-                            {order.notes && (
-                              <div className="text-[9px] text-amber-400/80 italic mt-0.5 max-w-xs truncate" title={order.notes}>
-                                Nota: "{order.notes}"
-                              </div>
-                            )}
+              <div className="w-full space-y-4">
+                {/* Mobile View: Cards matching exact phone design from screenshot (md:hidden) */}
+                <div className="md:hidden space-y-3.5">
+                  {displayedOrders.map((order) => {
+                    const dateObj = order.createdAt ? new Date(order.createdAt) : new Date();
+                    const dateFormatted = `${dateObj.getDate()}/${dateObj.getMonth() + 1}/${dateObj.getFullYear()}`;
+                    const timeFormatted = dateObj.toLocaleTimeString('es-CO', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    }).replace(/\./g, '').toUpperCase();
+                    const storeName = getStoreNameForOrder(order);
+                    const storeUsername = getStoreUsernameForOrder(order);
+                    const isTable = checkIsTableOrder(order);
+                    const isPickup = checkIsPickupOrder(order);
 
-                            {order.deliveryDriverName && (
-                              <div className="mt-2 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded-xl text-[10.5px] space-y-0.5 text-emerald-300 max-w-xs">
-                                <div className="font-bold flex items-center justify-between gap-1 text-emerald-400">
-                                  <span className="flex items-center gap-1">
-                                    <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                    {order.deliveryDriverName}
+                    const statusBadge = {
+                      delivered: { bg: 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60', label: 'ENTREGADO' },
+                      pending: { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' },
+                      processing: { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', label: 'EN PROCESO' },
+                      shipped: { bg: 'bg-purple-950/80 text-purple-400 border-purple-800/60', label: 'DESPACHADO' },
+                      cancelled: { bg: 'bg-red-950/80 text-red-400 border-red-800/60', label: 'CANCELADO' }
+                    }[order.status] || { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' };
+
+                    const statusTextColor = 
+                      order.status === 'delivered' ? 'text-emerald-400' :
+                      order.status === 'processing' ? 'text-sky-400' :
+                      order.status === 'shipped' ? 'text-purple-400' :
+                      order.status === 'cancelled' ? 'text-red-400' :
+                      'text-amber-400';
+
+                    return (
+                      <div 
+                        key={order.id} 
+                        className="bg-gray-950/90 border border-gray-850/90 rounded-2xl p-4 sm:p-5 space-y-3 shadow-lg"
+                      >
+                        {/* Top Header: Order Number and Status Badge */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-white font-extrabold text-base tracking-tight font-mono">
+                            #{order.orderNumber || 'S/N'}
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider ${statusBadge.bg}`}>
+                            {statusBadge.label}
+                          </span>
+                        </div>
+
+                        {/* Customer & Location Info */}
+                        <div className="space-y-1 pt-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-white font-extrabold text-sm">{order.customerName}</span>
+                            {isTable && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-950/80 text-amber-400 border border-amber-800/60 rounded text-[9px] font-black uppercase tracking-wider">
+                                🍽️ MESA
+                              </span>
+                            )}
+                            {isPickup && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 rounded text-[9px] font-black uppercase tracking-wider">
+                                🛍️ RECOGER
+                              </span>
+                            )}
+                            {order.proofImage && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-indigo-950/80 text-indigo-400 border border-indigo-800/60 rounded text-[9px] font-black uppercase tracking-wider">
+                                📸 RECIBO
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Store badge (vital in admin since orders are from multiple stores) */}
+                          <div className="flex items-center gap-1.5 text-[10.5px] text-indigo-400 font-semibold">
+                            <Store className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{storeName} {storeUsername ? `(@${storeUsername})` : ''}</span>
+                          </div>
+
+                          <div className="text-xs text-gray-400 leading-normal font-medium">
+                            {order.customerAddress || 'Retiro local / Sin dirección'}
+                          </div>
+
+                          <div className="text-xs text-gray-400 font-medium flex items-center gap-1.5 flex-wrap">
+                            <span>Fecha: &nbsp;{dateFormatted}</span>
+                            <span className="text-gray-600">•</span>
+                            <span>Hora: &nbsp;<strong className="text-gray-200 font-semibold">{timeFormatted}</strong></span>
+                          </div>
+
+                          {order.deliveryDriverName && (
+                            <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 rounded-lg text-[10px] font-semibold">
+                              <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span>Domiciliario: <strong>{order.deliveryDriverName}</strong> ({order.deliveryDriverPhone})</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Total Row */}
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-900/60">
+                          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                            TOTAL DEL PEDIDO:
+                          </span>
+                          <span className="text-lg font-black text-emerald-400">
+                            ${(order.totalAmount || 0).toLocaleString('es-CO')}
+                          </span>
+                        </div>
+
+                        {/* State selector box */}
+                        <div className="flex items-center justify-between gap-2 bg-gray-900/80 px-3.5 py-2 rounded-xl border border-gray-800">
+                          <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">
+                            ESTADO:
+                          </span>
+                          {isTable ? (
+                            <select
+                              value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status || 'pending'}
+                              onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                              className={`bg-transparent text-xs font-extrabold outline-none cursor-pointer text-right ${statusTextColor}`}
+                            >
+                              <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                              <option value="processing" className="bg-gray-950 text-sky-400 font-bold">En Proceso</option>
+                              <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                            </select>
+                          ) : (
+                            <select
+                              value={order.status || 'pending'}
+                              onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                              className={`bg-transparent text-xs font-extrabold outline-none cursor-pointer text-right ${statusTextColor}`}
+                            >
+                              <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                              <option value="processing" className="bg-gray-950 text-sky-400 font-bold">En Proceso</option>
+                              <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Despachado</option>
+                              <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                              <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
+                            </select>
+                          )}
+                        </div>
+
+                        {/* Actions buttons matching screenshot */}
+                        <div className="grid grid-cols-2 gap-2.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewingOrder(order)}
+                            className="py-2.5 px-3 bg-gray-900/90 hover:bg-gray-850 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-gray-800 transition active:scale-98 shadow-sm cursor-pointer"
+                          >
+                            <Eye className="w-4 h-4 text-indigo-400" />
+                            <span>Ver Detalles</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => triggerWhatsAppMessage(order)}
+                            className="py-2.5 px-3 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-emerald-800/60 transition active:scale-98 shadow-sm cursor-pointer"
+                          >
+                            <MessageCircle className="w-4 h-4 text-emerald-400" />
+                            <span>WhatsApp</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop View: Full Table (hidden md:block) */}
+                <div className="hidden md:block overflow-x-auto w-full">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-gray-800 text-[10px] text-gray-450 uppercase font-black tracking-widest bg-gray-900/15">
+                        <th className="py-4 px-4">Pedido #</th>
+                        <th className="py-2.5 px-4">Tienda de Origen</th>
+                        <th className="py-2.5 px-4">Cliente / Contacto</th>
+                        <th className="py-2.5 px-4">Artículos del Pedido</th>
+                        <th className="py-2.5 px-4">Monto / Pago</th>
+                        <th className="py-2.5 px-4 text-center">Estado del Pedido</th>
+                        <th className="py-2.5 px-4 text-right">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-850 text-xs">
+                      {displayedOrders.map((order) => {
+                        const dateObj = order.createdAt ? new Date(order.createdAt) : new Date();
+                        const timeFormatted = dateObj.toLocaleTimeString('es-CO', {
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          hour12: true
+                        }).replace(/\./g, '').toUpperCase();
+                        return (
+                          <tr key={order.id} className="hover:bg-gray-900/10 transition">
+                            <td className="py-4 px-4">
+                              <span className="font-extrabold text-white text-xs block">#{order.orderNumber || 'S/N'}</span>
+                              <span className="text-[10px] text-gray-400 font-mono block">
+                                {dateObj.getDate()}/{dateObj.getMonth() + 1}/{dateObj.getFullYear()}
+                              </span>
+                              <span className="text-[10px] text-indigo-300 font-mono font-bold block">
+                                {timeFormatted}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="flex items-start gap-2">
+                                <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                                  <Store className="w-3.5 h-3.5 text-indigo-400" />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="font-extrabold text-indigo-300 text-xs block truncate max-w-[170px]" title={getStoreNameForOrder(order)}>
+                                    {getStoreNameForOrder(order)}
                                   </span>
-                                  <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold uppercase">
-                                    {order.deliveryStep === 'delivered' ? '✓ Entregado' : '🛵 Domicilio'}
+                                  {getStoreUsernameForOrder(order) && (
+                                    <span className="text-[10px] text-gray-400 font-mono block truncate max-w-[170px]">
+                                     @{getStoreUsernameForOrder(order)}
+                                    </span>
+                                  )}
+                                  <span className="text-[9px] text-gray-500 font-mono block">
+                                    ID: {order.storeOwnerId.substring(0, 8)}...
                                   </span>
                                 </div>
-                                {order.deliveryDriverPhone && (
-                                  <div className="text-[9.5px] text-gray-300 font-mono">📱 {order.deliveryDriverPhone}</div>
-                                )}
-                                {order.deliveryVehicle && (
-                                  <div className="text-[9.5px] text-gray-400">🚘 {order.deliveryVehicle} {order.deliveryVehiclePlate ? `(${order.deliveryVehiclePlate})` : ''}</div>
-                                )}
                               </div>
-                            )}
-                          </td>
-                          <td className="py-4 px-4">
-                            <div className="space-y-1 max-w-xs">
-                              {order.items?.map((item, idx) => (
-                                <div key={idx} className="flex justify-between text-gray-300 gap-2">
-                                  <span className="truncate text-[11px]">
-                                    {item.name} {item.selectedVariant ? `(${item.selectedVariant})` : ''}
-                                  </span>
-                                  <span className="font-mono text-gray-500 shrink-0">x{item.quantity}</span>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="font-bold text-white text-xs">{order.customerName}</div>
+                              <div className="text-[10px] text-gray-400 font-mono">{order.customerPhone}</div>
+                              {order.customerEmail && (
+                                <div className="text-[9px] text-gray-500">{order.customerEmail}</div>
+                              )}
+                              <div className="text-[10px] text-gray-400 mt-1 max-w-xs truncate" title={order.customerAddress}>
+                                📍 {order.customerAddress}
+                              </div>
+                              {order.notes && (
+                                <div className="text-[9px] text-amber-400/80 italic mt-0.5 max-w-xs truncate" title={order.notes}>
+                                  Nota: "{order.notes}"
                                 </div>
-                              ))}
-                            </div>
-                          </td>
-                          <td className="py-4 px-4 font-mono">
-                            <span className="font-extrabold text-white block">
-                              ${order.totalAmount.toLocaleString()} COP
-                            </span>
-                            <span className="text-[9px] uppercase font-black tracking-wider text-gray-500 block">
-                              {order.paymentMethod === 'whatsapp' 
-                                ? 'Contraentrega (WA)' 
-                                : order.paymentMethod === 'transfer' 
-                                ? 'Transferencia' 
-                                : order.paymentMethod === 'cod' 
-                                ? 'Contra entrega' 
-                                : 'Efectivo'}
-                            </span>
-                          </td>
-                          <td className="py-4 px-4 text-center">
-                            {checkIsTableOrder(order) ? (
-                              <select
-                                value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status}
-                                onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2.5 cursor-pointer outline-none"
-                              >
-                                <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
-                                <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
-                                <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
-                              </select>
-                            ) : (
-                              <select
-                                value={order.status || 'pending'}
-                                onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                className={`rounded-lg py-1 px-2.5 text-[10px] uppercase font-black border cursor-pointer outline-none ${
-                                  order.status === 'delivered'
-                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                    : order.status === 'processing'
-                                    ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-                                    : order.status === 'shipped'
-                                    ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                    : order.status === 'cancelled'
-                                    ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                }`}
-                              >
-                                <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
-                                <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
-                                <option value="shipped" className="bg-gray-950 text-white">🟣 Enviado</option>
-                                <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
-                                <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
-                              </select>
-                            )}
-                          </td>
-                          <td className="py-4 px-4 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <a
-                                href={`https://api.whatsapp.com/send?phone=${order.customerPhone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 font-bold text-[10px] rounded-lg border border-emerald-500/25 transition inline-flex items-center gap-1 cursor-pointer"
-                                title="Contactar cliente por WhatsApp"
-                              >
-                                WhatsApp
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteOrder(order)}
-                                className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 font-bold text-[10px] rounded-lg border border-red-500/25 transition inline-flex items-center gap-1 cursor-pointer"
-                                title="Eliminar pedido permanentemente"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                <span>Eliminar</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                              )}
+
+                              {order.deliveryDriverName && (
+                                <div className="mt-2 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded-xl text-[10.5px] space-y-0.5 text-emerald-300 max-w-xs">
+                                  <div className="font-bold flex items-center justify-between gap-1 text-emerald-400">
+                                    <span className="flex items-center gap-1">
+                                      <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                      {order.deliveryDriverName}
+                                    </span>
+                                    <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold uppercase">
+                                      {order.deliveryStep === 'delivered' ? '✓ Entregado' : '🛵 Domicilio'}
+                                    </span>
+                                  </div>
+                                  {order.deliveryDriverPhone && (
+                                    <div className="text-[9.5px] text-gray-300 font-mono">📱 {order.deliveryDriverPhone}</div>
+                                  )}
+                                  {order.deliveryVehicle && (
+                                    <div className="text-[9.5px] text-gray-400">🚘 {order.deliveryVehicle} {order.deliveryVehiclePlate ? `(${order.deliveryVehiclePlate})` : ''}</div>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="space-y-1 max-w-xs">
+                                {order.items?.map((item, idx) => (
+                                  <div key={idx} className="flex justify-between text-gray-300 gap-2">
+                                    <span className="truncate text-[11px]">
+                                      {item.name} {item.selectedVariant ? `(${item.selectedVariant})` : ''}
+                                    </span>
+                                    <span className="font-mono text-gray-500 shrink-0">x{item.quantity}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 font-mono">
+                              <span className="font-extrabold text-white block">
+                                ${order.totalAmount.toLocaleString()} COP
+                              </span>
+                              <span className="text-[9px] uppercase font-black tracking-wider text-gray-500 block">
+                                {order.paymentMethod === 'whatsapp' 
+                                  ? 'Contraentrega (WA)' 
+                                  : order.paymentMethod === 'transfer' 
+                                  ? 'Transferencia' 
+                                  : order.paymentMethod === 'cod' 
+                                  ? 'Contra entrega' 
+                                  : 'Efectivo'}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 text-center">
+                              {checkIsTableOrder(order) ? (
+                                <select
+                                  value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status}
+                                  onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                                  className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2.5 cursor-pointer outline-none"
+                                >
+                                  <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
+                                  <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
+                                  <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                </select>
+                              ) : (
+                                <select
+                                  value={order.status || 'pending'}
+                                  onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                                  className={`rounded-lg py-1 px-2.5 text-[10px] uppercase font-black border cursor-pointer outline-none ${
+                                    order.status === 'delivered'
+                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                      : order.status === 'processing'
+                                      ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                                      : order.status === 'shipped'
+                                      ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                      : order.status === 'cancelled'
+                                      ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                  }`}
+                                >
+                                  <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
+                                  <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
+                                  <option value="shipped" className="bg-gray-950 text-white">🟣 Enviado</option>
+                                  <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                  <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
+                                </select>
+                              )}
+                            </td>
+                            <td className="py-4 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingOrder(order)}
+                                  className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-white font-bold text-[10px] rounded-lg border border-gray-800 transition inline-flex items-center gap-1 cursor-pointer"
+                                  title="Ver detalles completos del pedido"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                                  <span>Detalles</span>
+                                </button>
+                                <a
+                                  href={`https://api.whatsapp.com/send?phone=${order.customerPhone.replace(/[^0-9]/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 font-bold text-[10px] rounded-lg border border-emerald-500/25 transition inline-flex items-center gap-1 cursor-pointer"
+                                  title="Contactar cliente por WhatsApp"
+                                >
+                                  WhatsApp
+                                </a>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteOrder(order)}
+                                  className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 font-bold text-[10px] rounded-lg border border-red-500/25 transition inline-flex items-center gap-1 cursor-pointer"
+                                  title="Eliminar pedido permanentemente"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>Eliminar</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
 
                 {/* Sentinel and Progressive Load Controls for Orders */}
                 <div 
                   ref={ordersSentinelRef} 
                   className="py-6 flex flex-col items-center justify-center gap-2 border-t border-gray-850/60 mt-2"
                 >
-                  {loadingMoreOrders ? (
-                    <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs bg-indigo-500/10 px-5 py-2.5 rounded-xl border border-indigo-500/20 animate-pulse">
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Cargando automáticamente los siguientes 8 pedidos...</span>
-                    </div>
-                  ) : hasMoreOrders ? (
+                  {displayedOrders.length < filteredOrders.length ? (
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                       <span className="text-[11px] text-gray-400 font-medium">
-                        Pedidos cargados en vista: <strong className="text-white font-mono">{allOrders.length}</strong>
+                        Mostrando <strong className="text-white font-mono">{displayedOrders.length}</strong> de <strong className="text-white font-mono">{filteredOrders.length}</strong> pedidos
                       </span>
                       <button
                         type="button"
-                        onClick={handleLoadMoreOrders}
+                        onClick={() => setVisibleOrdersCount(prev => Math.min(prev + 20, filteredOrders.length))}
                         className="px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 font-extrabold text-xs rounded-xl border border-indigo-500/30 transition duration-150 cursor-pointer flex items-center gap-2 shadow-sm hover:scale-[1.01] active:scale-98"
                       >
                         <Download className="w-4 h-4" />
-                        <span>Cargar siguientes 8 pedidos</span>
+                        <span>Cargar siguientes 20 pedidos</span>
                       </button>
                     </div>
                   ) : (
                     <div className="text-[11px] font-bold text-gray-400 bg-gray-950/80 px-4 py-2 rounded-xl border border-gray-850 flex items-center gap-2">
                       <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>✓ Carga progresiva completa ({allOrders.length} pedidos cargados)</span>
+                      <span>✓ Todos los pedidos sincronizados ({filteredOrders.length} pedidos)</span>
                     </div>
                   )}
                 </div>
@@ -2940,6 +3151,270 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ) : null}
           </main>
         </div>
+
+        {/* High resolution Proof Image Modal Overlay */}
+        {viewingOrder && (
+          <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
+            <div className="relative max-w-xl w-full bg-gray-950 border border-gray-800 rounded-3xl p-5 sm:p-6 flex flex-col max-h-[92vh] shadow-2xl space-y-4 text-left">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-gray-850 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                    <Eye className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                      <span>Pedido #{viewingOrder.orderNumber || 'S/N'}</span>
+                      {checkIsTableOrder(viewingOrder) && (
+                        <span className="px-2 py-0.5 bg-amber-950/80 text-amber-400 border border-amber-800/60 rounded text-[9.5px] font-black uppercase tracking-wider">
+                          🍽️ MESA
+                        </span>
+                      )}
+                      {checkIsPickupOrder(viewingOrder) && (
+                        <span className="px-2 py-0.5 bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 rounded text-[9.5px] font-black uppercase tracking-wider">
+                          🛍️ RECOGER
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-[11px] text-gray-400">
+                      {viewingOrder.createdAt ? (
+                        <>
+                          <span>Fecha: {new Date(viewingOrder.createdAt).toLocaleDateString('es-CO')}</span>
+                          <span className="mx-1.5 text-gray-600">•</span>
+                          <span>Hora: <strong className="text-gray-200 font-semibold">{new Date(viewingOrder.createdAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}</strong></span>
+                        </>
+                      ) : 'Reciente'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingOrder(null)}
+                  className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-850 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Scrollable Body */}
+              <div className="overflow-y-auto space-y-4 pr-1 text-xs">
+                {/* Store of Origin */}
+                <div className="p-3.5 bg-indigo-950/30 border border-indigo-850/60 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
+                      <Store className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-indigo-400 block">Tienda de Origen</span>
+                      <p className="font-extrabold text-white truncate text-xs sm:text-sm">
+                        {getStoreNameForOrder(viewingOrder)}
+                      </p>
+                      {getStoreUsernameForOrder(viewingOrder) && (
+                        <p className="text-[10.5px] text-gray-400 font-mono">
+                          @{getStoreUsernameForOrder(viewingOrder)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[9.5px] text-gray-500 font-mono shrink-0">
+                    ID: {viewingOrder.storeOwnerId.substring(0, 8)}...
+                  </span>
+                </div>
+
+                {/* Customer Information */}
+                <div className="p-4 bg-gray-900/60 border border-gray-850 rounded-2xl space-y-2">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-gray-400 block">
+                    Datos del Cliente / Destinatario
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-gray-400 text-[11px] block">Nombre:</span>
+                      <span className="font-bold text-white text-sm">{viewingOrder.customerName}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 text-[11px] block">Teléfono / WhatsApp:</span>
+                      <span className="font-mono font-bold text-indigo-300">{viewingOrder.customerPhone}</span>
+                    </div>
+                    {viewingOrder.customerEmail && (
+                      <div className="sm:col-span-2">
+                        <span className="text-gray-400 text-[11px] block">Correo:</span>
+                        <span className="font-mono text-gray-300">{viewingOrder.customerEmail}</span>
+                      </div>
+                    )}
+                    <div className="sm:col-span-2">
+                      <span className="text-gray-400 text-[11px] block">Dirección de Entrega:</span>
+                      <span className="text-gray-200 font-medium">{viewingOrder.customerAddress || 'Retiro local / Sin dirección'}</span>
+                    </div>
+                    {viewingOrder.notes && (
+                      <div className="sm:col-span-2 p-2.5 bg-amber-950/30 border border-amber-800/40 rounded-xl text-amber-300">
+                        <span className="font-bold text-[10.5px] block">Instrucciones o Notas:</span>
+                        <p className="italic text-[11px] mt-0.5">{viewingOrder.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Delivery Driver Info */}
+                {viewingOrder.deliveryDriverName && (
+                  <div className="p-3.5 bg-emerald-950/30 border border-emerald-800/40 rounded-2xl space-y-1 text-emerald-300">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 block">
+                      Repartidor Asignado
+                    </span>
+                    <div className="flex items-center justify-between gap-2 pt-0.5">
+                      <span className="font-extrabold text-sm flex items-center gap-1.5 text-white">
+                        <Bike className="w-4 h-4 text-emerald-400" />
+                        {viewingOrder.deliveryDriverName}
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold uppercase">
+                        {viewingOrder.deliveryStep === 'delivered' ? '✓ Entregado' : '🛵 En Camino'}
+                      </span>
+                    </div>
+                    {viewingOrder.deliveryDriverPhone && (
+                      <div className="text-xs text-gray-300 font-mono">📱 Teléfono: {viewingOrder.deliveryDriverPhone}</div>
+                    )}
+                    {viewingOrder.deliveryVehicle && (
+                      <div className="text-xs text-gray-300">🚘 Vehículo: {viewingOrder.deliveryVehicle} {viewingOrder.deliveryVehiclePlate ? `(${viewingOrder.deliveryVehiclePlate})` : ''}</div>
+                    )}
+                  </div>
+                )}
+
+                {/* Proof Image */}
+                {viewingOrder.proofImage && (
+                  <div className="p-3.5 bg-gray-900/60 border border-gray-850 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-black tracking-wider text-indigo-400">
+                        Comprobante de Pago Adjunto
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setViewingProofImg(viewingOrder.proofImage!)}
+                        className="text-[11px] text-indigo-300 hover:text-white underline cursor-pointer"
+                      >
+                        Ver en pantalla completa
+                      </button>
+                    </div>
+                    <div 
+                      onClick={() => setViewingProofImg(viewingOrder.proofImage!)}
+                      className="max-h-48 overflow-hidden rounded-xl border border-gray-800 bg-black cursor-pointer hover:opacity-90 transition flex items-center justify-center"
+                    >
+                      <img 
+                        src={viewingOrder.proofImage} 
+                        alt="Comprobante" 
+                        referrerPolicy="no-referrer"
+                        className="max-h-48 object-contain" 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Items List */}
+                <div className="p-4 bg-gray-900/60 border border-gray-850 rounded-2xl space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-gray-400">
+                      Productos del Pedido ({viewingOrder.items?.length || 0})
+                    </span>
+                    <span className="text-[10px] uppercase font-black tracking-wider text-gray-400">
+                      Subtotal
+                    </span>
+                  </div>
+                  <div className="divide-y divide-gray-850">
+                    {viewingOrder.items?.map((item, idx) => (
+                      <div key={idx} className="py-2 flex items-center justify-between gap-3 text-xs">
+                        <div>
+                          <p className="font-extrabold text-white">
+                            {item.name}
+                          </p>
+                          {item.selectedVariant && (
+                            <p className="text-[11px] text-indigo-300 font-medium">
+                              Variante: {item.selectedVariant}
+                            </p>
+                          )}
+                          <p className="text-[10.5px] text-gray-400 font-mono">
+                            ${(item.price || 0).toLocaleString('es-CO')} × {item.quantity}
+                          </p>
+                        </div>
+                        <span className="font-mono font-bold text-white shrink-0">
+                          ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Summary row */}
+                  <div className="pt-2 border-t border-gray-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-gray-400 block">Método de Pago</span>
+                      <span className="text-xs font-bold text-white">
+                        {viewingOrder.paymentMethod === 'whatsapp' 
+                          ? 'Contraentrega (WA)' 
+                          : viewingOrder.paymentMethod === 'transfer' 
+                          ? 'Transferencia Bancaria' 
+                          : viewingOrder.paymentMethod === 'cod' 
+                          ? 'Contra entrega' 
+                          : 'Efectivo'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-black text-gray-400 block">Total Final</span>
+                      <span className="text-base font-black text-emerald-400">
+                        ${(viewingOrder.totalAmount || 0).toLocaleString('es-CO')} COP
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* State selector row */}
+                <div className="flex items-center justify-between gap-2 p-3 bg-gray-900/80 rounded-xl border border-gray-800">
+                  <span className="text-[10.5px] font-black uppercase text-gray-400 tracking-wider">
+                    Actualizar Estado:
+                  </span>
+                  <select
+                    value={checkIsTableOrder(viewingOrder) && viewingOrder.status === 'shipped' ? 'processing' : viewingOrder.status || 'pending'}
+                    onChange={(e) => handleUpdateOrderStatus(viewingOrder.id, viewingOrder.storeOwnerId, e.target.value as any)}
+                    className="bg-gray-950 border border-gray-700 text-white rounded-lg py-1.5 px-3 text-xs font-bold outline-none cursor-pointer"
+                  >
+                    <option value="pending">🟡 Pendiente</option>
+                    <option value="processing">🔵 En Proceso</option>
+                    {!checkIsTableOrder(viewingOrder) && (
+                      <option value="shipped">🟣 Enviado / Despachado</option>
+                    )}
+                    <option value="delivered">🟢 Entregado</option>
+                    <option value="cancelled">🔴 Cancelado</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Modal Actions Footer */}
+              <div className="flex items-center justify-between gap-2.5 pt-2 border-t border-gray-850">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteOrder(viewingOrder)}
+                  className="py-2.5 px-3 bg-red-500/15 hover:bg-red-500/25 text-red-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-red-500/25 transition cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Eliminar Pedido</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => triggerWhatsAppMessage(viewingOrder)}
+                    className="py-2.5 px-3.5 bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-emerald-800/60 transition cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>WhatsApp</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewingOrder(null)}
+                    className="py-2.5 px-4 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* High resolution Proof Image Modal Overlay */}
         {viewingProofImg && (

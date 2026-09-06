@@ -389,6 +389,10 @@ export default function App() {
             if (targetView === 'tienda') {
               window.history.pushState({}, '', '/tienda');
               setView('tienda');
+            } else if (targetView === 'profile' && customUser) {
+              window.history.pushState({}, '', `/${customUser}`);
+              setTargetUsername(customUser);
+              setView('profile');
             } else if (targetView === 'landing') {
               window.history.pushState({}, '', '/landing');
               setView('landing');

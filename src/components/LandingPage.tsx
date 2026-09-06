@@ -58,7 +58,7 @@ import { SELLER_TERMS_PREAMBLE, SELLER_TERMS_SECTIONS } from '../data/sellerTerm
 import { BUYER_TERMS_PREAMBLE, BUYER_TERMS_SECTIONS } from '../data/buyerTermsData';
 
 interface LandingPageProps {
-  onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal', usernameToClaim?: string) => void;
+  onNavigate: (view: 'landing' | 'login' | 'signup' | 'dashboard' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'profile', usernameToClaim?: string) => void;
 }
 
 export default function LandingPage({ onNavigate }: LandingPageProps) {
@@ -70,7 +70,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   const [showFooterTerms, setShowFooterTerms] = useState(false);
   const [footerTermsTab, setFooterTermsTab] = useState<'buyers' | 'sellers'>('buyers');
 
-  // Partner stores in Ipiales with logos and names
+  // Partner stores in Ipiales with verified authentic logos and names
   const [partnerStores, setPartnerStores] = useState<Array<{
     name: string;
     category?: string;
@@ -79,27 +79,51 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
   }>>([
     {
       name: "Señor Barril",
-      category: "Parrilla & Asados",
-      logo: "https://images.unsplash.com/photo-1544025162-d76694265947?w=200&auto=format&fit=crop&q=80",
-      username: "senor-barril"
+      category: "Parrilla & Asados al Barril",
+      logo: "/stores/senorbarril.jpg",
+      username: "senorbarril"
     },
     {
       name: "Comidas Rápidas Sofí",
       category: "Hamburguesas & Salchipapas",
-      logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&auto=format&fit=crop&q=80",
-      username: "comidas-rapidas-sofi"
+      logo: "/stores/karo.2412.jpg",
+      username: "karo.2412"
     },
     {
       name: "La Casa de los Caldos",
       category: "Caldos & Tradición",
-      logo: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=200&auto=format&fit=crop&q=80",
-      username: "la-casa-de-los-caldos"
+      logo: "/stores/lacasadeloscaldos.jpg",
+      username: "lacasadeloscaldos"
     },
     {
-      name: "Las Delicias de Doña Yoli",
-      category: "Panadería & Típicos",
-      logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&auto=format&fit=crop&q=80",
-      username: "las-delicias-de-dona-yoli"
+      name: "Delicias Doña Yoli",
+      category: "Comidas Rápidas & Típicos",
+      logo: "/stores/deliciasdonayoli.jpg",
+      username: "deliciasdonayoli"
+    },
+    {
+      name: "Cevichería Un Solo Toque 2",
+      category: "Comida de Mar & Cevichería",
+      logo: "/stores/unsolotoque2.jpg",
+      username: "unsolotoque2"
+    },
+    {
+      name: "El Tertuliadero",
+      category: "Bar & Parrilla Rock",
+      logo: "/stores/tertuliadero.jpg",
+      username: "tertuliadero"
+    },
+    {
+      name: "Pollo Stop",
+      category: "Pollo Asado & Broaster",
+      logo: "/stores/pollostop.jpg",
+      username: "pollostop"
+    },
+    {
+      name: "Barril y Parrilla Express",
+      category: "Asados al Barril & Parrilla",
+      logo: "/stores/barrilyparillaexpress.jpg",
+      username: "barrilyparillaexpress"
     }
   ]);
 
@@ -108,50 +132,86 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       try {
         const map = await fetchAllStoresMap();
         if (map && Object.keys(map).length > 0) {
-          const uniqueList: Array<{ name: string; category?: string; logo?: string; username?: string }> = [];
-          const seen = new Set<string>();
-
-          const baseFeatured = [
-            { name: "Señor Barril", category: "Parrilla & Asados", logo: "https://images.unsplash.com/photo-1544025162-d76694265947?w=200&auto=format&fit=crop&q=80", username: "senor-barril" },
-            { name: "Comidas Rápidas Sofí", category: "Hamburguesas & Salchipapas", logo: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&auto=format&fit=crop&q=80", username: "comidas-rapidas-sofi" },
-            { name: "La Casa de los Caldos", category: "Caldos & Tradición", logo: "https://images.unsplash.com/photo-1547592166-23ac45744acd?w=200&auto=format&fit=crop&q=80", username: "la-casa-de-los-caldos" },
-            { name: "Las Delicias de Doña Yoli", category: "Panadería & Típicos", logo: "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=200&auto=format&fit=crop&q=80", username: "las-delicias-de-dona-yoli" }
+          const curatedPartnerList = [
+            {
+              name: "Señor Barril",
+              category: "Parrilla & Asados al Barril",
+              username: "senorbarril",
+              defaultLogo: "/stores/senorbarril.jpg"
+            },
+            {
+              name: "Comidas Rápidas Sofí",
+              category: "Hamburguesas & Salchipapas",
+              username: "karo.2412",
+              defaultLogo: "/stores/karo.2412.jpg"
+            },
+            {
+              name: "La Casa de los Caldos",
+              category: "Caldos & Tradición",
+              username: "lacasadeloscaldos",
+              defaultLogo: "/stores/lacasadeloscaldos.jpg"
+            },
+            {
+              name: "Delicias Doña Yoli",
+              category: "Comidas Rápidas & Típicos",
+              username: "deliciasdonayoli",
+              defaultLogo: "/stores/deliciasdonayoli.jpg"
+            },
+            {
+              name: "Cevichería Un Solo Toque 2",
+              category: "Comida de Mar & Cevichería",
+              username: "unsolotoque2",
+              defaultLogo: "/stores/unsolotoque2.jpg"
+            },
+            {
+              name: "El Tertuliadero",
+              category: "Bar & Parrilla Rock",
+              username: "tertuliadero",
+              defaultLogo: "/stores/tertuliadero.jpg"
+            },
+            {
+              name: "Pollo Stop",
+              category: "Pollo Asado & Broaster",
+              username: "pollostop",
+              defaultLogo: "/stores/pollostop.jpg"
+            },
+            {
+              name: "Barril y Parrilla Express",
+              category: "Asados al Barril & Parrilla",
+              username: "barrilyparillaexpress",
+              defaultLogo: "/stores/barrilyparillaexpress.jpg"
+            }
           ];
 
-          baseFeatured.forEach(f => {
-            const foundProfile = Object.values(map).find(p => 
-              p.displayName?.toLowerCase().trim() === f.name.toLowerCase().trim() ||
-              p.username?.toLowerCase().trim() === f.username.toLowerCase().trim()
-            );
-            if (foundProfile && foundProfile.photoURL) {
-              uniqueList.push({
-                name: foundProfile.displayName || f.name,
-                category: foundProfile.category || f.category,
-                logo: foundProfile.photoURL,
-                username: foundProfile.username || f.username
-              });
-            } else {
-              uniqueList.push(f);
+          const loadedList: Array<{ name: string; category?: string; logo?: string; username?: string }> = [];
+
+          curatedPartnerList.forEach(item => {
+            // Find in database map by username or variations
+            const prof = Object.values(map).find(p => {
+              const u = (p.username || '').toLowerCase().trim();
+              const d = (p.displayName || '').toLowerCase().trim();
+              const tu = item.username.toLowerCase().trim();
+              return u === tu || d === item.name.toLowerCase().trim() ||
+                (tu === 'karo.2412' && (u.includes('sofi') || d.includes('sofi') || d.includes('soffi'))) ||
+                (tu === 'deliciasdonayoli' && (u.includes('yoli') || d.includes('yoli')));
+            });
+
+            let finalLogo = item.defaultLogo;
+            if (prof?.photoURL && !prof.photoURL.includes('googleusercontent.com')) {
+              finalLogo = prof.photoURL;
             }
-            seen.add(f.name.toLowerCase().trim());
+
+            loadedList.push({
+              name: prof?.displayName?.trim() || item.name,
+              category: prof?.category || item.category,
+              logo: finalLogo,
+              username: prof?.username || item.username
+            });
           });
 
-          // Add any other active stores registered in the database (up to 8 total)
-          Object.values(map).forEach(p => {
-            const dName = p.displayName || p.username || '';
-            const key = dName.toLowerCase().trim();
-            if (dName && !seen.has(key) && !p.suspended && uniqueList.length < 8) {
-              seen.add(key);
-              uniqueList.push({
-                name: dName,
-                category: p.category || 'Restaurante',
-                logo: p.photoURL || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=200&auto=format&fit=crop&q=80',
-                username: p.username
-              });
-            }
-          });
-
-          setPartnerStores(uniqueList);
+          if (loadedList.length > 0) {
+            setPartnerStores(loadedList);
+          }
         }
       } catch (err) {
         console.warn("Could not load partner stores map:", err);
@@ -397,7 +457,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <button
                   key={idx}
                   type="button"
-                  onClick={() => onNavigate('tienda')}
+                  onClick={() => {
+                    if (store.username) {
+                      onNavigate('profile', store.username);
+                    } else {
+                      onNavigate('tienda');
+                    }
+                  }}
                   className="flex flex-col items-center group cursor-pointer focus:outline-none transition-transform duration-200 hover:-translate-y-1 w-full max-w-[140px]"
                   title={`Ver tienda de ${store.name}`}
                 >
@@ -410,6 +476,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                           alt={store.name}
                           referrerPolicy="no-referrer"
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                          onError={(e) => {
+                            if (store.username && !e.currentTarget.src.includes(`/stores/${store.username}`)) {
+                              e.currentTarget.src = `/stores/${store.username}.jpg`;
+                            }
+                          }}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1F2937] to-[#111827] text-white font-black text-base sm:text-lg">
@@ -1641,6 +1712,11 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                             alt={store.name}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover"
+                            onError={(e) => {
+                              if (store.username && !e.currentTarget.src.includes(`/stores/${store.username}`)) {
+                                e.currentTarget.src = `/stores/${store.username}.jpg`;
+                              }
+                            }}
                           />
                         ) : (
                           <span className="font-black text-emerald-800 text-sm">{store.name.charAt(0)}</span>

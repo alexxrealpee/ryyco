@@ -462,3 +462,35 @@ export async function validateOrderPayload(orderItems: Array<{ productId: string
     return { valid: true };
   }
 }
+
+/**
+ * Fetch global system settings on backend
+ */
+export async function fetchBackendSystemSettings() {
+  try {
+    const db = getBackendDb();
+    const snap = await getDoc(doc(db, 'settings', 'general'));
+    if (snap.exists()) {
+      return { defaultDeliveryFee: 7000, ...snap.data() };
+    }
+  } catch (err) {
+    console.warn("Backend settings fetch warning:", err);
+  }
+  return { defaultDeliveryFee: 7000, adminEmails: ["alexxrealpee@gmail.com"] };
+}
+
+/**
+ * Fetch user profile on backend
+ */
+export async function fetchBackendUserProfile(uid: string) {
+  try {
+    const db = getBackendDb();
+    const snap = await getDoc(doc(db, 'profiles', uid));
+    if (snap.exists()) {
+      return { uid, ...snap.data() };
+    }
+  } catch (err) {
+    console.warn("Backend user profile fetch warning:", err);
+  }
+  return null;
+}

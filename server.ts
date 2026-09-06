@@ -21,7 +21,9 @@ import {
   getAvailableCatalog, 
   syncCatalogFromClient, 
   validateProductForCart, 
-  validateOrderPayload 
+  validateOrderPayload,
+  fetchBackendSystemSettings,
+  fetchBackendUserProfile
 } from './server/catalogManager';
 
 // Load environmental variables
@@ -412,6 +414,32 @@ Formatos válidos para:
     const result = await validateOrderPayload(items, storeOwnerId);
     res.json(result);
   });
+
+  // Fast server-side fallback endpoints for settings & profile
+  app.get('/api/system-settings', async (req, res) => {
+    try {
+      const settings = await fetchBackendSystemSettings();
+      res.json(settings);
+    } catch (e: any) {
+      res.json({ defaultDeliveryFee: 7000, adminEmails: ["alexxrealpee@gmail.com"] });
+    }
+  });
+
+  app.get('/api/user-profile/:uid', async (req, res) => {
+    try {
+      const profile = await fetchBackendUserProfile(req.params.uid);
+      if (profile) {
+        res.json(profile);
+      } else {
+        res.status(404).json({ error: "Profile not found" });
+      }
+    } catch (e: any) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Serve static files from public directory
+  app.use(express.static(path.join(process.cwd(), 'public')));
 
   // Serve static files / Vite middleware
   if (process.env.NODE_ENV !== 'production') {
