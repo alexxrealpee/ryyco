@@ -1216,14 +1216,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     
     const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
     const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
+    const ryycoHomeUrl = `${baseUrl}/`;
+    const storeDisplayName = profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'nuestra tienda');
 
-    const intro = `Hola *${order.customerName}*, te contactamos de *${profile.displayName || 'la tienda'}* respecto a tu compra #${order.orderNumber}.\n\n`;
+    const intro = `Hola *${order.customerName}*, te contactamos de *${storeDisplayName}* respecto a tu compra #${order.orderNumber}.\n\n`;
     const statusMsg = `El estado actual de tu pedido es: *${statusLang[order.status] || order.status}*.\n\n`;
     const total = `Total: *${formatPrice(order.totalAmount)}*\n\n`;
     const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.\n\n`;
     const footerLinks = `-----------------------------\n` +
-      `💬 *Comunicarse con soporte:* https://wa.me/573106502043\n` +
-      `⭐ *Calificar tu experiencia:* ${storeRatingUrl}`;
+      `🍔 *¿NECESITA AYUDA CON SU PEDIDO?*\n` +
+      `Comuníquese con *Soporte Ryyco* y le ayudaremos a agilizar su pedido:\n` +
+      `💬 Contactar a Soporte Ryyco: https://wa.me/573106502043\n\n` +
+      `⭐ *¿CÓMO FUE SU EXPERIENCIA?*\n` +
+      `Califique su experiencia en *${storeDisplayName}* y ayúdenos a seguir mejorando:\n` +
+      `⭐ Calificar restaurante: ${storeRatingUrl}\n\n` +
+      `🍽️ *¡SIGA DISFRUTANDO EN RYYCO!*\n` +
+      `Regrese a nuestra plataforma y descubra *más restaurantes, platos y experiencias*:\n` +
+      `🍴 Volver a Ryyco: ${ryycoHomeUrl}\n\n` +
+      `*¡Gracias por pedir con Ryyco! ❤️💛*`;
     
     let rawPhone = order.customerPhone.replace(/[^0-9]/g, '');
     if (rawPhone.length === 10 && rawPhone.startsWith('3')) {
