@@ -2179,6 +2179,46 @@ export async function fetchAllOrders(): Promise<OrderItem[]> {
   return deduplicateOrders(finalFiltered).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+/**
+ * Real-time listener for ALL orders across all stores (Admins only).
+ * Detects new incoming orders in real-time for immediate push notification and sound alert.
+ */
+export function subscribeToAllOrders(
+  callback: (orders: OrderItem[], newOrders: OrderItem[]) => void
+): () => void {
+  let isInitial = true;
+  const knownIds = new Set<string>();
+
+  const unsubscribe = onSnapshot(collection(db, 'orders'), (snapshot) => {
+    let deletedIds: string[] = [];
+    try {
+      deletedIds = JSON.parse(localStorage.getItem('linnk_deleted_orders') || '[]');
+    } catch (e) {}
+
+    const result: OrderItem[] = [];
+    const newIncoming: OrderItem[] = [];
+
+    snapshot.forEach(docSnap => {
+      if (!deletedIds.includes(docSnap.id)) {
+        const order = { id: docSnap.id, ...docSnap.data() } as OrderItem;
+        result.push(order);
+        if (!isInitial && !knownIds.has(docSnap.id)) {
+          newIncoming.push(order);
+        }
+        knownIds.add(docSnap.id);
+      }
+    });
+
+    isInitial = false;
+    const sorted = deduplicateOrders(result).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    callback(sorted, newIncoming);
+  }, (err) => {
+    console.warn("subscribeToAllOrders error:", err);
+  });
+
+  return unsubscribe;
+}
+
 // Save/submit payment proof
 export async function saveSubscriptionPayment(payment: SubscriptionPayment): Promise<void> {
   try {

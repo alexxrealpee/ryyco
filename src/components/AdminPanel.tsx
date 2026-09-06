@@ -9,6 +9,7 @@ import {
   fetchAllSubscriptionPayments,
   db,
   fetchAllOrders,
+  subscribeToAllOrders,
   fetchAdminOrdersBatch,
   fetchAdminSubscriptionsBatch,
   fetchAllStoresMap,
@@ -65,7 +66,10 @@ import {
   UserCheck,
   ShieldCheck,
   Headphones,
-  MessageCircle
+  MessageCircle,
+  Bell,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { 
   collection, 
@@ -224,6 +228,187 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   // Orders progressive display pagination state
   const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(20);
   const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // Real-time Pending Orders Count - strictly pending/new orders only
+  const pendingOrdersCount = useMemo(() => {
+    return allOrders.filter(o => o.status === 'pending').length;
+  }, [allOrders]);
+
+  // Push Notification & Sound Alert States
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [newIncomingOrderAlert, setNewIncomingOrderAlert] = useState<{
+    id: string;
+    orderNumber?: number;
+    customerName: string;
+    storeName: string;
+    totalAmount: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      setPushPermission(Notification.permission);
+    } else {
+      setPushPermission('unsupported');
+    }
+  }, []);
+
+  // Sound, voice synthesis, and vibration player for new incoming order
+  const playOrderAlertSound = () => {
+    // 1. Mobile Vibration (distinct attention pattern: buzz - pause - buzz - pause - long buzz)
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate([350, 150, 350, 150, 500]);
+      }
+    } catch (e) {}
+
+    // 2. High-clarity Web Audio 3-tone chime (E5 -> A5 -> C#6 bell sequence)
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        if (ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+        const now = ctx.currentTime;
+
+        // Note 1: E5 (659.25 Hz)
+        const osc1 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(659.25, now);
+        gain1.gain.setValueAtTime(0.5, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.35);
+
+        // Note 2: A5 (880 Hz)
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(880, now + 0.15);
+        gain2.gain.setValueAtTime(0.6, now + 0.15);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.15);
+        osc2.stop(now + 0.55);
+
+        // Note 3: C#6 (1108.73 Hz) - Crisp high finish
+        const osc3 = ctx.createOscillator();
+        const gain3 = ctx.createGain();
+        osc3.type = 'sine';
+        osc3.frequency.setValueAtTime(1108.73, now + 0.35);
+        gain3.gain.setValueAtTime(0.7, now + 0.35);
+        gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+        osc3.connect(gain3);
+        gain3.connect(ctx.destination);
+        osc3.start(now + 0.35);
+        osc3.stop(now + 0.95);
+      }
+    } catch (err) {
+      console.warn("Web Audio API alert sound error:", err);
+    }
+
+    // 3. Spoken voice announcement
+    try {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance('¡Nuevo pedido recibido en la plataforma!');
+        utterance.lang = 'es-CO';
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (speechErr) {}
+  };
+
+  // Request push notification permission
+  const requestPushPermission = async () => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      try {
+        const perm = await Notification.requestPermission();
+        setPushPermission(perm);
+        if (perm === 'granted') {
+          playOrderAlertSound();
+          setNotif("🔔 ¡Notificaciones Push y Sonido activadas con éxito!");
+        } else {
+          setNotif("⚠️ Permiso de notificaciones push rechazado.");
+        }
+      } catch (err) {
+        console.warn("Error requesting notification permission:", err);
+      }
+    } else {
+      setNotif("ℹ️ Tu navegador no soporta notificaciones push nativas.");
+    }
+  };
+
+  // Fire sound, vibration and push notification when a new order arrives
+  const triggerNewOrderAlert = (order: OrderItem) => {
+    playOrderAlertSound();
+
+    const store = storesMap[order.storeOwnerId || ''] || allStoresList.find(s => s.uid === order.storeOwnerId);
+    const storeName = store?.name || order.storeName || 'Tienda';
+    const orderNum = order.orderNumber ? `#${order.orderNumber}` : '';
+    const customer = order.customerName || 'Cliente';
+    const total = (order.totalAmount || 0).toLocaleString('es-CO');
+
+    const title = `🚨 ¡Nuevo Pedido ${orderNum} en ${storeName}!`;
+    const body = `${customer} - $${total} COP (${order.items?.length || 1} productos)`;
+
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(reg => {
+            reg.showNotification(title, {
+              body,
+              icon: '/favicon.svg',
+              badge: '/favicon.svg',
+              vibrate: [350, 150, 350, 150, 500],
+              tag: 'admin-order-' + order.id,
+              renotify: true
+            } as any);
+          }).catch(() => {
+            new Notification(title, { body, icon: '/favicon.svg' });
+          });
+        } else {
+          new Notification(title, { body, icon: '/favicon.svg' });
+        }
+      }
+    } catch (pushErr) {
+      console.warn("Push notification error:", pushErr);
+    }
+
+    setNewIncomingOrderAlert({
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: customer,
+      storeName,
+      totalAmount: order.totalAmount || 0
+    });
+  };
+
+  // Real-time listener across all store orders
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    try {
+      unsubscribe = subscribeToAllOrders((updatedOrders, newIncoming) => {
+        setAllOrders(updatedOrders);
+        if (newIncoming && newIncoming.length > 0) {
+          const pendingIncoming = newIncoming.filter(o => o.status === 'pending');
+          const alertTarget = pendingIncoming.length > 0 ? pendingIncoming[0] : newIncoming[0];
+          triggerNewOrderAlert(alertTarget);
+        }
+      });
+    } catch (err) {
+      console.warn("Error setting up real-time orders listener:", err);
+    }
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [storesMap, allStoresList]);
 
   // Intelligent lazy loading state for subscriptions (7 items per batch)
   const [lastSubDoc, setLastSubDoc] = useState<any | null>(null);
@@ -1232,9 +1417,15 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       <ShoppingBag className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="truncate">Pedidos de Tiendas</span>
                     </div>
-                    <span className="text-[10px] bg-gray-900 text-gray-300 font-mono font-bold px-2 py-0.5 rounded-md border border-gray-800 shrink-0">
-                      {allOrders.length}
-                    </span>
+                    {pendingOrdersCount > 0 ? (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold px-2 py-0.5 rounded-md border border-amber-500/40 shrink-0 animate-pulse shadow-sm">
+                        {pendingOrdersCount}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] bg-gray-900 text-gray-500 font-mono font-bold px-2 py-0.5 rounded-md border border-gray-800 shrink-0">
+                        0
+                      </span>
+                    )}
                   </button>
 
                   <button
@@ -1355,9 +1546,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             >
               <div className="relative">
                 <ShoppingBag className="w-5 h-5" />
-                {allOrders.length > 0 && (
-                  <span className="absolute -top-1.5 -right-2.5 bg-emerald-500 text-black font-mono text-[8px] font-black px-1.5 py-0.2 rounded-full">
-                    {allOrders.length}
+                {pendingOrdersCount > 0 && (
+                  <span className="absolute -top-1.5 -right-2.5 bg-amber-400 text-black font-mono text-[8.5px] font-black px-1.5 py-0.2 rounded-full animate-pulse shadow-md">
+                    {pendingOrdersCount}
                   </span>
                 )}
               </div>
@@ -2189,12 +2380,88 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-3.5 sm:p-6 backdrop-blur-sm space-y-5 max-w-full overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-900 pb-4">
               <div>
-                <h3 className="font-extrabold text-white text-base">Sincronización General de Pedidos de Tiendas</h3>
+                <div className="flex items-center gap-2.5 mb-1">
+                  <h3 className="font-extrabold text-white text-base">Sincronización General de Pedidos de Tiendas</h3>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    En tiempo real
+                  </span>
+                </div>
                 <p className="text-[11px] text-gray-500 font-medium font-sans">
                   Monitorea de manera centralizada los pedidos, estados de entrega y datos de contacto de todos los clientes en la plataforma.
                 </p>
               </div>
+
+              {/* Notification, Sound and Vibration Controls */}
+              <div className="flex flex-wrap items-center gap-2">
+                {pushPermission !== 'granted' ? (
+                  <button
+                    type="button"
+                    onClick={requestPushPermission}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                    title="Permitir notificaciones push en el navegador y celular"
+                  >
+                    <Bell className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                    <span>Activar Notificaciones Push</span>
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold font-mono">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>Push & Sonido Activo</span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={playOrderAlertSound}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
+                  title="Probar sonido de campana y vibración al celular"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Probar Sonido</span>
+                </button>
+              </div>
             </div>
+
+            {/* New Incoming Order Floating Banner */}
+            {newIncomingOrderAlert && (
+              <div className="bg-gradient-to-r from-emerald-950/90 via-emerald-900/70 to-emerald-950/90 border-2 border-emerald-500/50 p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-pulse">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/40 shrink-0">
+                    <Bell className="w-5 h-5 animate-bounce" />
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2 truncate">
+                      <span>🚨 ¡NUEVO PEDIDO RECIBIDO!</span>
+                      <span className="text-amber-400 font-mono">#{newIncomingOrderAlert.orderNumber || ''}</span>
+                    </h4>
+                    <p className="text-xs text-gray-300 truncate">
+                      Tienda: <span className="text-emerald-300 font-bold">{newIncomingOrderAlert.storeName}</span> • Cliente: <span className="text-white font-bold">{newIncomingOrderAlert.customerName}</span> • Total: <span className="text-emerald-400 font-bold">${newIncomingOrderAlert.totalAmount.toLocaleString('es-CO')} COP</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetOrder = allOrders.find(o => o.id === newIncomingOrderAlert.id);
+                      if (targetOrder) setViewingOrder(targetOrder);
+                      setNewIncomingOrderAlert(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer"
+                  >
+                    Ver Pedido
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewIncomingOrderAlert(null)}
+                    className="p-1.5 text-gray-400 hover:text-white rounded-lg transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Metrics cards inside orders - calculated from ALL orders */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
