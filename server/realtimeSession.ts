@@ -27,7 +27,7 @@ export async function createRealtimeSessionHandler(req: express.Request, res: ex
       ? availableProducts.slice(0, 35).map(p => `- ${p.name}: ${p.price.toLocaleString('es-CO')} pesos (${p.storeName || 'Tienda'}) [${p.category || 'General'}]`).join('\n')
       : 'No hay productos disponibles actualmente.';
 
-    const instructions = `Eres "IAMesero", la mesera y asistente virtual inteligente de LinnkPro.Store.
+    const instructions = `Eres "IAMesero", la mesera y asistente virtual inteligente de Ryyco (ryyco.com).
 Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
 
 REGLAS DE CONVERSACIÓN Y VOZ:
@@ -65,7 +65,7 @@ HERRAMIENTAS EN TIEMPO REAL:
       {
         type: "function",
         name: "buscarRestaurantes",
-        description: "Busca y lista los restaurantes o tiendas gastronómicas disponibles en LinnkPro.",
+        description: "Busca y lista los restaurantes o tiendas gastronómicas disponibles en Ryyco.",
         parameters: {
           type: "object",
           properties: {

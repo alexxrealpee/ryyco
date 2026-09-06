@@ -26,6 +26,7 @@ import {
   Bot,
   AlertCircle,
   MessageSquare,
+  MessageCircle,
   PhoneCall,
   PhoneOff,
   Radio,
@@ -812,7 +813,7 @@ export default function LinnkProVoiceAssistant({
     // 5. Default greeting & assistance
     else {
       const sample = activeProducts.slice(0, 3).map(p => `${p.name} (${p.price.toLocaleString('es-CO')} pesos)`).join(', ');
-      responseText = `¡Hola! Soy tu asistente LinnkPro. Puedes pedir platos como ${sample}, o consultar restaurantes. ¿Qué te gustaría ordenar hoy?`;
+      responseText = `¡Hola! Soy tu asistente de Ryyco. Puedes pedir platos como ${sample}, o consultar restaurantes. ¿Qué te gustaría ordenar hoy?`;
     }
 
     return {
@@ -1559,7 +1560,7 @@ export default function LinnkProVoiceAssistant({
                         </div>
                         <div className="space-y-1">
                           <p className="text-white font-medium text-sm leading-relaxed">
-                            ¡Hola! Soy tu asistente de <span className="font-bold text-white">Linnk<span className="text-[#EF4444]">Pro</span></span>. ¿Qué te gustaría ordenar hoy?
+                            ¡Hola! Soy tu asistente de <span className="font-bold text-white">Ryy<span className="text-[#EF4444]">co</span></span>. ¿Qué te gustaría ordenar hoy?
                           </p>
                           <p className="text-xs text-slate-400">
                             Puedo recomendarte platos, consultar tiendas abiertas o armar tu pedido.
@@ -1568,21 +1569,37 @@ export default function LinnkProVoiceAssistant({
                       </div>
 
                       {/* Prompt Suggestion Pills */}
-                      <div className="pt-2 border-t border-white/5 flex flex-wrap gap-2">
-                        {[
-                          { label: '🍔 ¿Qué hamburguesas recomiendas?', query: '¿Qué hamburguesas me recomiendas de las tiendas abiertas?' },
-                          { label: '🍕 ¿Cuáles son las pizzas más pedidas?', query: '¿Cuáles son las mejores pizzas disponibles?' },
-                          { label: '🛒 Ver mi carrito de compras', query: '¿Qué tengo en mi carrito?' },
-                          { label: '🛵 ¿Cuánto demora el domicilio?', query: '¿Cuánto demora el domicilio y cuál es el costo?' }
-                        ].map((chip, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleSendMessage(chip.query)}
-                            className="px-3 py-1.5 rounded-full bg-[#0E131F] hover:bg-slate-800 text-xs text-slate-200 hover:text-white border border-white/10 transition text-left active:scale-95"
+                      <div className="pt-2 border-t border-white/5 flex flex-col gap-2.5">
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { label: '🍔 ¿Qué hamburguesas recomiendas?', query: '¿Qué hamburguesas me recomiendas de las tiendas abiertas?' },
+                            { label: '🍕 ¿Cuáles son las pizzas más pedidas?', query: '¿Cuáles son las mejores pizzas disponibles?' },
+                            { label: '🛒 Ver mi carrito de compras', query: '¿Qué tengo en mi carrito?' },
+                            { label: '🛵 ¿Cuánto demora el domicilio?', query: '¿Cuánto demora el domicilio y cuál es el costo?' }
+                          ].map((chip, idx) => (
+                            <button
+                              key={idx}
+                              onClick={() => handleSendMessage(chip.query)}
+                              className="px-3 py-1.5 rounded-full bg-[#0E131F] hover:bg-slate-800 text-xs text-slate-200 hover:text-white border border-white/10 transition text-left active:scale-95"
+                            >
+                              {chip.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Botón contactar con un humano por WhatsApp */}
+                        <div className="pt-0.5">
+                          <a
+                            id="btn-whatsapp-human-support"
+                            href="https://wa.me/573106502043?text=Hola%2C%20deseo%20contactar%20con%20un%20humano%20en%20Ryyco"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] hover:text-[#4ade80] border border-[#25D366]/35 text-xs font-semibold transition active:scale-95 shadow-sm"
                           >
-                            {chip.label}
-                          </button>
-                        ))}
+                            <MessageCircle className="w-3.5 h-3.5 text-[#25D366] flex-shrink-0" />
+                            <span>Contactar con un humano por WhatsApp 3106502043</span>
+                          </a>
+                        </div>
                       </div>
                     </div>
                   )}

@@ -700,8 +700,8 @@ export class RealtimeMeseroManager {
       // 3. Build Realtime Agent with all 12 tools and strict availableCatalog directive
       const tools = this.buildTools();
       const agent = new RealtimeAgent({
-        name: 'Mesero IA LinnkPro',
-        instructions: `Eres "IAMesero", la mesera virtual de LinnkPro.Store.
+        name: 'Mesero IA Ryyco',
+        instructions: `Eres "IAMesero", la mesera virtual de Ryyco (ryyco.com).
 Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
 
 DIRECTIVA OBLIGATORIA DE CATÁLOGO DISPONIBLE (availableCatalog):
