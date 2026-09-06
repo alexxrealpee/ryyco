@@ -1430,100 +1430,102 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             )}
 
-            {/* Global Dashboard Metrics Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-              <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
-                <div className="flex justify-between items-center text-gray-400 mb-1.5">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">USUARIOS TOTALES</span>
-                  <Users className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-2xl font-black text-white mb-1">{stats.totalUsers}</p>
-                <span className="text-[10px] text-emerald-400 font-bold font-mono flex items-center gap-1">
-                  <span>↑ 12%</span>
-                  <span className="text-gray-500">esta semana</span>
-                </span>
-              </div>
-
-              <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-center text-gray-400 mb-2">
-                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                      TIENDAS ACTIVAS Y EXPIRADAS
-                    </span>
-                    <Layers className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
+            {/* Global Dashboard Metrics Cards - Only visible in Suscripciones Activas & Registro */}
+            {activeAdminTab === 'subscriptions' && (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 animate-fade-in">
+                <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
+                  <div className="flex justify-between items-center text-gray-400 mb-1.5">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">USUARIOS TOTALES</span>
+                    <Users className="w-4 h-4 text-emerald-400" />
                   </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
-                    <div className="flex flex-col">
-                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                        Activas
-                      </span>
-                      <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono mt-0.5">
-                        {(stats as any).activeStoresCount ?? stats.totalProfiles ?? 0}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col border-l border-gray-800/80 pl-2">
-                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
-                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
-                        Expiradas
-                      </span>
-                      <span className="text-lg sm:text-xl font-black text-red-400 font-mono mt-0.5">
-                        {(stats as any).expiredStoresCount ?? 0}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
-                  <span className="text-gray-400 font-bold">Total:</span>
-                  <span className="text-white font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[11px]">
-                    {((stats as any).activeStoresCount ?? stats.totalProfiles ?? 0) + ((stats as any).expiredStoresCount ?? 0)} tiendas
+                  <p className="text-2xl font-black text-white mb-1">{stats.totalUsers}</p>
+                  <span className="text-[10px] text-emerald-400 font-bold font-mono flex items-center gap-1">
+                    <span>↑ 12%</span>
+                    <span className="text-gray-500">esta semana</span>
                   </span>
                 </div>
-              </div>
 
-              <div className="col-span-2 lg:col-span-1 bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg flex flex-col justify-between">
-                <div>
-                  <div className="flex justify-between items-center text-gray-400 mb-2">
-                    <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-400">
-                      INGRESO MENSUAL COP
+                <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center text-gray-400 mb-2">
+                      <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                        TIENDAS ACTIVAS Y EXPIRADAS
+                      </span>
+                      <Layers className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
+                      <div className="flex flex-col">
+                        <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
+                          Activas
+                        </span>
+                        <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono mt-0.5">
+                          {(stats as any).activeStoresCount ?? stats.totalProfiles ?? 0}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col border-l border-gray-800/80 pl-2">
+                        <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
+                          Expiradas
+                        </span>
+                        <span className="text-lg sm:text-xl font-black text-red-400 font-mono mt-0.5">
+                          {(stats as any).expiredStoresCount ?? 0}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
+                    <span className="text-gray-400 font-bold">Total:</span>
+                    <span className="text-white font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[11px]">
+                      {((stats as any).activeStoresCount ?? stats.totalProfiles ?? 0) + ((stats as any).expiredStoresCount ?? 0)} tiendas
                     </span>
-                    <DollarSign className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
-                        <span className="truncate">Activos</span>
-                      </span>
-                      <span className="text-sm sm:text-base font-black text-emerald-400 font-mono mt-0.5 truncate" title={`$${((stats as any).activeRevenue ?? stats.monthlyRevenue ?? 0).toLocaleString('es-CO')} COP`}>
-                        ${((stats as any).activeRevenue ?? stats.monthlyRevenue ?? 0).toLocaleString('es-CO')}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col border-l border-gray-800/80 pl-2 min-w-0">
-                      <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
-                        <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block shrink-0"></span>
-                        <span className="truncate">Esperado</span>
-                      </span>
-                      <span className="text-sm sm:text-base font-black text-sky-400 font-mono mt-0.5 truncate" title={`$${((stats as any).expectedRevenue ?? ((stats as any).activeRevenue ? (stats as any).activeRevenue + ((stats as any).pendingRecovery || 0) : stats.monthlyRevenue)).toLocaleString('es-CO')} COP`}>
-                        ${((stats as any).expectedRevenue ?? ((stats as any).activeRevenue ? (stats as any).activeRevenue + ((stats as any).pendingRecovery || 0) : stats.monthlyRevenue)).toLocaleString('es-CO')}
-                      </span>
-                    </div>
                   </div>
                 </div>
 
-                <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
-                  <span className="text-gray-400 font-bold">Por recuperar:</span>
-                  <span className="text-amber-400 font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[10.5px]">
-                    ${Math.max(0, (((stats as any).expectedRevenue ?? stats.monthlyRevenue) - ((stats as any).activeRevenue ?? stats.monthlyRevenue))).toLocaleString('es-CO')}
-                  </span>
+                <div className="col-span-2 lg:col-span-1 bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-center text-gray-400 mb-2">
+                      <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+                        INGRESO MENSUAL COP
+                      </span>
+                      <DollarSign className="w-4 h-4 text-emerald-400 shrink-0 ml-1" />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse shrink-0"></span>
+                          <span className="truncate">Activos</span>
+                        </span>
+                        <span className="text-sm sm:text-base font-black text-emerald-400 font-mono mt-0.5 truncate" title={`$${((stats as any).activeRevenue ?? stats.monthlyRevenue ?? 0).toLocaleString('es-CO')} COP`}>
+                          ${((stats as any).activeRevenue ?? stats.monthlyRevenue ?? 0).toLocaleString('es-CO')}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col border-l border-gray-800/80 pl-2 min-w-0">
+                        <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
+                          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 inline-block shrink-0"></span>
+                          <span className="truncate">Esperado</span>
+                        </span>
+                        <span className="text-sm sm:text-base font-black text-sky-400 font-mono mt-0.5 truncate" title={`$${((stats as any).expectedRevenue ?? ((stats as any).activeRevenue ? (stats as any).activeRevenue + ((stats as any).pendingRecovery || 0) : stats.monthlyRevenue)).toLocaleString('es-CO')} COP`}>
+                          ${((stats as any).expectedRevenue ?? ((stats as any).activeRevenue ? (stats as any).activeRevenue + ((stats as any).pendingRecovery || 0) : stats.monthlyRevenue)).toLocaleString('es-CO')}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
+                    <span className="text-gray-400 font-bold">Por recuperar:</span>
+                    <span className="text-amber-400 font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[10.5px]">
+                      ${Math.max(0, (((stats as any).expectedRevenue ?? stats.monthlyRevenue) - ((stats as any).activeRevenue ?? stats.monthlyRevenue))).toLocaleString('es-CO')}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
         {activeAdminTab === 'referrals' ? (
           <div className="animate-fade-in">
