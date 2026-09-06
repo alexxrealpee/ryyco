@@ -46,6 +46,7 @@ import {
 } from '../types';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
+import { ProductShareButton } from './ProductShareButton';
 import { 
   Share2, 
   Copy, 
@@ -449,6 +450,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           
           // Track the public Page View
           trackPageView(finalProfile.uid);
+
+          // Detect shared product deep-link (?product=ID or ?p=ID)
+          try {
+            const searchParams = new URLSearchParams(window.location.search);
+            const sharedProdId = searchParams.get('product') || searchParams.get('p') || searchParams.get('id');
+            if (sharedProdId && finalProducts.length > 0) {
+              const matched = finalProducts.find(p => p.id === sharedProdId);
+              if (matched) {
+                setSelectedProduct(matched);
+              }
+            }
+          } catch (e) {}
         } else {
           setProfile(null);
         }
@@ -1632,8 +1645,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                         <div>
                           <div className="w-full aspect-square bg-gradient-to-b from-[#111625] to-[#1a233a] rounded-none mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5">
-                            {/* Product Heart Recommendation Button */}
-                            <div className="absolute top-2 right-2 z-20">
+                            {/* Product Heart & Share Buttons */}
+                            <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
+                                variant="card-overlay"
+                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -1718,8 +1738,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                         <div>
                           <div className="w-full aspect-square bg-black/40 rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-2">
-                            {/* Product Heart Recommendation Button */}
-                            <div className="absolute top-2.5 right-2.5 z-20">
+                            {/* Product Heart & Share Buttons */}
+                            <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
+                                variant="card-overlay"
+                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -1826,17 +1853,26 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                               <span className="text-[9px] font-black uppercase tracking-widest block font-mono truncate" style={{ color: storeAccent }}>
                                 🍽️ {p.category || 'MENÚ'}
                               </span>
-                              <ProductRecommendationHeartButton
-                                productId={p.id}
-                                productName={p.name}
-                                storeId={profile?.uid || profile?.id || ''}
-                                storeUsername={profile?.username || ''}
-                                activeCustomer={activeCustomer}
-                                onCustomerUpdate={setActiveCustomer}
-                                onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
-                                variant="card-overlay"
-                                className="shrink-0"
-                              />
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <ProductShareButton
+                                  product={p}
+                                  storeUsername={profile?.username || ''}
+                                  storeName={profile?.displayName || profile?.storeName || ''}
+                                  currency={getStoreCurrency()}
+                                  variant="card-overlay"
+                                />
+                                <ProductRecommendationHeartButton
+                                  productId={p.id}
+                                  productName={p.name}
+                                  storeId={profile?.uid || profile?.id || ''}
+                                  storeUsername={profile?.username || ''}
+                                  activeCustomer={activeCustomer}
+                                  onCustomerUpdate={setActiveCustomer}
+                                  onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                  variant="card-overlay"
+                                  className="shrink-0"
+                                />
+                              </div>
                             </div>
 
                             <h4 className="text-xs font-extrabold line-clamp-2 leading-tight min-h-[2.2rem] group-hover:opacity-80 transition-colors" style={{ color: activeTheme.cardTextColor }}>
@@ -1900,8 +1936,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                         <div>
                           <div className="w-full aspect-square bg-black/40 rounded-xl mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-1.5">
-                            {/* Product Heart Recommendation Button */}
-                            <div className="absolute top-2 right-2 z-20">
+                            {/* Product Heart & Share Buttons */}
+                            <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
+                                variant="card-overlay"
+                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -2007,17 +2050,26 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                             >
                               {p.category || 'General'}
                             </span>
-                            <ProductRecommendationHeartButton
-                              productId={p.id}
-                              productName={p.name}
-                              storeId={profile?.uid || profile?.id || ''}
-                              storeUsername={profile?.username || ''}
-                              activeCustomer={activeCustomer}
-                              onCustomerUpdate={setActiveCustomer}
-                              onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
-                              variant="card-overlay"
-                              className="shrink-0"
-                            />
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
+                                variant="card-overlay"
+                              />
+                              <ProductRecommendationHeartButton
+                                productId={p.id}
+                                productName={p.name}
+                                storeId={profile?.uid || profile?.id || ''}
+                                storeUsername={profile?.username || ''}
+                                activeCustomer={activeCustomer}
+                                onCustomerUpdate={setActiveCustomer}
+                                onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                                className="shrink-0"
+                              />
+                            </div>
                           </div>
                           <h4 
                             className="text-xs font-black line-clamp-2 leading-tight min-h-[2rem]" 
@@ -2331,8 +2383,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     )}
                   </div>
 
-                  {/* Recommendation Heart Banner for Product */}
-                  <div className="mb-3.5">
+                  {/* Recommendation Heart Banner & Share for Product */}
+                  <div className="mb-3.5 space-y-2">
                     <ProductRecommendationHeartButton
                       productId={selectedProduct.id}
                       productName={selectedProduct.name}
@@ -2342,6 +2394,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       onCustomerUpdate={setActiveCustomer}
                       onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
                       variant="modal-banner"
+                    />
+                    <ProductShareButton
+                      product={selectedProduct}
+                      storeUsername={profile?.username || ''}
+                      storeName={profile?.displayName || profile?.storeName || ''}
+                      currency={getStoreCurrency()}
+                      variant="modal-button"
                     />
                   </div>
 

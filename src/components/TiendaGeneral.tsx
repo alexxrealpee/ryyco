@@ -44,6 +44,7 @@ import CustomerPortalModal from './CustomerPortalModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
+import { ProductShareButton } from './ProductShareButton';
 import { 
   getStoredCart, 
   saveStoredCart, 
@@ -421,6 +422,18 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         if (sysSettings?.defaultDeliveryFee) {
           setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
         }
+
+        // Detect shared product deep link (?product=ID or ?p=ID) and open details
+        try {
+          const searchParams = new URLSearchParams(window.location.search);
+          const sharedProductId = searchParams.get('product') || searchParams.get('p') || searchParams.get('id');
+          if (sharedProductId) {
+            const foundProduct = res.products.find(p => p.id === sharedProductId);
+            if (foundProduct) {
+              setSelectedProduct(foundProduct);
+            }
+          }
+        } catch (e) {}
       } catch (err) {
         console.error("Error loading TiendaGeneral data:", err);
       } finally {
@@ -1739,20 +1752,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         ) : (
                           <div />
                         )}
-                        <ProductRecommendationHeartButton
-                          productId={product.id}
-                          productName={product.name}
-                          storeId={product.userId}
-                          storeUsername={profile?.username || ''}
-                          activeCustomer={activeCustomer}
-                          onCustomerUpdate={setActiveCustomer}
-                          onOpenCustomerPortal={() => {
-                            setCustomerPortalTab('rewards');
-                            setIsCustomerPortalOpen(true);
-                          }}
-                          variant="card-overlay"
-                          className="shrink-0"
-                        />
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <ProductShareButton
+                            product={product}
+                            storeUsername={profile?.username || ''}
+                            storeName={profile?.storeName || profile?.displayName || ''}
+                            currency={currency}
+                            variant="card-overlay"
+                          />
+                          <ProductRecommendationHeartButton
+                            productId={product.id}
+                            productName={product.name}
+                            storeId={product.userId}
+                            storeUsername={profile?.username || ''}
+                            activeCustomer={activeCustomer}
+                            onCustomerUpdate={setActiveCustomer}
+                            onOpenCustomerPortal={() => {
+                              setCustomerPortalTab('rewards');
+                              setIsCustomerPortalOpen(true);
+                            }}
+                            variant="card-overlay"
+                            className="shrink-0"
+                          />
+                        </div>
                       </div>
                       <h3 className="font-extrabold text-sm text-white group-hover:text-[#E63946] transition truncate leading-snug">
                         {product.name}
@@ -1934,8 +1956,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         )}
                       </div>
 
-                      {/* Product Recommendation Banner in Modal */}
-                      <div className="my-2">
+                      {/* Product Recommendation & Share in Modal */}
+                      <div className="my-2 space-y-2">
                         <ProductRecommendationHeartButton
                           productId={selectedProduct.id}
                           productName={selectedProduct.name}
@@ -1948,6 +1970,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             setIsCustomerPortalOpen(true);
                           }}
                           variant="modal-banner"
+                        />
+                        <ProductShareButton
+                          product={selectedProduct}
+                          storeUsername={profile?.username || ''}
+                          storeName={profile?.storeName || profile?.displayName || ''}
+                          currency={currency}
+                          variant="modal-button"
                         />
                       </div>
 
