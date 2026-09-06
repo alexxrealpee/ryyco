@@ -108,6 +108,7 @@ import {
 } from '../types';
 import BankSettings from './BankSettings';
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
+import { smartApiFetch } from '../lib/apiConfig';
 import LinnkProIsotype from './LinnkProIsotype';
 import { formatColombianPhoneWith57 } from './PublicProfile';
 import { BasicPlanTrialModal } from './BasicPlanTrialModal';
@@ -350,7 +351,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
 
       // Try OpenAI TTS endpoint for high-quality natural Colombian voice
-      const res = await fetch('/api/tts', {
+      const res = await smartApiFetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: '¡Llegó un pedido!', voice: 'alloy' })

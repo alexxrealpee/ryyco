@@ -61,6 +61,12 @@ import {
   CART_UPDATED_EVENT 
 } from '../lib/cartHelper';
 import { RealtimeMeseroManager } from '../lib/realtimeMeseroAgent';
+import { smartApiFetch } from '../lib/apiConfig';
+import { 
+  initClientCatalogManager, 
+  getClientAvailableCatalog, 
+  subscribeToAvailableCatalog 
+} from '../lib/catalogManager';
 
 interface LinnkProVoiceAssistantProps {
   onNavigateToStore?: (username: string) => void;
@@ -112,9 +118,14 @@ export default function LinnkProVoiceAssistant({
     }
   ]);
 
-  // Catalog and system data cache with instant preloaded defaults
-  const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>(DEFAULT_PLATFORM_PRODUCTS);
-  const [catalogStores, setCatalogStores] = useState<Record<string, UserProfile>>(DEFAULT_PLATFORM_STORES);
+  // Catalog and system data cache: initialized instantly from in-memory / session storage (0ms)
+  const initialMemoryCatalog = getClientAvailableCatalog();
+  const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>(
+    initialMemoryCatalog.products.length > 0 ? initialMemoryCatalog.products : DEFAULT_PLATFORM_PRODUCTS
+  );
+  const [catalogStores, setCatalogStores] = useState<Record<string, UserProfile>>(
+    Object.keys(initialMemoryCatalog.profilesMap).length > 0 ? initialMemoryCatalog.profilesMap : DEFAULT_PLATFORM_STORES
+  );
   const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(7000);
   const [cart, setCart] = useState<GeneralCartItem[]>(getStoredCart());
   const [isOrdering, setIsOrdering] = useState(false);
@@ -140,6 +151,8 @@ export default function LinnkProVoiceAssistant({
   const isSpeakingRef = useRef<boolean>(false);
   const isMicMutedRef = useRef<boolean>(false);
   const realtimeManagerRef = useRef<RealtimeMeseroManager | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const localSpeechStreamRef = useRef<MediaStream | null>(null);
 
   // Helper to detect mobile device
   const isMobile = typeof navigator !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -188,43 +201,31 @@ export default function LinnkProVoiceAssistant({
     };
   }, []);
 
-  // 2. Fetch Catalog Context & Delivery Fee
-  const loadCatalogData = async () => {
-    try {
-      const [catalogData, settings] = await Promise.all([
-        fetchAllActiveProductsAndStores(),
-        fetchSystemSettings().catch(() => ({ defaultDeliveryFee: 4000 }))
-      ]);
-
-      if (catalogData && catalogData.products) {
-        const profiles = catalogData.profiles || {};
-        let onlyOpenProducts = catalogData.products.filter(p => {
-          if (p.active === false) return false;
-          const store = findStoreForProduct(p, profiles);
-          if (store) {
-            return !checkIsStoreClosed(store) && !store.suspended;
-          }
-          return true;
-        });
-
-        // Fallback: if all products were filtered out, keep all active products
-        if (onlyOpenProducts.length === 0 && catalogData.products.length > 0) {
-          onlyOpenProducts = catalogData.products.filter(p => p.active !== false);
-        }
-
-        setCatalogProducts(onlyOpenProducts);
-        setCatalogStores(profiles);
-      }
-      if (settings && typeof settings.defaultDeliveryFee === 'number') {
-        setSystemDeliveryFee(settings.defaultDeliveryFee);
-      }
-    } catch (e) {
-      console.warn("Could not pre-fetch full catalog for voice assistant:", e);
-    }
-  };
-
+  // 2. Non-blocking Background Open-Stores Catalog Sync & Delivery Fee
+  // Visual UI renders FIRST immediately; catalog of open stores is downloaded & cached in the background.
   useEffect(() => {
-    loadCatalogData();
+    // 1. Subscribe to in-memory catalog updates
+    const unsubscribeCatalog = subscribeToAvailableCatalog((freshCatalog) => {
+      if (freshCatalog.products.length > 0 || freshCatalog.stores.length > 0) {
+        setCatalogProducts(freshCatalog.products);
+        setCatalogStores(freshCatalog.profilesMap);
+      }
+    });
+
+    // 2. Schedule background load after initial paint so the interface never waits
+    const timer = setTimeout(() => {
+      initClientCatalogManager();
+      fetchSystemSettings().then(settings => {
+        if (settings && typeof settings.defaultDeliveryFee === 'number') {
+          setSystemDeliveryFee(settings.defaultDeliveryFee);
+        }
+      }).catch(() => {});
+    }, 150);
+
+    return () => {
+      clearTimeout(timer);
+      unsubscribeCatalog();
+    };
   }, []);
 
   // 3. Call Duration Timer
@@ -377,12 +378,131 @@ export default function LinnkProVoiceAssistant({
   // 6. Stop any active TTS audio playback (Supports Interruption / Barge-in)
   const stopAudioPlayback = () => {
     isSpeakingRef.current = false;
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
+    }
     if (currentAudioSourceRef.current) {
       try {
         currentAudioSourceRef.current.stop();
         currentAudioSourceRef.current.disconnect();
       } catch (e) {}
       currentAudioSourceRef.current = null;
+    }
+  };
+
+  // 6.5. Speech Recognition Voice Mode Fallback (For static hosting like Hostinger or when Realtime WebRTC token is unavailable)
+  const startSpeechRecognitionVoiceMode = async () => {
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      setIsInVoiceCall(false);
+      isInVoiceCallRef.current = false;
+      stopAudioPlayback();
+      stopAudioAnalyser();
+      setMicPermissionError("No se pudo iniciar la llamada de voz en este entorno. Puedes continuar chateando por texto.");
+      setAssistantState('idle');
+      return;
+    }
+
+    try {
+      if (localSpeechStreamRef.current) {
+        try {
+          localSpeechStreamRef.current.getTracks().forEach(t => t.stop());
+        } catch (e) {}
+        localSpeechStreamRef.current = null;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      localSpeechStreamRef.current = stream;
+      startAudioVolumeDetection(stream);
+
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+        recognitionRef.current = null;
+      }
+
+      const recognition = new SpeechRecognitionClass();
+      recognition.lang = 'es-CO';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onresult = (event: any) => {
+        if (!isInVoiceCallRef.current || isSpeakingRef.current) return;
+
+        let interim = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const trans = event.results[i][0]?.transcript || '';
+          if (event.results[i].isFinal) {
+            finalTranscript += trans;
+          } else {
+            interim += trans;
+          }
+        }
+
+        const currentText = (finalTranscript || interim).trim();
+        if (currentText) {
+          setTranscript(currentText);
+          latestTranscriptRef.current = currentText;
+          lastUserSpeechTimeRef.current = Date.now();
+          if (!isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = true;
+            setIsUserSpeaking(true);
+          }
+        }
+
+        if (finalTranscript.trim()) {
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = setTimeout(() => {
+            if (isInVoiceCallRef.current && !isSpeakingRef.current && finalTranscript.trim()) {
+              isUserSpeakingRef.current = false;
+              setIsUserSpeaking(false);
+              const textToProcess = finalTranscript.trim();
+              setTranscript('');
+              latestTranscriptRef.current = '';
+              handleSendMessage(textToProcess);
+            }
+          }, 600);
+        }
+      };
+
+      recognition.onerror = (err: any) => {
+        console.warn("Speech recognition notice:", err);
+        if (err?.error === 'not-allowed') {
+          setMicPermissionError("Acceso al micrófono no permitido.");
+          endVoiceCall();
+        }
+      };
+
+      recognition.onend = () => {
+        if (isInVoiceCallRef.current && !isSpeakingRef.current) {
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {}
+
+      recognitionRef.current = recognition;
+      setIsInVoiceCall(true);
+      isInVoiceCallRef.current = true;
+      setAssistantState('listening');
+      setMicPermissionError(null);
+    } catch (micErr: any) {
+      console.warn("Speech recognition voice mode notice:", micErr);
+      setIsInVoiceCall(false);
+      isInVoiceCallRef.current = false;
+      stopAudioPlayback();
+      stopAudioAnalyser();
+      setMicPermissionError("No se pudo acceder al micrófono para la llamada.");
+      setAssistantState('idle');
     }
   };
 
@@ -490,11 +610,6 @@ export default function LinnkProVoiceAssistant({
       }
     } catch (realtimeErr: any) {
       console.warn("Realtime voice session notice:", realtimeErr);
-      
-      setIsInVoiceCall(false);
-      isInVoiceCallRef.current = false;
-      stopAudioPlayback();
-      stopAudioAnalyser();
 
       if (realtimeManagerRef.current) {
         try {
@@ -510,12 +625,17 @@ export default function LinnkProVoiceAssistant({
         realtimeErr?.message?.toLowerCase?.().includes('permiso') ||
         realtimeErr?.message?.toLowerCase?.().includes('denied');
       
-      const errorMsg = isPermissionDenied
-        ? "El acceso al micrófono no fue permitido en tu navegador. Puedes habilitarlo en los permisos del sitio o continuar conversando por chat de texto."
-        : (realtimeErr?.message || "No se pudo iniciar la llamada de voz. Puedes chatear por texto directamente.");
-      
-      setMicPermissionError(errorMsg);
-      setAssistantState('idle');
+      if (isPermissionDenied) {
+        setIsInVoiceCall(false);
+        isInVoiceCallRef.current = false;
+        stopAudioPlayback();
+        stopAudioAnalyser();
+        setMicPermissionError("El acceso al micrófono no fue permitido en tu navegador. Puedes habilitarlo en los permisos del sitio o continuar conversando por chat de texto.");
+        setAssistantState('idle');
+      } else {
+        // Automatically activate Speech Recognition fallback without disconnecting the call
+        await startSpeechRecognitionVoiceMode();
+      }
     }
   };
 
@@ -530,7 +650,24 @@ export default function LinnkProVoiceAssistant({
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
     if (realtimeManagerRef.current) {
-      realtimeManagerRef.current.stop();
+      try {
+        realtimeManagerRef.current.stop();
+      } catch (e) {}
+      realtimeManagerRef.current = null;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+
+    if (localSpeechStreamRef.current) {
+      try {
+        localSpeechStreamRef.current.getTracks().forEach(t => t.stop());
+      } catch (e) {}
+      localSpeechStreamRef.current = null;
     }
 
     stopAudioPlayback();
@@ -572,6 +709,12 @@ export default function LinnkProVoiceAssistant({
     isSpeakingRef.current = true;
     setAssistantState('speaking');
 
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+    }
+
     // Callback when AI finishes speaking -> resume listening cleanly
     const onSpeechComplete = () => {
       isSpeakingRef.current = false;
@@ -580,6 +723,11 @@ export default function LinnkProVoiceAssistant({
         setAssistantState('listening');
         setTranscript('');
         latestTranscriptRef.current = '';
+        if (recognitionRef.current) {
+          try {
+            recognitionRef.current.start();
+          } catch (e) {}
+        }
       } else {
         setAssistantState('idle');
       }
@@ -639,7 +787,33 @@ export default function LinnkProVoiceAssistant({
       }
     }
 
-    // Direct completion when no audio data is received (100% OpenAI voice only, no browser speech synthesis)
+    // Fallback: Browser Web Speech Synthesis if audioBase64 was not received
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel();
+        const cleanText = text
+          .replace(/[*_#`~]/g, '')
+          .replace(/https?:\/\/\S+/g, '')
+          .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}]/gu, '');
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'es-CO';
+        utterance.rate = 1.05;
+        const voices = window.speechSynthesis.getVoices();
+        const esVoice = voices.find(v => v.lang.startsWith('es-CO')) || 
+                        voices.find(v => v.lang.startsWith('es-MX')) ||
+                        voices.find(v => v.lang.startsWith('es-US')) ||
+                        voices.find(v => v.lang.startsWith('es'));
+        if (esVoice) utterance.voice = esVoice;
+        utterance.onend = onSpeechComplete;
+        utterance.onerror = onSpeechComplete;
+        window.speechSynthesis.speak(utterance);
+        return;
+      } catch (synthErr) {
+        console.warn("Speech synthesis fallback notice:", synthErr);
+      }
+    }
+
+    // Direct completion when no audio engine is available
     onSpeechComplete();
   };
 
@@ -843,20 +1017,14 @@ export default function LinnkProVoiceAssistant({
     setAssistantState('processing');
 
     try {
-      // Ensure catalog data is loaded and up to date
-      let currentStores = catalogStores;
-      let currentProducts = catalogProducts;
-      if (currentProducts.length === 0 || Object.keys(currentStores).length === 0) {
-        try {
-          const freshData = await fetchAllActiveProductsAndStores();
-          if (freshData && freshData.products) {
-            currentStores = freshData.profiles || {};
-            currentProducts = freshData.products.filter(p => p.active !== false);
-            setCatalogStores(currentStores);
-            setCatalogProducts(currentProducts);
-          }
-        } catch (e) {}
-      }
+      // Source catalog directly from in-memory JSON (0ms, zero Firebase reads during conversation)
+      const inMemory = getClientAvailableCatalog();
+      const currentStores = (inMemory.stores.length > 0 && Object.keys(inMemory.profilesMap).length > 0)
+        ? inMemory.profilesMap 
+        : catalogStores;
+      const currentProducts = inMemory.products.length > 0 
+        ? inMemory.products 
+        : catalogProducts;
 
       // Build catalog context with real data (open stores and active products)
       const storeMap = new Map<string, any>();
@@ -970,7 +1138,7 @@ export default function LinnkProVoiceAssistant({
 
       try {
         // Call backend voice assistant endpoint (ChatGPT GPT-4o)
-        const response = await fetch('/api/voice-assistant', {
+        const response = await smartApiFetch('/api/voice-assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -1069,7 +1237,7 @@ export default function LinnkProVoiceAssistant({
       // Request OpenAI High Definition TTS audio or fallback to Web Speech API
       if (!isVoiceMuted) {
         try {
-          const ttsRes = await fetch('/api/tts', {
+          const ttsRes = await smartApiFetch('/api/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: result.speechText || aiReplyText })

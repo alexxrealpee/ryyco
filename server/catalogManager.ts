@@ -152,6 +152,8 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
       profilesSnap.forEach(docSnap => {
         const data = docSnap.data() as any;
         const uid = data.uid || docSnap.id;
+        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+        const isClosed = isSuspended || data.isClosed === true;
         rawStoresMap.set(uid, {
           uid,
           username: data.username || uid,
@@ -160,8 +162,8 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
           address: data.address || '',
           phone: data.phone || '',
           whatsapp: data.whatsapp || '',
-          isClosed: data.isClosed === true,
-          suspended: data.suspended === true
+          isClosed,
+          suspended: isSuspended
         });
       });
     }
@@ -225,6 +227,8 @@ export function initBackendCatalogManager() {
         if (change.type === 'removed') {
           rawStoresMap.delete(uid);
         } else {
+          const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+          const isClosed = isSuspended || data.isClosed === true;
           rawStoresMap.set(uid, {
             uid,
             username: data.username || uid,
@@ -233,8 +237,8 @@ export function initBackendCatalogManager() {
             address: data.address || '',
             phone: data.phone || '',
             whatsapp: data.whatsapp || '',
-            isClosed: data.isClosed === true,
-            suspended: data.suspended === true
+            isClosed,
+            suspended: isSuspended
           });
         }
       });

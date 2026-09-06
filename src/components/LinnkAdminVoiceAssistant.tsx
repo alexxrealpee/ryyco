@@ -24,6 +24,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { UserProfile, ProductItem, OrderItem } from '../types';
+import { smartApiFetch } from '../lib/apiConfig';
 
 interface LinnkAdminVoiceAssistantProps {
   profile: UserProfile;
@@ -155,7 +156,7 @@ export default function LinnkAdminVoiceAssistant({
 
       setIsSpeaking(true);
 
-      const res = await fetch('/api/tts', {
+      const res = await smartApiFetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: textToSpeak, voice: 'alloy' })
@@ -256,7 +257,7 @@ export default function LinnkAdminVoiceAssistant({
     }));
 
     try {
-      const response = await fetch('/api/voice-assistant', {
+      const response = await smartApiFetch('/api/voice-assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

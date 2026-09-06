@@ -22,6 +22,7 @@ import {
   GeneralCartItem
 } from './cartHelper';
 import { OrderItem } from '../types';
+import { smartApiFetch } from './apiConfig';
 
 export interface RealtimeMeseroCallbacks {
   onStateChange: (state: 'idle' | 'listening' | 'processing' | 'speaking') => void;
@@ -658,7 +659,7 @@ export class RealtimeMeseroManager {
 
       for (const endpoint of endpointCandidates) {
         try {
-          const sessionResponse = await fetch(endpoint, {
+          const sessionResponse = await smartApiFetch(endpoint, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
@@ -674,7 +675,7 @@ export class RealtimeMeseroManager {
             sessionData = JSON.parse(responseText);
           } catch (pErr) {
             // Response was not JSON (e.g. HTML 404/200 page from static proxy)
-            lastErrorMessage = `Endpoint ${endpoint} retornó HTML o formato no válido`;
+            lastErrorMessage = `Servicio de voz en proceso de conexión (${endpoint})`;
             continue;
           }
 
@@ -689,7 +690,7 @@ export class RealtimeMeseroManager {
             break;
           }
         } catch (fetchErr: any) {
-          lastErrorMessage = fetchErr?.message || 'Error de conexión';
+          lastErrorMessage = fetchErr?.message || 'Error de conexión con el servicio de voz';
         }
       }
 
