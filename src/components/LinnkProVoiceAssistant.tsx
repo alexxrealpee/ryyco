@@ -8,9 +8,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import ChefCapSparkIcon from './ChefCapSparkIcon';
 import {
   Mic,
-  MicOff,
-  Volume2,
-  VolumeX,
   Sparkles,
   ShoppingBag,
   Store,
@@ -121,11 +118,17 @@ export default function LinnkProVoiceAssistant({
   const [cart, setCart] = useState<GeneralCartItem[]>(getStoredCart());
   const [isOrdering, setIsOrdering] = useState(false);
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
+  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
 
   // Audio & Realtime WebRTC refs
   const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const micSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const micAnalyserRef = useRef<AnalyserNode | null>(null);
+  const userSpeechCheckFrameRef = useRef<number | null>(null);
+  const lastUserSpeechTimeRef = useRef<number>(0);
+  const isUserSpeakingRef = useRef<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Real-time conversation loop & VAD refs
@@ -152,6 +155,10 @@ export default function LinnkProVoiceAssistant({
   useEffect(() => {
     isMicMutedRef.current = isMicMuted;
   }, [isMicMuted]);
+
+  useEffect(() => {
+    isUserSpeakingRef.current = isUserSpeaking;
+  }, [isUserSpeaking]);
 
   // Automatically end voice call when user switches to chat mode
   useEffect(() => {
@@ -264,11 +271,105 @@ export default function LinnkProVoiceAssistant({
     animFrameRef.current = requestAnimationFrame(updateLevel);
   };
 
+  // Real-time microphone audio volume and voice activity detector (VAD)
+  const startAudioVolumeDetection = (stream: MediaStream) => {
+    try {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioCtxClass();
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
+      if (micSourceRef.current) {
+        try {
+          micSourceRef.current.disconnect();
+        } catch (e) {}
+        micSourceRef.current = null;
+      }
+
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.2;
+      source.connect(analyser);
+
+      micSourceRef.current = source;
+      micAnalyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const checkSpeech = () => {
+        if (!isInVoiceCallRef.current || !micAnalyserRef.current) {
+          if (isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+          return;
+        }
+
+        micAnalyserRef.current.getByteFrequencyData(dataArray);
+
+        // Analyze frequency bins in typical human speech range (bins 2 through 36)
+        let sum = 0;
+        const startBin = 2;
+        const endBin = Math.min(dataArray.length, 36);
+        for (let i = startBin; i < endBin; i++) {
+          sum += dataArray[i];
+        }
+        const avgVoiceVolume = sum / (endBin - startBin);
+
+        const isMuted = isMicMutedRef.current;
+        const isAssistantTalking = assistantStateRef.current === 'speaking';
+        // Voice threshold: ambient noise is usually < 12-14; user speech reaches 20-140
+        const VOICE_THRESHOLD = 16;
+
+        if (!isMuted && !isAssistantTalking && avgVoiceVolume > VOICE_THRESHOLD) {
+          lastUserSpeechTimeRef.current = Date.now();
+          if (!isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = true;
+            setIsUserSpeaking(true);
+          }
+        } else {
+          // Allow 380ms sustain after voice drops so slight syllable pauses don't cut the pulse
+          if (isUserSpeakingRef.current && Date.now() - lastUserSpeechTimeRef.current > 380) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+        }
+
+        userSpeechCheckFrameRef.current = requestAnimationFrame(checkSpeech);
+      };
+
+      if (userSpeechCheckFrameRef.current) {
+        cancelAnimationFrame(userSpeechCheckFrameRef.current);
+      }
+      userSpeechCheckFrameRef.current = requestAnimationFrame(checkSpeech);
+    } catch (err) {
+      console.warn("Speech volume analyser initialization notice:", err);
+    }
+  };
+
   const stopAudioAnalyser = () => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
     }
+    if (userSpeechCheckFrameRef.current) {
+      cancelAnimationFrame(userSpeechCheckFrameRef.current);
+      userSpeechCheckFrameRef.current = null;
+    }
+    if (micSourceRef.current) {
+      try {
+        micSourceRef.current.disconnect();
+      } catch (e) {}
+      micSourceRef.current = null;
+    }
+    micAnalyserRef.current = null;
+    isUserSpeakingRef.current = false;
+    setIsUserSpeaking(false);
     setMicAudioLevel(0);
   };
 
@@ -322,11 +423,41 @@ export default function LinnkProVoiceAssistant({
         onStateChange: (state) => {
           setAssistantState(state);
           assistantStateRef.current = state;
+          if (state === 'speaking' && isUserSpeakingRef.current) {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
+        },
+        onLocalStreamCreated: (stream) => {
+          startAudioVolumeDetection(stream);
+        },
+        onUserSpeechChange: (speaking) => {
+          if (speaking) {
+            lastUserSpeechTimeRef.current = Date.now();
+            if (!isUserSpeakingRef.current) {
+              isUserSpeakingRef.current = true;
+              setIsUserSpeaking(true);
+            }
+          } else {
+            isUserSpeakingRef.current = false;
+            setIsUserSpeaking(false);
+          }
         },
         onTranscriptDelta: (text, isFinal, sender) => {
           if (sender === 'user') {
             setTranscript(text);
+            lastUserSpeechTimeRef.current = Date.now();
+            if (!isUserSpeakingRef.current) {
+              isUserSpeakingRef.current = true;
+              setIsUserSpeaking(true);
+            }
             if (isFinal) {
+              setTimeout(() => {
+                if (Date.now() - lastUserSpeechTimeRef.current > 300) {
+                  isUserSpeakingRef.current = false;
+                  setIsUserSpeaking(false);
+                }
+              }, 350);
               setMessages(prev => [
                 ...prev,
                 { id: 'usr_' + Date.now(), sender: 'user', text, timestamp: new Date() }
@@ -352,6 +483,10 @@ export default function LinnkProVoiceAssistant({
       });
 
       await realtimeManagerRef.current.start();
+      const activeStream = realtimeManagerRef.current.getLocalStream();
+      if (activeStream) {
+        startAudioVolumeDetection(activeStream);
+      }
     } catch (realtimeErr: any) {
       console.warn("Realtime voice session notice:", realtimeErr);
       
@@ -389,6 +524,8 @@ export default function LinnkProVoiceAssistant({
     setAssistantState('idle');
     setTranscript('');
     latestTranscriptRef.current = '';
+    isUserSpeakingRef.current = false;
+    setIsUserSpeaking(false);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
     if (realtimeManagerRef.current) {
@@ -1235,21 +1372,25 @@ export default function LinnkProVoiceAssistant({
                 <div className="flex-1 flex flex-col justify-between p-4 sm:p-6 overflow-y-auto relative bg-[#0B0F19]">
                   {/* Background Subtle Radial Glow */}
                   <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-                    <div className={`w-80 h-80 rounded-full blur-[100px] transition-all duration-700 opacity-20 ${
-                      assistantState === 'listening'
-                        ? 'bg-[#EF4444] scale-110'
+                    <div className={`w-80 h-80 rounded-full blur-[100px] transition-all duration-700 ${
+                      isUserSpeaking
+                        ? 'bg-[#EF4444] scale-105 opacity-30'
+                        : assistantState === 'listening'
+                        ? 'bg-[#EF4444] scale-110 opacity-20'
                         : assistantState === 'speaking'
-                        ? 'bg-[#EF4444] scale-125'
+                        ? 'bg-[#EF4444] scale-125 opacity-25'
                         : assistantState === 'processing'
-                        ? 'bg-[#EF4444]/70 scale-100'
-                        : 'bg-[#EF4444]/20'
+                        ? 'bg-[#EF4444]/70 scale-100 opacity-20'
+                        : 'bg-[#EF4444]/20 opacity-15'
                     }`}></div>
                   </div>
 
                   {/* 1. Header Title */}
                   <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm mx-auto">
                     <h2 className="text-sm sm:text-base font-semibold text-white/95 tracking-normal leading-snug line-clamp-3">
-                      {assistantState === 'listening' 
+                      {isUserSpeaking 
+                        ? (transcript ? `"${transcript}"` : 'Escuchando tu voz...')
+                        : assistantState === 'listening' 
                         ? (transcript ? `"${transcript}"` : 'Escuchando... habla con libertad')
                         : assistantState === 'speaking' 
                         ? (lastAssistantMessage?.text ? `"${lastAssistantMessage.text}"` : 'IAMesero te está respondiendo...')
@@ -1285,20 +1426,67 @@ export default function LinnkProVoiceAssistant({
                     </div>
                   )}
 
-                  {/* 2. Central iAmesero Orb matching exact clean button design */}
+                  {/* 2. Central iAmesero Orb matching exact clean button design with user speech pulse */}
                   <div className="flex flex-col items-center justify-center my-auto py-6 z-10">
                     <div className="relative flex items-center justify-center">
-                      {/* Central Circle Button (Clean dark background + Red border + Larger Icon) */}
-                      <button
+                      {/* Central Circle Button (Contracts slightly & pulses gently back to original size only while user speaks) */}
+                      <motion.button
                         id="linnkpro-interactive-center-mic"
                         onClick={handleCentralMicClick}
-                        className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border-2 sm:border-[3px] border-[#EF4444] bg-[#0E131F]/95 flex items-center justify-center shadow-[0_0_30px_rgba(239,68,68,0.4)] hover:shadow-[0_0_45px_rgba(239,68,68,0.65)] relative z-10 active:scale-95 hover:scale-105 transition-all duration-200 cursor-pointer focus:outline-none group"
-                        title={assistantState === 'speaking' ? 'Toca para interrumpir' : transcript ? 'Toca para enviar' : 'iAmesero activo'}
+                        animate={
+                          isUserSpeaking
+                            ? {
+                                scale: [1, 0.88, 1],
+                                boxShadow: [
+                                  '0 0 25px rgba(239,68,68,0.35)',
+                                  '0 0 45px rgba(239,68,68,0.7)',
+                                  '0 0 25px rgba(239,68,68,0.35)',
+                                ],
+                              }
+                            : {
+                                scale: 1,
+                                boxShadow: '0 0 30px rgba(239,68,68,0.4)',
+                              }
+                        }
+                        transition={
+                          isUserSpeaking
+                            ? {
+                                duration: 0.85,
+                                repeat: Infinity,
+                                ease: 'easeInOut',
+                              }
+                            : {
+                                duration: 0.35,
+                                ease: 'easeOut',
+                              }
+                        }
+                        className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border-2 sm:border-[3px] border-[#EF4444] bg-[#0E131F]/95 flex items-center justify-center relative z-10 active:scale-95 cursor-pointer focus:outline-none group"
+                        title={assistantState === 'speaking' ? 'Toca para interrumpir' : isUserSpeaking ? 'IAMesero te está escuchando' : transcript ? 'Toca para enviar' : 'IAMesero activo'}
                       >
                         <div className="relative flex items-center justify-center">
-                          <ChefCapSparkIcon size={78} fill="#ffffff" className="group-hover:scale-105 transition-transform" />
+                          <ChefCapSparkIcon 
+                            size={78} 
+                            fill="#ffffff" 
+                            className={`transition-transform duration-200 ${isUserSpeaking ? 'scale-95' : 'group-hover:scale-105'}`} 
+                          />
                         </div>
-                      </button>
+                      </motion.button>
+
+                      {/* Subtle badge indicating IAMesero is actively listening to user's voice */}
+                      <AnimatePresence>
+                        {isUserSpeaking && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 6, scale: 0.92 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 4, scale: 0.92 }}
+                            transition={{ duration: 0.2 }}
+                            className="absolute -bottom-8 flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-300 text-[11px] font-medium backdrop-blur-sm pointer-events-none"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
+                            <span>Escuchando...</span>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
 
@@ -1643,75 +1831,61 @@ export default function LinnkProVoiceAssistant({
                 </div>
               )}
 
-              {/* BOTTOM CONTROLS & INPUT BAR (Matching Diseño de chat.png) */}
-              <div className="p-3 sm:p-4 bg-[#161D2B] border-t border-white/10 flex flex-col gap-3">
-                {/* Pill Shaped Text Input matching screenshot */}
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 relative flex items-center bg-[#0E131F] border border-white/10 rounded-full px-4 py-2.5 shadow-inner focus-within:border-[#EF4444]/60 transition">
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage(inputText);
-                        }
-                      }}
-                      placeholder="Escribe tu mensaje..."
-                      className="w-full bg-transparent text-sm text-white placeholder-slate-500 outline-none pr-10"
-                    />
-
-                    {inputText.trim() ? (
-                      <button
-                        onClick={() => handleSendMessage(inputText)}
-                        className="absolute right-1.5 w-8 h-8 rounded-full bg-[#EF4444] hover:bg-[#DC2626] text-white flex items-center justify-center transition active:scale-95 shadow-md"
-                        title="Enviar mensaje"
-                      >
-                        <Send className="w-4 h-4" />
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          if (isInVoiceCall) {
-                            endVoiceCall();
-                          } else {
-                            setActiveTab('call');
-                            startVoiceCall();
+              {/* BOTTOM CONTROLS & INPUT BAR */}
+              <div className={`p-3 sm:p-4 bg-[#161D2B] border-t border-white/10 flex flex-col ${activeTab === 'call' ? 'py-4 items-center justify-center' : 'gap-3'}`}>
+                {/* Pill Shaped Text Input - Only for Chat mode */}
+                {activeTab === 'chat' && (
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 relative flex items-center bg-[#0E131F] border border-white/10 rounded-full px-4 py-2.5 shadow-inner focus-within:border-[#EF4444]/60 transition">
+                      <input
+                        type="text"
+                        value={inputText}
+                        onChange={(e) => setInputText(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendMessage(inputText);
                           }
                         }}
-                        className={`absolute right-1.5 w-8 h-8 rounded-full flex items-center justify-center transition active:scale-95 ${
-                          isInVoiceCall 
-                            ? 'bg-[#EF4444] text-white animate-pulse' 
-                            : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
-                        }`}
-                        title="Hablar por voz"
-                      >
-                        <Mic className="w-4 h-4" />
-                      </button>
-                    )}
+                        placeholder="Escribe tu mensaje..."
+                        className="w-full bg-transparent text-sm text-white placeholder-slate-500 outline-none pr-10"
+                      />
+
+                      {inputText.trim() ? (
+                        <button
+                          onClick={() => handleSendMessage(inputText)}
+                          className="absolute right-1.5 w-8 h-8 rounded-full bg-[#EF4444] hover:bg-[#DC2626] text-white flex items-center justify-center transition active:scale-95 shadow-md"
+                          title="Enviar mensaje"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (isInVoiceCall) {
+                              endVoiceCall();
+                            } else {
+                              setActiveTab('call');
+                              startVoiceCall();
+                            }
+                          }}
+                          className={`absolute right-1.5 w-8 h-8 rounded-full flex items-center justify-center transition active:scale-95 ${
+                            isInVoiceCall 
+                              ? 'bg-[#EF4444] text-white animate-pulse' 
+                              : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+                          }`}
+                          title="Hablar por voz"
+                        >
+                          <Mic className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {/* Primary Call Controls (Silenciar, Finalizar, Altavoz) when in voice mode */}
+                {/* Primary Call Action Button (Hablar / Finalizar) when in voice mode */}
                 {activeTab === 'call' && (
-                  <div className="flex items-center justify-around pt-1 pb-1">
-                    {/* Toggle User Microphone (Silenciar) */}
-                    <button
-                      id="linnkpro-voice-mic-toggle-btn"
-                      onClick={() => setIsMicMuted(prev => !prev)}
-                      className="flex flex-col items-center gap-1.5 group transition"
-                    >
-                      <div className={`w-14 h-14 rounded-full flex items-center justify-center border transition transform active:scale-95 ${
-                        isMicMuted 
-                          ? 'bg-red-950/80 border-red-500 text-red-400 shadow-lg shadow-red-950/50' 
-                          : 'bg-[#0E131F] border-white/10 text-[#EF4444] group-hover:border-red-500/40 group-hover:bg-[#182030]'
-                      }`}>
-                        {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5 text-[#EF4444] stroke-[2]" />}
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-medium group-hover:text-white transition">Silenciar</span>
-                    </button>
-
+                  <div className="flex items-center justify-center pt-1 pb-1">
                     {/* Main Call Action Button (Finalizar con icono X rojo o Iniciar) */}
                     {isInVoiceCall ? (
                       <button
@@ -1736,22 +1910,6 @@ export default function LinnkProVoiceAssistant({
                         <span className="text-[11px] font-semibold text-white tracking-wide">Hablar</span>
                       </button>
                     )}
-
-                    {/* Toggle AI Speaker Voice Output (Altavoz) */}
-                    <button
-                      id="linnkpro-voice-speaker-toggle-btn"
-                      onClick={() => setIsVoiceMuted(prev => !prev)}
-                      className="flex flex-col items-center gap-1.5 group transition"
-                    >
-                      <div className={`w-14 h-14 rounded-full flex items-center justify-center border transition transform active:scale-95 ${
-                        isVoiceMuted 
-                          ? 'bg-amber-950/80 border-amber-500 text-amber-400' 
-                          : 'bg-[#0E131F] border-white/10 text-[#EF4444] group-hover:border-red-500/40 group-hover:bg-[#182030]'
-                      }`}>
-                        {isVoiceMuted ? <VolumeX className="w-5 h-5 text-amber-400" /> : <Volume2 className="w-5 h-5 text-[#EF4444] stroke-[2]" />}
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-medium group-hover:text-white transition">Altavoz</span>
-                    </button>
                   </div>
                 )}
               </div>

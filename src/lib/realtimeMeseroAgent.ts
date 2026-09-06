@@ -29,6 +29,8 @@ export interface RealtimeMeseroCallbacks {
   onCartUpdated?: (cart: GeneralCartItem[]) => void;
   onOrderCreated?: (order: OrderItem) => void;
   onError?: (err: Error | string) => void;
+  onLocalStreamCreated?: (stream: MediaStream) => void;
+  onUserSpeechChange?: (isSpeaking: boolean) => void;
 }
 
 export class RealtimeMeseroManager {
@@ -640,6 +642,9 @@ export class RealtimeMeseroManager {
       }
 
       this.localStream = mediaStream;
+      try {
+        this.callbacks.onLocalStreamCreated?.(mediaStream);
+      } catch (e) {}
 
       // 2. Fetch ephemeral Realtime session token from our secure backend
       const endpointCandidates = [
@@ -784,10 +789,12 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
             break;
           }
           case 'input_audio_buffer.speech_started': {
+            this.callbacks.onUserSpeechChange?.(true);
             this.callbacks.onStateChange('listening');
             break;
           }
           case 'input_audio_buffer.speech_stopped': {
+            this.callbacks.onUserSpeechChange?.(false);
             this.callbacks.onStateChange('processing');
             break;
           }
@@ -848,7 +855,14 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
     } catch (e) {}
 
     this.isConnected = false;
+    try {
+      this.callbacks.onUserSpeechChange?.(false);
+    } catch (e) {}
     this.callbacks.onStateChange('idle');
+  }
+
+  public getLocalStream(): MediaStream | null {
+    return this.localStream;
   }
 
   public getIsConnected(): boolean {
