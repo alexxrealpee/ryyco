@@ -528,17 +528,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return Array.from(storeMap.values());
   }, [profiles, products]);
 
-  // Stores repeated if needed so that carousel always exceeds screen width on PC/desktop
-  const repeatedStores = useMemo(() => {
-    if (uniqueStores.length === 0) return [];
-    const count = Math.max(1, Math.ceil(24 / uniqueStores.length));
-    const list: UserProfile[] = [];
-    for (let i = 0; i < count; i++) {
-      list.push(...uniqueStores);
-    }
-    return list;
-  }, [uniqueStores]);
-
   // Auto-scroll store carousel smoothly across both PC and mobile (oscillates automatically right and left)
   const storesScrollRef = useRef<HTMLDivElement>(null);
   const isStoresUserInteractingRef = useRef<boolean>(false);
@@ -625,7 +614,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         clearTimeout(storesResumeTimeoutRef.current);
       }
     };
-  }, [uniqueStores, repeatedStores.length]);
+  }, [uniqueStores]);
 
   // Filter & sort logic (food products prioritized first)
   const filteredProducts = useMemo(() => {
@@ -1524,11 +1513,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 </button>
 
                 {/* Individual Store Items */}
-                {repeatedStores.map((store, idx) => {
+                {uniqueStores.map((store) => {
                   const isSelected = selectedStore === store.uid;
                   return (
                     <button
-                      key={`${store.uid}-${idx}`}
+                      key={store.uid}
                       onClick={(e) => {
                         if (hasMovedStoresRef.current) {
                           e.preventDefault();
