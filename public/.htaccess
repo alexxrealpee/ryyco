@@ -2,14 +2,28 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # 1. API Endpoints on Hostinger (PHP Backend Bridge)
+  RewriteRule ^api/realtime/session/?$ api/realtime-session.php [QSA,L]
+  RewriteRule ^api/realtime-session/?$ api/realtime-session.php [QSA,L]
+  RewriteRule ^api/realtime/client_secrets/?$ api/realtime-session.php [QSA,L]
+  RewriteRule ^api/realtime/client-secrets/?$ api/realtime-session.php [QSA,L]
+  RewriteRule ^api/voice-assistant/?$ api/voice-assistant.php [QSA,L]
+  RewriteRule ^api/gemini/voice-assistant/?$ api/voice-assistant.php [QSA,L]
+  RewriteRule ^api/tts/?$ api/tts.php [QSA,L]
+  RewriteRule ^api/gemini/tts/?$ api/tts.php [QSA,L]
+  RewriteRule ^api/health/?$ api/health.php [QSA,L]
+  RewriteCond %{REQUEST_URI} ^/api/ [NC]
+  RewriteCond %{DOCUMENT_ROOT}/api/index.php -f
+  RewriteRule ^api/(.*)$ api/index.php [QSA,L]
   
-  # Serve existing files, directories, and symlinks directly
+  # 2. Serve existing physical files, directories, and symlinks directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d [OR]
   RewriteCond %{REQUEST_FILENAME} -l
   RewriteRule ^ - [L]
 
-  # Route all other URLs to index.html for client-side routing (React / Vite)
+  # 3. Route all other client-side URLs to index.html (React / Vite SPA routing)
   RewriteRule ^ index.html [L]
 </IfModule>
 
@@ -21,9 +35,15 @@
   AddType application/json .json
 </IfModule>
 
-# Security & Cache headers for SPA
+# Security, CORS & Cache headers for SPA
 <IfModule mod_headers.c>
   Header set X-Content-Type-Options "nosniff"
+  # Universal CORS allowance for API requests
+  <FilesMatch "\.(php|json)$">
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, HEAD"
+    Header set Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, Range"
+  </FilesMatch>
   # Disable caching for index.html so updates are immediate
   <FilesMatch "index\.html">
     Header set Cache-Control "no-cache, no-store, must-revalidate"

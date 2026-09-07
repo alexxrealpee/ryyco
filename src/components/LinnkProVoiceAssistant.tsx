@@ -108,6 +108,54 @@ export default function LinnkProVoiceAssistant({
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [micAudioLevel, setMicAudioLevel] = useState(0);
 
+  // Dynamic Real-Time Transcription (Strictly 1 visible text at a time: User speaking -> AI responding)
+  const [activeSpeaker, setActiveSpeaker] = useState<'user' | 'assistant' | null>(null);
+  const [activeTranscriptText, setActiveTranscriptText] = useState<string>('');
+  const aiTextStreamTimerRef = useRef<any>(null);
+
+  const cancelAiTextStreaming = () => {
+    if (aiTextStreamTimerRef.current) {
+      clearInterval(aiTextStreamTimerRef.current);
+      aiTextStreamTimerRef.current = null;
+    }
+  };
+
+  const streamAssistantTranscriptInRealtime = (fullText: string, expectedDurationMs?: number) => {
+    cancelAiTextStreaming();
+    if (!fullText || !fullText.trim()) {
+      setActiveTranscriptText('');
+      return;
+    }
+
+    const cleanText = fullText.trim();
+    const words = cleanText.split(/\s+/);
+    if (words.length <= 1) {
+      setActiveSpeaker('assistant');
+      setActiveTranscriptText(cleanText);
+      return;
+    }
+
+    // Immediately replace any previous text and stream words in real-time
+    setActiveSpeaker('assistant');
+    setActiveTranscriptText(words[0]);
+
+    const totalDuration = expectedDurationMs && expectedDurationMs > 400
+      ? Math.max(expectedDurationMs - 150, 600)
+      : words.length * 200;
+    const intervalMs = Math.max(Math.floor(totalDuration / words.length), 60);
+
+    let currentIndex = 1;
+    aiTextStreamTimerRef.current = setInterval(() => {
+      if (currentIndex >= words.length) {
+        setActiveTranscriptText(cleanText);
+        cancelAiTextStreaming();
+      } else {
+        setActiveTranscriptText(words.slice(0, currentIndex + 1).join(' '));
+        currentIndex++;
+      }
+    }, intervalMs);
+  };
+
   // Chat stream messages with exact wording from design image
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -377,6 +425,7 @@ export default function LinnkProVoiceAssistant({
 
   // 6. Stop any active TTS audio playback (Supports Interruption / Barge-in)
   const stopAudioPlayback = () => {
+    cancelAiTextStreaming();
     isSpeakingRef.current = false;
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try {
@@ -446,6 +495,9 @@ export default function LinnkProVoiceAssistant({
 
         const currentText = (finalTranscript || interim).trim();
         if (currentText) {
+          cancelAiTextStreaming();
+          setActiveSpeaker('user');
+          setActiveTranscriptText(currentText);
           setTranscript(currentText);
           latestTranscriptRef.current = currentText;
           lastUserSpeechTimeRef.current = Date.now();
@@ -471,18 +523,28 @@ export default function LinnkProVoiceAssistant({
       };
 
       recognition.onerror = (err: any) => {
-        console.warn("Speech recognition notice:", err);
-        if (err?.error === 'not-allowed') {
+        const errType = err?.error;
+        if (errType === 'not-allowed') {
           setMicPermissionError("Acceso al micrófono no permitido.");
           endVoiceCall();
+          return;
         }
+        // 'aborted' and 'no-speech' are natural lifecycle occurrences in Web Speech API
+        if (errType === 'aborted' || errType === 'no-speech') {
+          return;
+        }
+        console.warn("Speech recognition notice:", errType || err);
       };
 
       recognition.onend = () => {
         if (isInVoiceCallRef.current && !isSpeakingRef.current) {
-          try {
-            recognition.start();
-          } catch (e) {}
+          setTimeout(() => {
+            if (isInVoiceCallRef.current && !isSpeakingRef.current && recognitionRef.current) {
+              try {
+                recognitionRef.current.start();
+              } catch (e) {}
+            }
+          }, 150);
         }
       };
 
@@ -514,6 +576,9 @@ export default function LinnkProVoiceAssistant({
     setActiveTab('call');
     setTranscript('');
     latestTranscriptRef.current = '';
+    cancelAiTextStreaming();
+    setActiveSpeaker(null);
+    setActiveTranscriptText('');
     setAssistantState('listening');
     setMicPermissionError(null);
 
@@ -559,6 +624,12 @@ export default function LinnkProVoiceAssistant({
               isUserSpeakingRef.current = true;
               setIsUserSpeaking(true);
             }
+            // If previous speaker was assistant, prepare clean space for incoming user speech
+            if (activeSpeaker === 'assistant') {
+              cancelAiTextStreaming();
+              setActiveTranscriptText('');
+              setActiveSpeaker('user');
+            }
           } else {
             isUserSpeakingRef.current = false;
             setIsUserSpeaking(false);
@@ -566,6 +637,9 @@ export default function LinnkProVoiceAssistant({
         },
         onTranscriptDelta: (text, isFinal, sender) => {
           if (sender === 'user') {
+            cancelAiTextStreaming();
+            setActiveSpeaker('user');
+            setActiveTranscriptText(text);
             setTranscript(text);
             lastUserSpeechTimeRef.current = Date.now();
             if (!isUserSpeakingRef.current) {
@@ -585,6 +659,10 @@ export default function LinnkProVoiceAssistant({
               ]);
             }
           } else {
+            // IA responde -> reemplaza inmediatamente el texto anterior y muestra lo que dice la IA en tiempo real
+            cancelAiTextStreaming();
+            setActiveSpeaker('assistant');
+            setActiveTranscriptText(text);
             setTranscript(text);
             if (isFinal) {
               setMessages(prev => [
@@ -645,6 +723,9 @@ export default function LinnkProVoiceAssistant({
     setAssistantState('idle');
     setTranscript('');
     latestTranscriptRef.current = '';
+    cancelAiTextStreaming();
+    setActiveSpeaker(null);
+    setActiveTranscriptText('');
     isUserSpeakingRef.current = false;
     setIsUserSpeaking(false);
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -778,7 +859,15 @@ export default function LinnkProVoiceAssistant({
           source.connect(ctx.destination);
           currentAudioSourceRef.current = source;
 
-          source.onended = onSpeechComplete;
+          // Replace user's previous transcript and stream AI words in real-time
+          const durationMs = audioBuffer.duration * 1000;
+          streamAssistantTranscriptInRealtime(text, durationMs);
+
+          source.onended = () => {
+            cancelAiTextStreaming();
+            setActiveTranscriptText(text);
+            onSpeechComplete();
+          };
           source.start();
           return;
         }
@@ -804,8 +893,17 @@ export default function LinnkProVoiceAssistant({
                         voices.find(v => v.lang.startsWith('es-US')) ||
                         voices.find(v => v.lang.startsWith('es'));
         if (esVoice) utterance.voice = esVoice;
-        utterance.onend = onSpeechComplete;
-        utterance.onerror = onSpeechComplete;
+
+        streamAssistantTranscriptInRealtime(cleanText);
+        utterance.onend = () => {
+          cancelAiTextStreaming();
+          setActiveTranscriptText(cleanText);
+          onSpeechComplete();
+        };
+        utterance.onerror = () => {
+          cancelAiTextStreaming();
+          onSpeechComplete();
+        };
         window.speechSynthesis.speak(utterance);
         return;
       } catch (synthErr) {
@@ -1353,6 +1451,7 @@ export default function LinnkProVoiceAssistant({
   };
 
   const lastAssistantMessage = [...messages].reverse().find(m => m.sender === 'assistant');
+  const lastUserMessage = [...messages].reverse().find(m => m.sender === 'user');
 
   return (
     <>
@@ -1554,19 +1653,22 @@ export default function LinnkProVoiceAssistant({
                     }`}></div>
                   </div>
 
-                  {/* 1. Header Title */}
-                  <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm mx-auto">
-                    <h2 className="text-sm sm:text-base font-semibold text-white/95 tracking-normal leading-snug line-clamp-3">
-                      {isUserSpeaking 
-                        ? (transcript ? `"${transcript}"` : 'Escuchando tu voz...')
-                        : assistantState === 'listening' 
-                        ? (transcript ? `"${transcript}"` : 'Escuchando... habla con libertad')
-                        : assistantState === 'speaking' 
-                        ? (lastAssistantMessage?.text ? `"${lastAssistantMessage.text}"` : 'IAMesero te está respondiendo...')
-                        : assistantState === 'processing'
-                        ? 'Pensando...'
-                        : 'En llamada con IAMesero'}
-                    </h2>
+                  {/* 1. Dynamic Real-Time Transcription (Strictly ONLY ONE text visible at a time: User -> AI) */}
+                  <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm sm:max-w-md mx-auto min-h-[64px]">
+                    <AnimatePresence mode="wait">
+                      {activeTranscriptText.trim() ? (
+                        <motion.p
+                          key={activeSpeaker}
+                          initial={{ opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -4 }}
+                          transition={{ duration: 0.15 }}
+                          className="text-base sm:text-lg font-medium text-white/95 tracking-normal leading-snug break-words"
+                        >
+                          {activeTranscriptText.trim()}
+                        </motion.p>
+                      ) : null}
+                    </AnimatePresence>
                   </div>
 
                   {/* Mobile / Browser Mic Permission Notice if any */}
@@ -1640,22 +1742,6 @@ export default function LinnkProVoiceAssistant({
                           />
                         </div>
                       </motion.button>
-
-                      {/* Subtle badge indicating IAMesero is actively listening to user's voice */}
-                      <AnimatePresence>
-                        {isUserSpeaking && (
-                          <motion.div
-                            initial={{ opacity: 0, y: 6, scale: 0.92 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: 4, scale: 0.92 }}
-                            transition={{ duration: 0.2 }}
-                            className="absolute -bottom-8 flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-300 text-[11px] font-medium backdrop-blur-sm pointer-events-none"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />
-                            <span>Escuchando...</span>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   </div>
 
@@ -2008,7 +2094,7 @@ export default function LinnkProVoiceAssistant({
                   {assistantState === 'processing' && (
                     <div className="flex items-center gap-2 text-xs text-slate-400 bg-[#182030] border border-white/10 px-3.5 py-2 rounded-2xl w-fit">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-[#EF4444]" />
-                      <span>iAmesero está pensando...</span>
+                      <span>iAmesero está respondiendo...</span>
                     </div>
                   )}
 

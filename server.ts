@@ -75,13 +75,14 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // CORS & Header middleware for API requests (supports custom domains like linnkpro.store)
-  app.use('/api', (req, res, next) => {
+  // Universal CORS & Header middleware for all requests (supports custom domains like ryyco.com)
+  app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range');
+    res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range');
     if (req.method === 'OPTIONS') {
-      res.sendStatus(204);
+      res.status(204).end();
       return;
     }
     next();
