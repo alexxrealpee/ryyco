@@ -1,3 +1,8 @@
+# Hostinger / Apache Environment Variables
+<IfModule mod_env.c>
+  PassEnv OPENAI_API_KEY
+</IfModule>
+
 # Hostinger / Apache Single Page Application (SPA) Rewrite Rules
 <IfModule mod_rewrite.c>
   RewriteEngine On

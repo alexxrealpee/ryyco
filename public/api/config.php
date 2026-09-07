@@ -7,26 +7,47 @@
 ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
-// Load API Keys from environment or local .env if available
+// Load API Keys strictly from server-side environment or local .env
 $envOpenAIKey = getenv('OPENAI_API_KEY');
 if (!$envOpenAIKey && isset($_SERVER['OPENAI_API_KEY'])) {
     $envOpenAIKey = $_SERVER['OPENAI_API_KEY'];
 }
+if (!$envOpenAIKey && isset($_SERVER['REDIRECT_OPENAI_API_KEY'])) {
+    $envOpenAIKey = $_SERVER['REDIRECT_OPENAI_API_KEY'];
+}
 if (!$envOpenAIKey && isset($_ENV['OPENAI_API_KEY'])) {
     $envOpenAIKey = $_ENV['OPENAI_API_KEY'];
+}
+if (!$envOpenAIKey && function_exists('apache_getenv')) {
+    $envOpenAIKey = apache_getenv('OPENAI_API_KEY');
 }
 
 // Optionally load from a local uncommitted .env file on Hostinger
 if (!$envOpenAIKey) {
-    $envFilePath = __DIR__ . '/../../.env';
-    if (file_exists($envFilePath)) {
-        $lines = @file($envFilePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-        if ($lines) {
-            foreach ($lines as $line) {
-                if (strpos(trim($line), 'OPENAI_API_KEY=') === 0) {
-                    $envOpenAIKey = trim(substr(trim($line), strlen('OPENAI_API_KEY=')));
-                    $envOpenAIKey = trim($envOpenAIKey, '"\'');
-                    break;
+    $potentialPaths = array_filter([
+        __DIR__ . '/../../.env',
+        __DIR__ . '/../.env',
+        __DIR__ . '/.env',
+        (isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . '/.env' : null),
+        (isset($_SERVER['DOCUMENT_ROOT']) ? dirname(rtrim($_SERVER['DOCUMENT_ROOT'], '/\\')) . '/.env' : null),
+        getcwd() . '/.env'
+    ]);
+
+    foreach ($potentialPaths as $envFilePath) {
+        if ($envFilePath && file_exists($envFilePath) && is_readable($envFilePath)) {
+            $lines = @file($envFilePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            if ($lines) {
+                foreach ($lines as $line) {
+                    $trimmed = trim($line);
+                    if (strpos($trimmed, '#') === 0) continue;
+                    if (strpos($trimmed, 'OPENAI_API_KEY=') === 0) {
+                        $val = trim(substr($trimmed, strlen('OPENAI_API_KEY=')));
+                        $val = trim($val, '"\'');
+                        if (!empty($val)) {
+                            $envOpenAIKey = $val;
+                            break 2;
+                        }
+                    }
                 }
             }
         }

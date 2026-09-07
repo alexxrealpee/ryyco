@@ -28,6 +28,15 @@ import {
 
 // Load environmental variables
 dotenv.config();
+if (!process.env.OPENAI_API_KEY) {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+}
+if (!process.env.OPENAI_API_KEY) {
+  dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+}
+if (!process.env.OPENAI_API_KEY) {
+  dotenv.config({ path: path.resolve(__dirname, '.env') });
+}
 
 let aiClient: GoogleGenAI | null = null;
 let openaiClient: OpenAI | null = null;
@@ -323,15 +332,13 @@ Formatos válidos para:
 
   // API Route: OpenAI Realtime Voice WebRTC Session (Secure Ephemeral Token Provisioning)
   const handleRealtimeSession = async (req: express.Request, res: express.Response) => {
-    const apiKey = process.env.OPENAI_API_KEY;
-    await createRealtimeSessionHandler(req, res, apiKey || '');
+    const apiKey = process.env.OPENAI_API_KEY || '';
+    await createRealtimeSessionHandler(req, res, apiKey);
   };
-  app.post('/api/realtime/session', handleRealtimeSession);
-  app.post('/api/realtime-session', handleRealtimeSession);
-  app.post('/api/realtime/client_secrets', handleRealtimeSession);
-  app.post('/api/realtime/client-secrets', handleRealtimeSession);
-  app.get('/api/realtime/session', handleRealtimeSession);
-  app.get('/api/realtime-session', handleRealtimeSession);
+  app.all('/api/realtime/session', handleRealtimeSession);
+  app.all('/api/realtime-session', handleRealtimeSession);
+  app.all('/api/realtime/client_secrets', handleRealtimeSession);
+  app.all('/api/realtime/client-secrets', handleRealtimeSession);
 
   // API Route: LinnkPro AI Voice Text-to-Speech (TTS) (Powered strictly by OpenAI High Definition TTS)
   const handleTTSRequest = async (req: express.Request, res: express.Response) => {

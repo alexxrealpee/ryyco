@@ -10,8 +10,11 @@ const OPENAI_CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_sec
 
 export async function createRealtimeSessionHandler(req: express.Request, res: express.Response, apiKey: string) {
   try {
-    if (!apiKey) {
-      res.status(500).json({ error: "OpenAI API Key no está configurada en el backend." });
+    const activeApiKey = (apiKey || process.env.OPENAI_API_KEY || '').trim();
+    if (!activeApiKey) {
+      res.status(500).json({ 
+        error: "OPENAI_API_KEY no está disponible en el servidor. Configura la variable de entorno OPENAI_API_KEY exclusivamente en el servidor de Hostinger o en el archivo .env del servidor." 
+      });
       return;
     }
 
@@ -220,7 +223,7 @@ HERRAMIENTAS EN TIEMPO REAL:
         const response = await fetch(OPENAI_CLIENT_SECRETS_URL, {
           method: "POST",
           headers: {
-            "Authorization": `Bearer ${apiKey}`,
+            "Authorization": `Bearer ${activeApiKey}`,
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
@@ -245,6 +248,29 @@ HERRAMIENTAS EN TIEMPO REAL:
         }
       } catch (err: any) {
         lastError = err;
+      }
+    }
+
+    if (!sessionData) {
+      // Fallback to standard /v1/realtime/sessions endpoint
+      try {
+        const fallbackResponse = await fetch('https://api.openai.com/v1/realtime/sessions', {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${activeApiKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-realtime-preview",
+            voice: "alloy"
+          })
+        });
+
+        if (fallbackResponse.ok) {
+          sessionData = await fallbackResponse.json();
+        }
+      } catch (fbErr: any) {
+        console.warn("OpenAI Realtime sessions fallback notice:", fbErr?.message || fbErr);
       }
     }
 
