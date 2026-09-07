@@ -359,9 +359,16 @@ export default function FullScreenSearchModal({
 
                     {/* Middle: Name, Store, Description, Rating */}
                     <div className="flex-1 min-w-0 flex flex-col justify-center space-y-1">
-                      <h3 className="font-extrabold text-sm sm:text-base text-white group-hover:text-[#E63946] transition truncate leading-snug">
-                        {product.name}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-extrabold text-sm sm:text-base text-white group-hover:text-[#E63946] transition truncate leading-snug">
+                          {product.name}
+                        </h3>
+                        {product.allowsHalfAndHalf && product.flavorsText && (
+                          <span className="shrink-0 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                            🍕 Mitad y Mitad
+                          </span>
+                        )}
+                      </div>
 
                       {/* Store name with quick jump */}
                       <div 

@@ -1222,6 +1222,9 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
         category: data.category || 'General',
         stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : (parseInt(data.stock) || 0),
         variantsText: data.variantsText || '',
+        allowsHalfAndHalf: Boolean(data.allowsHalfAndHalf),
+        flavorsText: data.flavorsText || '',
+        allowSingleFlavor: data.allowSingleFlavor !== false,
         active: data.active !== false,
         createdAt: data.createdAt || new Date().toISOString()
       } as ProductItem);
@@ -1249,6 +1252,9 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
               category: lp.category || 'General',
               stock: typeof lp.stock === 'number' && !isNaN(lp.stock) ? lp.stock : (parseInt(lp.stock) || 0),
               variantsText: lp.variantsText || '',
+              allowsHalfAndHalf: Boolean(lp.allowsHalfAndHalf),
+              flavorsText: lp.flavorsText || '',
+              allowSingleFlavor: lp.allowSingleFlavor !== false,
               active: lp.active !== false,
               createdAt: lp.createdAt || new Date().toISOString()
             });
@@ -1506,6 +1512,9 @@ export function subscribeProducts(userId: string, callback: (products: ProductIt
         category: data.category || 'General',
         stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : (parseInt(data.stock) || 0),
         variantsText: data.variantsText || '',
+        allowsHalfAndHalf: Boolean(data.allowsHalfAndHalf),
+        flavorsText: data.flavorsText || '',
+        allowSingleFlavor: data.allowSingleFlavor !== false,
         active: data.active !== false,
         createdAt: data.createdAt || new Date().toISOString()
       } as ProductItem);

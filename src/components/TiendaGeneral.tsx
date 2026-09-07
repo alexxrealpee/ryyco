@@ -45,6 +45,7 @@ import FullScreenSearchModal from './FullScreenSearchModal';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
+import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import { 
   getStoredCart, 
   saveStoredCart, 
@@ -370,12 +371,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const [buyQuantity, setBuyQuantity] = useState(1);
   const [chosenVariant, setChosenVariant] = useState('');
+  const [isVariantValid, setIsVariantValid] = useState(true);
 
   // Whenever selectedProduct changes, reset chosenVariant and buyQuantity
   useEffect(() => {
     if (selectedProduct) {
       setBuyQuantity(1);
-      if (selectedProduct.variantsText) {
+      setIsVariantValid(true);
+      if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) {
+        setChosenVariant('');
+      } else if (selectedProduct.variantsText) {
         const firstVar = selectedProduct.variantsText.split(',')[0].trim();
         setChosenVariant(firstVar);
       } else {
@@ -700,6 +705,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const handleAddToCart = () => {
     if (!selectedProduct) return;
+    if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText && !isVariantValid) {
+      alert("Por favor completa la selección de sabores para tu pizza antes de continuar.");
+      return;
+    }
 
     const prof = findStoreForProduct(selectedProduct, profiles);
     const img = selectedProduct.imageURL || getProductImage(selectedProduct.id);
@@ -726,6 +735,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const handleAddToCartDirect = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    // If the product allows half-and-half or has multiple variants, open detail modal to customize!
+    if ((product.allowsHalfAndHalf && product.flavorsText) || (product.variantsText && product.variantsText.includes(','))) {
+      setSelectedProduct(product);
+      return;
+    }
     const prof = findStoreForProduct(product, profiles);
     const img = product.imageURL || getProductImage(product.id);
     const validProdId = (product.id && String(product.id).trim() && String(product.id).trim() !== 'undefined')
@@ -1708,8 +1722,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     }}
                     className="relative aspect-square w-full bg-[#090B12] overflow-hidden shrink-0 cursor-pointer"
                   >
+                    {product.allowsHalfAndHalf && product.flavorsText && (
+                      <div className="absolute top-3 right-3 z-20">
+                        <span className="bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-white/20 flex items-center gap-1">
+                          <span>🍕</span> Mitad y Mitad
+                        </span>
+                      </div>
+                    )}
                     {/* Top right badges: Sale badge */}
-                    {isOnSale && (
+                    {isOnSale && !product.allowsHalfAndHalf && (
                       <div className="absolute top-3 right-3 z-20">
                         <span className="bg-[#E63946] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
                           -{discountPercentage}%
@@ -1987,8 +2008,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         </p>
                       </div>
 
-                      {/* Variant choice drop-down */}
-                      {selectedProduct.variantsText && (
+                      {/* Variant / Pizza Flavor choice */}
+                      {selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText ? (
+                        <div className="pt-1">
+                          <PizzaFlavorSelector
+                            product={selectedProduct}
+                            currency={currency}
+                            initialSizeVariant={chosenVariant}
+                            onVariantChange={(variantString, isValid) => {
+                              setChosenVariant(variantString);
+                              setIsVariantValid(isValid);
+                            }}
+                          />
+                        </div>
+                      ) : selectedProduct.variantsText ? (
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-bold text-[#A9B2C3] uppercase tracking-widest block">Elegir Variante / Opción</label>
                           <select
@@ -2001,7 +2034,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             ))}
                           </select>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 </div>

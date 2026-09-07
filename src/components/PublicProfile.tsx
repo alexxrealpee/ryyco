@@ -47,6 +47,7 @@ import {
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
+import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import { 
   Share2, 
   Copy, 
@@ -199,7 +200,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [custEmail, setCustEmail] = useState('');
   const [custAddress, setCustAddress] = useState('');
   const [custNotes, setCustNotes] = useState('');
-  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
+  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup' | 'table'>('delivery');
+  const [tableNumber, setTableNumber] = useState('');
+  const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('whatsapp');
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
@@ -267,6 +270,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   // Product Selection overlay state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
   const [chosenVariant, setChosenVariant] = useState('');
+  const [isVariantValid, setIsVariantValid] = useState(true);
   const [buyQuantity, setBuyQuantity] = useState(1);
 
   const qrRef = useRef<HTMLDivElement>(null);
@@ -451,7 +455,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           // Track the public Page View
           trackPageView(finalProfile.uid);
 
-          // Detect shared product deep-link (?product=ID or ?p=ID)
+          // Detect shared product deep-link (?product=ID or ?p=ID) or table (?mesa=X / ?table=X)
           try {
             const searchParams = new URLSearchParams(window.location.search);
             const sharedProdId = searchParams.get('product') || searchParams.get('p') || searchParams.get('id');
@@ -460,6 +464,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               if (matched) {
                 setSelectedProduct(matched);
               }
+            }
+
+            const urlMesa = searchParams.get('mesa') || searchParams.get('table') || searchParams.get('m');
+            if (urlMesa) {
+              setDeliveryType('table');
+              setTableNumber(urlMesa.trim());
             }
           } catch (e) {}
         } else {
@@ -615,11 +625,16 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const variants = prod.variantsText ? prod.variantsText.split(',').map(s => s.trim()) : [];
     setSelectedProduct(prod);
     setChosenVariant(variants.length > 0 ? variants[0] : '');
+    setIsVariantValid(true);
     setBuyQuantity(1);
   };
 
   const handleAddProductToCart = () => {
     if (!selectedProduct) return;
+    if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText && !isVariantValid) {
+      alert("Por favor completa la selección de sabores para tu pizza antes de continuar.");
+      return;
+    }
     
     const validProdId = (selectedProduct.id && String(selectedProduct.id).trim() && String(selectedProduct.id).trim() !== 'undefined')
       ? String(selectedProduct.id).trim()
@@ -647,8 +662,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const handleAddToCartDirect = (p: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const variants = p.variantsText ? p.variantsText.split(',').map(s => s.trim()).filter(Boolean) : [];
-    if (variants.length > 1) {
-      // Multiple variants require selection modal
+    if (variants.length > 1 || (p.allowsHalfAndHalf && p.flavorsText)) {
+      // Multiple variants or Pizza flavors require selection modal
       handleOpenProductSelection(p);
       return;
     }
@@ -694,8 +709,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     if (!profile || cart.length === 0 || orderSubmittingRef.current) return;
     
     const cleanedPhone = cleanColombianPhone(custPhone);
-    if (!custName.trim() || (deliveryType === 'delivery' && !custAddress.trim())) {
-      alert("Por favor, completa todos los campos requeridos (*)");
+    if (!custName.trim()) {
+      alert("Por favor, ingresa tu nombre completo (*)");
+      return;
+    }
+
+    if (deliveryType === 'delivery' && !custAddress.trim()) {
+      alert("Por favor, ingresa la dirección de entrega (*)");
+      return;
+    }
+
+    if (deliveryType === 'table' && !tableNumber.trim()) {
+      alert("Por favor, indica o selecciona el número de tu mesa (*)");
       return;
     }
 
@@ -713,17 +738,24 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
     const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-    const deliveryFee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
+    const isTable = deliveryType === 'table';
+    const isPickup = deliveryType === 'pickup';
+    const deliveryFee = (isPickup || isTable) ? 0 : systemDeliveryFee;
     const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
     const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
     const rNo = Math.floor(1000 + Math.random() * 9000);
 
     const formattedPhone = formatColombianPhoneWith57(custPhone);
-    const finalAddress = deliveryType === 'pickup' 
+    const finalAddress = isTable
+      ? `Mesa ${tableNumber.trim()} (Servicio en Restaurante / Salón)`
+      : isPickup 
       ? (custAddress.trim() ? `Recoger en Restaurante / Local (Nota: ${custAddress.trim()})` : `Recoger en Restaurante / Local (${profile.displayName || profile.username})`)
       : custAddress.trim();
 
     let finalNotes = custNotes.trim();
+    if (isTable) {
+      finalNotes = `[PEDIDO EN MESA #${tableNumber.trim()}] ${finalNotes}`.trim();
+    }
     if (appliedRewardCode) {
       finalNotes = `[Cupón Aplicado: ${appliedRewardCode} - Descuento: $${finalDiscount.toLocaleString('es-CO')}] ${finalNotes}`.trim();
     }
@@ -748,12 +780,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       })),
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
-      orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
+      orderType: isTable ? 'table' : isPickup ? 'pickup' : 'delivery',
+      isTableOrder: isTable,
+      tableNumber: isTable ? tableNumber.trim() : undefined,
       paymentMethod: payMethod,
       notes: finalNotes || undefined,
       status: 'pending',
       createdAt: new Date().toISOString(),
-      proofImage: uploadedOrderProofBase64 || undefined
+      proofImage: isTable ? undefined : (uploadedOrderProofBase64 || undefined)
     };
 
     try {
@@ -803,9 +837,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const triggerShopperWhatsAppMessage = (order: OrderItem) => {
     if (!profile) return;
 
-    const isPickup = order.orderType === 'pickup' || order.deliveryFee === 0;
+    const isTable = order.orderType === 'table' || order.isTableOrder;
+    const isPickup = !isTable && (order.orderType === 'pickup' || order.deliveryFee === 0);
     
-    let msg = `🛍️ *PEDIDO NUEVO #${order.orderNumber}* de *${order.customerName}*\n`;
+    let msg = isTable
+      ? `🍽️ *PEDIDO EN MESA #${order.tableNumber || tableNumber || (order.customerAddress.replace(/\D+/g, '') || '')}* - *${order.customerName}*\n`
+      : `🛍️ *PEDIDO NUEVO #${order.orderNumber}* de *${order.customerName}*\n`;
     msg += `-----------------------------\n`;
     order.items.forEach(item => {
       const vText = item.selectedVariant ? ` (${item.selectedVariant})` : '';
@@ -813,24 +850,33 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     });
     msg += `-----------------------------\n`;
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
-    const feeVal = order.deliveryFee ?? (isPickup ? 0 : systemDeliveryFee);
+    const feeVal = order.deliveryFee ?? (isPickup || isTable ? 0 : systemDeliveryFee);
     msg += `Subtotal: ${profile.currency || '$'}${subtotalVal.toLocaleString()}\n`;
-    msg += `Tipo de Entrega: *${isPickup ? '🛍️ Recoger en Restaurante / Local (Sin costo de envío)' : '🛵 Envío a Domicilio'}*\n`;
-    if (!isPickup) {
-      msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
-    } else {
+    if (isTable) {
+      msg += `Tipo de Pedido: *🍽️ Pedido en Mesa (Consumo en Salón)*\n`;
+      msg += `Ubicación: *${order.customerAddress}*\n`;
+      msg += `Costo de Envío: *$0 (Atención en Mesa)*\n`;
+    } else if (isPickup) {
+      msg += `Tipo de Entrega: *🛍️ Recoger en Restaurante / Local (Sin costo de envío)*\n`;
       msg += `Domicilio: *$0 (Recoger en Restaurante)*\n`;
+    } else {
+      msg += `Tipo de Entrega: *🛵 Envío a Domicilio*\n`;
+      msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
     }
     msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
     if (order.customerEmail) msg += `✉️ Email: ${order.customerEmail}\n`;
-    msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
+    if (!isTable) {
+      msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
+    }
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
-    msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : 'Pago contra Entrega'}*\n`;
+    msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : isTable ? 'Efectivo / En Mesa / Datáfono' : 'Pago contra Entrega'}*\n`;
     if (order.proofImage) {
       msg += `📸 *Comprobante de compra:* Adjunto en ryyco.com\n`;
     }
-    msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!\n\n`;
+    msg += isTable
+      ? `¡Hola! Ya estamos ubicados en la mesa. ¡Agradecemos confirmación para iniciar la preparación en cocina! 🍽️\n\n`
+      : `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!\n\n`;
 
     const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
     const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
@@ -1289,16 +1335,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <QrCode className="w-[19px] h-[19px]" />
             </button>
 
-            {/* Recommendation Heart Widget in Header Navbar */}
-            <RecommendationHeartButton
-              storeId={profile.uid}
-              storeName={profile.displayName || profile.name || `@${profile.username}`}
-              storeUsername={profile.username}
-              activeCustomer={activeCustomer}
-              onCustomerUpdate={setActiveCustomer}
-              onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
-              variant="header"
-            />
 
             {/* Shoppable cart badge element */}
             <button 
@@ -1538,6 +1574,78 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           variant="hero"
         />
       </section>
+
+      {/* 2.6 OP-IN TABLE ORDERING BANNER (PEDIR DESDE MESA) */}
+      {profile.restaurantAcceptsTableOrders !== false && (
+        <section className="w-full max-w-7xl mx-auto px-4 md:px-8 mt-4">
+          {deliveryType === 'table' && tableNumber ? (
+            <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/15 to-transparent border border-amber-500/40 p-3.5 sm:p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg backdrop-blur-sm">
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/25 border border-amber-500/40 flex items-center justify-center text-xl shadow-inner shrink-0 mt-0.5 sm:mt-0">
+                  🍽️
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-black text-amber-300 uppercase tracking-wider">Atención en Salón</span>
+                    <span className="bg-amber-400 text-black text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase shadow whitespace-nowrap">
+                      Mesa #{tableNumber}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-300 mt-1">
+                    Tus platos se prepararán y se llevarán directo a tu mesa sin recargo de envío ($0).
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsTableModalOpen(true)}
+                  className="flex-1 sm:flex-initial px-3.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl text-xs transition cursor-pointer shadow active:scale-95 text-center"
+                >
+                  Cambiar Mesa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setDeliveryType('delivery'); setTableNumber(''); }}
+                  className="px-3 py-2.5 text-gray-300 hover:text-white text-xs font-bold transition cursor-pointer text-center bg-gray-900/80 rounded-xl border border-gray-800"
+                >
+                  Pedir a Domicilio
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div 
+              onClick={() => setIsTableModalOpen(true)}
+              className="bg-gray-900/80 hover:bg-gray-900 border border-amber-500/30 hover:border-amber-500/60 transition-all p-3.5 sm:p-4 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer group shadow-md"
+            >
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-xl group-hover:scale-105 transition shrink-0 mt-0.5 sm:mt-0">
+                  🍽️
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h4 className="text-sm font-black text-white group-hover:text-amber-300 transition leading-snug">
+                      ¿Estás sentado en el restaurante?
+                    </h4>
+                    <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black px-2 py-0.5 rounded-full uppercase whitespace-nowrap">
+                      En Salón
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+                    Pide directo a tu mesa sin esperar al mesero. Te lo llevamos caliente y sin costo de envío ($0).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shrink-0 transition text-center active:scale-98"
+              >
+                Pedir desde Mesa
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* 3. COHESIVE CATEGORIES BAR (VISUAL CHIPS WITH OUTLINE DESIGN) */}
       <section 
@@ -1839,6 +1947,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         {isDiscounted && (
                           <span className="absolute top-3 left-3 bg-red-600 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest z-10 shadow-md">
                             OFERTA MENÚ
+                          </span>
+                        )}
+                        {p.allowsHalfAndHalf && p.flavorsText && (
+                          <span className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-wider z-10 shadow-md border border-white/20 flex items-center gap-1">
+                            <span>🍕</span> Mitad y Mitad
                           </span>
                         )}
 
@@ -2418,8 +2531,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     {selectedProduct.description || 'Detalles exclusivos de nuestro catálogo directo.'}
                   </p>
 
-                  {/* If variants available, present choice */}
-                  {selectedProduct.variantsText && (
+                  {/* If Pizza flavors or variants available, present choice */}
+                  {selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText ? (
+                    <div className="mb-4">
+                      <PizzaFlavorSelector
+                        product={selectedProduct}
+                        currency={getStoreCurrency()}
+                        initialSizeVariant={chosenVariant}
+                        onVariantChange={(variantString, isValid) => {
+                          setChosenVariant(variantString);
+                          setIsVariantValid(isValid);
+                        }}
+                      />
+                    </div>
+                  ) : selectedProduct.variantsText ? (
                     <div className="mb-4">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Elegir Variante / Opción</label>
                       <select
@@ -2432,7 +2557,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         ))}
                       </select>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2583,15 +2708,64 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
             {/* Cart Footer Totalizer & checkout toggle */}
             {cart.length > 0 && (
-              <div className="border-t border-gray-900 pt-4 space-y-2">
+              <div className="border-t border-gray-900 pt-4 space-y-2.5">
+                {/* Mini delivery / table selector */}
+                <div className="bg-gray-900/90 p-1 rounded-xl flex items-center gap-1 border border-gray-800 text-[11px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('delivery')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg transition text-center cursor-pointer ${
+                      deliveryType === 'delivery'
+                        ? 'bg-indigo-600 text-white shadow font-black'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    🛵 Domicilio
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType('pickup')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg transition text-center cursor-pointer ${
+                      deliveryType === 'pickup'
+                        ? 'bg-indigo-600 text-white shadow font-black'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    🛍️ Llevar
+                  </button>
+                  {profile.restaurantAcceptsTableOrders !== false && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeliveryType('table');
+                        if (!tableNumber) setIsTableModalOpen(true);
+                      }}
+                      className={`flex-1 py-1.5 px-2 rounded-lg transition text-center flex items-center justify-center gap-1 cursor-pointer ${
+                        deliveryType === 'table'
+                          ? 'bg-amber-500 text-black font-black shadow'
+                          : 'text-gray-400 hover:text-amber-300'
+                      }`}
+                    >
+                      <span>🍽️ En Mesa</span>
+                      {tableNumber && <span className="text-[9px] bg-black text-amber-300 px-1 py-0.2 rounded font-black">#{tableNumber}</span>}
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex items-center justify-between font-bold text-xs text-gray-400">
                   <span>Subtotal:</span>
                   <span className="font-mono">{getStoreCurrency()}{totalCartCost.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center justify-between font-bold text-xs text-gray-400">
-                  <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : ''}:</span>
-                  {deliveryType === 'pickup' ? (
-                    <span className="font-mono font-bold" style={{ color: storeAccent }}>GRATIS ($0)</span>
+                  <span>
+                    {deliveryType === 'table' 
+                      ? 'Servicio en Mesa:' 
+                      : deliveryType === 'pickup' 
+                      ? 'Para Llevar (Recoger):' 
+                      : 'Costo de Domicilio:'}
+                  </span>
+                  {deliveryType === 'pickup' || deliveryType === 'table' ? (
+                    <span className="font-mono font-bold text-emerald-400">GRATIS ($0)</span>
                   ) : (
                     <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
                   )}
@@ -2599,7 +2773,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <div className="flex items-center justify-between font-extrabold text-sm text-white pt-1 border-t border-dashed border-gray-900">
                   <span>Total estimado:</span>
                   <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
-                    {getStoreCurrency()}{(totalCartCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee)).toLocaleString()}
+                    {getStoreCurrency()}{(totalCartCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee)).toLocaleString()}
                   </span>
                 </div>
 
@@ -2706,48 +2880,139 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               )}
             </div>
 
-            {/* Delivery Type Option (Domicilio vs Recoger en Restaurante) */}
+            {/* Delivery Type Option (Domicilio vs Recoger vs En Mesa) */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-gray-500 block">Tipo de entrega</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="text-[10px] font-black uppercase text-gray-500 block">Tipo de entrega / Servicio</label>
+              <div className={`grid ${profile.restaurantAcceptsTableOrders !== false ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                 <button
                   type="button"
                   onClick={() => setDeliveryType('delivery')}
-                  className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                  className={`p-2.5 sm:p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
                     deliveryType === 'delivery'
                       ? 'bg-indigo-500/10 border-indigo-500 text-white'
                       : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:border-gray-700'
                   }`}
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-3.5 h-3.5 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
                       {deliveryType === 'delivery' && <div className="w-2 h-2 bg-indigo-500 rounded-full" />}
                     </div>
                     <span className="text-xs font-black text-white">🛵 Domicilio</span>
                   </div>
-                  <span className="text-[10px] text-gray-400 pl-6">Envío a tu dirección</span>
+                  <span className="text-[9px] sm:text-[10px] text-gray-400 pl-5">A tu dirección</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setDeliveryType('pickup')}
-                  className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                  className={`p-2.5 sm:p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
                     deliveryType === 'pickup'
                       ? 'text-white'
                       : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:border-gray-700'
                   }`}
                   style={deliveryType === 'pickup' ? { backgroundColor: `${storeAccent}15`, borderColor: storeAccent } : undefined}
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="w-4 h-4 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-3.5 h-3.5 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
                       {deliveryType === 'pickup' && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: storeAccent }} />}
                     </div>
-                    <span className="text-xs font-black text-white">🛍️ Recoger en Restaurante</span>
+                    <span className="text-xs font-black text-white">🛍️ Para Llevar</span>
                   </div>
-                  <span className="text-[10px] font-bold pl-6" style={{ color: storeAccent }}>¡Sin costo de envío! ($0)</span>
+                  <span className="text-[9px] sm:text-[10px] font-bold pl-5" style={{ color: storeAccent }}>Recoger ($0)</span>
                 </button>
+
+                {profile.restaurantAcceptsTableOrders !== false && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryType('table');
+                      if (!tableNumber) setIsTableModalOpen(true);
+                    }}
+                    className={`p-2.5 sm:p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
+                      deliveryType === 'table'
+                        ? 'bg-amber-500/15 border-amber-500 text-white shadow-sm'
+                        : 'bg-gray-900/60 border-gray-850 text-gray-400 hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <div className="w-3.5 h-3.5 rounded-full border border-gray-700 flex items-center justify-center shrink-0">
+                        {deliveryType === 'table' && <div className="w-2 h-2 bg-amber-400 rounded-full" />}
+                      </div>
+                      <span className="text-xs font-black text-white">🍽️ En Mesa</span>
+                    </div>
+                    <span className="text-[9px] sm:text-[10px] font-bold text-amber-400 pl-5">
+                      {tableNumber ? `Mesa #${tableNumber}` : 'En Salón ($0)'}
+                    </span>
+                  </button>
+                )}
               </div>
             </div>
+
+            {/* Table Ordering Block */}
+            {deliveryType === 'table' && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-base">
+                      🍽️
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-black text-amber-300 uppercase tracking-wider">Servicio en Mesa</h4>
+                      <p className="text-[10px] text-gray-300">Te llevamos la comida caliente a tu mesa sin costo de domicilio.</p>
+                    </div>
+                  </div>
+                  <span className="text-[9px] font-black bg-amber-400 text-black px-2 py-0.5 rounded-full uppercase">
+                    $0 Envío
+                  </span>
+                </div>
+
+                {/* Quick table chips */}
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 block mb-1.5">
+                    Selecciona o cambia el número de tu mesa:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+                    {Array.from({ length: Math.min(Number(profile?.restaurantTableCount) || 12, 20) }, (_, i) => String(i + 1)).map((num) => {
+                      const isSelected = tableNumber === num;
+                      return (
+                        <button
+                          key={num}
+                          type="button"
+                          onClick={() => setTableNumber(num)}
+                          className={`w-9 h-8 rounded-lg text-xs font-black transition cursor-pointer flex items-center justify-center border ${
+                            isSelected
+                              ? 'bg-amber-400 text-black border-amber-300 shadow font-extrabold scale-105'
+                              : 'bg-gray-900 hover:bg-gray-800 text-gray-300 border-gray-800'
+                          }`}
+                        >
+                          {num}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Manual Table Number Input */}
+                <div>
+                  <label className="text-[10px] font-black uppercase text-gray-400 block mb-1">
+                    Número o ubicación de mesa *
+                  </label>
+                  <input
+                    type="text"
+                    required={deliveryType === 'table'}
+                    value={tableNumber}
+                    onChange={(e) => setTableNumber(e.target.value)}
+                    placeholder="Ej: Mesa 5, Terraza 2, Barra..."
+                    className="w-full h-11 bg-white border border-gray-300 focus:border-amber-500 rounded-xl px-3.5 text-xs font-bold text-gray-900 placeholder:text-gray-400 outline-none"
+                  />
+                  {!tableNumber.trim() && (
+                    <p className="text-[10px] text-amber-400 font-bold mt-1">
+                      ⚠️ Selecciona o escribe tu mesa para que el personal sepa dónde llevarte la orden.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Pickup Location Info Banner */}
             {deliveryType === 'pickup' && (
@@ -2770,27 +3035,31 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             )}
 
-            <div>
-              <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
-                {deliveryType === 'pickup' ? 'Detalles o Nota de Recogida (Opcional)' : 'Dirección Completa de Despacho *'}
-              </label>
-              <input 
-                type="text" 
-                required={deliveryType === 'delivery'}
-                value={custAddress}
-                onChange={(e) => setCustAddress(e.target.value)}
-                placeholder={deliveryType === 'pickup' ? 'Ej: Paso a las 2:00 PM o voy en carro placa XYZ' : 'Ej: Calle 45 #23-12, Apto 402, Bogotá'}
-                className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
-              />
-            </div>
+            {deliveryType !== 'table' && (
+              <div>
+                <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
+                  {deliveryType === 'pickup' ? 'Detalles o Nota de Recogida (Opcional)' : 'Dirección Completa de Despacho *'}
+                </label>
+                <input 
+                  type="text" 
+                  required={deliveryType === 'delivery'}
+                  value={custAddress}
+                  onChange={(e) => setCustAddress(e.target.value)}
+                  placeholder={deliveryType === 'pickup' ? 'Ej: Paso a las 2:00 PM o voy en carro placa XYZ' : 'Ej: Calle 45 #23-12, Apto 402, Bogotá'}
+                  className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
+                />
+              </div>
+            )}
 
             <div>
-              <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">Instrucciones o Notas Especiales</label>
+              <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
+                {deliveryType === 'table' ? 'Instrucciones para la Cocina o Mesero (Opcional)' : 'Instrucciones o Notas Especiales'}
+              </label>
               <textarea 
                 rows={2}
                 value={custNotes}
                 onChange={(e) => setCustNotes(e.target.value)}
-                placeholder="Ej: Golpear fuerte el portón negro o dejar en portería."
+                placeholder={deliveryType === 'table' ? 'Ej: Sin cebolla, salsas aparte, servir gaseosa bien fría...' : 'Ej: Golpear fuerte el portón negro o dejar en portería.'}
                 className="w-full bg-white border border-gray-300 focus:border-indigo-500 rounded-xl p-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20 resize-none"
               />
             </div>
@@ -2845,10 +3114,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   payMethod === 'cod' ? 'border-amber-400 bg-amber-500/5' : 'border-gray-900 hover:border-gray-800'
                 }`}>
                   <div className="flex items-center gap-2.5">
-                    <Truck className="w-5 h-5 text-amber-405" />
+                    {deliveryType === 'table' ? (
+                      <Utensils className="w-5 h-5 text-amber-400" />
+                    ) : (
+                      <Truck className="w-5 h-5 text-amber-405" />
+                    )}
                     <div className="text-left">
-                      <h4 className="text-xs font-extrabold text-white">Efectivo / Contra Entrega</h4>
-                      <p className="text-[9px] text-gray-500">Pagas al recibir los paquetes</p>
+                      <h4 className="text-xs font-extrabold text-white">
+                        {deliveryType === 'table' ? 'Efectivo / En Mesa / Datáfono' : 'Efectivo / Contra Entrega'}
+                      </h4>
+                      <p className="text-[9px] text-gray-500">
+                        {deliveryType === 'table' ? 'Pagas en tu mesa al recibir los platos' : 'Pagas al recibir los paquetes'}
+                      </p>
                     </div>
                   </div>
                   <input type="radio" checked={payMethod === 'cod'} onChange={() => setPayMethod('cod')} className="w-4 h-4 accent-amber-500 pointer-events-auto" />
@@ -2926,144 +3203,68 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </motion.div>
             )}
 
-            {/* Optional purchase image proof / receipt upload */}
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase text-gray-500 block">
-                Comprobante o Imagen de la Compra (Opcional)
-              </label>
-              
-              <div className="relative border border-dashed border-gray-800 hover:border-indigo-500/50 rounded-2xl p-4 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[90px]">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      if (file.size > 2 * 1024 * 1024) {
-                        alert("La imagen excede el límite de 2 MB. Por favor elige una menos pesada.");
-                        return;
-                      }
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setUploadedOrderProofBase64(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                />
+            {/* Optional purchase image proof / receipt upload (Omitido al pedir desde mesa) */}
+            {deliveryType !== 'table' && (
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase text-gray-500 block">
+                  Comprobante o Imagen de la Compra (Opcional)
+                </label>
                 
-                {uploadedOrderProofBase64 ? (
-                  <div className="relative z-25 w-full flex items-center justify-between gap-3 bg-indigo-950/20 p-2 rounded-xl border border-indigo-500/20">
-                    <img 
-                      src={uploadedOrderProofBase64} 
-                      alt="Uploaded proof" 
-                      className="w-12 h-12 object-cover rounded-lg border border-indigo-500/10" 
-                    />
-                    <div className="flex-grow text-left">
-                      <span className="text-[10px] font-black uppercase tracking-widest block" style={{ color: storeAccent }}>¡Imagen Cargada!</span>
-                      <span className="text-[9px] text-gray-400 font-semibold truncate block max-w-[150px]">Imagen lista para registrar</span>
+                <div className="relative border border-dashed border-gray-800 hover:border-indigo-500/50 rounded-2xl p-4 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[90px]">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > 2 * 1024 * 1024) {
+                          alert("La imagen excede el límite de 2 MB. Por favor elige una menos pesada.");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setUploadedOrderProofBase64(reader.result as string);
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  />
+                  
+                  {uploadedOrderProofBase64 ? (
+                    <div className="relative z-25 w-full flex items-center justify-between gap-3 bg-indigo-950/20 p-2 rounded-xl border border-indigo-500/20">
+                      <img 
+                        src={uploadedOrderProofBase64} 
+                        alt="Uploaded proof" 
+                        className="w-12 h-12 object-cover rounded-lg border border-indigo-500/10" 
+                      />
+                      <div className="flex-grow text-left">
+                        <span className="text-[10px] font-black uppercase tracking-widest block" style={{ color: storeAccent }}>¡Imagen Cargada!</span>
+                        <span className="text-[9px] text-gray-400 font-semibold truncate block max-w-[150px]">Imagen lista para registrar</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setUploadedOrderProofBase64('');
+                        }}
+                        className="p-1 px-2 bg-gray-900 hover:bg-gray-805 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30"
+                      >
+                        Quitar
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        setUploadedOrderProofBase64('');
-                      }}
-                      className="p-1 px-2 bg-gray-900 hover:bg-gray-805 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30"
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-1.5 text-gray-450 hover:text-white transition">
-                    <Plus className="w-5 h-5 text-gray-500 animate-pulse" />
-                    <span className="text-[11px] font-black uppercase tracking-wider text-indigo-400 leading-none">Adjuntar comprobante / captura</span>
-                    <span className="text-[8.5px] text-gray-500">Soporta fotos de recibo, transferencias bancarias, etc. (Máx 2MB)</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Loyalty Points & Account Promo Card */}
-            <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border border-amber-500/30 p-3.5 rounded-2xl space-y-2 text-left">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                    <Gift className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-black text-amber-300">Club de Puntos & Platos Gratis</h4>
-                    <p className="text-[10px] text-gray-400 font-semibold">Gana puntos y giros de ruleta con cada compra</p>
-                  </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-1.5 text-gray-450 hover:text-white transition">
+                      <Plus className="w-5 h-5 text-gray-500 animate-pulse" />
+                      <span className="text-[11px] font-black uppercase tracking-wider text-indigo-400 leading-none">Adjuntar comprobante / captura</span>
+                      <span className="text-[8.5px] text-gray-500">Soporta fotos de recibo, transferencias bancarias, etc. (Máx 2MB)</span>
+                    </div>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => { setCustomerPortalTab('wheel'); setIsCustomerPortalOpen(true); }}
-                  className="px-2.5 py-1 bg-amber-400 hover:bg-amber-300 text-black text-[10px] font-black rounded-lg transition shrink-0 cursor-pointer"
-                >
-                  Ver Premios
-                </button>
               </div>
+            )}
 
-              <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
-                <input 
-                  type="checkbox" 
-                  checked={createAccountWithOrder} 
-                  onChange={(e) => setCreateAccountWithOrder(e.target.checked)}
-                  className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
-                />
-                <span className="text-[11px] font-bold text-gray-200">
-                  Guardar mis datos y acumular puntos (+1 Giro de Ruleta Gratis)
-                </span>
-              </label>
-            </div>
-
-            {/* Optional Voucher / Reward Coupon Code */}
-            <div className="bg-gray-900/60 border border-gray-800 p-3 rounded-2xl space-y-2 text-left">
-              <label className="text-[10px] font-black uppercase text-gray-400 flex items-center justify-between">
-                <span>¿Tienes un Cupón o Código de Premio?</span>
-                <Ticket className="w-3.5 h-3.5 text-indigo-400" />
-              </label>
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={appliedRewardCode}
-                  onChange={(e) => {
-                    setAppliedRewardCode(e.target.value.toUpperCase());
-                    if (!e.target.value.trim()) setRewardDiscountAmount(0);
-                  }}
-                  placeholder="Ej: RYY-7492 o CANJE-DESC"
-                  className="flex-1 bg-black/60 border border-gray-700 focus:border-indigo-500 rounded-xl px-3 py-2 text-xs font-mono font-bold text-amber-300 placeholder:text-gray-600 outline-none uppercase"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const code = appliedRewardCode.trim().toUpperCase();
-                    if (!code) {
-                      setRewardDiscountAmount(0);
-                      return;
-                    }
-                    if (code.includes('DESC') || code.includes('5000') || code.startsWith('RYY-') || code.startsWith('CANJE-')) {
-                      setRewardDiscountAmount(5000);
-                      alert(`🎉 ¡Cupón ${code} validado! Se aplicó un descuento de $5.000 COP a tu pedido.`);
-                    } else {
-                      setRewardDiscountAmount(3000);
-                      alert(`🎉 ¡Bono ${code} aplicado! Descuento de $3.000 COP registrado.`);
-                    }
-                  }}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black transition cursor-pointer"
-                >
-                  Aplicar
-                </button>
-              </div>
-              {rewardDiscountAmount > 0 && (
-                <p className="text-[10px] font-bold flex items-center gap-1" style={{ color: storeAccent }}>
-                  <Check className="w-3 h-3" /> Descuento aplicado: -${rewardDiscountAmount.toLocaleString('es-CO')} COP
-                </p>
-              )}
-            </div>
 
             {/* Total final */}
             <div className="border-t border-gray-900 pt-4 space-y-2">
@@ -3072,9 +3273,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <span className="font-mono">{getStoreCurrency()}{totalCartCost.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-xs text-gray-400 font-bold">
-                <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : ''}:</span>
-                {deliveryType === 'pickup' ? (
-                  <span className="font-mono font-bold" style={{ color: storeAccent }}>GRATIS ($0)</span>
+                <span>
+                  {deliveryType === 'table' 
+                    ? 'Servicio en Mesa:' 
+                    : deliveryType === 'pickup' 
+                    ? 'Para Llevar (Recoger):' 
+                    : 'Costo de Domicilio:'}
+                </span>
+                {deliveryType === 'pickup' || deliveryType === 'table' ? (
+                  <span className="font-mono font-bold text-emerald-400">GRATIS ($0)</span>
                 ) : (
                   <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
                 )}
@@ -3088,7 +3295,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-gray-900 pt-2 text-white">
                 <span>Monto Total a Pagar:</span>
                 <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
-                  {getStoreCurrency()}{Math.max(0, totalCartCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
+                  {getStoreCurrency()}{Math.max(0, totalCartCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -3271,6 +3478,112 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               referrerPolicy="no-referrer"
             />
             <p className="text-[10px] text-gray-500 text-center font-bold">Escanea este código desde la app de tu banco o billetera digital para completar la transferencia.</p>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE SELECCIÓN DE MESA (PEDIR DESDE MESA) */}
+      {isTableModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setIsTableModalOpen(false)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()} 
+            className="bg-[#0f131f] border border-gray-800 p-6 rounded-3xl max-w-md w-full flex flex-col gap-4 relative shadow-2xl animate-scale-in text-left"
+          >
+            <button 
+              type="button"
+              onClick={() => setIsTableModalOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white transition p-1.5 bg-gray-900 rounded-full cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-2xl">
+                🍽️
+              </div>
+              <div>
+                <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest block">Servicio en Restaurante</span>
+                <h3 className="text-lg font-black text-white">¿En qué mesa te encuentras?</h3>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Selecciona o escribe el número de tu mesa en <strong className="text-white">{profile?.displayName || 'el restaurante'}</strong>. Tu comanda se enviará a cocina y el personal te llevará los platos recién servidos a tu lugar sin costo de envío.
+            </p>
+
+            {/* Quick table button grid */}
+            <div>
+              <label className="text-[10px] font-black uppercase text-gray-400 block mb-2">
+                Mesas disponibles en salón:
+              </label>
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto pr-1">
+                {Array.from({ length: Math.min(Number(profile?.restaurantTableCount) || 12, 30) }, (_, i) => String(i + 1)).map((num) => {
+                  const isSelected = tableNumber === num;
+                  return (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setTableNumber(num)}
+                      className={`h-11 rounded-xl text-xs font-black transition cursor-pointer flex flex-col items-center justify-center gap-0.5 border ${
+                        isSelected
+                          ? 'bg-amber-400 text-black border-amber-300 shadow-lg shadow-amber-500/20 scale-105'
+                          : 'bg-gray-900/90 text-gray-300 border-gray-800 hover:border-gray-700 hover:bg-gray-850'
+                      }`}
+                    >
+                      <span className="text-[9px] opacity-70 leading-none">Mesa</span>
+                      <span className="text-sm leading-none">{num}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Custom text or identifier */}
+            <div>
+              <label className="text-[10px] font-black uppercase text-gray-400 block mb-1">
+                O escribe otra ubicación / identificador:
+              </label>
+              <input
+                type="text"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                placeholder="Ej: Mesa 7, Barra 2, Terraza..."
+                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-amber-400 rounded-xl px-3.5 text-xs font-bold text-white placeholder:text-gray-500 outline-none"
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-gray-800">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!tableNumber.trim()) {
+                    alert("Por favor selecciona o escribe el número de tu mesa.");
+                    return;
+                  }
+                  setDeliveryType('table');
+                  setIsTableModalOpen(false);
+                }}
+                className="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>Confirmar Mesa {tableNumber ? `#${tableNumber}` : ''}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeliveryType('delivery');
+                  setTableNumber('');
+                  setIsTableModalOpen(false);
+                }}
+                className="py-3 px-4 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Pedir a Domicilio
+              </button>
+            </div>
+
           </div>
         </div>
       )}

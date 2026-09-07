@@ -188,6 +188,9 @@ export interface ProductItem {
   category?: string; // e.g. "Ropa", "Calzado", "Accesorios"
   stock: number; // Inventory count
   variantsText?: string; // Comma separated variants like "S, M, L" or "Azul, Rojo"
+  allowsHalfAndHalf?: boolean; // Permite pedir combinando 2 sabores (Mitad y Mitad para pizzas)
+  flavorsText?: string; // Lista de sabores separados por coma para pizzas o productos multi-sabor
+  allowSingleFlavor?: boolean; // Permite pedir la pizza completa de 1 solo sabor (por defecto true)
   active: boolean;
   storeName?: string;
   storeUsername?: string;
@@ -215,6 +218,7 @@ export interface OrderItem {
   proofImage?: string; // Base64 data URL representing uploaded payment receipt or purchase transaction photo
   orderType?: 'delivery' | 'table' | 'pickup';
   isTableOrder?: boolean;
+  tableNumber?: string;
 
   // Independent Delivery Driver fields
   deliveryDriverId?: string;

@@ -494,6 +494,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [prodCategory, setProdCategory] = useState('');
   const [prodStock, setProdStock] = useState('10');
   const [prodVariants, setProdVariants] = useState(''); // Comma separated e.g. "S, M, L"
+  const [prodAllowsHalfAndHalf, setProdAllowsHalfAndHalf] = useState(false);
+  const [prodFlavorsText, setProdFlavorsText] = useState('');
+  const [prodAllowSingleFlavor, setProdAllowSingleFlavor] = useState(true);
   const [prodActive, setProdActive] = useState(true);
   const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [isCompressingLogo, setIsCompressingLogo] = useState(false);
@@ -843,6 +846,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdCategory('🍔 Hamburguesas');
     setProdStock('15');
     setProdVariants('');
+    setProdAllowsHalfAndHalf(false);
+    setProdFlavorsText('');
+    setProdAllowSingleFlavor(true);
     setProdActive(true);
     setIsAddingProd(true);
   };
@@ -858,6 +864,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdCategory(prod.category || 'General');
     setProdStock(prod.stock !== undefined && prod.stock !== null ? prod.stock.toString() : '10');
     setProdVariants(prod.variantsText || '');
+    setProdAllowsHalfAndHalf(Boolean(prod.allowsHalfAndHalf));
+    setProdFlavorsText(prod.flavorsText || '');
+    setProdAllowSingleFlavor(prod.allowSingleFlavor !== false);
     setProdActive(prod.active !== false);
     setIsAddingProd(true);
   };
@@ -971,6 +980,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       category: prodCategory ? prodCategory.trim() : 'General',
       stock: isNaN(parseInt(prodStock)) ? 10 : parseInt(prodStock),
       variantsText: prodVariants ? prodVariants.trim() : '',
+      allowsHalfAndHalf: prodAllowsHalfAndHalf,
+      flavorsText: prodAllowsHalfAndHalf ? prodFlavorsText.trim() : '',
+      allowSingleFlavor: prodAllowSingleFlavor,
       active: prodActive
     };
 
@@ -2162,7 +2174,100 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <p className="text-[9px] text-gray-550 mt-1 font-semibold">Deja vacío para usar el marcador por defecto de la categoría.</p>
                             </div>
 
+                            <div>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                                Tamaños o Variantes (Opcional)
+                              </label>
+                              <input
+                                type="text"
+                                value={prodVariants}
+                                onChange={(e) => setProdVariants(e.target.value)}
+                                placeholder="Ej: Personal, Mediana, Familiar"
+                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
+                              />
+                              <p className="text-[9px] text-gray-550 mt-1 font-semibold">
+                                Si tu producto tiene presentaciones de tamaño, escríbelas separadas por coma.
+                              </p>
+                            </div>
+                          </div>
 
+                          {/* SECCIÓN ESPECIAL: SABORES Y MITAD Y MITAD (PIZZAS Y PRODUCTOS COMBINABLES) */}
+                          <div className="bg-gradient-to-r from-amber-500/10 via-red-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-lg shrink-0">
+                                  🍕
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                                    Producto Tipo Pizza (Sabores y Mitad y Mitad)
+                                  </h4>
+                                  <p className="text-[11px] text-gray-400">
+                                    Permite a los clientes pedir pizzas por mitades (2 sabores) o elegir entre varios sabores.
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {/* Toggle Switch */}
+                              <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                                <input
+                                  type="checkbox"
+                                  checked={prodAllowsHalfAndHalf}
+                                  onChange={(e) => setProdAllowsHalfAndHalf(e.target.checked)}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                              </label>
+                            </div>
+
+                            {prodAllowsHalfAndHalf && (
+                              <div className="space-y-3 pt-3 border-t border-amber-500/20 animate-fade-in">
+                                <div>
+                                  <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1">
+                                    Sabores disponibles de Pizza (separados por comas)
+                                  </label>
+                                  <textarea
+                                    rows={3}
+                                    value={prodFlavorsText}
+                                    onChange={(e) => setProdFlavorsText(e.target.value)}
+                                    placeholder="Ej: Hawaiana, Pepperoni, Pollo Champiñones, Carnes, Cuatro Quesos, Mexicana, Vegetariana, Napolitana, BBQ, Criolla, Pollo con Tocineta"
+                                    className="w-full bg-gray-900 border border-amber-500/40 focus:border-amber-400 p-3 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 resize-none"
+                                  />
+                                  <p className="text-[10px] text-gray-400 mt-1">
+                                    Escribe todos los sabores que ofreces separados por coma. El cliente podrá elegir Mitad 1 y Mitad 2 con selector interactivo y buscador.
+                                  </p>
+                                </div>
+
+                                {/* Flavor chips preview */}
+                                {prodFlavorsText.trim() && (
+                                  <div className="space-y-1.5 bg-black/40 p-3 rounded-xl border border-amber-500/20">
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 block">
+                                      Sabores detectados ({prodFlavorsText.split(',').filter(s => s.trim()).length}):
+                                    </span>
+                                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                                      {prodFlavorsText.split(',').map(s => s.trim()).filter(Boolean).map((flavor, idx) => (
+                                        <span key={idx} className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                                          🍕 {flavor}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div className="flex items-center gap-2 pt-1">
+                                  <input
+                                    type="checkbox"
+                                    id="allow-single-flavor-check"
+                                    checked={prodAllowSingleFlavor}
+                                    onChange={(e) => setProdAllowSingleFlavor(e.target.checked)}
+                                    className="w-4 h-4 rounded bg-gray-900 border-gray-800 text-amber-500 cursor-pointer"
+                                  />
+                                  <label htmlFor="allow-single-flavor-check" className="text-xs font-semibold text-gray-300 cursor-pointer select-none">
+                                    Permitir también pedir la pizza completa de 1 solo sabor (además de Mitad y Mitad)
+                                  </label>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div className="flex items-center gap-2 pt-2">
@@ -2396,6 +2501,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         <div className="flex justify-between">
                                           <span>Variantes:</span>
                                           <span className="text-indigo-400 truncate max-w-[120px]">{prod.variantsText}</span>
+                                        </div>
+                                      )}
+                                      {prod.allowsHalfAndHalf && prod.flavorsText && (
+                                        <div className="flex justify-between items-center text-amber-400">
+                                          <span>🍕 Mitad y Mitad:</span>
+                                          <span className="font-bold truncate max-w-[120px]" title={prod.flavorsText}>
+                                            {prod.flavorsText.split(',').filter(Boolean).length} sabores
+                                          </span>
                                         </div>
                                       )}
                                     </div>

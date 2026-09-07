@@ -30,6 +30,7 @@ import ReelSkeleton from './ReelSkeleton';
 import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduct, fetchSystemSettings } from '../lib/firebase';
 import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
+import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import { 
   addProductToCart, 
   getStoredCart, 
@@ -87,6 +88,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   // Variant selector bottom sheet
   const [variantSheetProduct, setVariantSheetProduct] = useState<ProductItem | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<string>('');
+  const [isSheetVariantValid, setIsSheetVariantValid] = useState<boolean>(true);
   const [sheetQuantity, setSheetQuantity] = useState<number>(1);
 
   // Delivery fee loaded from system settings (aligned with TiendaGeneral)
@@ -484,10 +486,11 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
 
   const handleBuyClick = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    // If product has multiple variants, open bottom sheet selector
-    if (product.variantsText && product.variantsText.includes(',')) {
-      const firstVariant = product.variantsText.split(',')[0].trim();
+    // If product has multiple variants or allows half-and-half flavors, open bottom sheet selector
+    if ((product.variantsText && product.variantsText.includes(',')) || (product.allowsHalfAndHalf && product.flavorsText)) {
+      const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : '';
       setSelectedVariant(firstVariant);
+      setIsSheetVariantValid(true);
       setSheetQuantity(1);
       setVariantSheetProduct(product);
       return;
@@ -903,6 +906,11 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     <h2 className="text-base sm:text-lg font-black text-white leading-tight drop-shadow-md">
                       {product.name}
                     </h2>
+                    {product.allowsHalfAndHalf && product.flavorsText && (
+                      <span className="inline-flex items-center gap-1 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow border border-white/20">
+                        <span>🍕</span> Mitad y Mitad
+                      </span>
+                    )}
                     <div className="inline-flex items-center gap-1.5 bg-[#F4B400] text-black px-2.5 py-0.5 rounded-lg font-black text-xs sm:text-sm shadow-md">
                       <span>${product.price?.toLocaleString('es-CO')}</span>
                       <span className="text-[9px] uppercase tracking-tighter opacity-80">COP</span>
@@ -1178,35 +1186,49 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                 </button>
               </div>
 
-              {/* Variant Selector */}
-              <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] uppercase tracking-wider mb-2">
-                  Elige una opción / tamaño:
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {(variantSheetProduct.variantsText || '')
-                    .split(',')
-                    .map(v => v.trim())
-                    .filter(Boolean)
-                    .map((variantName) => {
-                      const isSelected = selectedVariant === variantName;
-                      return (
-                        <button
-                          key={variantName}
-                          type="button"
-                          onClick={() => setSelectedVariant(variantName)}
-                          className={`py-2 px-3.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
-                            isSelected
-                              ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white border-transparent shadow-md shadow-[#E63946]/30'
-                              : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
-                          }`}
-                        >
-                          {variantName}
-                        </button>
-                      );
-                    })}
+              {/* Variant / Pizza Flavor Selector */}
+              {variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText ? (
+                <div>
+                  <PizzaFlavorSelector
+                    product={variantSheetProduct}
+                    currency="$"
+                    initialSizeVariant={selectedVariant}
+                    onVariantChange={(variantString, isValid) => {
+                      setSelectedVariant(variantString);
+                      setIsSheetVariantValid(isValid);
+                    }}
+                  />
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-[#A9B2C3] uppercase tracking-wider mb-2">
+                    Elige una opción / tamaño:
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {(variantSheetProduct.variantsText || '')
+                      .split(',')
+                      .map(v => v.trim())
+                      .filter(Boolean)
+                      .map((variantName) => {
+                        const isSelected = selectedVariant === variantName;
+                        return (
+                          <button
+                            key={variantName}
+                            type="button"
+                            onClick={() => setSelectedVariant(variantName)}
+                            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                              isSelected
+                                ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white border-transparent shadow-md shadow-[#E63946]/30'
+                                : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
+                            }`}
+                          >
+                            {variantName}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
 
               {/* Quantity Selector */}
               <div className="flex items-center justify-between py-2 border-y border-[#232B3A]">
@@ -1239,11 +1261,16 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                   </span>
                 </div>
                 <button
+                  disabled={variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText && !isSheetVariantValid}
                   onClick={() => {
+                    if (variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText && !isSheetVariantValid) {
+                      alert("Por favor completa la selección de sabores para tu pizza.");
+                      return;
+                    }
                     handleAddToCart(variantSheetProduct, sheetQuantity, selectedVariant);
                     setVariantSheetProduct(null);
                   }}
-                  className="py-3 px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-2 active:scale-95 transition cursor-pointer"
+                  className="py-3 px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-2 active:scale-95 transition cursor-pointer"
                 >
                   <ShoppingCart className="w-4 h-4" />
                   <span>Agregar al Carrito</span>
