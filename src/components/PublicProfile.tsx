@@ -2458,19 +2458,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       {/* 2. PRODUCT CUSTOMIZATION OVERLAY / ADDTOCART BAR */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-gray-950 border border-gray-850 rounded-3xl max-w-sm md:max-w-3xl lg:max-w-4xl w-full text-gray-100 relative shadow-2.5xl animate-fade-in max-h-[92vh] flex flex-col overflow-hidden">
+          <div className="bg-gray-950 border border-gray-850 rounded-3xl max-w-lg md:max-w-4xl lg:max-w-5xl w-full text-gray-100 relative shadow-2.5xl animate-fade-in max-h-[92vh] md:max-h-[88vh] flex flex-col overflow-hidden">
             <button 
               onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 text-white font-bold p-1.5 transition cursor-pointer z-30 hover:scale-110 active:scale-95 bg-red-600 hover:bg-red-500 rounded-full border border-red-700 shadow-md shadow-red-900/35"
+              className="absolute top-4 right-4 text-white font-bold p-2 transition cursor-pointer z-30 hover:scale-110 active:scale-95 bg-red-600 hover:bg-red-500 rounded-full border border-red-700 shadow-md shadow-red-900/35"
+              title="Cerrar"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
             
             {/* Scrollable Body containing image and text details */}
-            <div className="flex-1 overflow-y-auto p-6 pb-2">
-              <div className="flex flex-col md:flex-row gap-6 mt-2">
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 md:p-8 pb-3 custom-scrollbar">
+              <div className="flex flex-col md:flex-row gap-6 lg:gap-8 items-start">
                 {/* Product Image on Left (PC) / Top (Mobile) */}
-                <div className="w-full md:w-[45%] aspect-[4/5] md:aspect-auto md:h-[420px] bg-gray-900 rounded-2xl overflow-hidden border border-gray-900/60 flex items-center justify-center text-4xl shrink-0 relative shadow-inner">
+                <div className="w-full md:w-[42%] lg:w-[40%] aspect-square md:h-[360px] lg:h-[400px] bg-gray-900 rounded-2xl overflow-hidden border border-gray-900/60 flex items-center justify-center text-4xl shrink-0 relative shadow-inner md:sticky md:top-0">
                   {selectedProduct.imageURL ? (
                     <>
                       {/* Ambient Glow Background for immersive experience */}
@@ -2495,45 +2496,51 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 </div>
 
                 {/* Product Details on Right (PC) / Bottom (Mobile) */}
-                <div className="flex-grow flex flex-col justify-start">
-                  <span className="text-[9px] font-black uppercase text-indigo-405 tracking-wider mb-1 block">{selectedProduct.category || 'General'}</span>
-                  <h3 className="text-lg font-black text-white leading-tight mb-1.5">{selectedProduct.name}</h3>
-                  
-                  <div className="flex items-center gap-2 mb-3">
-                    <span className="text-lg font-extrabold" style={{ color: storeAccent }}>{getStoreCurrency()}{Number(selectedProduct.price || 0).toLocaleString()}</span>
-                    {selectedProduct.compareAtPrice && (
-                      <span className="text-xs text-gray-500 line-through font-bold">{getStoreCurrency()}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}</span>
-                    )}
+                <div className="flex-grow flex flex-col justify-start space-y-3.5">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[9px] font-black uppercase text-indigo-400 tracking-wider block">
+                      {selectedProduct.category || 'General'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <ProductRecommendationHeartButton
+                        productId={selectedProduct.id}
+                        productName={selectedProduct.name}
+                        storeId={profile?.uid || profile?.id || ''}
+                        storeUsername={profile?.username || ''}
+                        activeCustomer={activeCustomer}
+                        onCustomerUpdate={setActiveCustomer}
+                        onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                        variant="card-badge"
+                      />
+                      <ProductShareButton
+                        product={selectedProduct}
+                        storeUsername={profile?.username || ''}
+                        storeName={profile?.displayName || profile?.storeName || ''}
+                        currency={getStoreCurrency()}
+                        variant="compact"
+                      />
+                    </div>
                   </div>
 
-                  {/* Recommendation Heart Banner & Share for Product */}
-                  <div className="mb-3.5 space-y-2">
-                    <ProductRecommendationHeartButton
-                      productId={selectedProduct.id}
-                      productName={selectedProduct.name}
-                      storeId={profile?.uid || profile?.id || ''}
-                      storeUsername={profile?.username || ''}
-                      activeCustomer={activeCustomer}
-                      onCustomerUpdate={setActiveCustomer}
-                      onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
-                      variant="modal-banner"
-                    />
-                    <ProductShareButton
-                      product={selectedProduct}
-                      storeUsername={profile?.username || ''}
-                      storeName={profile?.displayName || profile?.storeName || ''}
-                      currency={getStoreCurrency()}
-                      variant="modal-button"
-                    />
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-black text-white leading-tight tracking-tight">{selectedProduct.name}</h3>
+                    <div className="flex items-baseline gap-3 mt-1.5">
+                      <span className="text-2xl md:text-3xl font-black font-mono" style={{ color: storeAccent }}>{getStoreCurrency()}{Number(selectedProduct.price || 0).toLocaleString()}</span>
+                      {selectedProduct.compareAtPrice && (
+                        <span className="text-sm text-gray-500 line-through font-bold font-mono">{getStoreCurrency()}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}</span>
+                      )}
+                    </div>
                   </div>
 
-                  <p className="text-xs text-gray-400 leading-relaxed font-semibold bg-gray-900/40 border border-gray-900 p-3.5 rounded-xl mb-4">
-                    {selectedProduct.description || 'Detalles exclusivos de nuestro catálogo directo.'}
-                  </p>
+                  {selectedProduct.description && (
+                    <p className="text-xs text-gray-300 leading-relaxed font-medium bg-gray-900/60 border border-gray-850 p-3 rounded-xl">
+                      {selectedProduct.description}
+                    </p>
+                  )}
 
                   {/* If Pizza flavors or variants available, present choice */}
-                  {selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText ? (
-                    <div className="mb-4">
+                  {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
+                    <div className="pt-1">
                       <PizzaFlavorSelector
                         product={selectedProduct}
                         currency={getStoreCurrency()}
@@ -2545,8 +2552,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       />
                     </div>
                   ) : selectedProduct.variantsText ? (
-                    <div className="mb-4">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1.5">Elegir Variante / Opción</label>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Elegir Variante / Opción</label>
                       <select
                         value={chosenVariant}
                         onChange={(e) => setChosenVariant(e.target.value)}

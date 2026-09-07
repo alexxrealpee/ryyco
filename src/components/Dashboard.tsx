@@ -1994,17 +1994,142 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                           <div className="grid md:grid-cols-2 gap-4">
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Nombre del artículo</label>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Nombre del producto</label>
                               <input
                                 type="text"
                                 required
                                 value={prodName}
                                 onChange={(e) => setProdName(e.target.value)}
-                                placeholder="Ej: Hamburguesa Artesanal Doble Carne"
+                                placeholder="Ej: Pizza Especial, Hamburguesa Doble, etc."
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                               />
                             </div>
 
+                            {/* Al lado derecho de Nombre del Producto: Tipo de Producto (Normal o Con Sabores) */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">
+                                  Tipo de Producto
+                                </label>
+                                <label className="inline-flex items-center cursor-pointer gap-1.5" title="Cambiar tipo de producto">
+                                  <span className="text-[9px] uppercase tracking-wider font-bold text-gray-400">
+                                    {prodAllowsHalfAndHalf ? '🍕 Sabores' : '📦 Normal'}
+                                  </span>
+                                  <input
+                                    type="checkbox"
+                                    checked={prodAllowsHalfAndHalf}
+                                    onChange={(e) => setProdAllowsHalfAndHalf(e.target.checked)}
+                                    className="sr-only peer"
+                                  />
+                                  <div className="w-8 h-4 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-500 relative"></div>
+                                </label>
+                              </div>
+
+                              {/* Selector táctil: Producto Normal vs Producto con Sabores */}
+                              <div className="grid grid-cols-2 gap-1.5 h-11 p-1 bg-gray-900 border border-gray-800 rounded-xl">
+                                <button
+                                  type="button"
+                                  onClick={() => setProdAllowsHalfAndHalf(false)}
+                                  className={`flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                    !prodAllowsHalfAndHalf
+                                      ? 'bg-emerald-500 text-gray-950 font-black shadow-sm'
+                                      : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
+                                  }`}
+                                >
+                                  <span>📦</span>
+                                  <span className="truncate">Producto normal</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setProdAllowsHalfAndHalf(true)}
+                                  className={`flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                    prodAllowsHalfAndHalf
+                                      ? 'bg-amber-500 text-gray-950 font-black shadow-sm'
+                                      : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
+                                  }`}
+                                >
+                                  <span>🍕</span>
+                                  <span className="truncate">Producto con sabores</span>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* SECCIÓN ESPECIAL: SABORES Y MITAD Y MITAD (SE DESPLIEGA CUANDO SE SELECCIONA 'PRODUCTO CON SABORES') */}
+                          {prodAllowsHalfAndHalf && (
+                            <div className="bg-gradient-to-r from-amber-500/10 via-red-500/10 to-amber-500/5 border border-amber-500/35 rounded-2xl p-4 sm:p-5 space-y-3 animate-fade-in shadow-inner">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-base shrink-0">
+                                    🍕
+                                  </div>
+                                  <div>
+                                    <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                                      Producto Tipo Pizza (Sabores y Mitad y Mitad)
+                                    </h4>
+                                    <p className="text-[11px] text-gray-300">
+                                      Permite a los clientes pedir pizzas por mitades (2 sabores) o elegir entre varios sabores.
+                                    </p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setProdAllowsHalfAndHalf(false)}
+                                  className="text-[10px] text-gray-400 hover:text-amber-400 underline font-semibold cursor-pointer shrink-0"
+                                >
+                                  Volver a normal
+                                </button>
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1">
+                                  Sabores disponibles de Pizza (separados por comas)
+                                </label>
+                                <textarea
+                                  rows={3}
+                                  value={prodFlavorsText}
+                                  onChange={(e) => setProdFlavorsText(e.target.value)}
+                                  placeholder="Ej: Hawaiana, Pepperoni, Pollo Champiñones, Carnes, Cuatro Quesos, Mexicana, Vegetariana, Napolitana, BBQ, Criolla, Pollo con Tocineta"
+                                  className="w-full bg-gray-900 border border-amber-500/40 focus:border-amber-400 p-3 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 resize-none"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1">
+                                  Escribe todos los sabores que ofreces separados por coma. El cliente podrá elegir Mitad 1 y Mitad 2 con selector interactivo y buscador.
+                                </p>
+                              </div>
+
+                              {/* Flavor chips preview */}
+                              {prodFlavorsText.trim() && (
+                                <div className="space-y-1.5 bg-black/40 p-3 rounded-xl border border-amber-500/20">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 block">
+                                    Sabores detectados ({prodFlavorsText.split(',').filter(s => s.trim()).length}):
+                                  </span>
+                                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
+                                    {prodFlavorsText.split(',').map(s => s.trim()).filter(Boolean).map((flavor, idx) => (
+                                      <span key={idx} className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
+                                        🍕 {flavor}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex items-center gap-2 pt-1">
+                                <input
+                                  type="checkbox"
+                                  id="allow-single-flavor-check"
+                                  checked={prodAllowSingleFlavor}
+                                  onChange={(e) => setProdAllowSingleFlavor(e.target.checked)}
+                                  className="w-4 h-4 rounded bg-gray-900 border-gray-800 text-amber-500 cursor-pointer"
+                                />
+                                <label htmlFor="allow-single-flavor-check" className="text-xs font-semibold text-gray-300 cursor-pointer select-none">
+                                  Permitir también pedir la pizza completa de 1 solo sabor (además de Mitad y Mitad)
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Categoría del Producto y Tamaños/Variantes */}
+                          <div className="grid md:grid-cols-2 gap-4">
                             <div>
                               <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Categoría del Producto</label>
                               <div className="relative">
@@ -2047,6 +2172,22 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 />
                               )}
                             </div>
+
+                            <div>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                                Tamaños o Variantes (Opcional)
+                              </label>
+                              <input
+                                type="text"
+                                value={prodVariants}
+                                onChange={(e) => setProdVariants(e.target.value)}
+                                placeholder="Ej: Personal, Mediana, Familiar"
+                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
+                              />
+                              <p className="text-[9px] text-gray-550 mt-1 font-semibold">
+                                Si tu producto tiene presentaciones de tamaño, escríbelas separadas por coma.
+                              </p>
+                            </div>
                           </div>
 
                           <div>
@@ -2081,7 +2222,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 inputMode="decimal"
                                 value={prodComparePrice}
                                 onChange={(e) => setProdComparePrice(e.target.value)}
-                                placeholder="Opcional. Ej: 50000 o 50.000"
+                                placeholder="Opcional. Ej: 50000 o 50.00"
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                               />
                             </div>
@@ -2100,174 +2241,78 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
                           </div>
 
-                          <div className="grid md:grid-cols-2 gap-4">
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
-                                Imagen del Producto (Subir y Comprimir)
-                              </label>
-                              
-                              <div className="relative border border-dashed border-gray-800 hover:border-emerald-500/50 rounded-xl p-3 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[96px]">
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0];
-                                    if (file) {
-                                      setIsCompressingImage(true);
-                                      const reader = new FileReader();
-                                      reader.onloadend = async () => {
-                                        try {
-                                          const base64 = reader.result as string;
-                                          // Compress the image before setting state
-                                          const compressed = await compressImage(base64, 800, 800);
-                                          setProdImage(compressed);
-                                        } catch (err) {
-                                          console.error("Error compressing image:", err);
-                                          alert("Error al comprimir la imagen. Intenta con otra.");
-                                        } finally {
-                                          setIsCompressingImage(false);
-                                        }
-                                      };
-                                      reader.readAsDataURL(file);
-                                    }
-                                  }}
-                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                />
-                                
-                                {isCompressingImage ? (
-                                  <div className="flex flex-col items-center justify-center gap-1.5 py-2">
-                                    <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Comprimiendo imagen...</span>
-                                    <span className="text-[8px] text-gray-550">Optimizando peso de la imagen</span>
-                                  </div>
-                                ) : prodImage ? (
-                                  <div className="relative z-20 w-full flex items-center justify-between gap-3 bg-emerald-950/20 p-2 rounded-xl border border-emerald-500/20">
-                                    <img 
-                                      src={prodImage} 
-                                      alt="Vista previa del producto" 
-                                      className="w-12 h-12 object-cover rounded-lg border border-emerald-500/10" 
-                                    />
-                                    <div className="flex-grow text-left">
-                                      <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">¡Optimizado!</span>
-                                      <span className="text-[8px] text-gray-400 font-semibold truncate block max-w-[120px]">Cargado desde el celular</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        setProdImage('');
-                                      }}
-                                      className="p-1 px-2.5 bg-gray-900 hover:bg-gray-805 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30 animate-none cursor-pointer"
-                                    >
-                                      Quitar
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center gap-1 text-gray-450 hover:text-white transition">
-                                    <Plus className="w-4 h-4 text-gray-500 animate-pulse" />
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 leading-none">Cargar foto del dispositivo</span>
-                                    <span className="text-[8px] text-gray-550">Haz clic para subir (Compresión automática)</span>
-                                  </div>
-                                )}
-                              </div>
-                              <p className="text-[9px] text-gray-550 mt-1 font-semibold">Deja vacío para usar el marcador por defecto de la categoría.</p>
-                            </div>
-
-                            <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
-                                Tamaños o Variantes (Opcional)
-                              </label>
+                          {/* Imagen del Producto */}
+                          <div>
+                            <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                              Imagen del Producto (Subir y Comprimir)
+                            </label>
+                            
+                            <div className="relative border border-dashed border-gray-800 hover:border-emerald-500/50 rounded-xl p-3 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[96px]">
                               <input
-                                type="text"
-                                value={prodVariants}
-                                onChange={(e) => setProdVariants(e.target.value)}
-                                placeholder="Ej: Personal, Mediana, Familiar"
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
+                                type="file"
+                                accept="image/*"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    setIsCompressingImage(true);
+                                    const reader = new FileReader();
+                                    reader.onloadend = async () => {
+                                      try {
+                                        const base64 = reader.result as string;
+                                        // Compress the image before setting state
+                                        const compressed = await compressImage(base64, 800, 800);
+                                        setProdImage(compressed);
+                                      } catch (err) {
+                                        console.error("Error compressing image:", err);
+                                        alert("Error al comprimir la imagen. Intenta con otra.");
+                                      } finally {
+                                        setIsCompressingImage(false);
+                                      }
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                               />
-                              <p className="text-[9px] text-gray-550 mt-1 font-semibold">
-                                Si tu producto tiene presentaciones de tamaño, escríbelas separadas por coma.
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* SECCIÓN ESPECIAL: SABORES Y MITAD Y MITAD (PIZZAS Y PRODUCTOS COMBINABLES) */}
-                          <div className="bg-gradient-to-r from-amber-500/10 via-red-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-lg shrink-0">
-                                  🍕
-                                </div>
-                                <div>
-                                  <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                                    Producto Tipo Pizza (Sabores y Mitad y Mitad)
-                                  </h4>
-                                  <p className="text-[11px] text-gray-400">
-                                    Permite a los clientes pedir pizzas por mitades (2 sabores) o elegir entre varios sabores.
-                                  </p>
-                                </div>
-                              </div>
                               
-                              {/* Toggle Switch */}
-                              <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                                <input
-                                  type="checkbox"
-                                  checked={prodAllowsHalfAndHalf}
-                                  onChange={(e) => setProdAllowsHalfAndHalf(e.target.checked)}
-                                  className="sr-only peer"
-                                />
-                                <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                              </label>
-                            </div>
-
-                            {prodAllowsHalfAndHalf && (
-                              <div className="space-y-3 pt-3 border-t border-amber-500/20 animate-fade-in">
-                                <div>
-                                  <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1">
-                                    Sabores disponibles de Pizza (separados por comas)
-                                  </label>
-                                  <textarea
-                                    rows={3}
-                                    value={prodFlavorsText}
-                                    onChange={(e) => setProdFlavorsText(e.target.value)}
-                                    placeholder="Ej: Hawaiana, Pepperoni, Pollo Champiñones, Carnes, Cuatro Quesos, Mexicana, Vegetariana, Napolitana, BBQ, Criolla, Pollo con Tocineta"
-                                    className="w-full bg-gray-900 border border-amber-500/40 focus:border-amber-400 p-3 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 resize-none"
-                                  />
-                                  <p className="text-[10px] text-gray-400 mt-1">
-                                    Escribe todos los sabores que ofreces separados por coma. El cliente podrá elegir Mitad 1 y Mitad 2 con selector interactivo y buscador.
-                                  </p>
+                              {isCompressingImage ? (
+                                <div className="flex flex-col items-center justify-center gap-1.5 py-2">
+                                  <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Comprimiendo imagen...</span>
+                                  <span className="text-[8px] text-gray-550">Optimizando peso de la imagen</span>
                                 </div>
-
-                                {/* Flavor chips preview */}
-                                {prodFlavorsText.trim() && (
-                                  <div className="space-y-1.5 bg-black/40 p-3 rounded-xl border border-amber-500/20">
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 block">
-                                      Sabores detectados ({prodFlavorsText.split(',').filter(s => s.trim()).length}):
-                                    </span>
-                                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-                                      {prodFlavorsText.split(',').map(s => s.trim()).filter(Boolean).map((flavor, idx) => (
-                                        <span key={idx} className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                                          🍕 {flavor}
-                                        </span>
-                                      ))}
-                                    </div>
+                              ) : prodImage ? (
+                                <div className="relative z-20 w-full flex items-center justify-between gap-3 bg-emerald-950/20 p-2 rounded-xl border border-emerald-500/20">
+                                  <img 
+                                    src={prodImage} 
+                                    alt="Vista previa del producto" 
+                                    className="w-12 h-12 object-cover rounded-lg border border-emerald-500/10" 
+                                  />
+                                  <div className="flex-grow text-left">
+                                    <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">¡Optimizado!</span>
+                                    <span className="text-[8px] text-gray-400 font-semibold truncate block max-w-[120px]">Cargado desde el celular</span>
                                   </div>
-                                )}
-
-                                <div className="flex items-center gap-2 pt-1">
-                                  <input
-                                    type="checkbox"
-                                    id="allow-single-flavor-check"
-                                    checked={prodAllowSingleFlavor}
-                                    onChange={(e) => setProdAllowSingleFlavor(e.target.checked)}
-                                    className="w-4 h-4 rounded bg-gray-900 border-gray-800 text-amber-500 cursor-pointer"
-                                  />
-                                  <label htmlFor="allow-single-flavor-check" className="text-xs font-semibold text-gray-300 cursor-pointer select-none">
-                                    Permitir también pedir la pizza completa de 1 solo sabor (además de Mitad y Mitad)
-                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      setProdImage('');
+                                    }}
+                                    className="p-1 px-2.5 bg-gray-900 hover:bg-gray-805 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30 animate-none cursor-pointer"
+                                  >
+                                    Quitar
+                                  </button>
                                 </div>
-                              </div>
-                            )}
+                              ) : (
+                                <div className="flex flex-col items-center justify-center gap-1 text-gray-450 hover:text-white transition">
+                                  <Plus className="w-4 h-4 text-gray-500 animate-pulse" />
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 leading-none">Cargar foto del dispositivo</span>
+                                  <span className="text-[8px] text-gray-550">Haz clic para subir (Compresión automática)</span>
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-[9px] text-gray-550 mt-1 font-semibold">Deja vacío para usar el marcador por defecto de la categoría.</p>
                           </div>
 
                           <div className="flex items-center gap-2 pt-2">

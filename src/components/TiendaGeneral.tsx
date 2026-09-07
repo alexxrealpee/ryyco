@@ -1909,107 +1909,154 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 className="absolute inset-0 bg-black/85 backdrop-blur-sm"
               />
 
-              {/* Modal Container */}
+              {/* Modal Container - Spacious desktop layout & refined proportions */}
               <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 15 }}
+                initial={{ opacity: 0, scale: 0.96, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 15 }}
-                className="bg-[#111827] border border-[#232B3A] rounded-3xl w-full max-w-3xl relative overflow-hidden shadow-2xl flex flex-col z-10 max-h-[92vh]"
+                exit={{ opacity: 0, scale: 0.96, y: 15 }}
+                className="bg-[#111827] border border-[#232B3A] rounded-3xl w-full max-w-lg md:max-w-4xl lg:max-w-5xl relative overflow-hidden shadow-2xl flex flex-col z-10 max-h-[92vh] md:max-h-[88vh]"
               >
                 {/* Close Button - RED BACKGROUND */}
                 <button
                   onClick={() => setSelectedProduct(null)}
-                  className="absolute top-4 right-4 z-30 text-white font-bold p-1.5 transition cursor-pointer hover:scale-110 active:scale-95 bg-[#E63946] hover:bg-[#D62839] rounded-full border border-red-700 shadow-md shadow-red-900/35"
+                  className="absolute top-4 right-4 z-30 text-white font-bold p-2 transition cursor-pointer hover:scale-110 active:scale-95 bg-[#E63946] hover:bg-[#D62839] rounded-full border border-red-700 shadow-lg shadow-red-950/40"
+                  title="Cerrar"
                 >
                   <X className="w-4 h-4 stroke-[2.5]" />
                 </button>
 
                 {/* Scrollable Body */}
-                <div className="flex-grow overflow-y-auto p-6 md:p-8 pb-4">
-                  <div className="flex flex-col md:flex-row gap-6">
+                <div className="flex-grow overflow-y-auto p-5 sm:p-6 md:p-8 pb-4 custom-scrollbar">
+                  <div className="flex flex-col md:flex-row gap-6 lg:gap-8 items-start">
                     
-                    {/* Left: Product Media */}
-                    <div className="w-full md:w-1/2 aspect-square bg-[#090B12] flex items-center justify-center overflow-hidden border border-[#232B3A] rounded-2xl relative min-h-[250px] shrink-0">
-                      {isOnSale && (
-                        <span className="absolute top-4 left-4 z-10 bg-[#E63946] text-white font-black text-[10px] uppercase px-2.5 py-1 rounded shadow tracking-wider">
-                          -{discountPercentage}% OFF
-                        </span>
-                      )}
-                      {selectedProduct.imageURL ? (
-                        <img 
-                          src={selectedProduct.imageURL} 
-                          alt={selectedProduct.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="text-gray-600 flex flex-col items-center gap-2">
-                          <ShoppingBag className="w-12 h-12 opacity-45" />
-                          <span className="text-xs font-mono opacity-40">Sin Imagen</span>
+                    {/* Left: Product Media & Merchant Store Info */}
+                    <div className="w-full md:w-[42%] lg:w-[40%] flex flex-col gap-3.5 shrink-0 md:sticky md:top-0">
+                      <div className="w-full aspect-square md:h-[340px] lg:h-[380px] bg-[#090B12] flex items-center justify-center overflow-hidden border border-[#232B3A] rounded-2xl relative group shadow-inner">
+                        {/* Ambient Glow */}
+                        {selectedProduct.imageURL && (
+                          <img 
+                            src={selectedProduct.imageURL} 
+                            alt="" 
+                            className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-110 select-none pointer-events-none filter saturate-150" 
+                            aria-hidden="true"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
+                        {isOnSale && (
+                          <span className="absolute top-3.5 left-3.5 z-20 bg-[#E63946] text-white font-black text-[10px] uppercase px-2.5 py-1 rounded-lg shadow-md tracking-wider">
+                            -{discountPercentage}% OFF
+                          </span>
+                        )}
+                        {selectedProduct.imageURL ? (
+                          <img 
+                            src={selectedProduct.imageURL} 
+                            alt={selectedProduct.name}
+                            referrerPolicy="no-referrer"
+                            className="relative z-10 max-w-full max-h-full object-contain p-2 group-hover:scale-105 transition duration-300"
+                          />
+                        ) : (
+                          <div className="text-gray-600 flex flex-col items-center gap-2 relative z-10">
+                            <ShoppingBag className="w-12 h-12 opacity-45" />
+                            <span className="text-xs font-mono opacity-40">Sin Imagen</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Merchant seller card integrated on the left column */}
+                      {profile && (
+                        <div className="bg-[#090B12] border border-[#232B3A] p-3 rounded-2xl flex items-center justify-between gap-3 shadow-sm">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-9 h-9 rounded-full border border-[#E63946]/40 bg-[#111827] flex items-center justify-center overflow-hidden font-black text-xs text-[#E63946] shrink-0">
+                              {profile.photoURL ? (
+                                <img src={profile.photoURL} alt={profile.displayName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                              ) : (
+                                profile.displayName?.substring(0, 2).toUpperCase() || 'TI'
+                              )}
+                            </div>
+                            <div className="min-w-0 text-left">
+                              <span className="text-[8px] font-black uppercase text-[#A9B2C3] block leading-none">Restaurante</span>
+                              <h4 className="text-xs font-extrabold text-white truncate leading-tight mt-0.5">{profile.displayName || 'Tienda'}</h4>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setSelectedProduct(null);
+                              onNavigateToStore(profile.username);
+                            }}
+                            className="px-2.5 py-1.5 bg-[#E63946]/15 hover:bg-[#E63946] text-[#E63946] hover:text-white font-extrabold text-[9px] uppercase tracking-wide rounded-lg border border-[#E63946]/30 transition cursor-pointer flex items-center gap-1 shrink-0"
+                          >
+                            Ver Tienda <ExternalLink className="w-2.5 h-2.5" />
+                          </button>
                         </div>
                       )}
                     </div>
 
-                    {/* Right: Details */}
-                    <div className="flex-grow flex flex-col justify-start space-y-4 text-left">
-                      {/* Category */}
-                      {selectedProduct.category && (
-                        <span className="text-[10px] font-black uppercase text-[#F4B400] tracking-widest font-mono bg-[#F4B400]/10 border border-[#F4B400]/20 py-1 px-2.5 rounded-lg inline-block self-start">
-                          {selectedProduct.category}
-                        </span>
-                      )}
-
-                      {/* Title */}
-                      <h2 className="text-xl md:text-2xl font-black text-white leading-tight">
-                        {selectedProduct.name}
-                      </h2>
-
-                      {/* Prices */}
-                      <div className="flex items-baseline gap-3">
-                        <span className="text-xl font-black text-[#E63946] font-mono">
-                          {currency}{Number(selectedProduct.price || 0).toLocaleString()}
-                        </span>
-                        {isOnSale && (
-                          <span className="text-sm text-[#A9B2C3] line-through font-mono">
-                            {currency}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}
+                    {/* Right: Details, Flavors & Customization */}
+                    <div className="flex-1 min-w-0 flex flex-col justify-start space-y-4 text-left">
+                      
+                      {/* Top Bar: Category badge + Recommendation Badge + Share Button */}
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        {selectedProduct.category ? (
+                          <span className="text-[10px] font-black uppercase text-[#F4B400] tracking-widest font-mono bg-[#F4B400]/10 border border-[#F4B400]/20 py-1 px-2.5 rounded-lg inline-block">
+                            {selectedProduct.category}
                           </span>
-                        )}
+                        ) : <span />}
+
+                        <div className="flex items-center gap-2">
+                          <ProductRecommendationHeartButton
+                            productId={selectedProduct.id}
+                            productName={selectedProduct.name}
+                            storeId={selectedProduct.userId}
+                            storeUsername={profile?.username || ''}
+                            activeCustomer={activeCustomer}
+                            onCustomerUpdate={setActiveCustomer}
+                            onOpenCustomerPortal={() => {
+                              setCustomerPortalTab('rewards');
+                              setIsCustomerPortalOpen(true);
+                            }}
+                            variant="card-badge"
+                          />
+                          <ProductShareButton
+                            product={selectedProduct}
+                            storeUsername={profile?.username || ''}
+                            storeName={profile?.storeName || profile?.displayName || ''}
+                            currency={currency}
+                            variant="compact"
+                          />
+                        </div>
                       </div>
 
-                      {/* Product Recommendation & Share in Modal */}
-                      <div className="my-2 space-y-2">
-                        <ProductRecommendationHeartButton
-                          productId={selectedProduct.id}
-                          productName={selectedProduct.name}
-                          storeId={selectedProduct.userId}
-                          storeUsername={profile?.username || ''}
-                          activeCustomer={activeCustomer}
-                          onCustomerUpdate={setActiveCustomer}
-                          onOpenCustomerPortal={() => {
-                            setCustomerPortalTab('rewards');
-                            setIsCustomerPortalOpen(true);
-                          }}
-                          variant="modal-banner"
-                        />
-                        <ProductShareButton
-                          product={selectedProduct}
-                          storeUsername={profile?.username || ''}
-                          storeName={profile?.storeName || profile?.displayName || ''}
-                          currency={currency}
-                          variant="modal-button"
-                        />
+                      {/* Title & Price */}
+                      <div>
+                        <h2 className="text-2xl md:text-3xl font-black text-white leading-tight tracking-tight">
+                          {selectedProduct.name}
+                        </h2>
+
+                        <div className="flex items-baseline gap-3 mt-1.5">
+                          <span className="text-2xl md:text-3xl font-black text-[#E63946] font-mono">
+                            {currency}{Number(selectedProduct.price || 0).toLocaleString()}
+                          </span>
+                          {isOnSale && (
+                            <span className="text-base text-[#A9B2C3] line-through font-mono">
+                              {currency}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       {/* Description */}
-                      <div className="space-y-1">
-                        <span className="text-[10px] font-black uppercase text-[#A9B2C3] block">Descripción</span>
-                        <p className="text-xs text-[#A9B2C3] leading-relaxed font-medium bg-[#090B12] border border-[#232B3A] p-3.5 rounded-xl">
-                          {selectedProduct.description || 'Este producto no cuenta con descripción detallada en este momento.'}
-                        </p>
-                      </div>
+                      {selectedProduct.description && (
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-black uppercase tracking-wider text-[#A9B2C3] block">Descripción</span>
+                          <p className="text-xs text-[#CBD5E1] leading-relaxed font-medium bg-[#090B12] border border-[#232B3A] p-3 rounded-xl">
+                            {selectedProduct.description}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Variant / Pizza Flavor choice */}
-                      {selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText ? (
+                      {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
                         <div className="pt-1">
                           <PizzaFlavorSelector
                             product={selectedProduct}
@@ -2040,56 +2087,26 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 </div>
 
                 {/* STICKY/FIXED FOOTER inside the selectedProduct modal */}
-                <div className="p-6 pt-3 border-t border-[#232B3A] bg-[#090B12] shrink-0 z-20">
-                  
-                  {/* Merchant seller banner badge info */}
-                  {profile && (
-                    <div className="bg-[#111827] border border-[#232B3A] p-2.5 rounded-xl flex items-center justify-between gap-3 mb-4">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-full border border-[#E63946]/40 bg-[#090B12] flex items-center justify-center overflow-hidden font-black text-[10px] text-[#E63946] shrink-0">
-                          {profile.photoURL ? (
-                            <img src={profile.photoURL} alt={profile.displayName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                          ) : (
-                            profile.displayName?.substring(0,2).toUpperCase() || 'SH'
-                          )}
-                        </div>
-                        <div className="min-w-0 text-left">
-                          <span className="text-[8px] font-black uppercase text-[#A9B2C3] block leading-none">Vendedor</span>
-                          <h4 className="text-xs font-extrabold text-white truncate leading-tight">{profile.displayName || 'Tienda'}</h4>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          setSelectedProduct(null);
-                          onNavigateToStore(profile.username);
-                        }}
-                        className="px-2.5 py-1 bg-[#E63946]/15 hover:bg-[#E63946] text-[#E63946] hover:text-white font-extrabold text-[9px] uppercase tracking-wide rounded-lg border border-[#E63946]/30 transition cursor-pointer flex items-center gap-1"
-                      >
-                        Ver Tienda <ExternalLink className="w-2.5 h-2.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                <div className="p-4 sm:p-5 border-t border-[#232B3A] bg-[#090B12] shrink-0 z-20">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-between">
                     {/* Quantity Controller */}
-                    <div className="flex justify-between items-center bg-[#111827] p-3 rounded-xl border border-[#232B3A] w-full sm:w-auto sm:min-w-[160px]">
+                    <div className="flex justify-between items-center bg-[#111827] px-3.5 py-2.5 rounded-xl border border-[#232B3A] w-full sm:w-auto sm:min-w-[150px]">
                       <span className="text-xs font-bold text-[#A9B2C3] mr-2">Cantidad:</span>
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
                           onClick={() => setBuyQuantity(q => q > 1 ? q - 1 : 1)}
-                          className="p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white"
+                          className="p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white cursor-pointer"
                         >
-                          <Minus className="w-3 h-3" />
+                          <Minus className="w-3.5 h-3.5" />
                         </button>
-                        <span className="text-sm font-black text-white font-mono w-4 text-center">{buyQuantity}</span>
+                        <span className="text-sm font-black text-white font-mono w-5 text-center">{buyQuantity}</span>
                         <button
                           type="button"
                           onClick={() => setBuyQuantity(q => q + 1)}
-                          className="p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white"
+                          className="p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white cursor-pointer"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
@@ -2098,7 +2115,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <div className="w-full sm:flex-1">
                       <button
                         onClick={handleAddToCart}
-                        className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition uppercase tracking-wider flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer shadow-lg shadow-[#E63946]/20"
+                        className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl transition uppercase tracking-wider flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer shadow-lg shadow-[#E63946]/20"
                       >
                         <ShoppingBag className="w-4 h-4 text-white stroke-[2.5]" />
                         Añadir al Carrito ({currency}{Number((selectedProduct.price || 0) * buyQuantity).toLocaleString()})

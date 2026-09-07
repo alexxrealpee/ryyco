@@ -93,10 +93,8 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
 
     if (activeHalfTab === 1) {
       setSelectedHalf1(flavor);
-      // If half 2 is not yet chosen or same as old default, give prompt/switch to half 2
-      if (!selectedHalf2) {
-        setActiveHalfTab(2);
-      }
+      // Automatically switch to half 2 so the user smoothly chooses the second flavor
+      setActiveHalfTab(2);
     } else {
       setSelectedHalf2(flavor);
     }
@@ -294,7 +292,7 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
         )}
 
         {/* Flavors Grid / Chips */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto pr-1">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-52 md:max-h-64 overflow-y-auto pr-1.5 custom-scrollbar">
           {filteredFlavors.length === 0 ? (
             <div className="col-span-full py-4 text-center text-xs text-gray-500">
               No se encontró ningún sabor con "{searchQuery}"
