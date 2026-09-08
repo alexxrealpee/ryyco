@@ -19,61 +19,81 @@ if (!$apiKey) {
     exit;
 }
 
-// 1. Try OpenAI client_secrets endpoint first
-$ch = curl_init('https://api.openai.com/v1/realtime/client_secrets');
-$payload = json_encode([
-    'session' => [
-        'type' => 'realtime',
-        'model' => 'gpt-4o-realtime-preview'
-    ]
-]);
+// Models to try in order of priority and compatibility with active account keys:
+$modelsToTry = [
+    'gpt-realtime-mini',
+    'gpt-realtime',
+    'gpt-realtime-2.1',
+    'gpt-4o-realtime-preview-2024-12-17',
+    'gpt-4o-realtime-preview'
+];
 
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-    'Authorization: Bearer ' . $apiKey,
-    'Content-Type: application/json'
-]);
-curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+$lastResponse = null;
+$lastHttpCode = 0;
+$lastError = '';
 
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$curlErr = curl_error($ch);
-curl_close($ch);
+// 1. Try OpenAI client_secrets endpoint with compatible models
+foreach ($modelsToTry as $model) {
+    $ch = curl_init('https://api.openai.com/v1/realtime/client_secrets');
+    $payload = json_encode([
+        'session' => [
+            'type' => 'realtime',
+            'model' => $model
+        ]
+    ]);
 
-// 2. If client_secrets endpoint succeeded, return it directly
-if ($httpCode >= 200 && $httpCode < 300 && $response) {
-    echo $response;
-    exit;
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $apiKey,
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($httpCode >= 200 && $httpCode < 300 && $response) {
+        echo $response;
+        exit;
+    }
+
+    $lastResponse = $response;
+    $lastHttpCode = $httpCode;
+    $lastError = $curlErr;
 }
 
-// 3. Fallback: Try standard realtime/sessions endpoint
-$ch2 = curl_init('https://api.openai.com/v1/realtime/sessions');
-curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch2, CURLOPT_POST, true);
-curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode([
-    'model' => 'gpt-4o-realtime-preview',
-    'voice' => 'alloy'
-]));
-curl_setopt($ch2, CURLOPT_HTTPHEADER, [
-    'Authorization: Bearer ' . $apiKey,
-    'Content-Type: application/json'
-]);
-curl_setopt($ch2, CURLOPT_TIMEOUT, 15);
+// 2. Fallback: Try standard realtime/sessions endpoint
+foreach ($modelsToTry as $model) {
+    $ch2 = curl_init('https://api.openai.com/v1/realtime/sessions');
+    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch2, CURLOPT_POST, true);
+    curl_setopt($ch2, CURLOPT_POSTFIELDS, json_encode([
+        'model' => $model,
+        'voice' => 'alloy'
+    ]));
+    curl_setopt($ch2, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $apiKey,
+        'Content-Type: application/json'
+    ]);
+    curl_setopt($ch2, CURLOPT_TIMEOUT, 12);
 
-$response2 = curl_exec($ch2);
-$httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-curl_close($ch2);
+    $response2 = curl_exec($ch2);
+    $httpCode2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+    curl_close($ch2);
 
-if ($httpCode2 >= 200 && $httpCode2 < 300 && $response2) {
-    echo $response2;
-    exit;
+    if ($httpCode2 >= 200 && $httpCode2 < 300 && $response2) {
+        echo $response2;
+        exit;
+    }
 }
 
 // If both endpoints failed, return JSON error with details
-http_response_code($httpCode ?: 500);
+http_response_code($lastHttpCode ?: 500);
 echo json_encode([
     'error' => 'No se pudo generar el token efímero de OpenAI Realtime.',
-    'details' => $response ?: $curlErr ?: 'Error de conexión con OpenAI'
+    'details' => $lastResponse ?: $lastError ?: 'Error de conexión con OpenAI'
 ]);

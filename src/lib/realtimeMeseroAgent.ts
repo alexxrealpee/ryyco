@@ -655,6 +655,7 @@ export class RealtimeMeseroManager {
       ];
 
       let ephemeralKey: string | null = null;
+      let chosenModel = 'gpt-realtime-mini';
       let lastErrorMessage = '';
 
       for (const endpoint of endpointCandidates) {
@@ -687,6 +688,9 @@ export class RealtimeMeseroManager {
           const token = sessionData?.value || sessionData?.client_secret?.value;
           if (token) {
             ephemeralKey = token;
+            if (sessionData?.session?.model) {
+              chosenModel = sessionData.session.model;
+            }
             break;
           }
         } catch (fetchErr: any) {
@@ -733,6 +737,7 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
       this.session = new RealtimeSession(agent, {
         transport: 'webrtc',
         apiKey: ephemeralKey,
+        model: chosenModel as any,
         config: {
           voice: 'marin'
         }
@@ -824,6 +829,7 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
 
       // Connect session with WebRTC media stream and remote audio element
       await this.session.connect({
+        model: chosenModel,
         mediaStream: this.localStream,
         audioElement: this.remoteAudioElement
       } as any);

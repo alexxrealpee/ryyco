@@ -209,10 +209,11 @@ HERRAMIENTAS EN TIEMPO REAL:
     ];
 
     const candidateRealtimeModels = [
+      "gpt-realtime-mini",
+      "gpt-realtime",
       "gpt-realtime-2.1",
       "gpt-4o-realtime-preview-2024-12-17",
-      "gpt-4o-realtime-preview",
-      "gpt-4o-mini-realtime-preview"
+      "gpt-4o-realtime-preview"
     ];
 
     let sessionData: any = null;
