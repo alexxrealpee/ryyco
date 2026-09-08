@@ -7,8 +7,26 @@
 ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
-// Load API Keys strictly from server-side environment or local .env
-$envOpenAIKey = getenv('OPENAI_API_KEY');
+// 1. Direct configuration file for Hostinger users (keys.php or keys.local.php)
+$keyFiles = [
+    __DIR__ . '/keys.php',
+    __DIR__ . '/keys.local.php',
+    __DIR__ . '/../keys.php'
+];
+foreach ($keyFiles as $kf) {
+    if (file_exists($kf) && is_readable($kf)) {
+        @include_once $kf;
+        if (defined('RYYCO_HOSTINGER_OPENAI_KEY') && !empty(RYYCO_HOSTINGER_OPENAI_KEY)) {
+            $envOpenAIKey = trim(RYYCO_HOSTINGER_OPENAI_KEY);
+            break;
+        }
+    }
+}
+
+// 2. Load API Keys strictly from server-side environment or local .env
+if (!$envOpenAIKey) {
+    $envOpenAIKey = getenv('OPENAI_API_KEY');
+}
 if (!$envOpenAIKey && isset($_SERVER['OPENAI_API_KEY'])) {
     $envOpenAIKey = $_SERVER['OPENAI_API_KEY'];
 }

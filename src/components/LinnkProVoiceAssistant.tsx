@@ -703,12 +703,24 @@ export default function LinnkProVoiceAssistant({
         realtimeErr?.message?.toLowerCase?.().includes('permiso') ||
         realtimeErr?.message?.toLowerCase?.().includes('denied');
       
+      const isApiKeyMissing =
+        realtimeErr?.message?.toLowerCase?.().includes('openai api key no está configurada') ||
+        realtimeErr?.message?.toLowerCase?.().includes('api key no está configurada') ||
+        realtimeErr?.message?.toLowerCase?.().includes('servidor de hostinger');
+
       if (isPermissionDenied) {
         setIsInVoiceCall(false);
         isInVoiceCallRef.current = false;
         stopAudioPlayback();
         stopAudioAnalyser();
         setMicPermissionError("El acceso al micrófono no fue permitido en tu navegador. Puedes habilitarlo en los permisos del sitio o continuar conversando por chat de texto.");
+        setAssistantState('idle');
+      } else if (isApiKeyMissing) {
+        setIsInVoiceCall(false);
+        isInVoiceCallRef.current = false;
+        stopAudioPlayback();
+        stopAudioAnalyser();
+        setMicPermissionError("Para activar la llamada de voz en tiempo real con iAmesero, se debe configurar OPENAI_API_KEY en tu servidor de Hostinger. Mientras tanto, puedes usar el chat de texto con el catálogo completo.");
         setAssistantState('idle');
       } else {
         // Automatically activate Speech Recognition fallback without disconnecting the call
@@ -1691,7 +1703,7 @@ export default function LinnkProVoiceAssistant({
                           onClick={startVoiceCall}
                           className="px-3 py-1.5 bg-[#EF4444] hover:bg-[#DC2626] text-white text-xs font-bold rounded-xl transition"
                         >
-                          🔄 Reintentar micrófono
+                          🔄 Reintentar
                         </button>
                       </div>
                     </div>

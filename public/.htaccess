@@ -1,6 +1,8 @@
 # Hostinger / Apache Environment Variables
 <IfModule mod_env.c>
   PassEnv OPENAI_API_KEY
+  # Para configurar tu clave OpenAI en Hostinger desde este archivo, descomenta la siguiente línea y pega tu clave:
+  # SetEnv OPENAI_API_KEY "sk-proj-tu-clave-aqui"
 </IfModule>
 
 # Hostinger / Apache Single Page Application (SPA) Rewrite Rules
