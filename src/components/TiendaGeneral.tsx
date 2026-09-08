@@ -37,6 +37,7 @@ import {
   Play
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
+import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
@@ -228,10 +229,29 @@ interface TiendaGeneralProps {
   onNavigateToStore: (username: string) => void;
 }
 
+// Fast synchronous local cache retrieval for instant initial render
+const getInitialGeneralData = () => {
+  try {
+    const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
+    if (rawLocal) {
+      const parsed = JSON.parse(rawLocal);
+      if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
+        return {
+          products: parsed.products as ProductItem[],
+          profiles: (parsed.profiles || {}) as Record<string, UserProfile>,
+          hasCache: true
+        };
+      }
+    }
+  } catch (e) {}
+  return { products: [] as ProductItem[], profiles: {} as Record<string, UserProfile>, hasCache: false };
+};
+
 export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: TiendaGeneralProps) {
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
-  const [loading, setLoading] = useState(true);
+  const [cachedInitial] = useState(() => getInitialGeneralData());
+  const [products, setProducts] = useState<ProductItem[]>(cachedInitial.products);
+  const [profiles, setProfiles] = useState<Record<string, UserProfile>>(cachedInitial.profiles);
+  const [loading, setLoading] = useState(!cachedInitial.hasCache);
   
   // Filtering & search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -242,6 +262,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   
   // Quick View Modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
+  const [modalImageFit, setModalImageFit] = useState<'cover' | 'contain'>('cover');
 
   // Cart & Order states - fully unified with Reels and LinnkPro Voice Assistant
   const [cart, setCart] = useState<GeneralCartItem[]>(() => {
@@ -371,27 +392,43 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const [buyQuantity, setBuyQuantity] = useState(1);
   const [chosenVariant, setChosenVariant] = useState('');
+  const [chosenVariantPrice, setChosenVariantPrice] = useState<number>(0);
   const [isVariantValid, setIsVariantValid] = useState(true);
 
-  // Whenever selectedProduct changes, reset chosenVariant and buyQuantity
+  const currentModalUnitPrice = useMemo(() => {
+    if (!selectedProduct) return 0;
+    if (chosenVariantPrice > 0) return chosenVariantPrice;
+    return getVariantPrice(selectedProduct, chosenVariant);
+  }, [selectedProduct, chosenVariant, chosenVariantPrice]);
+
+  // Whenever selectedProduct changes, reset chosenVariant, chosenVariantPrice and buyQuantity
   useEffect(() => {
     if (selectedProduct) {
       setBuyQuantity(1);
       setIsVariantValid(true);
       if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) {
-        setChosenVariant('');
+        const variants = selectedProduct.variantsText ? selectedProduct.variantsText.split(',').map(s => s.trim()) : [];
+        const firstVar = variants.length > 0 ? variants[0] : '';
+        setChosenVariant(firstVar);
+        const initialPrice = firstVar ? getVariantPrice(selectedProduct, firstVar) : (Number(selectedProduct.price) || 0);
+        setChosenVariantPrice(initialPrice);
       } else if (selectedProduct.variantsText) {
         const firstVar = selectedProduct.variantsText.split(',')[0].trim();
         setChosenVariant(firstVar);
+        const initialPrice = firstVar ? getVariantPrice(selectedProduct, firstVar) : (Number(selectedProduct.price) || 0);
+        setChosenVariantPrice(initialPrice);
       } else {
         setChosenVariant('');
+        setChosenVariantPrice(Number(selectedProduct.price) || 0);
       }
     }
   }, [selectedProduct]);
 
   useEffect(() => {
     async function loadData() {
-      setLoading(true);
+      if (!cachedInitial.hasCache) {
+        setLoading(true);
+      }
       try {
         const [res, sysSettings] = await Promise.all([
           fetchAllActiveProductsAndStores(),
@@ -446,7 +483,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
     }
     loadData();
-  }, []);
+  }, [cachedInitial.hasCache]);
 
   // Helper to normalize categories for robust matching (removes emojis and trims)
   const normalizeCat = (c?: string) => {
@@ -532,6 +569,30 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     });
     return Array.from(storeMap.values());
   }, [profiles, products]);
+
+  // Pre-load top restaurant logos and the first 6 products into browser cache for instant rendering
+  useEffect(() => {
+    if (uniqueStores.length === 0 && products.length === 0) return;
+
+    // Preload top store logos
+    uniqueStores.slice(0, 10).forEach(s => {
+      if (s.photoURL) {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = s.photoURL;
+      }
+    });
+
+    // Preload the first 6 products
+    products.slice(0, 6).forEach(p => {
+      if (p.imageURL) {
+        const img = new Image();
+        img.referrerPolicy = "no-referrer";
+        img.decoding = "async";
+        img.src = p.imageURL;
+      }
+    });
+  }, [uniqueStores, products]);
 
   // Auto-scroll store carousel smoothly across both PC and mobile (oscillates automatically right and left)
   const storesScrollRef = useRef<HTMLDivElement>(null);
@@ -706,7 +767,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const handleAddToCart = () => {
     if (!selectedProduct) return;
     if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText && !isVariantValid) {
-      alert("Por favor completa la selección de sabores para tu pizza antes de continuar.");
+      alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
       return;
     }
 
@@ -716,8 +777,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ? String(selectedProduct.id).trim()
       : `prod_${String(prof?.uid || selectedProduct.userId || 'store')}_${encodeURIComponent((selectedProduct.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
+    const effectiveUnitPrice = (currentModalUnitPrice && currentModalUnitPrice > 0)
+      ? currentModalUnitPrice
+      : getVariantPrice(selectedProduct, chosenVariant);
+
     const prodToSave: ProductItem = {
       ...selectedProduct,
+      price: effectiveUnitPrice > 0 ? effectiveUnitPrice : (Number(selectedProduct.price) || 0),
       id: validProdId,
       imageURL: img,
       userId: prof?.uid || selectedProduct.userId || '',
@@ -746,8 +812,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ? String(product.id).trim()
       : `prod_${String(prof?.uid || product.userId || 'store')}_${encodeURIComponent((product.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
+    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
+    const unitPrice = firstVariant ? getVariantPrice(product, firstVariant) : (Number(product.price) || 0);
+
     const prodToSave: ProductItem = {
       ...product,
+      price: unitPrice > 0 ? unitPrice : (Number(product.price) || 0),
       id: validProdId,
       imageURL: img,
       userId: prof?.uid || product.userId || '',
@@ -757,7 +827,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     if (img) registerProductImages([prodToSave]);
 
-    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
     const updated = addProductToCart(prodToSave, 1, firstVariant);
     setCart(updated);
   };
@@ -1245,18 +1314,37 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   </svg>
                 </a>
 
-                {/* Red Social */}
+                {/* Red Social - TikTok */}
                 <a
                   href="https://www.tiktok.com/@ryyco_ipiales?_r=1&_t=ZS-98y9bx9EXKh"
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label="Síguenos"
-                  title="Síguenos"
+                  aria-label="Síguenos en TikTok"
+                  title="Síguenos en TikTok"
                   className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#25F4EE] hover:bg-[#25F4EE]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
                 >
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" viewBox="0 0 24 24">
                     <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64c.298-.002.595.042.88.13V9.4a6.33 6.33 0 0 0-1-.08A6.34 6.34 0 0 0 3 15.66a6.34 6.34 0 0 0 10.86 4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1.04-.52 4.84 4.84 0 0 1-1.04-1.04 4.88 4.88 0 0 1-.96-3z" />
                   </svg>
+                </a>
+
+                {/* Linnk Pro - Ryyco */}
+                <a
+                  href="https://linnk.pro/ryyco/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Linnk Pro Ryyco"
+                  title="Visitar linnk.pro/ryyco"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#E63946] hover:bg-[#E63946]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95 overflow-hidden p-1.5"
+                >
+                  <img
+                    src="/linnk-pro-icon.png"
+                    alt="Linnk Pro Ryyco"
+                    className="w-full h-full object-contain rounded-full select-none pointer-events-none brightness-0 invert filter"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://linnk.pro/wp-content/uploads/2024/10/cropped-linnk.pro-icono-192x192.png';
+                    }}
+                  />
                 </a>
               </div>
             </div>
@@ -1527,7 +1615,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 </button>
 
                 {/* Individual Store Items */}
-                {uniqueStores.map((store) => {
+                {uniqueStores.map((store, storeIdx) => {
                   const isSelected = selectedStore === store.uid;
                   return (
                     <button
@@ -1553,6 +1641,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             src={store.photoURL}
                             alt={store.displayName || store.username}
                             draggable={false}
+                            loading="eager"
+                            fetchPriority={storeIdx < 8 ? "high" : "auto"}
+                            decoding="async"
                             className="w-full h-full rounded-full object-cover bg-[#090B12] pointer-events-none select-none"
                           />
                         ) : (
@@ -1580,7 +1671,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#E63946]/50 bg-[#090B12]">
                         {currentStore.photoURL ? (
-                          <img src={currentStore.photoURL} alt={currentStore.displayName || currentStore.username} className="w-full h-full object-cover" />
+                          <img src={currentStore.photoURL} alt={currentStore.displayName || currentStore.username} loading="eager" decoding="async" className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full text-[#E63946] flex items-center justify-center font-black text-xs uppercase">
                             {(currentStore.displayName || currentStore.username || 'T').substring(0, 2)}
@@ -1680,7 +1771,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
-              {displayedProducts.map((product) => {
+              {displayedProducts.map((product, productIndex) => {
               const profile = profiles[product.userId];
               const currency = profile?.currency || '$';
               const isOnSale = product.compareAtPrice && product.compareAtPrice > product.price;
@@ -1725,7 +1816,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     {product.allowsHalfAndHalf && product.flavorsText && (
                       <div className="absolute top-3 right-3 z-20">
                         <span className="bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-white/20 flex items-center gap-1">
-                          <span>🍕</span> Mitad y Mitad
+                          <span>{product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
                         </span>
                       </div>
                     )}
@@ -1743,8 +1834,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         src={product.imageURL} 
                         alt={product.name}
                         referrerPolicy="no-referrer"
+                        loading={productIndex < 4 ? "eager" : "lazy"}
+                        fetchPriority={productIndex < 4 ? "high" : "auto"}
+                        decoding="async"
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-1.5">
@@ -1898,7 +1991,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             : 0;
 
           return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 overflow-hidden">
               
               {/* Backdrop */}
               <motion.div
@@ -1914,30 +2007,30 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 initial={{ opacity: 0, scale: 0.96, y: 15 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.96, y: 15 }}
-                className="bg-[#111827] border border-[#232B3A] rounded-3xl w-full max-w-lg md:max-w-4xl lg:max-w-5xl relative overflow-hidden shadow-2xl flex flex-col z-10 max-h-[92vh] md:max-h-[88vh]"
+                className="bg-[#111827] border border-[#232B3A] rounded-2xl sm:rounded-3xl w-full max-w-lg md:max-w-4xl lg:max-w-5xl relative overflow-hidden shadow-2xl flex flex-col z-10 max-h-[94vh] md:max-h-[88vh]"
               >
                 {/* Close Button - RED BACKGROUND */}
                 <button
                   onClick={() => setSelectedProduct(null)}
-                  className="absolute top-4 right-4 z-30 text-white font-bold p-2 transition cursor-pointer hover:scale-110 active:scale-95 bg-[#E63946] hover:bg-[#D62839] rounded-full border border-red-700 shadow-lg shadow-red-950/40"
+                  className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 z-30 text-white font-bold p-2 transition cursor-pointer hover:scale-110 active:scale-95 bg-[#E63946] hover:bg-[#D62839] rounded-full border border-red-700 shadow-lg shadow-red-950/40"
                   title="Cerrar"
                 >
                   <X className="w-4 h-4 stroke-[2.5]" />
                 </button>
 
                 {/* Scrollable Body */}
-                <div className="flex-grow overflow-y-auto p-5 sm:p-6 md:p-8 pb-4 custom-scrollbar">
-                  <div className="flex flex-col md:flex-row gap-6 lg:gap-8 items-start">
+                <div className="flex-grow overflow-y-auto p-3.5 sm:p-6 md:p-8 pb-3 custom-scrollbar overflow-x-hidden w-full">
+                  <div className="flex flex-col md:flex-row gap-4 sm:gap-6 lg:gap-8 items-start w-full min-w-0">
                     
                     {/* Left: Product Media & Merchant Store Info */}
-                    <div className="w-full md:w-[42%] lg:w-[40%] flex flex-col gap-3.5 shrink-0 md:sticky md:top-0">
-                      <div className="w-full aspect-square md:h-[340px] lg:h-[380px] bg-[#090B12] flex items-center justify-center overflow-hidden border border-[#232B3A] rounded-2xl relative group shadow-inner">
+                    <div className="w-full md:w-[46%] lg:w-[44%] flex flex-col gap-3.5 shrink-0 md:sticky md:top-0">
+                      <div className="w-full h-72 sm:h-88 md:h-[380px] lg:h-[420px] bg-[#090B12] flex items-center justify-center overflow-hidden border border-[#232B3A] rounded-2xl relative group shadow-xl">
                         {/* Ambient Glow */}
                         {selectedProduct.imageURL && (
                           <img 
                             src={selectedProduct.imageURL} 
                             alt="" 
-                            className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-110 select-none pointer-events-none filter saturate-150" 
+                            className="absolute inset-0 w-full h-full object-cover opacity-30 blur-2xl scale-125 select-none pointer-events-none filter saturate-150" 
                             aria-hidden="true"
                             referrerPolicy="no-referrer"
                           />
@@ -1948,12 +2041,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           </span>
                         )}
                         {selectedProduct.imageURL ? (
-                          <img 
-                            src={selectedProduct.imageURL} 
-                            alt={selectedProduct.name}
-                            referrerPolicy="no-referrer"
-                            className="relative z-10 max-w-full max-h-full object-contain p-2 group-hover:scale-105 transition duration-300"
-                          />
+                          <>
+                            <img 
+                              src={selectedProduct.imageURL} 
+                              alt={selectedProduct.name}
+                              referrerPolicy="no-referrer"
+                              onClick={() => setModalImageFit(f => f === 'cover' ? 'contain' : 'cover')}
+                              className={`relative z-10 w-full h-full transition-all duration-300 cursor-pointer ${
+                                modalImageFit === 'cover' ? 'object-cover' : 'object-contain p-2'
+                              }`}
+                            />
+                            {/* Toggle fit mode button - solo lupa */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setModalImageFit(f => f === 'cover' ? 'contain' : 'cover');
+                              }}
+                              className="absolute bottom-3 right-3 z-20 bg-black/70 hover:bg-black/90 backdrop-blur-md text-white p-2 rounded-full border border-white/20 transition cursor-pointer flex items-center justify-center shadow-lg active:scale-95"
+                              title={modalImageFit === 'cover' ? 'Ver imagen completa' : 'Llenar marco'}
+                            >
+                              <Search className="w-4 h-4 text-white stroke-[2.5]" />
+                            </button>
+                          </>
                         ) : (
                           <div className="text-gray-600 flex flex-col items-center gap-2 relative z-10">
                             <ShoppingBag className="w-12 h-12 opacity-45" />
@@ -1993,7 +2103,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     </div>
 
                     {/* Right: Details, Flavors & Customization */}
-                    <div className="flex-1 min-w-0 flex flex-col justify-start space-y-4 text-left">
+                    <div className="w-full flex-1 min-w-0 flex flex-col justify-start space-y-3 sm:space-y-4 text-left">
                       
                       {/* Top Bar: Category badge + Recommendation Badge + Share Button */}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -2035,7 +2145,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                         <div className="flex items-baseline gap-3 mt-1.5">
                           <span className="text-2xl md:text-3xl font-black text-[#E63946] font-mono">
-                            {currency}{Number(selectedProduct.price || 0).toLocaleString()}
+                            {currency}{Number(currentModalUnitPrice || selectedProduct.price || 0).toLocaleString()}
                           </span>
                           {isOnSale && (
                             <span className="text-base text-[#A9B2C3] line-through font-mono">
@@ -2057,28 +2167,44 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                       {/* Variant / Pizza Flavor choice */}
                       {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
-                        <div className="pt-1">
+                        <div className="pt-1 w-full min-w-0">
                           <PizzaFlavorSelector
+                            key={selectedProduct.id}
                             product={selectedProduct}
                             currency={currency}
                             initialSizeVariant={chosenVariant}
-                            onVariantChange={(variantString, isValid) => {
+                            onVariantChange={(variantString, isValid, variantPrice) => {
                               setChosenVariant(variantString);
                               setIsVariantValid(isValid);
+                              if (typeof variantPrice === 'number' && variantPrice > 0) {
+                                setChosenVariantPrice(variantPrice);
+                              } else {
+                                setChosenVariantPrice(getVariantPrice(selectedProduct, variantString));
+                              }
                             }}
                           />
                         </div>
                       ) : selectedProduct.variantsText ? (
-                        <div className="space-y-1.5">
+                        <div className="space-y-1.5 w-full min-w-0">
                           <label className="text-[10px] font-bold text-[#A9B2C3] uppercase tracking-widest block">Elegir Variante / Opción</label>
                           <select
                             value={chosenVariant}
-                            onChange={(e) => setChosenVariant(e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setChosenVariant(val);
+                              setChosenVariantPrice(getVariantPrice(selectedProduct, val));
+                            }}
                             className="w-full h-10 bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] text-xs px-3 rounded-lg outline-none text-white font-semibold"
                           >
-                            {selectedProduct.variantsText.split(',').map((vari, vIdx) => (
-                              <option key={vIdx} value={vari.trim()}>{vari.trim()}</option>
-                            ))}
+                            {selectedProduct.variantsText.split(',').map((vari, vIdx) => {
+                              const vName = vari.trim();
+                              const vPrice = getVariantPrice(selectedProduct, vName);
+                              return (
+                                <option key={vIdx} value={vName}>
+                                  {vName} {vPrice > 0 && vPrice !== selectedProduct.price ? `(${currency}${vPrice.toLocaleString()})` : ''}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                       ) : null}
@@ -2087,16 +2213,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 </div>
 
                 {/* STICKY/FIXED FOOTER inside the selectedProduct modal */}
-                <div className="p-4 sm:p-5 border-t border-[#232B3A] bg-[#090B12] shrink-0 z-20">
-                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-between">
+                <div className="p-3.5 sm:p-5 border-t border-[#232B3A] bg-[#090B12] shrink-0 z-20 w-full">
+                  <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4 items-center justify-between w-full">
                     {/* Quantity Controller */}
-                    <div className="flex justify-between items-center bg-[#111827] px-3.5 py-2.5 rounded-xl border border-[#232B3A] w-full sm:w-auto sm:min-w-[150px]">
+                    <div className="flex justify-between items-center bg-[#111827] px-3.5 py-2 sm:py-2.5 rounded-xl border border-[#232B3A] w-full sm:w-auto sm:min-w-[150px] shrink-0">
                       <span className="text-xs font-bold text-[#A9B2C3] mr-2">Cantidad:</span>
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
                           onClick={() => setBuyQuantity(q => q > 1 ? q - 1 : 1)}
-                          className="p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white cursor-pointer"
+                          className="p-1 sm:p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white cursor-pointer"
                         >
                           <Minus className="w-3.5 h-3.5" />
                         </button>
@@ -2104,7 +2230,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         <button
                           type="button"
                           onClick={() => setBuyQuantity(q => q + 1)}
-                          className="p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white cursor-pointer"
+                          className="p-1 sm:p-1.5 bg-[#090B12] border border-[#232B3A] rounded hover:bg-[#232B3A] transition text-[#A9B2C3] hover:text-white cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -2112,13 +2238,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     </div>
 
                     {/* Add to Cart button */}
-                    <div className="w-full sm:flex-1">
+                    <div className="w-full sm:flex-1 min-w-0">
                       <button
                         onClick={handleAddToCart}
                         className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl transition uppercase tracking-wider flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer shadow-lg shadow-[#E63946]/20"
                       >
                         <ShoppingBag className="w-4 h-4 text-white stroke-[2.5]" />
-                        Añadir al Carrito ({currency}{Number((selectedProduct.price || 0) * buyQuantity).toLocaleString()})
+                        Añadir al Carrito ({currency}{Number((currentModalUnitPrice || selectedProduct.price || 0) * buyQuantity).toLocaleString()})
                       </button>
                     </div>
                   </div>

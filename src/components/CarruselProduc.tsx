@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Store, 
   ShoppingBag,
@@ -31,6 +31,7 @@ import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduc
 import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
+import { getVariantPrice } from '../lib/variantHelper';
 import { 
   addProductToCart, 
   getStoredCart, 
@@ -88,8 +89,15 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   // Variant selector bottom sheet
   const [variantSheetProduct, setVariantSheetProduct] = useState<ProductItem | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<string>('');
+  const [sheetVariantPrice, setSheetVariantPrice] = useState<number>(0);
   const [isSheetVariantValid, setIsSheetVariantValid] = useState<boolean>(true);
   const [sheetQuantity, setSheetQuantity] = useState<number>(1);
+
+  const currentSheetUnitPrice = useMemo(() => {
+    if (!variantSheetProduct) return 0;
+    if (sheetVariantPrice > 0) return sheetVariantPrice;
+    return getVariantPrice(variantSheetProduct, selectedVariant);
+  }, [variantSheetProduct, selectedVariant, sheetVariantPrice]);
 
   // Delivery fee loaded from system settings (aligned with TiendaGeneral)
   const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(5000);
@@ -490,6 +498,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     if ((product.variantsText && product.variantsText.includes(',')) || (product.allowsHalfAndHalf && product.flavorsText)) {
       const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : '';
       setSelectedVariant(firstVariant);
+      setSheetVariantPrice(firstVariant ? getVariantPrice(product, firstVariant) : (Number(product.price) || 0));
       setIsSheetVariantValid(true);
       setSheetQuantity(1);
       setVariantSheetProduct(product);
@@ -504,8 +513,10 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   const handleAddToCart = (product: ProductItem, quantity: number = 1, variant?: string) => {
     const prof = findStoreForProduct(product, profiles);
     const prodImg = product.imageURL || getProductImage(product.id);
+    const variantPrice = variant ? getVariantPrice(product, variant) : 0;
     const enrichedProduct: ProductItem = {
       ...product,
+      price: variantPrice > 0 ? variantPrice : (Number(product.price) || 0),
       imageURL: prodImg,
       userId: prof?.uid || product.userId || '',
       storeName: prof?.displayName || product.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante'),
@@ -908,7 +919,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     </h2>
                     {product.allowsHalfAndHalf && product.flavorsText && (
                       <span className="inline-flex items-center gap-1 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow border border-white/20">
-                        <span>🍕</span> Mitad y Mitad
+                        <span>{product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
                       </span>
                     )}
                     <div className="inline-flex items-center gap-1.5 bg-[#F4B400] text-black px-2.5 py-0.5 rounded-lg font-black text-xs sm:text-sm shadow-md">
@@ -1156,12 +1167,12 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
             onClick={() => setVariantSheetProduct(null)}
           >
             <div 
-              className="w-full bg-[#0d121f] border-t border-[#232B3A] rounded-t-3xl shadow-2xl p-5 flex flex-col gap-4 text-white animate-slide-up"
+              className="w-full max-h-[90vh] bg-[#0d121f] border-t border-[#232B3A] rounded-t-3xl shadow-2xl p-4 sm:p-5 flex flex-col gap-3.5 sm:gap-4 text-white animate-slide-up overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-[#232B3A] pb-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#090B12] overflow-hidden border border-[#232B3A] shrink-0">
+              <div className="flex items-center justify-between border-b border-[#232B3A] pb-2.5 sm:pb-3 shrink-0">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-[#090B12] overflow-hidden border border-[#232B3A] shrink-0">
                     {variantSheetProduct.imageURL ? (
                       <img 
                         src={variantSheetProduct.imageURL} 
@@ -1170,110 +1181,128 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                         className="w-full h-full object-cover" 
                       />
                     ) : (
-                      <Utensils className="w-6 h-6 text-gray-600 m-auto mt-3" />
+                      <Utensils className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600 m-auto mt-2.5 sm:mt-3" />
                     )}
                   </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-white line-clamp-1">{variantSheetProduct.name}</h4>
-                    <p className="text-xs font-bold text-[#E63946]">${(variantSheetProduct.price || 0).toLocaleString('es-CO')} COP</p>
+                  <div className="min-w-0">
+                    <h4 className="font-extrabold text-sm text-white truncate">{variantSheetProduct.name}</h4>
+                    <p className="text-xs font-bold text-[#E63946]">${(currentSheetUnitPrice || variantSheetProduct.price || 0).toLocaleString('es-CO')} COP</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setVariantSheetProduct(null)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition cursor-pointer shrink-0"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Variant / Pizza Flavor Selector */}
-              {variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText ? (
-                <div>
-                  <PizzaFlavorSelector
-                    product={variantSheetProduct}
-                    currency="$"
-                    initialSizeVariant={selectedVariant}
-                    onVariantChange={(variantString, isValid) => {
-                      setSelectedVariant(variantString);
-                      setIsSheetVariantValid(isValid);
-                    }}
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-bold text-[#A9B2C3] uppercase tracking-wider mb-2">
-                    Elige una opción / tamaño:
-                  </label>
-                  <div className="flex flex-wrap gap-2">
-                    {(variantSheetProduct.variantsText || '')
-                      .split(',')
-                      .map(v => v.trim())
-                      .filter(Boolean)
-                      .map((variantName) => {
-                        const isSelected = selectedVariant === variantName;
-                        return (
-                          <button
-                            key={variantName}
-                            type="button"
-                            onClick={() => setSelectedVariant(variantName)}
-                            className={`py-2 px-3.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
-                              isSelected
-                                ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white border-transparent shadow-md shadow-[#E63946]/30'
-                                : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
-                            }`}
-                          >
-                            {variantName}
-                          </button>
-                        );
-                      })}
+              {/* Scrollable Container for Customization / Flavor options */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden space-y-3.5 pr-0.5 w-full min-w-0">
+                {/* Variant / Pizza Flavor Selector */}
+                {variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText ? (
+                  <div className="w-full min-w-0">
+                    <PizzaFlavorSelector
+                      key={variantSheetProduct.id}
+                      product={variantSheetProduct}
+                      currency="$"
+                      initialSizeVariant={selectedVariant}
+                      onVariantChange={(variantString, isValid, variantPrice) => {
+                        setSelectedVariant(variantString);
+                        setIsSheetVariantValid(isValid);
+                        if (typeof variantPrice === 'number' && variantPrice > 0) {
+                          setSheetVariantPrice(variantPrice);
+                        } else {
+                          setSheetVariantPrice(getVariantPrice(variantSheetProduct, variantString));
+                        }
+                      }}
+                    />
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="w-full min-w-0">
+                    <label className="block text-xs font-bold text-[#A9B2C3] uppercase tracking-wider mb-2 truncate">
+                      Elige una opción / tamaño:
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
+                      {(variantSheetProduct.variantsText || '')
+                        .split(',')
+                        .map(v => v.trim())
+                        .filter(Boolean)
+                        .map((variantName) => {
+                          const isSelected = selectedVariant === variantName;
+                          const vPrice = getVariantPrice(variantSheetProduct, variantName);
+                          return (
+                            <button
+                              key={variantName}
+                              type="button"
+                              onClick={() => {
+                                setSelectedVariant(variantName);
+                                setSheetVariantPrice(getVariantPrice(variantSheetProduct, variantName));
+                              }}
+                              className={`py-1.5 sm:py-2 px-2.5 sm:px-3.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 min-w-0 ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white border-transparent shadow-md shadow-[#E63946]/30'
+                                  : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
+                              }`}
+                            >
+                              <span className="truncate">{variantName}</span>
+                              {vPrice > 0 && vPrice !== variantSheetProduct.price && (
+                                <span className={`text-[10px] whitespace-nowrap shrink-0 ${isSelected ? 'text-white/90 font-black' : 'text-amber-400 font-bold'}`}>
+                                  • ${vPrice.toLocaleString('es-CO')}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
 
-              {/* Quantity Selector */}
-              <div className="flex items-center justify-between py-2 border-y border-[#232B3A]">
-                <span className="text-xs font-bold text-[#A9B2C3]">Cantidad:</span>
-                <div className="flex items-center gap-3 bg-[#151D2F] border border-[#232B3A] rounded-xl px-2 py-1">
-                  <button
-                    onClick={() => setSheetQuantity(q => Math.max(1, q - 1))}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                  >
-                    <Minus className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="font-black text-sm text-white px-2">
-                    {sheetQuantity}
-                  </span>
-                  <button
-                    onClick={() => setSheetQuantity(q => q + 1)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
+                {/* Quantity Selector */}
+                <div className="flex items-center justify-between py-2 border-y border-[#232B3A] w-full min-w-0">
+                  <span className="text-xs font-bold text-[#A9B2C3]">Cantidad:</span>
+                  <div className="flex items-center gap-3 bg-[#151D2F] border border-[#232B3A] rounded-xl px-2.5 py-1">
+                    <button
+                      onClick={() => setSheetQuantity(q => Math.max(1, q - 1))}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                    >
+                      <Minus className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="font-black text-sm text-white px-2">
+                      {sheetQuantity}
+                    </span>
+                    <button
+                      onClick={() => setSheetQuantity(q => q + 1)}
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Total & Add Button */}
-              <div className="flex items-center justify-between pt-1">
-                <div>
-                  <span className="text-[10px] text-gray-400 uppercase font-bold block">Total:</span>
-                  <span className="text-base font-black text-[#F4B400]">
-                    ${((variantSheetProduct.price || 0) * sheetQuantity).toLocaleString('es-CO')} COP
+              {/* Total & Add Button (Sticky at bottom of bottom sheet) */}
+              <div className="flex items-center justify-between pt-2 border-t border-[#232B3A] shrink-0 w-full min-w-0 gap-2">
+                <div className="min-w-0">
+                  <span className="text-[10px] text-gray-400 uppercase font-bold block truncate">Total:</span>
+                  <span className="text-sm sm:text-base font-black text-[#F4B400] truncate block">
+                    ${((currentSheetUnitPrice || variantSheetProduct.price || 0) * sheetQuantity).toLocaleString('es-CO')} COP
                   </span>
                 </div>
                 <button
                   disabled={variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText && !isSheetVariantValid}
                   onClick={() => {
                     if (variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText && !isSheetVariantValid) {
-                      alert("Por favor completa la selección de sabores para tu pizza.");
+                      alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
                       return;
                     }
                     handleAddToCart(variantSheetProduct, sheetQuantity, selectedVariant);
                     setVariantSheetProduct(null);
                   }}
-                  className="py-3 px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-2 active:scale-95 transition cursor-pointer"
+                  className="py-2.5 sm:py-3 px-4 sm:px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-1.5 sm:gap-2 active:scale-95 transition cursor-pointer shrink-0"
                 >
-                  <ShoppingCart className="w-4 h-4" />
-                  <span>Agregar al Carrito</span>
+                  <ShoppingCart className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">Agregar al Carrito</span>
                 </button>
               </div>
             </div>

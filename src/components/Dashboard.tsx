@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
@@ -113,6 +113,7 @@ import LinnkProIsotype from './LinnkProIsotype';
 import { formatColombianPhoneWith57 } from './PublicProfile';
 import { BasicPlanTrialModal } from './BasicPlanTrialModal';
 import { DashboardTrialBanner } from './DashboardTrialBanner';
+import { getProductParsedVariants, getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 
 export const RESTAURANT_CATEGORIES = [
   '🍔 Hamburguesas',
@@ -494,6 +495,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [prodCategory, setProdCategory] = useState('');
   const [prodStock, setProdStock] = useState('10');
   const [prodVariants, setProdVariants] = useState(''); // Comma separated e.g. "S, M, L"
+  const [prodVariantPrices, setProdVariantPrices] = useState<Record<string, number>>({});
+
+  const detectedVariants = useMemo(() => {
+    if (!prodVariants || !prodVariants.trim()) return [];
+    return getProductParsedVariants(prodVariants, prodVariantPrices, Number(prodPrice) || 0);
+  }, [prodVariants, prodVariantPrices, prodPrice]);
+
   const [prodAllowsHalfAndHalf, setProdAllowsHalfAndHalf] = useState(false);
   const [prodFlavorsText, setProdFlavorsText] = useState('');
   const [prodAllowSingleFlavor, setProdAllowSingleFlavor] = useState(true);
@@ -846,6 +854,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdCategory('🍔 Hamburguesas');
     setProdStock('15');
     setProdVariants('');
+    setProdVariantPrices({});
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
     setProdAllowSingleFlavor(true);
@@ -864,6 +873,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdCategory(prod.category || 'General');
     setProdStock(prod.stock !== undefined && prod.stock !== null ? prod.stock.toString() : '10');
     setProdVariants(prod.variantsText || '');
+
+    const initialPrices: Record<string, number> = prod.variantPrices ? { ...prod.variantPrices } : {};
+    if (prod.variantsText) {
+      const parsed = getProductParsedVariants(prod.variantsText, prod.variantPrices, prod.price || 0);
+      parsed.forEach(p => {
+        if (p.price > 0 && initialPrices[p.name] === undefined) {
+          initialPrices[p.name] = p.price;
+        }
+      });
+    }
+    setProdVariantPrices(initialPrices);
+
     setProdAllowsHalfAndHalf(Boolean(prod.allowsHalfAndHalf));
     setProdFlavorsText(prod.flavorsText || '');
     setProdAllowSingleFlavor(prod.allowSingleFlavor !== false);
@@ -969,6 +990,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
     }
 
+    const cleanVariantPrices: Record<string, number> = {};
+    if (prodVariantPrices && typeof prodVariantPrices === 'object') {
+      Object.entries(prodVariantPrices).forEach(([k, v]) => {
+        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.]/g, ''));
+        if (!isNaN(num) && num > 0) {
+          cleanVariantPrices[k.trim()] = num;
+        }
+      });
+    }
+
     const payload: ProductItem = {
       id: editingProd ? editingProd.id : `temp_${Date.now()}`,
       userId: profile.uid,
@@ -980,6 +1011,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       category: prodCategory ? prodCategory.trim() : 'General',
       stock: isNaN(parseInt(prodStock)) ? 10 : parseInt(prodStock),
       variantsText: prodVariants ? prodVariants.trim() : '',
+      variantPrices: Object.keys(cleanVariantPrices).length > 0 ? cleanVariantPrices : undefined,
       allowsHalfAndHalf: prodAllowsHalfAndHalf,
       flavorsText: prodAllowsHalfAndHalf ? prodFlavorsText.trim() : '',
       allowSingleFlavor: prodAllowSingleFlavor,
@@ -1155,7 +1187,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         return {
           productId: item.productId,
           name: prod.name,
-          price: prod.price,
+          price: getVariantPrice(prod, item.selectedVariant),
           quantity: item.quantity,
           selectedVariant: item.selectedVariant || undefined,
           imageURL: prod.imageURL || undefined
@@ -2013,7 +2045,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </label>
                                 <label className="inline-flex items-center cursor-pointer gap-1.5" title="Cambiar tipo de producto">
                                   <span className="text-[9px] uppercase tracking-wider font-bold text-gray-400">
-                                    {prodAllowsHalfAndHalf ? '🍕 Sabores' : '📦 Normal'}
+                                    {prodAllowsHalfAndHalf ? '✨ Sabores' : '📦 Normal'}
                                   </span>
                                   <input
                                     type="checkbox"
@@ -2048,27 +2080,27 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
                                   }`}
                                 >
-                                  <span>🍕</span>
+                                  <span>✨</span>
                                   <span className="truncate">Producto con sabores</span>
                                 </button>
                               </div>
                             </div>
                           </div>
 
-                          {/* SECCIÓN ESPECIAL: SABORES Y MITAD Y MITAD (SE DESPLIEGA CUANDO SE SELECCIONA 'PRODUCTO CON SABORES') */}
+                          {/* SECCIÓN ESPECIAL: PRODUCTO CON SABORES (HELADOS, PIZZAS, COMBINACIONES) */}
                           {prodAllowsHalfAndHalf && (
                             <div className="bg-gradient-to-r from-amber-500/10 via-red-500/10 to-amber-500/5 border border-amber-500/35 rounded-2xl p-4 sm:p-5 space-y-3 animate-fade-in shadow-inner">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2.5">
                                   <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-base shrink-0">
-                                    🍕
+                                    🍨
                                   </div>
                                   <div>
                                     <h4 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                                      Producto Tipo Pizza (Sabores y Mitad y Mitad)
+                                      Producto con Sabores
                                     </h4>
                                     <p className="text-[11px] text-gray-300">
-                                      Permite a los clientes pedir pizzas por mitades (2 sabores) o elegir entre varios sabores.
+                                      Permite a los clientes elegir entre varios sabores o combinar sabores (helados, pizzas, etc.).
                                     </p>
                                   </div>
                                 </div>
@@ -2083,17 +2115,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                               <div>
                                 <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1">
-                                  Sabores disponibles de Pizza (separados por comas)
+                                  Sabores disponibles (separados por comas)
                                 </label>
                                 <textarea
                                   rows={3}
                                   value={prodFlavorsText}
                                   onChange={(e) => setProdFlavorsText(e.target.value)}
-                                  placeholder="Ej: Hawaiana, Pepperoni, Pollo Champiñones, Carnes, Cuatro Quesos, Mexicana, Vegetariana, Napolitana, BBQ, Criolla, Pollo con Tocineta"
+                                  placeholder="Ej: Vainilla, Chocolate, Fresa, Arequipe, Maracuyá, Brownie, Hawaiana, Pepperoni, Carnes..."
                                   className="w-full bg-gray-900 border border-amber-500/40 focus:border-amber-400 p-3 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 resize-none"
                                 />
                                 <p className="text-[10px] text-gray-400 mt-1">
-                                  Escribe todos los sabores que ofreces separados por coma. El cliente podrá elegir Mitad 1 y Mitad 2 con selector interactivo y buscador.
+                                  Escribe todos los sabores que ofreces separados por coma. El cliente podrá elegir sus sabores favoritos o combinarlos con selector interactivo y buscador.
                                 </p>
                               </div>
 
@@ -2106,7 +2138,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
                                     {prodFlavorsText.split(',').map(s => s.trim()).filter(Boolean).map((flavor, idx) => (
                                       <span key={idx} className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                                        🍕 {flavor}
+                                        ✨ {flavor}
                                       </span>
                                     ))}
                                   </div>
@@ -2122,7 +2154,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   className="w-4 h-4 rounded bg-gray-900 border-gray-800 text-amber-500 cursor-pointer"
                                 />
                                 <label htmlFor="allow-single-flavor-check" className="text-xs font-semibold text-gray-300 cursor-pointer select-none">
-                                  Permitir también pedir la pizza completa de 1 solo sabor (además de Mitad y Mitad)
+                                  Permitir también pedir de 1 solo sabor (además de combinar 2 sabores)
                                 </label>
                               </div>
                             </div>
@@ -2180,13 +2212,81 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <input
                                 type="text"
                                 value={prodVariants}
-                                onChange={(e) => setProdVariants(e.target.value)}
-                                placeholder="Ej: Personal, Mediana, Familiar"
+                                onChange={(e) => {
+                                  const text = e.target.value;
+                                  setProdVariants(text);
+                                  const parsed = getProductParsedVariants(text, prodVariantPrices, Number(prodPrice) || 0);
+                                  const updatedPrices = { ...prodVariantPrices };
+                                  parsed.forEach(p => {
+                                    if (p.price > 0 && updatedPrices[p.name] === undefined) {
+                                      updatedPrices[p.name] = p.price;
+                                    }
+                                  });
+                                  setProdVariantPrices(updatedPrices);
+                                }}
+                                placeholder="Ej: Pequeña, Mediana, Grande"
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                               />
-                              <p className="text-[9px] text-gray-550 mt-1 font-semibold">
-                                Si tu producto tiene presentaciones de tamaño, escríbelas separadas por coma.
+                              <p className="text-[9px] text-gray-400 mt-1 font-semibold">
+                                Escribe los tamaños o presentaciones separados por coma (puedes asignar precio diferente a cada uno abajo).
                               </p>
+
+                              {/* Interactive per-variant price inputs */}
+                              {detectedVariants.length > 0 && (
+                                <div className="mt-3 bg-gray-950/90 border border-indigo-500/30 rounded-xl p-3.5 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm">🏷️</span>
+                                      <div>
+                                        <span className="text-xs font-black text-indigo-300 uppercase tracking-wider block">
+                                          Precios por Tamaño / Variante
+                                        </span>
+                                        <span className="text-[10px] text-gray-400">
+                                          Define el costo de cada presentación
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full">
+                                      {detectedVariants.length} opciones
+                                    </span>
+                                  </div>
+
+                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                                    {detectedVariants.map((item) => {
+                                      const currentPriceVal = prodVariantPrices[item.name] !== undefined ? String(prodVariantPrices[item.name]) : (item.price > 0 ? String(item.price) : '');
+                                      return (
+                                        <div key={item.name} className="bg-gray-900 border border-gray-800 rounded-xl p-2.5 flex flex-col justify-between gap-1.5 focus-within:border-indigo-500 transition">
+                                          <span className="text-xs font-bold text-white truncate" title={item.name}>
+                                            {item.name}
+                                          </span>
+                                          <div className="flex items-center gap-1.5 bg-gray-950 px-2.5 py-1.5 rounded-lg border border-gray-800">
+                                            <span className="text-xs font-bold text-gray-400">{profile.currency || '$'}</span>
+                                            <input
+                                              type="text"
+                                              inputMode="decimal"
+                                              value={currentPriceVal}
+                                              placeholder={prodPrice || '0'}
+                                              onChange={(e) => {
+                                                const rawVal = e.target.value;
+                                                const parsed = parsePriceInput(rawVal);
+                                                setProdVariantPrices(prev => ({
+                                                  ...prev,
+                                                  [item.name]: !isNaN(parsed) ? parsed : 0
+                                                }));
+                                              }}
+                                              className="w-full bg-transparent text-right text-xs font-black text-emerald-400 outline-none"
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-indigo-300/80 bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
+                                    <span>💡</span>
+                                    <span>Si dejas un precio vacío o en 0, se usará el <strong>Precio de Venta</strong> general ({profile.currency || '$'}{prodPrice || '0'}).</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -2550,7 +2650,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       )}
                                       {prod.allowsHalfAndHalf && prod.flavorsText && (
                                         <div className="flex justify-between items-center text-amber-400">
-                                          <span>🍕 Mitad y Mitad:</span>
+                                          <span>✨ Sabores:</span>
                                           <span className="font-bold truncate max-w-[120px]" title={prod.flavorsText}>
                                             {prod.flavorsText.split(',').filter(Boolean).length} sabores
                                           </span>

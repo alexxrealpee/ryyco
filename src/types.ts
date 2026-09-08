@@ -188,6 +188,7 @@ export interface ProductItem {
   category?: string; // e.g. "Ropa", "Calzado", "Accesorios"
   stock: number; // Inventory count
   variantsText?: string; // Comma separated variants like "S, M, L" or "Azul, Rojo"
+  variantPrices?: Record<string, number>; // Specific price for each variant/size { "Pequeña": 25000, "Mediana": 40000, "Grande": 60000 }
   allowsHalfAndHalf?: boolean; // Permite pedir combinando 2 sabores (Mitad y Mitad para pizzas)
   flavorsText?: string; // Lista de sabores separados por coma para pizzas o productos multi-sabor
   allowSingleFlavor?: boolean; // Permite pedir la pizza completa de 1 solo sabor (por defecto true)

@@ -32,6 +32,7 @@ import {
   GeneralCartItem 
 } from '../lib/cartHelper';
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
+import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 import CustomerPortalModal from './CustomerPortalModal';
 import { 
   UserProfile, 
@@ -269,9 +270,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   // Product Selection overlay state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
+  const [modalImageFit, setModalImageFit] = useState<'cover' | 'contain'>('cover');
   const [chosenVariant, setChosenVariant] = useState('');
+  const [chosenVariantPrice, setChosenVariantPrice] = useState<number>(0);
   const [isVariantValid, setIsVariantValid] = useState(true);
   const [buyQuantity, setBuyQuantity] = useState(1);
+
+  const currentModalUnitPrice = useMemo(() => {
+    if (!selectedProduct) return 0;
+    if (chosenVariantPrice > 0) return chosenVariantPrice;
+    return getVariantPrice(selectedProduct, chosenVariant);
+  }, [selectedProduct, chosenVariant, chosenVariantPrice]);
 
   const qrRef = useRef<HTMLDivElement>(null);
 
@@ -623,8 +632,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   // Cart operations
   const handleOpenProductSelection = (prod: ProductItem) => {
     const variants = prod.variantsText ? prod.variantsText.split(',').map(s => s.trim()) : [];
+    const firstVar = variants.length > 0 ? variants[0] : '';
     setSelectedProduct(prod);
-    setChosenVariant(variants.length > 0 ? variants[0] : '');
+    setChosenVariant(firstVar);
+    const initialPrice = firstVar ? getVariantPrice(prod, firstVar) : (Number(prod.price) || 0);
+    setChosenVariantPrice(initialPrice);
     setIsVariantValid(true);
     setBuyQuantity(1);
   };
@@ -632,7 +644,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const handleAddProductToCart = () => {
     if (!selectedProduct) return;
     if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText && !isVariantValid) {
-      alert("Por favor completa la selección de sabores para tu pizza antes de continuar.");
+      alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
       return;
     }
     
@@ -640,8 +652,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       ? String(selectedProduct.id).trim()
       : `prod_${String(profile?.uid || selectedProduct.userId || 'store')}_${encodeURIComponent((selectedProduct.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
+    const effectiveUnitPrice = (currentModalUnitPrice && currentModalUnitPrice > 0)
+      ? currentModalUnitPrice
+      : getVariantPrice(selectedProduct, chosenVariant);
+
     const prodToSave: ProductItem = {
       ...selectedProduct,
+      price: effectiveUnitPrice > 0 ? effectiveUnitPrice : (Number(selectedProduct.price) || 0),
       id: validProdId,
       imageURL: selectedProduct.imageURL || getProductImage(selectedProduct.id),
       userId: profile?.uid || selectedProduct.userId || '',
@@ -668,12 +685,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       return;
     }
     const firstVariant = variants.length > 0 ? variants[0] : undefined;
+    const unitPrice = firstVariant ? getVariantPrice(p, firstVariant) : (Number(p.price) || 0);
     const validProdId = (p.id && String(p.id).trim() && String(p.id).trim() !== 'undefined')
       ? String(p.id).trim()
       : `prod_${String(profile?.uid || p.userId || 'store')}_${encodeURIComponent((p.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
     const prodToSave: ProductItem = {
       ...p,
+      price: unitPrice > 0 ? unitPrice : (Number(p.price) || 0),
       id: validProdId,
       imageURL: p.imageURL || getProductImage(p.id),
       userId: profile?.uid || p.userId || '',
@@ -1951,7 +1970,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                         )}
                         {p.allowsHalfAndHalf && p.flavorsText && (
                           <span className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-wider z-10 shadow-md border border-white/20 flex items-center gap-1">
-                            <span>🍕</span> Mitad y Mitad
+                            <span>{p.name?.toLowerCase().includes('pizza') || p.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
                           </span>
                         )}
 
@@ -2457,46 +2476,61 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
       {/* 2. PRODUCT CUSTOMIZATION OVERLAY / ADDTOCART BAR */}
       {selectedProduct && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-gray-950 border border-gray-850 rounded-3xl max-w-lg md:max-w-4xl lg:max-w-5xl w-full text-gray-100 relative shadow-2.5xl animate-fade-in max-h-[92vh] md:max-h-[88vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-4 overflow-hidden">
+          <div className="bg-gray-950 border border-gray-850 rounded-2xl sm:rounded-3xl max-w-lg md:max-w-4xl lg:max-w-5xl w-full text-gray-100 relative shadow-2.5xl animate-fade-in max-h-[94vh] md:max-h-[88vh] flex flex-col overflow-hidden">
             <button 
               onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 text-white font-bold p-2 transition cursor-pointer z-30 hover:scale-110 active:scale-95 bg-red-600 hover:bg-red-500 rounded-full border border-red-700 shadow-md shadow-red-900/35"
+              className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 text-white font-bold p-2 transition cursor-pointer z-30 hover:scale-110 active:scale-95 bg-red-600 hover:bg-red-500 rounded-full border border-red-700 shadow-md shadow-red-900/35"
               title="Cerrar"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
             
             {/* Scrollable Body containing image and text details */}
-            <div className="flex-1 overflow-y-auto p-5 sm:p-6 md:p-8 pb-3 custom-scrollbar">
-              <div className="flex flex-col md:flex-row gap-6 lg:gap-8 items-start">
+            <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 md:p-8 pb-3 custom-scrollbar overflow-x-hidden w-full">
+              <div className="flex flex-col md:flex-row gap-4 sm:gap-6 lg:gap-8 items-start w-full min-w-0">
                 {/* Product Image on Left (PC) / Top (Mobile) */}
-                <div className="w-full md:w-[42%] lg:w-[40%] aspect-square md:h-[360px] lg:h-[400px] bg-gray-900 rounded-2xl overflow-hidden border border-gray-900/60 flex items-center justify-center text-4xl shrink-0 relative shadow-inner md:sticky md:top-0">
+                <div className="w-full h-72 sm:h-88 md:h-[380px] lg:h-[420px] md:w-[46%] lg:w-[44%] bg-gray-900 rounded-2xl overflow-hidden border border-gray-900/60 flex items-center justify-center shrink-0 relative shadow-xl md:sticky md:top-0">
                   {selectedProduct.imageURL ? (
                     <>
                       {/* Ambient Glow Background for immersive experience */}
                       <img 
                         src={selectedProduct.imageURL} 
                         alt="" 
-                        className="absolute inset-0 w-full h-full object-cover opacity-20 blur-xl scale-110 select-none pointer-events-none filter saturate-150" 
+                        className="absolute inset-0 w-full h-full object-cover opacity-30 blur-2xl scale-125 select-none pointer-events-none filter saturate-150" 
                         aria-hidden="true"
                         referrerPolicy="no-referrer"
                       />
-                      {/* Main Image, fully visible without being cropped or cut off */}
+                      {/* Main Image, large & prominent with cover fit default and toggle */}
                       <img 
                         src={selectedProduct.imageURL} 
                         alt={selectedProduct.name} 
-                        className="relative z-10 max-w-full max-h-full object-contain p-2 hover:scale-[1.03] transition-transform duration-300" 
+                        onClick={() => setModalImageFit(f => f === 'cover' ? 'contain' : 'cover')}
+                        className={`relative z-10 w-full h-full transition-all duration-300 cursor-pointer ${
+                          modalImageFit === 'cover' ? 'object-cover' : 'object-contain p-2'
+                        }`} 
                         referrerPolicy="no-referrer" 
                       />
+                      {/* Toggle fit mode button - solo lupa */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setModalImageFit(f => f === 'cover' ? 'contain' : 'cover');
+                        }}
+                        className="absolute bottom-3 right-3 z-20 bg-black/70 hover:bg-black/90 backdrop-blur-md text-white p-2 rounded-full border border-white/20 transition cursor-pointer flex items-center justify-center shadow-lg active:scale-95"
+                        title={modalImageFit === 'cover' ? 'Ver imagen completa' : 'Llenar marco'}
+                      >
+                        <Search className="w-4 h-4 text-white stroke-[2.5]" />
+                      </button>
                     </>
                   ) : (
-                    <span className="relative z-10">🎁</span>
+                    <span className="relative z-10 text-4xl">🎁</span>
                   )}
                 </div>
 
                 {/* Product Details on Right (PC) / Bottom (Mobile) */}
-                <div className="flex-grow flex flex-col justify-start space-y-3.5">
+                <div className="w-full flex-1 min-w-0 flex flex-col justify-start space-y-3 sm:space-y-3.5">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className="text-[9px] font-black uppercase text-indigo-400 tracking-wider block">
                       {selectedProduct.category || 'General'}
@@ -2525,7 +2559,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <div>
                     <h3 className="text-xl md:text-2xl font-black text-white leading-tight tracking-tight">{selectedProduct.name}</h3>
                     <div className="flex items-baseline gap-3 mt-1.5">
-                      <span className="text-2xl md:text-3xl font-black font-mono" style={{ color: storeAccent }}>{getStoreCurrency()}{Number(selectedProduct.price || 0).toLocaleString()}</span>
+                      <span className="text-2xl md:text-3xl font-black font-mono" style={{ color: storeAccent }}>
+                        {getStoreCurrency()}{Number(currentModalUnitPrice || selectedProduct.price || 0).toLocaleString()}
+                      </span>
                       {selectedProduct.compareAtPrice && (
                         <span className="text-sm text-gray-500 line-through font-bold font-mono">{getStoreCurrency()}{Number(selectedProduct.compareAtPrice || 0).toLocaleString()}</span>
                       )}
@@ -2540,28 +2576,44 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
                   {/* If Pizza flavors or variants available, present choice */}
                   {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
-                    <div className="pt-1">
+                    <div className="pt-1 w-full min-w-0">
                       <PizzaFlavorSelector
+                        key={selectedProduct.id}
                         product={selectedProduct}
                         currency={getStoreCurrency()}
                         initialSizeVariant={chosenVariant}
-                        onVariantChange={(variantString, isValid) => {
+                        onVariantChange={(variantString, isValid, variantPrice) => {
                           setChosenVariant(variantString);
                           setIsVariantValid(isValid);
+                          if (typeof variantPrice === 'number' && variantPrice > 0) {
+                            setChosenVariantPrice(variantPrice);
+                          } else {
+                            setChosenVariantPrice(getVariantPrice(selectedProduct, variantString));
+                          }
                         }}
                       />
                     </div>
                   ) : selectedProduct.variantsText ? (
-                    <div className="space-y-1.5">
+                    <div className="space-y-1.5 w-full min-w-0">
                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Elegir Variante / Opción</label>
                       <select
                         value={chosenVariant}
-                        onChange={(e) => setChosenVariant(e.target.value)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setChosenVariant(val);
+                          setChosenVariantPrice(getVariantPrice(selectedProduct, val));
+                        }}
                         className="w-full h-10 bg-gray-900 border border-gray-800 focus:border-indigo-500 text-xs px-3 rounded-lg outline-none text-white font-semibold"
                       >
-                        {selectedProduct.variantsText.split(',').map((vari, vIdx) => (
-                          <option key={vIdx} value={vari.trim()}>{vari.trim()}</option>
-                        ))}
+                        {selectedProduct.variantsText.split(',').map((vari, vIdx) => {
+                          const vName = vari.trim();
+                          const vPrice = getVariantPrice(selectedProduct, vName);
+                          return (
+                            <option key={vIdx} value={vName}>
+                              {vName} {vPrice > 0 && vPrice !== selectedProduct.price ? `(${getStoreCurrency()}${vPrice.toLocaleString()})` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   ) : null}
@@ -2570,32 +2622,32 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             </div>
 
             {/* STICKY/FIXED FOOTER: This element remains fixed/sticky at the bottom of the modal container */}
-            <div className="p-6 pt-3 border-t border-gray-900 bg-gray-950 shrink-0 z-20">
-              <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div className="p-3.5 sm:p-6 sm:pt-3 border-t border-gray-900 bg-gray-950 shrink-0 z-20 w-full">
+              <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-4 items-center justify-between w-full">
                 {/* Quantity Controller */}
-                <div className="flex justify-between items-center bg-gray-900 p-3 rounded-xl border border-gray-850 w-full sm:w-auto sm:min-w-[180px]">
+                <div className="flex justify-between items-center bg-gray-900 px-3.5 py-2 sm:p-3 rounded-xl border border-gray-850 w-full sm:w-auto sm:min-w-[170px] shrink-0">
                   <span className="text-xs font-bold text-gray-400">Cantidad:</span>
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
                       onClick={() => setBuyQuantity(q => q > 1 ? q - 1 : 1)}
-                      className="p-1.5 bg-gray-950 border border-gray-800 rounded hover:bg-gray-800 transition text-gray-400 hover:text-white"
+                      className="p-1 sm:p-1.5 bg-gray-950 border border-gray-800 rounded hover:bg-gray-800 transition text-gray-400 hover:text-white cursor-pointer"
                     >
-                      <Minus className="w-3 h-3" />
+                      <Minus className="w-3.5 h-3.5" />
                     </button>
-                    <span className="text-sm font-black text-white font-mono w-4 text-center">{buyQuantity}</span>
+                    <span className="text-sm font-black text-white font-mono w-5 text-center">{buyQuantity}</span>
                     <button
                       type="button"
                       onClick={() => setBuyQuantity(q => q + 1)}
-                      className="p-1.5 bg-gray-950 border border-gray-800 rounded hover:bg-gray-800 transition text-gray-400 hover:text-white"
+                      className="p-1 sm:p-1.5 bg-gray-950 border border-gray-800 rounded hover:bg-gray-800 transition text-gray-400 hover:text-white cursor-pointer"
                     >
-                      <Plus className="w-3 h-3" />
+                      <Plus className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Add to Cart button */}
-                <div className="w-full sm:flex-1">
+                <div className="w-full sm:flex-1 min-w-0">
                   {isStoreClosedNow && (
                     <div className="bg-amber-500/10 border border-amber-500/30 p-2.5 rounded-xl mb-2.5 flex items-center gap-2 text-amber-300 text-[11px] font-semibold">
                       <Clock className="w-4 h-4 shrink-0 text-amber-400" />
@@ -2612,11 +2664,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <button
                     type="button"
                     onClick={handleAddProductToCart}
-                    className="w-full py-3.5 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.98]"
+                    className="w-full py-3 sm:py-3.5 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer shadow-lg active:scale-[0.98]"
                     style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
                   >
                     <ShoppingBag className="w-4 h-4 stroke-[3]" style={{ color: getContrastText(storeAccent) }} />
-                    Añadir al Carrito ({getStoreCurrency()}{Number((selectedProduct.price || 0) * buyQuantity).toLocaleString()})
+                    Añadir al Carrito ({getStoreCurrency()}{Number((currentModalUnitPrice || selectedProduct.price || 0) * buyQuantity).toLocaleString()})
                   </button>
                 </div>
               </div>

@@ -365,7 +365,7 @@ export default function FullScreenSearchModal({
                         </h3>
                         {product.allowsHalfAndHalf && product.flavorsText && (
                           <span className="shrink-0 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
-                            🍕 Mitad y Mitad
+                            {product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}
                           </span>
                         )}
                       </div>

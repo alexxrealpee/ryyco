@@ -1222,6 +1222,7 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
         category: data.category || 'General',
         stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : (parseInt(data.stock) || 0),
         variantsText: data.variantsText || '',
+        variantPrices: data.variantPrices || undefined,
         allowsHalfAndHalf: Boolean(data.allowsHalfAndHalf),
         flavorsText: data.flavorsText || '',
         allowSingleFlavor: data.allowSingleFlavor !== false,
@@ -1252,6 +1253,7 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
               category: lp.category || 'General',
               stock: typeof lp.stock === 'number' && !isNaN(lp.stock) ? lp.stock : (parseInt(lp.stock) || 0),
               variantsText: lp.variantsText || '',
+              variantPrices: lp.variantPrices || undefined,
               allowsHalfAndHalf: Boolean(lp.allowsHalfAndHalf),
               flavorsText: lp.flavorsText || '',
               allowSingleFlavor: lp.allowSingleFlavor !== false,
@@ -1512,6 +1514,7 @@ export function subscribeProducts(userId: string, callback: (products: ProductIt
         category: data.category || 'General',
         stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : (parseInt(data.stock) || 0),
         variantsText: data.variantsText || '',
+        variantPrices: data.variantPrices || undefined,
         allowsHalfAndHalf: Boolean(data.allowsHalfAndHalf),
         flavorsText: data.flavorsText || '',
         allowSingleFlavor: data.allowSingleFlavor !== false,
@@ -2562,38 +2565,58 @@ export function findStoreForProduct(
 
 // In-memory cache for products & stores to minimize Firestore reads
 let _cachedProductsData: { products: ProductItem[]; profiles: Record<string, UserProfile>; timestamp: number } | null = null;
-const PRODUCTS_CACHE_TTL_MS = 120 * 1000; // 2 minutes cache
+const PRODUCTS_CACHE_TTL_MS = 180 * 1000; // 3 minutes cache
 
 // Fetch all active products and profiles from Firestore and local cache
 export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = false): Promise<{ products: ProductItem[]; profiles: Record<string, UserProfile> }> {
   try {
     const now = Date.now();
+
+    // 0. Check in-memory cache first
     if (!forceRefresh && _cachedProductsData && (now - _cachedProductsData.timestamp < PRODUCTS_CACHE_TTL_MS) && _cachedProductsData.products.length > 0) {
       return { products: _cachedProductsData.products, profiles: _cachedProductsData.profiles };
     }
 
+    // 0.1 Check persistent localStorage cache for instant fast response
+    if (!forceRefresh && !_cachedProductsData) {
+      try {
+        const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
+        if (rawLocal) {
+          const parsed = JSON.parse(rawLocal);
+          if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
+            _cachedProductsData = parsed;
+            if (now - (parsed.timestamp || 0) < PRODUCTS_CACHE_TTL_MS) {
+              return { products: parsed.products, profiles: parsed.profiles || {} };
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
     const profilesMap: Record<string, UserProfile> = {};
 
-    // 1. Fetch profiles from Firestore
-    try {
-      const profilesSnapshot = await getDocs(collection(db, 'profiles'));
-      if (profilesSnapshot && !profilesSnapshot.empty) {
-        profilesSnapshot.forEach(docSnap => {
-          const data = docSnap.data() as UserProfile;
-          const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-          const profileObj: UserProfile = { 
-            ...data, 
-            uid: data.uid || docSnap.id,
-            suspended: isSuspended,
-            isClosed: isSuspended ? true : data.isClosed === true
-          };
-          profilesMap[docSnap.id] = profileObj;
-          if (profileObj.uid) profilesMap[profileObj.uid] = profileObj;
-          if (profileObj.username) profilesMap[profileObj.username.toLowerCase()] = profileObj;
-        });
-      }
-    } catch (e) {
-      console.warn("Could not fetch remote profiles snapshot:", e);
+    // 1. Concurrently fetch profiles & products from Firestore in parallel for maximum speed
+    const [profilesSnapshotResult, productsSnapshotResult] = await Promise.allSettled([
+      getDocs(collection(db, 'profiles')),
+      getDocs(collection(db, 'products'))
+    ]);
+
+    if (profilesSnapshotResult.status === 'fulfilled' && profilesSnapshotResult.value && !profilesSnapshotResult.value.empty) {
+      profilesSnapshotResult.value.forEach(docSnap => {
+        const data = docSnap.data() as UserProfile;
+        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+        const profileObj: UserProfile = { 
+          ...data, 
+          uid: data.uid || docSnap.id,
+          suspended: isSuspended,
+          isClosed: isSuspended ? true : data.isClosed === true
+        };
+        profilesMap[docSnap.id] = profileObj;
+        if (profileObj.uid) profilesMap[profileObj.uid] = profileObj;
+        if (profileObj.username) profilesMap[profileObj.username.toLowerCase()] = profileObj;
+      });
+    } else if (profilesSnapshotResult.status === 'rejected') {
+      console.warn("Could not fetch remote profiles snapshot:", profilesSnapshotResult.reason);
     }
 
     // 2. Fetch local storage cached profiles
@@ -2643,30 +2666,27 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
       }
     } catch (e) {}
 
-    // 3. Fetch products directly from Firestore products collection
+    // 3. Process products from Firestore products collection
     const products: ProductItem[] = [];
-    try {
-      const productsSnapshot = await getDocs(collection(db, 'products'));
-      if (productsSnapshot && !productsSnapshot.empty) {
-        productsSnapshot.forEach(docSnap => {
-          const data = docSnap.data() as ProductItem;
-          if (data && data.active !== false) {
-            const cleanId = (data.id && String(data.id).trim() && String(data.id).trim() !== 'undefined' && String(data.id).trim() !== 'null')
-              ? String(data.id).trim()
-              : docSnap.id;
-            products.push({
-              ...data,
-              id: cleanId,
-              name: data.name || 'Producto sin nombre',
-              price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
-              stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
-              active: true
-            });
-          }
-        });
-      }
-    } catch (e) {
-      console.warn("Could not fetch remote products snapshot:", e);
+    if (productsSnapshotResult.status === 'fulfilled' && productsSnapshotResult.value && !productsSnapshotResult.value.empty) {
+      productsSnapshotResult.value.forEach(docSnap => {
+        const data = docSnap.data() as ProductItem;
+        if (data && data.active !== false) {
+          const cleanId = (data.id && String(data.id).trim() && String(data.id).trim() !== 'undefined' && String(data.id).trim() !== 'null')
+            ? String(data.id).trim()
+            : docSnap.id;
+          products.push({
+            ...data,
+            id: cleanId,
+            name: data.name || 'Producto sin nombre',
+            price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+            stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+            active: true
+          });
+        }
+      });
+    } else if (productsSnapshotResult.status === 'rejected') {
+      console.warn("Could not fetch remote products snapshot:", productsSnapshotResult.reason);
     }
 
     // 4. Merge locally stored products
@@ -2723,9 +2743,17 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
       timestamp: Date.now()
     };
 
+    try {
+      localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
+    } catch (e) {}
+
     return { products: activeProductsForClients, profiles: profilesMap };
   } catch (e) {
     console.error("Error fetching all active products and profiles:", e);
+    // Return stale cache if available upon unexpected error
+    if (_cachedProductsData && _cachedProductsData.products.length > 0) {
+      return { products: _cachedProductsData.products, profiles: _cachedProductsData.profiles };
+    }
     return { products: [], profiles: {} };
   }
 }

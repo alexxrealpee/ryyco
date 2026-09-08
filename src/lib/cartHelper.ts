@@ -5,6 +5,7 @@
 
 import { ProductItem } from '../types';
 import { safeGetItem, safeSetItem } from './safeStorage';
+import { getVariantPrice } from './variantHelper';
 
 export interface GeneralCartItem {
   id: string; // Composite ID: `${productId}_${variant || 'none'}`
@@ -129,6 +130,7 @@ function compactCartItem(item: GeneralCartItem): GeneralCartItem {
       imageURL: cleanImage,
       category: p.category,
       variantsText: p.variantsText,
+      variantPrices: p.variantPrices,
       allowsHalfAndHalf: p.allowsHalfAndHalf,
       flavorsText: p.flavorsText,
       allowSingleFlavor: p.allowSingleFlavor,
@@ -212,6 +214,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
   const actualQty = Math.max(1, Number(quantity) || 1);
   const actualVariant = variant?.trim() || (product.variantsText ? product.variantsText.split(',')[0].trim() : undefined);
   const cartItemId = getCartItemId(validId, actualVariant);
+  const variantSpecificPrice = getVariantPrice(product, actualVariant);
   
   // 4. Match existing item ONLY when IDs strictly match AND variants match
   const existingIndex = currentCart.findIndex(item => {
@@ -246,6 +249,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
           product: {
             ...item.product,
             ...product,
+            price: variantSpecificPrice > 0 ? variantSpecificPrice : item.product.price,
             id: validId,
             storeName: product.storeName || item.product.storeName,
             storeUsername: product.storeUsername || item.product.storeUsername,
@@ -264,6 +268,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
         id: cartItemId,
         product: {
           ...product,
+          price: variantSpecificPrice > 0 ? variantSpecificPrice : product.price,
           id: validId
         },
         selectedVariant: actualVariant,
@@ -322,7 +327,7 @@ export function clearAllCart(): GeneralCartItem[] {
 export function calculateCartSummary(cart: GeneralCartItem[], deliveryFeePerStore: number = 7000) {
   const totalItems = cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const subtotal = cart.reduce((sum, item) => {
-    const p = typeof item.product.price === 'number' && !isNaN(item.product.price) ? item.product.price : parseFloat(item.product.price as any) || 0;
+    const p = getVariantPrice(item.product, item.selectedVariant);
     const q = Number(item.quantity) || 1;
     return sum + (p * q);
   }, 0);
