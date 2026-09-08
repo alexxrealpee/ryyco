@@ -34,6 +34,17 @@
   RewriteRule ^ index.html [L]
 </IfModule>
 
+# Protect sensitive configuration files from direct HTTP access
+<FilesMatch "(^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op]|env)|keys.*\.php)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
 # Set correct MIME types for modern web assets
 <IfModule mod_mime.c>
   AddType application/javascript .js .mjs
