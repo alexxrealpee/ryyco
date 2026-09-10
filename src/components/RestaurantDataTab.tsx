@@ -864,9 +864,15 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
               <div className="space-y-3">
                 {/* DIRECCIÓN DEL NEGOCIO / PUNTO DE RECOGIDA */}
                 <div className="w-full min-w-0">
-                  <label className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block mb-1.5">
-                    DIRECCIÓN DEL NEGOCIO / PUNTO DE RECOGIDA
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[10px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Dirección del Negocio / Punto de Recogida</span>
+                    </label>
+                    <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 uppercase tracking-wider">
+                      Google Maps
+                    </span>
+                  </div>
                   <div className="flex gap-2 w-full min-w-0">
                     <input
                       type="text"
@@ -883,26 +889,32 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsMapPickerOpen(true)}
-                      className="h-11 px-3 sm:px-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98] shrink-0 cursor-pointer"
-                      title="Fijar en Mapa"
+                      className="h-11 px-3 sm:px-4 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-blue-500/20 hover:from-emerald-500/30 hover:to-blue-500/30 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98] shrink-0 cursor-pointer shadow-sm"
+                      title="Abrir selector interactivo de Google Maps"
                     >
                       <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <span>Fijar en Mapa</span>
+                      <span>Fijar en Google Maps</span>
                     </button>
                   </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mt-1 text-[9px] text-gray-500 font-semibold">
-                    <span>Fija el puntero en el mapa para la dirección exacta donde los domiciliarios recogerán.</span>
-                    {(profile.mapUrl || (profile.lat && profile.lng)) && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mt-1.5 text-[9px] text-gray-500 font-semibold">
+                    <span>Fija el marcador en Google Maps para que los domiciliarios y clientes encuentren la ubicación exacta.</span>
+                    {(profile.mapUrl || (profile.lat && profile.lng) || restaurantAddress) && (
                       <a
-                        href={profile.mapUrl || `https://www.google.com/maps?q=${profile.lat},${profile.lng}`}
+                        href={profile.mapUrl || (profile.lat && profile.lng ? `https://www.google.com/maps/search/?api=1&query=${profile.lat},${profile.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantAddress)}`)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-emerald-400 hover:underline flex items-center gap-1 font-bold text-[10px] shrink-0"
+                        className="text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 font-bold text-[10px] shrink-0"
                       >
                         <ExternalLink className="w-3 h-3" /> Ver en Google Maps
                       </a>
                     )}
                   </div>
+                  {profile.lat && profile.lng && (
+                    <div className="mt-1 flex items-center gap-1.5 text-[9px] text-emerald-400/90 font-mono">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      <span>Coordenadas fijadas: {profile.lat.toFixed(5)}, {profile.lng.toFixed(5)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

@@ -446,6 +446,80 @@ Formatos válidos para:
     }
   });
 
+  // Google Maps Platform Geocoding endpoint (handles forward and reverse geocoding with server-side API key proxy)
+  app.get('/api/maps/geocode', async (req, res) => {
+    const lat = req.query.lat as string | undefined;
+    const lng = req.query.lng as string | undefined;
+    const address = req.query.address as string | undefined;
+
+    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+
+    try {
+      if (mapsKey) {
+        let url = '';
+        if (lat && lng) {
+          url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=es&key=${mapsKey}`;
+        } else if (address) {
+          url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&language=es&key=${mapsKey}`;
+        }
+        if (url) {
+          const gRes = await fetch(url);
+          const gData = await gRes.json();
+          if (gData.status === 'OK' && gData.results && gData.results.length > 0) {
+            const first = gData.results[0];
+            return res.json({
+              status: 'OK',
+              formatted_address: first.formatted_address,
+              lat: first.geometry.location.lat,
+              lng: first.geometry.location.lng,
+              source: 'google'
+            });
+          }
+        }
+      }
+
+      // Safe fallback using Nominatim
+      if (lat && lng) {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+          { headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } }
+        );
+        if (nomRes.ok) {
+          const data = await nomRes.json();
+          return res.json({
+            status: 'OK',
+            formatted_address: data.display_name || '',
+            lat: parseFloat(lat),
+            lng: parseFloat(lng),
+            source: 'fallback'
+          });
+        }
+      } else if (address) {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+          { headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } }
+        );
+        if (nomRes.ok) {
+          const data = await nomRes.json();
+          if (Array.isArray(data) && data.length > 0) {
+            return res.json({
+              status: 'OK',
+              formatted_address: data[0].display_name,
+              lat: parseFloat(data[0].lat),
+              lng: parseFloat(data[0].lon),
+              source: 'fallback'
+            });
+          }
+        }
+      }
+
+      res.status(400).json({ error: 'Could not geocode location' });
+    } catch (err: any) {
+      console.warn('Geocoding error:', err);
+      res.status(500).json({ error: err.message || 'Geocoding request failed' });
+    }
+  });
+
   // Serve static files from public directory
   app.use(express.static(path.join(process.cwd(), 'public')));
 
