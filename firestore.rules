@@ -96,6 +96,19 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // Delivery Real-Time Tracking rules (Live Courier Geolocation)
+    // Cada domiciliario edita solo su propia ubicación para el pedido asignado
+    // Cada cliente consulta el seguimiento de su pedido directamente por su orderId
+    match /delivery_tracking/{orderId} {
+      allow read: if true;
+      allow create: if request.resource.data.driverId is string &&
+                      request.resource.data.orderId == orderId;
+      allow update: if request.resource.data.driverId is string &&
+                      (resource == null || resource.data.driverId == request.resource.data.driverId) &&
+                      request.resource.data.orderId == orderId;
+      allow delete: if isAdmin();
+    }
+
     // Global System Settings rules (Public read for delivery fees, write is admin-only)
     match /settings/{docId} {
       allow read: if true;

@@ -1,8 +1,12 @@
 # Hostinger / Apache Environment Variables
 <IfModule mod_env.c>
   PassEnv OPENAI_API_KEY
-  # Para configurar tu clave OpenAI en Hostinger desde este archivo, descomenta la siguiente línea y pega tu clave:
+  PassEnv GOOGLE_MAPS_API_KEY
+  PassEnv VITE_GOOGLE_MAPS_API_KEY
+  # Para configurar tus claves en Hostinger desde este archivo .htaccess, descomenta y pega tus claves:
   # SetEnv OPENAI_API_KEY "sk-proj-tu-clave-aqui"
+  # SetEnv GOOGLE_MAPS_API_KEY "AIzaSy-tu-clave-de-google-maps"
+  # SetEnv VITE_GOOGLE_MAPS_API_KEY "AIzaSy-tu-clave-de-google-maps"
 </IfModule>
 
 # Hostinger / Apache Single Page Application (SPA) Rewrite Rules
@@ -11,6 +15,11 @@
   RewriteBase /
 
   # 1. API Endpoints on Hostinger (PHP Backend Bridge)
+  RewriteRule ^api/maps/config/?$ api/maps-config.php [QSA,L]
+  RewriteRule ^api/maps/key/?$ api/maps-config.php [QSA,L]
+  RewriteRule ^api/maps-config\.php$ api/maps-config.php [QSA,L]
+  RewriteRule ^api/maps/geocode/?$ api/maps-geocode.php [QSA,L]
+  RewriteRule ^api/maps-geocode\.php$ api/maps-geocode.php [QSA,L]
   RewriteRule ^api/realtime/session/?$ api/realtime-session.php [QSA,L]
   RewriteRule ^api/realtime-session/?$ api/realtime-session.php [QSA,L]
   RewriteRule ^api/realtime/client_secrets/?$ api/realtime-session.php [QSA,L]

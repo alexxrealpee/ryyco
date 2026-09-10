@@ -34,6 +34,8 @@ import {
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 import CustomerPortalModal from './CustomerPortalModal';
+import { MapLocationPickerModal } from './MapLocationPickerModal';
+import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { 
   UserProfile, 
   LinkItem, 
@@ -98,9 +100,11 @@ import {
   Sparkles,
   Star,
   Ticket,
-  Scale
+  Scale,
+  Navigation
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
+import DeliveryTrackingModal from './DeliveryTrackingModal';
 import { QRCodeCanvas } from 'qrcode.react';
 import StoreQRModal from './StoreQRModal';
 import RestaurantProfileSkeleton from './RestaurantProfileSkeleton';
@@ -200,6 +204,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [phoneError, setPhoneError] = useState('');
   const [custEmail, setCustEmail] = useState('');
   const [custAddress, setCustAddress] = useState('');
+  const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(null);
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup' | 'table'>('delivery');
   const [tableNumber, setTableNumber] = useState('');
@@ -246,6 +252,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   // Checkout outcome modal state
   const [submittedOrder, setSubmittedOrder] = useState<OrderItem | null>(null);
+  const [directTrackingOrder, setDirectTrackingOrder] = useState<OrderItem | null>(null);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const orderSubmittingRef = useRef(false);
 
@@ -790,6 +797,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       customerPhone: formattedPhone,
       customerEmail: custEmail.trim() || undefined,
       customerAddress: finalAddress,
+      customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
+      customerLat: custCoordinates?.lat,
+      customerLng: custCoordinates?.lng,
       items: cart.map(item => ({
         productId: item.product.id,
         name: item.product.name,
@@ -887,6 +897,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     if (order.customerEmail) msg += `✉️ Email: ${order.customerEmail}\n`;
     if (!isTable) {
       msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
+      if (!isPickup && order.customerMapUrl) {
+        msg += `🗺️ Google Maps: ${order.customerMapUrl}\n`;
+      }
     }
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : isTable ? 'Efectivo / En Mesa / Datáfono' : 'Pago contra Entrega'}*\n`;
@@ -3094,20 +3107,30 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             )}
 
-            {deliveryType !== 'table' && (
+            {deliveryType === 'pickup' && (
               <div>
-                <label className="text-[10px] font-black uppercase text-gray-500 block mb-1">
-                  {deliveryType === 'pickup' ? 'Detalles o Nota de Recogida (Opcional)' : 'Dirección Completa de Despacho *'}
+                <label className="text-[10px] font-black uppercase text-gray-500 flex items-center gap-1.5 mb-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Detalles o Nota de Recogida (Opcional)</span>
                 </label>
                 <input 
                   type="text" 
-                  required={deliveryType === 'delivery'}
                   value={custAddress}
                   onChange={(e) => setCustAddress(e.target.value)}
-                  placeholder={deliveryType === 'pickup' ? 'Ej: Paso a las 2:00 PM o voy en carro placa XYZ' : 'Ej: Calle 45 #23-12, Apto 402, Bogotá'}
-                  className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
+                  placeholder="Ej: Paso a las 2:00 PM o voy en carro placa XYZ"
+                  className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-bold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
                 />
               </div>
+            )}
+
+            {deliveryType === 'delivery' && (
+              <DeliveryAddressCard
+                address={custAddress}
+                onChangeAddress={setCustAddress}
+                coordinates={custCoordinates}
+                onOpenMapPicker={() => setIsMapPickerOpen(true)}
+                required={true}
+              />
             )}
 
             <div>
@@ -3472,6 +3495,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <button
                 type="button"
                 onClick={() => {
+                  setDirectTrackingOrder(submittedOrder);
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white text-xs font-black rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#E63946]/25 active:scale-95"
+              >
+                <Navigation className="w-4 h-4 text-white animate-pulse" />
+                Seguir mi pedido en tiempo real (GPS)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
                   const phone = submittedOrder.customerPhone;
                   setSubmittedOrder(null);
                   if (phone) {
@@ -3656,6 +3690,32 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           setIsBuyerTermsModalOpen(false);
         }}
         showAcceptButton={true}
+      />
+
+      {/* GOOGLE MAPS LOCATION PICKER MODAL FOR DELIVERY ADDRESS */}
+      <MapLocationPickerModal
+        isOpen={isMapPickerOpen}
+        onClose={() => setIsMapPickerOpen(false)}
+        initialLat={custCoordinates?.lat}
+        initialLng={custCoordinates?.lng}
+        initialAddress={custAddress}
+        onConfirm={(data) => {
+          if (data.address && data.address.trim()) {
+            setCustAddress(data.address.trim());
+          }
+          setCustCoordinates({
+            lat: data.lat,
+            lng: data.lng,
+            mapUrl: data.mapUrl
+          });
+        }}
+      />
+
+      {/* REAL-TIME DELIVERY GEOLOCATION TRACKING MODAL */}
+      <DeliveryTrackingModal
+        isOpen={!!directTrackingOrder}
+        onClose={() => setDirectTrackingOrder(null)}
+        order={directTrackingOrder}
       />
 
     </div>

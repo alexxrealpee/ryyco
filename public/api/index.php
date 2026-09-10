@@ -23,6 +23,16 @@ if (strpos($uri, 'tts') !== false) {
     exit;
 }
 
+if (strpos($uri, 'maps/config') !== false || strpos($uri, 'maps-config') !== false || strpos($uri, 'maps/key') !== false) {
+    require __DIR__ . '/maps-config.php';
+    exit;
+}
+
+if (strpos($uri, 'maps/geocode') !== false || strpos($uri, 'maps-geocode') !== false || strpos($uri, 'geocode') !== false) {
+    require __DIR__ . '/maps-geocode.php';
+    exit;
+}
+
 if (strpos($uri, 'health') !== false) {
     require __DIR__ . '/health.php';
     exit;

@@ -209,6 +209,9 @@ export interface OrderItem {
   customerPhone: string;
   customerEmail?: string;
   customerAddress: string;
+  customerMapUrl?: string;
+  customerLat?: number;
+  customerLng?: number;
   paymentMethod: 'whatsapp' | 'transfer' | 'delivery_cash' | 'cod';
   status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   items: CartItem[];
@@ -239,6 +242,34 @@ export interface OrderItem {
   referralCommissionAmount?: number;
   referralCommissionStatus?: 'pending' | 'paid' | 'cancelled';
   referralCommissionPaidAt?: string;
+}
+
+export interface DeliveryTrackingData {
+  orderId: string;
+  orderNumber: number;
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  driverPhoto?: string;
+  vehicleType?: string;
+  vehiclePlate?: string;
+  lat: number;
+  lng: number;
+  heading?: number;
+  speed?: number;
+  accuracy?: number;
+  status: 'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered' | 'cancelled';
+  storeName?: string;
+  storeAddress?: string;
+  storeLat?: number;
+  storeLng?: number;
+  customerName?: string;
+  customerAddress?: string;
+  customerPhone?: string;
+  customerLat?: number;
+  customerLng?: number;
+  isTrackingActive: boolean;
+  updatedAt: string;
 }
 
 export interface CreatorReferral {

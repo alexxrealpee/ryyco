@@ -43,6 +43,8 @@ import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
+import { MapLocationPickerModal } from './MapLocationPickerModal';
+import { DeliveryAddressCard } from './DeliveryAddressCard';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
@@ -341,6 +343,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [custPhone, setCustPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [custAddress, setCustAddress] = useState('');
+  const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(null);
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
@@ -901,6 +905,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           customerName: custName.trim(),
           customerPhone: formattedPhone,
           customerAddress: finalAddress,
+          customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
+          customerLat: custCoordinates?.lat,
+          customerLng: custCoordinates?.lng,
           items: sellerCart.map(item => ({
             productId: item.product.id,
             name: item.product.name,
@@ -960,6 +967,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
     msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
+    if (!isPickup && order.customerMapUrl) {
+      msg += `🗺️ Google Maps: ${order.customerMapUrl}\n`;
+    }
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : 'Pago contra Entrega'}*\n\n`;
     msg += `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!\n\n`;
@@ -2563,20 +2573,32 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   </div>
                 )}
 
-                {/* Dispatch Address */}
-                <div>
-                  <label className="text-[10px] font-black uppercase text-[#A9B2C3] block mb-1">
-                    {deliveryType === 'pickup' ? 'Detalles o Nota de Recogida (Opcional)' : 'Dirección Completa de Despacho *'}
-                  </label>
-                  <input 
-                    type="text" 
-                    required={deliveryType === 'delivery'}
-                    value={custAddress}
-                    onChange={(e) => setCustAddress(e.target.value)}
-                    placeholder={deliveryType === 'pickup' ? 'Ej: Paso a las 2:00 PM o voy en carro placa XYZ' : 'Ej: Calle 45 #23-12, Apto 402, Bogotá'}
-                    className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20"
+                {/* Dispatch Address with Google Maps */}
+                {deliveryType === 'pickup' && (
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-[#A9B2C3] flex items-center gap-1.5 mb-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-[#E63946]" />
+                      <span>Detalles o Nota de Recogida (Opcional)</span>
+                    </label>
+                    <input 
+                      type="text" 
+                      value={custAddress}
+                      onChange={(e) => setCustAddress(e.target.value)}
+                      placeholder="Ej: Paso a las 2:00 PM o voy en carro placa XYZ"
+                      className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 text-xs font-bold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20"
+                    />
+                  </div>
+                )}
+
+                {deliveryType === 'delivery' && (
+                  <DeliveryAddressCard
+                    address={custAddress}
+                    onChangeAddress={setCustAddress}
+                    coordinates={custCoordinates}
+                    onOpenMapPicker={() => setIsMapPickerOpen(true)}
+                    required={true}
                   />
-                </div>
+                )}
 
                 {/* Special Notes */}
                 <div>
@@ -2810,6 +2832,25 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         onOpenCart={() => {
           setIsFullScreenSearchOpen(false);
           setIsCartOpen(true);
+        }}
+      />
+
+      {/* GOOGLE MAPS LOCATION PICKER MODAL FOR DELIVERY ADDRESS */}
+      <MapLocationPickerModal
+        isOpen={isMapPickerOpen}
+        onClose={() => setIsMapPickerOpen(false)}
+        initialLat={custCoordinates?.lat}
+        initialLng={custCoordinates?.lng}
+        initialAddress={custAddress}
+        onConfirm={(data) => {
+          if (data.address && data.address.trim()) {
+            setCustAddress(data.address.trim());
+          }
+          setCustCoordinates({
+            lat: data.lat,
+            lng: data.lng,
+            mapUrl: data.mapUrl
+          });
         }}
       />
 

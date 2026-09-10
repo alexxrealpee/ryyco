@@ -11,9 +11,12 @@ import {
   Star, Copy, Check, Utensils, Award, RefreshCw, 
   MessageCircle, ShieldCheck, Ticket, LogOut, ArrowRight,
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
-  Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale
+  Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale,
+  Navigation
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
+import { MapLocationPickerModal } from './MapLocationPickerModal';
+import DeliveryTrackingModal from './DeliveryTrackingModal';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
   CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory 
@@ -96,6 +99,7 @@ export default function CustomerPortalModal({
 }: CustomerPortalModalProps) {
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>(initialTab);
@@ -107,6 +111,7 @@ export default function CustomerPortalModal({
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [nameInput, setNameInput] = useState('');
   const [addressInput, setAddressInput] = useState('');
+  const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [emailInput, setEmailInput] = useState('');
   const [notesInput, setNotesInput] = useState('');
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -865,17 +870,28 @@ export default function CustomerPortalModal({
                     <label className="text-[11px] font-black uppercase text-gray-400 block mb-1">
                       Dirección de Despacho Habitual (Opcional)
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                        <MapPin className="w-4 h-4 text-[#E63946]" />
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                          <MapPin className="w-4 h-4 text-[#E63946]" />
+                        </div>
+                        <input
+                          type="text"
+                          value={addressInput}
+                          onChange={(e) => setAddressInput(e.target.value)}
+                          placeholder="Ej: Calle 45 #23-12, Apto 302"
+                          className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                        />
                       </div>
-                      <input
-                        type="text"
-                        value={addressInput}
-                        onChange={(e) => setAddressInput(e.target.value)}
-                        placeholder="Ej: Calle 45 #23-12, Apto 302"
-                        className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsMapPickerOpen(true)}
+                        className="h-11 px-3 bg-[#E63946]/10 hover:bg-[#E63946]/20 border border-[#E63946]/40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+                        title="Fijar con Google Maps"
+                      >
+                        <MapPin className="w-4 h-4 text-[#E63946]" />
+                        <span className="hidden sm:inline">Google Maps</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1217,13 +1233,22 @@ export default function CustomerPortalModal({
                             </div>
 
                             {/* Actions */}
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setTrackingOrder(order)}
+                                className="flex-1 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
+                              >
+                                <Navigation className="w-3.5 h-3.5 text-white animate-pulse" />
+                                <span>Seguir mi pedido</span>
+                              </button>
+
                               {order.storePhone && (
                                 <a
                                   href={`https://wa.me/57${order.storePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola, consulto sobre el estado de mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="flex-1 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800"
+                                  className="flex-1 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800"
                                 >
                                   <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                                   Chat con la Tienda
@@ -1747,18 +1772,29 @@ export default function CustomerPortalModal({
                 <label className="text-[11px] font-black uppercase text-gray-300 block mb-1">
                   Dirección de Domicilio / Entrega <span className="text-[#E63946]">*</span>
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                    <MapPin className="w-4 h-4 text-[#E63946]" />
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                      <MapPin className="w-4 h-4 text-[#E63946]" />
+                    </div>
+                    <input
+                      type="text"
+                      required
+                      value={addressInput}
+                      onChange={(e) => setAddressInput(e.target.value)}
+                      placeholder="Ej: Calle 45 #23-12, Apto 302, Barrio Modelo"
+                      className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                    />
                   </div>
-                  <input
-                    type="text"
-                    required
-                    value={addressInput}
-                    onChange={(e) => setAddressInput(e.target.value)}
-                    placeholder="Ej: Calle 45 #23-12, Apto 302, Barrio Modelo"
-                    className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsMapPickerOpen(true)}
+                    className="h-11 px-3 bg-[#E63946]/10 hover:bg-[#E63946]/20 border border-[#E63946]/40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+                    title="Fijar con Google Maps"
+                  >
+                    <MapPin className="w-4 h-4 text-[#E63946]" />
+                    <span className="hidden sm:inline">Google Maps</span>
+                  </button>
                 </div>
               </div>
 
@@ -1931,6 +1967,23 @@ export default function CustomerPortalModal({
           }
         }}
         showAcceptButton={true}
+      />
+
+      {/* GOOGLE MAPS LOCATION PICKER MODAL */}
+      <MapLocationPickerModal
+        isOpen={isMapPickerOpen}
+        onClose={() => setIsMapPickerOpen(false)}
+        initialAddress={addressInput}
+        onConfirm={(data) => {
+          setAddressInput(data.address || addressInput);
+        }}
+      />
+
+      {/* REAL-TIME DELIVERY TRACKING MODAL */}
+      <DeliveryTrackingModal
+        isOpen={!!trackingOrder}
+        onClose={() => setTrackingOrder(null)}
+        order={trackingOrder}
       />
 
     </div>

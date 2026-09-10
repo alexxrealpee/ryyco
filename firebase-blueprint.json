@@ -206,6 +206,39 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "productId", "userId", "recommended", "createdAt"]
+    },
+    "DeliveryTracking": {
+      "title": "DeliveryTracking",
+      "description": "Real-time delivery driver geolocation coordinates and active route updates",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string" },
+        "orderNumber": { "type": "number" },
+        "driverId": { "type": "string" },
+        "driverName": { "type": "string" },
+        "driverPhone": { "type": "string" },
+        "driverPhoto": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "vehiclePlate": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "heading": { "type": "number" },
+        "speed": { "type": "number" },
+        "accuracy": { "type": "number" },
+        "status": { "type": "string", "enum": ["accepted", "to_store", "at_store", "picked_up", "to_client", "at_destination", "delivered", "cancelled"] },
+        "storeName": { "type": "string" },
+        "storeAddress": { "type": "string" },
+        "storeLat": { "type": "number" },
+        "storeLng": { "type": "number" },
+        "customerName": { "type": "string" },
+        "customerAddress": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerLat": { "type": "number" },
+        "customerLng": { "type": "number" },
+        "isTrackingActive": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "driverId", "lat", "lng", "status", "updatedAt"]
     }
   },
   "firestore": {
@@ -240,6 +273,10 @@
     "/driver_ratings/{ratingId}": {
       "schema": "DriverRating",
       "description": "Ratings left by customers for delivery drivers"
+    },
+    "/delivery_tracking/{orderId}": {
+      "schema": "DeliveryTracking",
+      "description": "Live GPS coordinates and status for courier deliveries"
     },
     "/creators/{creatorId}": {
       "schema": "CreatorReferral",

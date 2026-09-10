@@ -446,8 +446,29 @@ Formatos válidos para:
     }
   });
 
-  // Google Maps Platform Geocoding endpoint (handles forward and reverse geocoding with server-side API key proxy)
-  app.get('/api/maps/geocode', async (req, res) => {
+  // Google Maps Platform Configuration endpoint (provides client config and API key for interactive maps)
+  app.get(['/api/maps/config', '/api/maps-config.php'], (req, res) => {
+    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+    res.json({
+      status: 'ok',
+      configured: Boolean(mapsKey),
+      apiKey: mapsKey,
+      provider: mapsKey ? 'google' : 'leaflet',
+      source: 'node_server'
+    });
+  });
+
+  app.get('/api/maps/key', (req, res) => {
+    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+    res.json({
+      status: 'ok',
+      configured: Boolean(mapsKey),
+      apiKey: mapsKey
+    });
+  });
+
+  // Google Maps Platform Geocoding endpoint (handles forward and reverse geocoding with server-side API key proxy and fast fallbacks)
+  app.get(['/api/maps/geocode', '/api/maps-geocode.php'], async (req, res) => {
     const lat = req.query.lat as string | undefined;
     const lng = req.query.lng as string | undefined;
     const address = req.query.address as string | undefined;
@@ -455,6 +476,7 @@ Formatos válidos para:
     const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
 
     try {
+      // 1. Try Google Maps API if key is present (with 2s timeout)
       if (mapsKey) {
         let url = '';
         if (lat && lng) {
@@ -463,54 +485,170 @@ Formatos válidos para:
           url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&language=es&key=${mapsKey}`;
         }
         if (url) {
-          const gRes = await fetch(url);
-          const gData = await gRes.json();
-          if (gData.status === 'OK' && gData.results && gData.results.length > 0) {
-            const first = gData.results[0];
-            return res.json({
-              status: 'OK',
-              formatted_address: first.formatted_address,
-              lat: first.geometry.location.lat,
-              lng: first.geometry.location.lng,
-              source: 'google'
-            });
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const gRes = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            const gData = await gRes.json();
+            if (gData.status === 'OK' && gData.results && gData.results.length > 0) {
+              const first = gData.results[0];
+              return res.json({
+                status: 'OK',
+                formatted_address: first.formatted_address,
+                lat: first.geometry.location.lat,
+                lng: first.geometry.location.lng,
+                source: 'google'
+              });
+            }
+          } catch (gErr) {
+            console.warn('Google geocode skipped or timed out:', gErr);
           }
         }
       }
 
-      // Safe fallback using Nominatim
+      // 2. High-speed Photon reverse / forward geocoder (< 300ms)
       if (lat && lng) {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-          { headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } }
-        );
-        if (nomRes.ok) {
-          const data = await nomRes.json();
-          return res.json({
-            status: 'OK',
-            formatted_address: data.display_name || '',
-            lat: parseFloat(lat),
-            lng: parseFloat(lng),
-            source: 'fallback'
-          });
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            if (pData?.features && pData.features.length > 0) {
+              const p = pData.features[0].properties;
+              const street = p.street ? (p.housenumber ? `${p.street} #${p.housenumber}` : p.street) : '';
+              const parts = [
+                p.name && p.name !== p.street ? p.name : null,
+                street || null,
+                p.locality || p.district || p.suburb || null,
+                p.city || p.county || null,
+                p.state || null
+              ].filter(Boolean);
+
+              const formatted = parts.length > 0 ? parts.join(', ') : '';
+              if (formatted) {
+                return res.json({
+                  status: 'OK',
+                  formatted_address: formatted,
+                  lat: parseFloat(lat),
+                  lng: parseFloat(lng),
+                  source: 'photon'
+                });
+              }
+            }
+          }
+        } catch (pErr) {
+          console.warn('Photon reverse geocode skipped:', pErr);
         }
       } else if (address) {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
-          { headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } }
-        );
-        if (nomRes.ok) {
-          const data = await nomRes.json();
-          if (Array.isArray(data) && data.length > 0) {
-            return res.json({
-              status: 'OK',
-              formatted_address: data[0].display_name,
-              lat: parseFloat(data[0].lat),
-              lng: parseFloat(data[0].lon),
-              source: 'fallback'
-            });
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2000);
+          const pRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            if (pData?.features && pData.features.length > 0) {
+              const f = pData.features[0];
+              const p = f.properties;
+              const coords = f.geometry?.coordinates;
+              const street = p.street ? (p.housenumber ? `${p.street} #${p.housenumber}` : p.street) : '';
+              const parts = [
+                p.name && p.name !== p.street ? p.name : null,
+                street || null,
+                p.locality || p.district || p.suburb || null,
+                p.city || p.county || null,
+                p.state || null
+              ].filter(Boolean);
+
+              return res.json({
+                status: 'OK',
+                formatted_address: parts.join(', ') || address,
+                lat: coords ? coords[1] : 0,
+                lng: coords ? coords[0] : 0,
+                source: 'photon'
+              });
+            }
           }
+        } catch (pErr) {
+          console.warn('Photon forward search skipped:', pErr);
         }
+      }
+
+      // 3. Fallback to OpenStreetMap Nominatim
+      if (lat && lng) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+          const nomRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+            { 
+              signal: controller.signal,
+              headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
+            }
+          );
+          clearTimeout(timeoutId);
+          if (nomRes.ok) {
+            const data = await nomRes.json();
+            if (data?.display_name) {
+              return res.json({
+                status: 'OK',
+                formatted_address: data.display_name,
+                lat: parseFloat(lat),
+                lng: parseFloat(lng),
+                source: 'nominatim'
+              });
+            }
+          }
+        } catch (nomErr) {
+          console.warn('Nominatim reverse geocode skipped:', nomErr);
+        }
+
+        // Guaranteed fallback if all services fail: human-readable coordinates
+        return res.json({
+          status: 'OK',
+          formatted_address: `Ubicación GPS (${parseFloat(lat).toFixed(5)}, ${parseFloat(lng).toFixed(5)})`,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          source: 'coords'
+        });
+      } else if (address) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+          const nomRes = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+            { 
+              signal: controller.signal,
+              headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
+            }
+          );
+          clearTimeout(timeoutId);
+          if (nomRes.ok) {
+            const data = await nomRes.json();
+            if (Array.isArray(data) && data.length > 0) {
+              return res.json({
+                status: 'OK',
+                formatted_address: data[0].display_name,
+                lat: parseFloat(data[0].lat),
+                lng: parseFloat(data[0].lon),
+                source: 'nominatim'
+              });
+            }
+          }
+        } catch (nomErr) {
+          console.warn('Nominatim search skipped:', nomErr);
+        }
+
+        return res.json({
+          status: 'OK',
+          formatted_address: address,
+          lat: null,
+          lng: null,
+          source: 'manual'
+        });
       }
 
       res.status(400).json({ error: 'Could not geocode location' });

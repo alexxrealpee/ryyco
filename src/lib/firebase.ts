@@ -42,7 +42,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData } from '../types';
 import { safeSetItem } from './safeStorage';
 
 // Concrete public config from firebase-applet-config.json
@@ -4966,6 +4966,86 @@ export function subscribeProductRecommendations(
   }, (err) => {
     console.warn("Real-time product recommendations listener warning:", err);
   });
+}
+
+/* ==========================================================================
+   REAL-TIME DELIVERY GEOLOCATION TRACKING MODULE
+   ========================================================================== */
+
+/**
+ * Update the courier's live location and telemetry in Firestore.
+ * Optimizes writes with merge so only changed coordinates are synchronized.
+ */
+export async function updateDeliveryLiveLocation(
+  trackingData: Partial<DeliveryTrackingData> & { orderId: string; driverId: string }
+): Promise<void> {
+  try {
+    const docRef = doc(db, 'delivery_tracking', trackingData.orderId);
+    const dataToSave = {
+      ...trackingData,
+      updatedAt: new Date().toISOString(),
+      isTrackingActive: trackingData.isTrackingActive !== undefined ? trackingData.isTrackingActive : true
+    };
+    await setDoc(docRef, dataToSave, { merge: true });
+  } catch (err) {
+    console.warn("Error updating delivery live location in Firestore:", err);
+  }
+}
+
+/**
+ * Listen in real-time to a specific order's delivery courier tracking.
+ * Unsubscribes cleanly when caller terminates.
+ */
+export function listenToDeliveryTracking(
+  orderId: string,
+  onUpdate: (data: DeliveryTrackingData | null) => void
+): () => void {
+  if (!orderId) {
+    onUpdate(null);
+    return () => {};
+  }
+  const docRef = doc(db, 'delivery_tracking', orderId);
+  return onSnapshot(docRef, (docSnap) => {
+    if (docSnap.exists()) {
+      onUpdate({ ...docSnap.data(), orderId: docSnap.id } as DeliveryTrackingData);
+    } else {
+      onUpdate(null);
+    }
+  }, (err) => {
+    console.warn(`Real-time delivery tracking listener error for order #${orderId}:`, err);
+  });
+}
+
+/**
+ * Stop live tracking for an order when marked delivered or cancelled.
+ */
+export async function stopDeliveryTracking(orderId: string): Promise<void> {
+  try {
+    const docRef = doc(db, 'delivery_tracking', orderId);
+    await updateDoc(docRef, {
+      isTrackingActive: false,
+      status: 'delivered',
+      updatedAt: new Date().toISOString()
+    });
+  } catch (err) {
+    // If doc doesn't exist yet or already finished, safely ignore
+  }
+}
+
+/**
+ * Get one-shot delivery tracking snapshot
+ */
+export async function getDeliveryTracking(orderId: string): Promise<DeliveryTrackingData | null> {
+  try {
+    const docRef = doc(db, 'delivery_tracking', orderId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return { ...snap.data(), orderId: snap.id } as DeliveryTrackingData;
+    }
+  } catch (err) {
+    console.warn("Error fetching delivery tracking snapshot:", err);
+  }
+  return null;
 }
 
 

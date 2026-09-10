@@ -50,6 +50,8 @@ import {
   listenToSystemSettings
 } from '../lib/firebase';
 import { DriverProfile, OrderItem, VehicleType, DriverRating } from '../types';
+import { useDriverLiveTracking } from '../hooks/useDriverLiveTracking';
+import DeliveryTrackingModal from './DeliveryTrackingModal';
 
 interface DriverPortalProps {
   onNavigateHome: () => void;
@@ -72,6 +74,19 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [isAvailable, setIsAvailable] = useState<boolean>(false);
   const [availableOrders, setAvailableOrders] = useState<OrderItem[]>([]);
   const [activeDelivery, setActiveDelivery] = useState<OrderItem | null>(null);
+  const [trackingPreviewOpen, setTrackingPreviewOpen] = useState<boolean>(false);
+
+  // Real-time GPS Geolocation Tracking Engine for Domiciliario
+  const {
+    isTracking: isGpsTracking,
+    lastUpdate: lastGpsUpdate,
+    error: gpsError,
+    currentCoords,
+    manualForceSync
+  } = useDriverLiveTracking({
+    activeDelivery,
+    driver
+  });
 
   // Incoming Order Modal Alert Popup
   const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<OrderItem | null>(null);
@@ -327,6 +342,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         status: computedStatus
       };
       setActiveDelivery(updated);
+
+      // Force instant GPS telemetry refresh with new status
+      manualForceSync();
 
       if (nextStep === 'delivered') {
         // Delivery completed!
@@ -762,6 +780,49 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           );
                         })}
                       </div>
+                    </div>
+
+                    {/* Real-time GPS Telemetry & Transmission status */}
+                    <div className="bg-[#090B12] border border-[#232B3A] p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                          isGpsTracking 
+                            ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400' 
+                            : 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
+                        }`}>
+                          <Navigation className={`w-4 h-4 ${isGpsTracking ? 'animate-pulse text-emerald-400' : ''}`} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-white">
+                              {isGpsTracking ? 'GPS en Vivo Transmitiendo al Cliente' : 'Transmisión GPS Pausada'}
+                            </span>
+                            <span className={`w-2 h-2 rounded-full ${isGpsTracking ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
+                          </div>
+                          <p className="text-[11px] text-[#A9B2C3]">
+                            {gpsError ? (
+                              <span className="text-red-400">{gpsError}</span>
+                            ) : lastGpsUpdate ? (
+                              <span>
+                                Actualizado hace {Math.max(0, Math.floor((Date.now() - lastGpsUpdate.getTime()) / 1000))}s
+                                {currentCoords?.speed ? ` • ~${currentCoords.speed} km/h` : ''}
+                                {' • Cada 3-6s / movimiento'}
+                              </span>
+                            ) : (
+                              'Conectando con satélites GPS...'
+                            )}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setTrackingPreviewOpen(true)}
+                        className="px-3 py-1.5 bg-[#161F30] hover:bg-[#202B40] text-gray-200 hover:text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-[#2B384E] cursor-pointer"
+                      >
+                        <Bike className="w-3.5 h-3.5 text-[#E63946]" />
+                        <span>Ver Mapa del Cliente</span>
+                      </button>
                     </div>
 
                     {/* Locations & Contact Info */}
@@ -1380,6 +1441,15 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             </div>
           </div>
         </div>
+      )}
+
+      {/* Customer Tracking Live Map Preview Modal */}
+      {activeDelivery && (
+        <DeliveryTrackingModal
+          isOpen={trackingPreviewOpen}
+          onClose={() => setTrackingPreviewOpen(false)}
+          order={activeDelivery}
+        />
       )}
     </div>
   );

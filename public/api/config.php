@@ -8,6 +8,9 @@ ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
 // 1. Direct configuration file for Hostinger users (keys.php or keys.local.php)
+$envOpenAIKey = '';
+$envGoogleMapsKey = '';
+
 $keyFiles = [
     __DIR__ . '/keys.php',
     __DIR__ . '/keys.local.php',
@@ -16,9 +19,11 @@ $keyFiles = [
 foreach ($keyFiles as $kf) {
     if (file_exists($kf) && is_readable($kf)) {
         @include_once $kf;
-        if (defined('RYYCO_HOSTINGER_OPENAI_KEY') && !empty(RYYCO_HOSTINGER_OPENAI_KEY)) {
+        if (defined('RYYCO_HOSTINGER_OPENAI_KEY') && !empty(RYYCO_HOSTINGER_OPENAI_KEY) && empty($envOpenAIKey)) {
             $envOpenAIKey = trim(RYYCO_HOSTINGER_OPENAI_KEY);
-            break;
+        }
+        if (defined('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY') && !empty(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY) && empty($envGoogleMapsKey)) {
+            $envGoogleMapsKey = trim(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY);
         }
     }
 }
@@ -40,8 +45,34 @@ if (!$envOpenAIKey && function_exists('apache_getenv')) {
     $envOpenAIKey = apache_getenv('OPENAI_API_KEY');
 }
 
+// 2b. Load Google Maps API Key from environment
+if (!$envGoogleMapsKey) {
+    $envGoogleMapsKey = getenv('GOOGLE_MAPS_API_KEY') ?: getenv('VITE_GOOGLE_MAPS_API_KEY');
+}
+if (!$envGoogleMapsKey && isset($_SERVER['GOOGLE_MAPS_API_KEY'])) {
+    $envGoogleMapsKey = $_SERVER['GOOGLE_MAPS_API_KEY'];
+}
+if (!$envGoogleMapsKey && isset($_SERVER['VITE_GOOGLE_MAPS_API_KEY'])) {
+    $envGoogleMapsKey = $_SERVER['VITE_GOOGLE_MAPS_API_KEY'];
+}
+if (!$envGoogleMapsKey && isset($_SERVER['REDIRECT_GOOGLE_MAPS_API_KEY'])) {
+    $envGoogleMapsKey = $_SERVER['REDIRECT_GOOGLE_MAPS_API_KEY'];
+}
+if (!$envGoogleMapsKey && isset($_SERVER['REDIRECT_VITE_GOOGLE_MAPS_API_KEY'])) {
+    $envGoogleMapsKey = $_SERVER['REDIRECT_VITE_GOOGLE_MAPS_API_KEY'];
+}
+if (!$envGoogleMapsKey && isset($_ENV['GOOGLE_MAPS_API_KEY'])) {
+    $envGoogleMapsKey = $_ENV['GOOGLE_MAPS_API_KEY'];
+}
+if (!$envGoogleMapsKey && isset($_ENV['VITE_GOOGLE_MAPS_API_KEY'])) {
+    $envGoogleMapsKey = $_ENV['VITE_GOOGLE_MAPS_API_KEY'];
+}
+if (!$envGoogleMapsKey && function_exists('apache_getenv')) {
+    $envGoogleMapsKey = apache_getenv('GOOGLE_MAPS_API_KEY') ?: apache_getenv('VITE_GOOGLE_MAPS_API_KEY');
+}
+
 // Optionally load from a local uncommitted .env file on Hostinger
-if (!$envOpenAIKey) {
+if (!$envOpenAIKey || !$envGoogleMapsKey) {
     $potentialPaths = array_filter([
         __DIR__ . '/../../.env',
         __DIR__ . '/../.env',
@@ -58,12 +89,19 @@ if (!$envOpenAIKey) {
                 foreach ($lines as $line) {
                     $trimmed = trim($line);
                     if (strpos($trimmed, '#') === 0) continue;
-                    if (strpos($trimmed, 'OPENAI_API_KEY=') === 0) {
+                    if (!$envOpenAIKey && strpos($trimmed, 'OPENAI_API_KEY=') === 0) {
                         $val = trim(substr($trimmed, strlen('OPENAI_API_KEY=')));
                         $val = trim($val, '"\'');
                         if (!empty($val)) {
                             $envOpenAIKey = $val;
-                            break 2;
+                        }
+                    }
+                    if (!$envGoogleMapsKey && (strpos($trimmed, 'GOOGLE_MAPS_API_KEY=') === 0 || strpos($trimmed, 'VITE_GOOGLE_MAPS_API_KEY=') === 0)) {
+                        $prefix = strpos($trimmed, 'GOOGLE_MAPS_API_KEY=') === 0 ? 'GOOGLE_MAPS_API_KEY=' : 'VITE_GOOGLE_MAPS_API_KEY=';
+                        $val = trim(substr($trimmed, strlen($prefix)));
+                        $val = trim($val, '"\'');
+                        if (!empty($val)) {
+                            $envGoogleMapsKey = $val;
                         }
                     }
                 }
@@ -73,6 +111,7 @@ if (!$envOpenAIKey) {
 }
 
 define('RYYCO_OPENAI_API_KEY', $envOpenAIKey ?: '');
+define('RYYCO_GOOGLE_MAPS_API_KEY', $envGoogleMapsKey ?: '');
 
 // CORS helper
 function ryyco_apply_cors() {
