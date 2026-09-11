@@ -10,6 +10,10 @@
 require_once __DIR__ . '/config.php';
 ryyco_apply_cors();
 
+if (ob_get_length()) {
+    ob_clean();
+}
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=300'); // Cache for 5 minutes
 

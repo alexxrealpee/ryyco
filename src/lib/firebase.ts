@@ -2467,6 +2467,7 @@ export function checkIsStoreClosed(profile?: {
   suspended?: boolean;
   subscriptionStatus?: string;
   subscriptionTrialExpires?: string;
+  subscriptionPaidUntil?: string;
   scheduleEnabled?: boolean;
   openTime?: string;
   closeTime?: string;
@@ -2475,7 +2476,7 @@ export function checkIsStoreClosed(profile?: {
 } | null): boolean {
   if (!profile) return false;
 
-  // 1. If store is suspended or subscription expired, it is ALWAYS closed for customers
+  // 1. If store is suspended or subscription explicitly expired, it is ALWAYS closed for customers
   if (
     profile.suspended === true || 
     profile.subscriptionStatus === 'suspended' || 
@@ -2484,19 +2485,31 @@ export function checkIsStoreClosed(profile?: {
     return true;
   }
 
-  // 2. If 7-day trial has expired without active subscription, it is ALWAYS closed
-  if (
-    profile.subscriptionTrialExpires &&
-    profile.subscriptionStatus !== 'active' &&
-    new Date(profile.subscriptionTrialExpires).getTime() < Date.now()
-  ) {
-    return true;
+  const now = Date.now();
+
+  // 2. Paid subscription: If user has a valid paid period in the future, they are NOT closed by subscription!
+  const hasValidPaidUntil = !!(
+    profile.subscriptionPaidUntil && 
+    !isNaN(new Date(profile.subscriptionPaidUntil).getTime()) && 
+    new Date(profile.subscriptionPaidUntil).getTime() >= now
+  );
+
+  // 3. If NOT covered by a valid paid period, check 7-day trial expiration
+  if (!hasValidPaidUntil) {
+    if (profile.subscriptionStatus !== 'active' && profile.subscriptionStatus !== 'under_review') {
+      if (profile.subscriptionTrialExpires) {
+        const trialExp = new Date(profile.subscriptionTrialExpires).getTime();
+        if (!isNaN(trialExp) && trialExp < now) {
+          return true;
+        }
+      }
+    }
   }
 
-  // 3. Manual override takes highest priority if explicitly set to true
+  // 4. Manual override takes highest priority if explicitly set to true
   if (profile.isClosed === true) return true;
 
-  // 4. Automated schedule calculation if enabled
+  // 5. Automated schedule calculation if enabled
   if (profile.scheduleEnabled === true) {
     try {
       const scheduleInfo = getStoreOperatingScheduleInfo(profile);
@@ -3010,11 +3023,34 @@ export function isSubscriptionExpiredOrSuspended(user?: {
     return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
   }
 
-  // 3. Check 7-day trial expiration
+  const now = Date.now();
+
+  // 3. Paid subscription takes highest priority over old trial date!
+  if (user.subscriptionPaidUntil) {
+    const expDate = new Date(user.subscriptionPaidUntil);
+    if (!isNaN(expDate.getTime())) {
+      if (expDate.getTime() >= now) {
+        return { 
+          isExpired: false, 
+          isSuspended: false, 
+          effectiveStatus: user.subscriptionStatus === 'under_review' ? 'under_review' : 'active' 
+        };
+      } else {
+        return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
+      }
+    }
+  }
+
+  // 4. If status is under_review without paid date yet, it is under_review (not expired!)
+  if (user.subscriptionStatus === 'under_review') {
+    return { isExpired: false, isSuspended: false, effectiveStatus: 'under_review' };
+  }
+
+  // 5. Check 7-day trial expiration
   if (user.subscriptionTrialExpires && user.subscriptionStatus !== 'active') {
     const trialExpDate = new Date(user.subscriptionTrialExpires);
     if (!isNaN(trialExpDate.getTime())) {
-      if (trialExpDate.getTime() < Date.now()) {
+      if (trialExpDate.getTime() < now) {
         return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
       } else {
         return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
@@ -3022,38 +3058,25 @@ export function isSubscriptionExpiredOrSuspended(user?: {
     }
   }
 
-  // 4. Explicit trial status
+  // 6. Explicit trial status
   if (user.subscriptionStatus === 'trial') {
     return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
   }
 
-  // 5. User with no paid expiration date
-  if (!user.subscriptionPaidUntil) {
-    if (user.subscriptionStatus === 'active') {
-      return { isExpired: false, isSuspended: false, effectiveStatus: 'active' };
-    }
-    if (user.subscriptionStatus === 'pending_payment') {
-      return { isExpired: false, isSuspended: false, effectiveStatus: 'pending_payment' };
-    }
-    if (user.createdAt) {
-      const createdTime = new Date(user.createdAt).getTime();
-      if (!isNaN(createdTime) && (Date.now() - createdTime) <= 7 * 24 * 60 * 60 * 1000) {
-        return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
-      }
-    }
-    return { isExpired: false, isSuspended: false, effectiveStatus: user.subscriptionStatus || 'trial' };
+  // 7. User with no paid expiration date
+  if (user.subscriptionStatus === 'active') {
+    return { isExpired: false, isSuspended: false, effectiveStatus: 'active' };
   }
-
-  const expDate = new Date(user.subscriptionPaidUntil);
-  if (isNaN(expDate.getTime())) {
-    return { isExpired: false, isSuspended: false, effectiveStatus: user.subscriptionStatus || 'active' };
+  if (user.subscriptionStatus === 'pending_payment') {
+    return { isExpired: false, isSuspended: false, effectiveStatus: 'pending_payment' };
   }
-
-  if (expDate.getTime() < Date.now()) {
-    return { isExpired: true, isSuspended: false, effectiveStatus: 'expired' };
+  if (user.createdAt) {
+    const createdTime = new Date(user.createdAt).getTime();
+    if (!isNaN(createdTime) && (now - createdTime) <= 7 * 24 * 60 * 60 * 1000) {
+      return { isExpired: false, isSuspended: false, effectiveStatus: 'trial' };
+    }
   }
-
-  return { isExpired: false, isSuspended: false, effectiveStatus: user.subscriptionStatus || 'active' };
+  return { isExpired: false, isSuspended: false, effectiveStatus: user.subscriptionStatus || 'trial' };
 }
 
 export interface PaginatedSubscriptionsResult {

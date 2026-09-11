@@ -89,6 +89,7 @@ import {
   fetchMySubscriptionPayments,
   saveSubscriptionPayment,
   checkIsStoreClosed,
+  isSubscriptionExpiredOrSuspended,
   getStoreOperatingScheduleInfo,
   getPlanProductLimit,
   checkIsAdminEmail,
@@ -678,6 +679,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     if (updatingStatus) return;
     if (profile.suspended || profile.subscriptionStatus === 'suspended') {
       alert("⚠️ Tu tienda se encuentra suspendida. Realiza el pago o ponte en contacto con soporte para reactivar tu cuenta y abrir tu tienda.");
+      return;
+    }
+    const subStatus = isSubscriptionExpiredOrSuspended(profile);
+    if (subStatus.isExpired) {
+      alert("⚠️ Tu suscripción o período de prueba ha vencido. Renueva o activa tu plan para reabrir tu tienda y seguir vendiendo.");
       return;
     }
     setUpdatingStatus(true);
@@ -1643,12 +1649,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                     {/* Control de Apertura/Cierre de Tienda */}
                     {(() => {
                       const isSuspended = profile.suspended || profile.subscriptionStatus === 'suspended';
+                      const subStatus = isSubscriptionExpiredOrSuspended(profile);
+                      const isExpired = !isSuspended && subStatus.isExpired;
                       const isClosedNow = checkIsStoreClosed(profile);
                       const scheduleInfo = getStoreOperatingScheduleInfo(profile);
                       return (
                         <div className={`p-6 rounded-3xl border transition-all duration-300 ${
                           isSuspended
                             ? 'bg-amber-950/20 border-amber-500/30 shadow-amber-500/5 shadow-xl'
+                            : isExpired
+                            ? 'bg-rose-950/20 border-rose-500/30 shadow-rose-500/5 shadow-xl'
                             : isClosedNow 
                             ? 'bg-red-950/20 border-red-500/20 shadow-red-550/5 shadow-xl' 
                             : 'bg-emerald-950/10 border-emerald-500/10 shadow-emerald-550/5 shadow-xl'
@@ -1657,12 +1667,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <div className="space-y-1.5">
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className={`w-3 h-3 rounded-full ${
-                                  isSuspended ? 'bg-amber-500 animate-ping' : isClosedNow ? 'bg-red-500 animate-ping' : 'bg-emerald-500 animate-pulse'
+                                  isSuspended ? 'bg-amber-500 animate-ping' : isExpired ? 'bg-rose-500 animate-ping' : isClosedNow ? 'bg-red-500 animate-ping' : 'bg-emerald-500 animate-pulse'
                                 }`} />
                                 <h3 className="text-base font-extrabold text-white tracking-tight">
-                                  Tu tienda se encuentra: {isSuspended ? '🔴 CERRADA (SUSPENDIDA)' : isClosedNow ? '🔴 CERRADA' : '🟢 ABIERTA'}
+                                  Tu tienda se encuentra: {
+                                    isSuspended 
+                                      ? '🔴 CERRADA (SUSPENDIDA)' 
+                                      : isExpired
+                                      ? '🔴 CERRADA (PLAN VENCIDO)'
+                                      : isClosedNow 
+                                      ? '🔴 CERRADA' 
+                                      : '🟢 ABIERTA'
+                                  }
                                 </h3>
-                                {profile.scheduleEnabled && scheduleInfo.scheduleActive && !isSuspended && (
+                                {profile.scheduleEnabled && scheduleInfo.scheduleActive && !isSuspended && !isExpired && (
                                   <span className="text-xs font-bold text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1 ml-2">
                                     <Clock className="w-3 h-3 text-indigo-400" />
                                     {scheduleInfo.isOpenToday ? `Hoy: ${scheduleInfo.todayScheduleText}` : `Hoy (${scheduleInfo.dayLabel}): Cerrado`}
@@ -1672,10 +1690,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <p className="text-xs text-gray-400 max-w-2xl font-semibold leading-relaxed">
                                 {isSuspended
                                   ? 'Tu tienda está suspendida y tus productos se encuentran ocultos en la plataforma. Realiza el pago para reactivarla y reanudar tus ventas.'
+                                  : isExpired
+                                  ? 'Tu suscripción o período de prueba ha vencido. Renueva o activa tu plan para abrir tu tienda y seguir vendiendo.'
                                   : profile.isClosed 
                                   ? 'Tienda cerrada manualmente. Tus clientes verán un letrero animado de "Tienda Cerrada".'
+                                  : (profile.scheduleEnabled && scheduleInfo.scheduleActive && scheduleInfo.isClosedBySchedule)
+                                  ? `Tienda cerrada automáticamente según el horario asignado (${scheduleInfo.isOpenToday ? `Hoy: ${scheduleInfo.todayScheduleText}` : `Hoy (${scheduleInfo.dayLabel}): Cerrado`}). Se abrirá automáticamente dentro del horario.`
                                   : isClosedNow
-                                  ? `Tienda cerrada automáticamente según el horario asignado (${scheduleInfo.isOpenToday ? `Hoy: ${scheduleInfo.todayScheduleText}` : `Hoy ${scheduleInfo.dayLabel}: Cerrado`}). Se abrirá automáticamente dentro del horario.`
+                                  ? 'Tienda cerrada. Haz clic en "Abrir Tienda" para recibir pedidos.'
                                   : 'Tus clientes pueden navegar por tu tienda, añadir productos al carrito y enviarte sus pedidos directo a tu WhatsApp.'
                                 }
                               </p>

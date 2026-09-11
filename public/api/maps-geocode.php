@@ -12,6 +12,10 @@
 require_once __DIR__ . '/config.php';
 ryyco_apply_cors();
 
+if (ob_get_length()) {
+    ob_clean();
+}
+
 header('Content-Type: application/json; charset=utf-8');
 
 $lat = isset($_GET['lat']) ? trim($_GET['lat']) : null;

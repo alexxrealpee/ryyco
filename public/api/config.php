@@ -3,6 +3,12 @@
  * Ryyco API Configuration for Hostinger / Apache Environments
  */
 
+// Start output buffering immediately so any stray whitespace, BOM or syntax mistakes
+// from included files (e.g. k?php) do not prematurely output before JSON headers
+if (!ob_get_level()) {
+    ob_start();
+}
+
 // Report errors cleanly in JSON format
 ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
@@ -24,6 +30,31 @@ foreach ($keyFiles as $kf) {
         }
         if (defined('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY') && !empty(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY) && empty($envGoogleMapsKey)) {
             $envGoogleMapsKey = trim(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY);
+        }
+
+        // Resilient Fallback: If include failed due to a typo like "k?php" or BOM, parse keys directly
+        if (empty($envGoogleMapsKey) || empty($envOpenAIKey)) {
+            $fileRaw = @file_get_contents($kf);
+            if (!empty($fileRaw)) {
+                if (empty($envGoogleMapsKey)) {
+                    // Match define('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY', '...')
+                    if (preg_match("/RYYCO_HOSTINGER_GOOGLE_MAPS_KEY['\"]\s*,\s*['\"]([^'\"]+)['\"]/i", $fileRaw, $m)) {
+                        $candidate = trim($m[1]);
+                        if (!empty($candidate)) $envGoogleMapsKey = $candidate;
+                    } elseif (preg_match("/['\"](AIzaSy[A-Za-z0-9_-]{33})['\"]/", $fileRaw, $m)) {
+                        $envGoogleMapsKey = trim($m[1]);
+                    }
+                }
+                if (empty($envOpenAIKey)) {
+                    // Match define('RYYCO_HOSTINGER_OPENAI_KEY', '...')
+                    if (preg_match("/RYYCO_HOSTINGER_OPENAI_KEY['\"]\s*,\s*['\"]([^'\"]+)['\"]/i", $fileRaw, $m)) {
+                        $candidate = trim($m[1]);
+                        if (!empty($candidate)) $envOpenAIKey = $candidate;
+                    } elseif (preg_match("/['\"](sk-[A-Za-z0-9_-]{20,})['\"]/", $fileRaw, $m)) {
+                        $envOpenAIKey = trim($m[1]);
+                    }
+                }
+            }
         }
     }
 }

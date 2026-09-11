@@ -804,6 +804,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       } else if (newStatus === 'active') {
         updates.isClosed = false;
         updates.suspended = false;
+      } else if (newStatus === 'under_review') {
+        updates.isClosed = false;
+        updates.suspended = false;
       } else if (newStatus === 'pending_payment') {
         updates.isClosed = false;
         updates.suspended = false;
@@ -859,6 +862,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         statusDescription = '🔴 ESTADO EXPIRADO (Suscripción Vencida - Tienda Cerrada)';
       } else if (newStatus === 'active') {
         statusDescription = '🟢 ESTADO ACTIVO (Tienda Abierta y Operativa)';
+      } else if (newStatus === 'under_review') {
+        statusDescription = '🟡 EN REVISIÓN (Comprobante pendiente de validación)';
       } else {
         statusDescription = '🟡 PENDIENTE DE PAGO';
       }
@@ -942,8 +947,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const handleToggleStoreClosedStatus = async (user: AdminUser) => {
     const nextClosedState = !user.isClosed;
     try {
-      await setDoc(doc(db, 'profiles', user.uid), { isClosed: nextClosedState }, { merge: true });
-      setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, isClosed: nextClosedState } : u));
+      const updates: Record<string, any> = { isClosed: nextClosedState };
+      if (!nextClosedState && user.scheduleEnabled) {
+        updates.scheduleEnabled = false;
+      }
+      await setDoc(doc(db, 'profiles', user.uid), updates, { merge: true });
+      setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, ...updates } : u));
       setNotif(`La tienda ${user.storeName || '@' + user.username} ahora se encuentra: ${nextClosedState ? '🔴 CERRADA' : '🟢 ABIERTA'}`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err) {
@@ -2095,10 +2104,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                     ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
                                     : effectiveStatus === 'trial'
                                     ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-black'
+                                    : effectiveStatus === 'under_review'
+                                    ? 'bg-amber-500/30 text-amber-300 border-amber-500/40 font-black'
                                     : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                 }`}
                               >
                                 <option value="active" className="bg-gray-950 text-emerald-400">🟢 ACTIVA</option>
+                                <option value="under_review" className="bg-gray-950 text-amber-300 font-bold">🟡 EN REVISIÓN</option>
                                 <option value="trial" className="bg-gray-950 text-cyan-300 font-bold">🆓 ESTADO GRATUITO</option>
                                 <option value="suspended" className="bg-gray-950 text-amber-300">⚠️ SUSPENDIDA</option>
                                 <option value="expired" className="bg-gray-950 text-red-400">🔴 EXPIRADA</option>
@@ -2337,10 +2349,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
                                       : effectiveStatus === 'trial'
                                       ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 font-black'
+                                      : effectiveStatus === 'under_review'
+                                      ? 'bg-amber-500/30 text-amber-300 border-amber-500/40 font-black'
                                       : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                   }`}
                                 >
                                   <option value="active" className="bg-gray-950 text-emerald-400">🟢 ACTIVA</option>
+                                  <option value="under_review" className="bg-gray-950 text-amber-300 font-bold">🟡 EN REVISIÓN</option>
                                   <option value="trial" className="bg-gray-950 text-cyan-300 font-bold">🆓 ESTADO GRATUITO</option>
                                   <option value="suspended" className="bg-gray-950 text-amber-300">⚠️ SUSPENDIDA</option>
                                   <option value="expired" className="bg-gray-950 text-red-400">🔴 EXPIRADA</option>

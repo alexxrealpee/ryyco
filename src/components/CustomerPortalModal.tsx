@@ -591,9 +591,6 @@ export default function CustomerPortalModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-white tracking-tight">Club de Clientes Ryyco</h3>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-[#E63946]/20 text-[#E63946] border border-[#E63946]/30 uppercase tracking-wider">
-                  MODO CLIENTE
-                </span>
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-400/10 text-amber-400 border border-amber-400/20 uppercase tracking-wider">VIP</span>
               </div>
               <p className="text-[11px] text-gray-400 font-medium">
@@ -611,10 +608,10 @@ export default function CustomerPortalModal({
             )}
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-xl bg-gray-900 border border-gray-800 hover:border-gray-700 hover:bg-gray-800 flex items-center justify-center text-gray-400 hover:text-white transition cursor-pointer"
+              className="w-9 h-9 rounded-xl bg-[#E63946] hover:bg-red-600 border border-red-500/60 flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 transition cursor-pointer active:scale-95"
               title="Cerrar"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
         </div>
