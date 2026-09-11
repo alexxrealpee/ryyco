@@ -9,6 +9,12 @@ import {
   X, 
   Search, 
   Loader2, 
+  ExternalLink, 
+  Compass, 
+  Layers, 
+  Globe,
+  Key,
+  HelpCircle,
   Plus,
   Minus
 } from 'lucide-react';
@@ -26,63 +32,25 @@ interface MapLocationPickerModalProps {
 const DEFAULT_LAT = 0.83028;
 const DEFAULT_LNG = -77.64444;
 
-// Smooth map panning helper for Google Maps
-const MapController: React.FC<{ lat: number; lng: number }> = ({ lat, lng }) => {
+// Smooth map panning helper and instance capture for Google Maps
+const MapController: React.FC<{ 
+  lat: number; 
+  lng: number;
+  onMapReady?: (map: google.maps.Map | null) => void;
+}> = ({ lat, lng, onMapReady }) => {
   const map = useMap();
+  useEffect(() => {
+    if (map && onMapReady) {
+      onMapReady(map);
+    }
+  }, [map, onMapReady]);
+
   useEffect(() => {
     if (map && !isNaN(lat) && !isNaN(lng)) {
       map.panTo({ lat, lng });
     }
   }, [map, lat, lng]);
   return null;
-};
-
-// Mobile and touch friendly zoom controls (+ and -) for Google Maps
-const MapTouchZoomControls: React.FC = () => {
-  const map = useMap();
-
-  const handleZoomIn = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (map) {
-      const zoom = map.getZoom() ?? 15;
-      map.setZoom(zoom + 1);
-    }
-  };
-
-  const handleZoomOut = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (map) {
-      const zoom = map.getZoom() ?? 15;
-      map.setZoom(Math.max(1, zoom - 1));
-    }
-  };
-
-  return (
-    <div className="absolute right-3.5 bottom-4 z-[500] flex flex-col bg-gray-950/95 border border-white/20 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-md">
-      <button
-        type="button"
-        onClick={handleZoomIn}
-        onTouchEnd={handleZoomIn}
-        className="w-12 h-12 flex items-center justify-center text-white hover:bg-gray-800 active:bg-gray-700 border-b border-white/10 transition cursor-pointer select-none"
-        title="Acercar mapa (Zoom in / Sum)"
-        aria-label="Acercar mapa"
-      >
-        <Plus className="w-5 h-5 stroke-[2.5]" />
-      </button>
-      <button
-        type="button"
-        onClick={handleZoomOut}
-        onTouchEnd={handleZoomOut}
-        className="w-12 h-12 flex items-center justify-center text-white hover:bg-gray-800 active:bg-gray-700 transition cursor-pointer select-none"
-        title="Alejar mapa (Zoom out)"
-        aria-label="Alejar mapa"
-      >
-        <Minus className="w-5 h-5 stroke-[2.5]" />
-      </button>
-    </div>
-  );
 };
 
 export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
@@ -95,6 +63,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 }) => {
   const [lat, setLat] = useState<number>(initialLat && !isNaN(initialLat) ? initialLat : DEFAULT_LAT);
   const [lng, setLng] = useState<number>(initialLng && !isNaN(initialLng) ? initialLng : DEFAULT_LNG);
+  const [latInput, setLatInput] = useState<string>(String(initialLat && !isNaN(initialLat) ? initialLat : DEFAULT_LAT));
+  const [lngInput, setLngInput] = useState<string>(String(initialLng && !isNaN(initialLng) ? initialLng : DEFAULT_LNG));
   const [address, setAddress] = useState<string>(initialAddress);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
@@ -102,7 +72,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
 
-  // Google Maps API key state
+  // Google Maps API key state (reads from env, localStorage or fetches from /api/maps/config on Hostinger)
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(() => {
     const envKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || '';
     if (envKey) return envKey;
@@ -114,16 +84,51 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   });
 
   const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>('google');
+  const [showKeyConfigModal, setShowKeyConfigModal] = useState<boolean>(false);
+  const [manualKeyInput, setManualKeyInput] = useState<string>('');
+  const [keySavedNotice, setKeySavedNotice] = useState<string>('');
+
+  // Map instance reference for mobile zoom in / zoom out controls
+  const googleMapRef = useRef<google.maps.Map | null>(null);
+  const [googleMapInstance, setGoogleMapInstance] = useState<google.maps.Map | null>(null);
+
+  const handleMapReady = useCallback((map: google.maps.Map | null) => {
+    googleMapRef.current = map;
+    setGoogleMapInstance(map);
+  }, []);
+
+  // Zoom In handler (works on both Google Maps and Leaflet on mobile & desktop)
+  const handleZoomIn = useCallback(() => {
+    const gMap = googleMapRef.current || googleMapInstance;
+    if (gMap) {
+      const current = gMap.getZoom() ?? 15;
+      gMap.setZoom(Math.min(current + 1, 21));
+    } else if (leafletMapRef.current) {
+      leafletMapRef.current.zoomIn();
+    }
+  }, [googleMapInstance]);
+
+  // Zoom Out handler (works on both Google Maps and Leaflet on mobile & desktop)
+  const handleZoomOut = useCallback(() => {
+    const gMap = googleMapRef.current || googleMapInstance;
+    if (gMap) {
+      const current = gMap.getZoom() ?? 15;
+      gMap.setZoom(Math.max(current - 1, 3));
+    } else if (leafletMapRef.current) {
+      leafletMapRef.current.zoomOut();
+    }
+  }, [googleMapInstance]);
 
   // Track latest geocode request to prevent out-of-order race conditions
   const latestGeocodeIdRef = useRef<number>(0);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   // Leaflet backup map references
   const leafletContainerRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
   const leafletMarkerRef = useRef<L.Marker | null>(null);
 
-  // Fetch API key dynamically from server if not baked into client build
+  // Fetch API key dynamically from Hostinger API bridge or Node server if not baked into client build
   useEffect(() => {
     if (isOpen && !googleMapsApiKey) {
       const loadKeyFromApi = async () => {
@@ -157,6 +162,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       const validLng = initialLng && !isNaN(initialLng) ? initialLng : DEFAULT_LNG;
       setLat(validLat);
       setLng(validLng);
+      setLatInput(String(validLat.toFixed(6)));
+      setLngInput(String(validLng.toFixed(6)));
       setAddress(initialAddress || '');
       setSearchQuery('');
       setIsGeocoding(false);
@@ -188,7 +195,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       }
     }
 
-    // 2. Call server-side proxy endpoint
+    // 2. Call server-side / Hostinger proxy endpoint (handles Google + Photon + Nominatim)
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -297,6 +304,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           const newLng = Number(data.lng);
           setLat(newLat);
           setLng(newLng);
+          setLatInput(String(newLat.toFixed(6)));
+          setLngInput(String(newLng.toFixed(6)));
           if (data.formatted_address) {
             setAddress(data.formatted_address);
           } else {
@@ -322,13 +331,17 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           const newLng = parseFloat(nomData[0].lon);
           setLat(newLat);
           setLng(newLng);
+          setLatInput(String(newLat.toFixed(6)));
+          setLngInput(String(newLng.toFixed(6)));
           setAddress(nomData[0].display_name);
           if (leafletMapRef.current && leafletMarkerRef.current) {
             leafletMapRef.current.setView([newLat, newLng], 16);
             leafletMarkerRef.current.setLatLng([newLat, newLng]);
           }
         } else {
+          // If search service couldn't resolve coords, still retain the text for the user
           setAddress(query);
+          alert('No encontramos coordenadas exactas para esa búsqueda, pero guardamos la dirección ingresada.');
         }
       }
     } catch (err) {
@@ -343,6 +356,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const handleLocationUpdate = useCallback((newLat: number, newLng: number) => {
     setLat(newLat);
     setLng(newLng);
+    setLatInput(String(newLat.toFixed(6)));
+    setLngInput(String(newLng.toFixed(6)));
     reverseGeocode(newLat, newLng);
 
     if (leafletMapRef.current && leafletMarkerRef.current) {
@@ -447,12 +462,22 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     );
   };
 
+  // Manual Coordinates application
+  const handleApplyCustomCoords = (latStr: string, lngStr: string) => {
+    const pLat = parseFloat(latStr);
+    const pLng = parseFloat(lngStr);
+    if (!isNaN(pLat) && !isNaN(pLng)) {
+      handleLocationUpdate(pLat, pLng);
+    }
+  };
+
   // Final Confirmation with guaranteed address resolution
   const handleConfirm = async () => {
     setIsConfirming(true);
     let finalAddress = (address || '').trim();
 
     try {
+      // If address is currently empty or geocoding was still resolving in the background
       if (!finalAddress || isGeocoding) {
         const resolved = await fetchReverseGeocode(lat, lng);
         if (resolved && resolved.trim()) {
@@ -466,6 +491,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       setIsConfirming(false);
     }
 
+    // Safety fallback if still empty
     if (!finalAddress) {
       if (searchQuery.trim()) {
         finalAddress = searchQuery.trim();
@@ -484,13 +510,33 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     onClose();
   };
 
+  // Save manual API key
+  const handleSaveManualKey = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanKey = manualKeyInput.trim();
+    if (!cleanKey) return;
+    setGoogleMapsApiKey(cleanKey);
+    try {
+      localStorage.setItem('ryyco_google_maps_key', cleanKey);
+    } catch (_) {}
+    setMapProvider('google');
+    setKeySavedNotice('¡Clave guardada con éxito! Activando Google Maps...');
+    setTimeout(() => {
+      setKeySavedNotice('');
+      setShowKeyConfigModal(false);
+    }, 1200);
+  };
+
   if (!isOpen) return null;
+
+  const googleMapsWebUrl = `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
+  const googleDirectionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat.toFixed(6)},${lng.toFixed(6)}`;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
       <div className="bg-gray-950 border border-gray-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
         
-        {/* Modal Header - SOLO UBICACIÓN */}
+        {/* Modal Header */}
         <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/70 backdrop-blur-sm">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[#E63946] to-[#F4B400] flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 shrink-0">
@@ -498,7 +544,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider">
-                Ubicación en Google Maps
+                Ubicación
               </h3>
               <p className="text-[11px] text-gray-400">
                 Arrastra el marcador rojo o toca en el mapa para fijar tu dirección
@@ -506,18 +552,39 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             </div>
           </div>
           
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
           
+          {/* Notice when on Hostinger without Google Maps API Key */}
+          {!googleMapsApiKey && (
+            <div className="p-3 bg-blue-950/40 border border-blue-800/60 rounded-2xl flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-blue-200">
+                <HelpCircle className="w-4 h-4 text-blue-400 shrink-0" />
+                <span className="text-[11px]">
+                  Mapa activo con OpenStreetMap. Para usar Google Maps oficial en Hostinger, configura tu clave en <code className="bg-blue-900/60 px-1.5 py-0.5 rounded text-blue-300 font-mono text-[10px]">api/keys.php</code>.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKeyConfigModal(true)}
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold shrink-0 transition"
+              >
+                Configurar Clave
+              </button>
+            </div>
+          )}
+
           {/* Search Bar on Google Maps */}
           <form onSubmit={handleSearchAddress} className="flex gap-2">
             <div className="relative flex-1 min-w-0">
@@ -526,7 +593,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar calle, barrio o lugar (ej: Carrera 6 # 14-25, Ipiales)..."
+                placeholder="Buscar calle, barrio o lugar en Google Maps (ej: Carrera 6 # 14-25, Ipiales)..."
                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-[#E63946] pl-10 pr-4 rounded-xl text-xs font-semibold outline-none text-white focus:ring-2 focus:ring-[#E63946]/20 transition"
               />
             </div>
@@ -535,13 +602,13 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
               disabled={isSearching}
               className="h-11 px-4 bg-[#E63946] hover:bg-[#D62839] text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition active:scale-95 shrink-0 cursor-pointer disabled:opacity-50"
             >
-              {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Compass className="w-4 h-4" />}
               <span className="hidden sm:inline">Buscar</span>
             </button>
           </form>
 
-          {/* Action Row: Mi Ubicación Actual GPS */}
-          <div className="flex items-center justify-between gap-2">
+          {/* Action Row: GPS & Direct Google Maps Links */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <button
               type="button"
               onClick={handleUseCurrentLocation}
@@ -561,24 +628,46 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
               )}
             </button>
 
-            <span className="text-[11px] text-gray-400 hidden sm:inline">
-              Usa los botones <span className="text-white font-bold">+</span> y <span className="text-white font-bold">-</span> para acercar o alejar
-            </span>
+            <div className="flex items-center gap-2">
+              <a
+                href={googleMapsWebUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-9 px-3 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
+                title="Abrir este punto directamente en la app o web de Google Maps"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Abrir en Google Maps</span>
+                <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
+              </a>
+
+              <a
+                href={googleDirectionsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-9 px-3 bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition hidden sm:flex"
+                title="Cómo llegar con Google Maps Domicilios"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Ruta / Cómo llegar</span>
+              </a>
+            </div>
           </div>
 
-          {/* Interactive Map View with Functional Mobile Zoom (+ / -) */}
-          <div className="relative rounded-2xl border border-gray-800 overflow-hidden bg-gray-900 h-[360px] sm:h-[400px] shadow-inner">
+          {/* Interactive Map View */}
+          <div className="relative rounded-2xl border border-gray-800 overflow-hidden bg-gray-900 h-[340px] shadow-inner touch-manipulation">
             
             {mapProvider === 'google' && googleMapsApiKey ? (
               <APIProvider apiKey={googleMapsApiKey} libraries={['marker', 'places']}>
                 <Map
                   mapId="DEMO_MAP_ID"
                   defaultCenter={{ lat, lng }}
-                  center={{ lat, lng }}
                   defaultZoom={15}
                   gestureHandling="greedy"
-                  zoomControl={true}
                   disableDefaultUI={false}
+                  zoomControl={true}
+                  scrollwheel={true}
+                  disableDoubleClickZoom={false}
                   internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
                   style={{ width: '100%', height: '100%' }}
                   onClick={(e) => {
@@ -591,7 +680,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                     }
                   }}
                 >
-                  <MapController lat={lat} lng={lng} />
+                  <MapController lat={lat} lng={lng} onMapReady={handleMapReady} />
                   <AdvancedMarker
                     position={{ lat, lng }}
                     draggable={true}
@@ -604,7 +693,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                         }
                       }
                     }}
-                    title="Ubicación de entrega"
+                    title="Ubicación de tu Negocio / Restaurante"
                   >
                     <Pin
                       background="#E63946"
@@ -613,43 +702,46 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                       scale={1.25}
                     />
                   </AdvancedMarker>
-
-                  {/* Mobile-friendly Zoom In / Zoom Out Controls */}
-                  <MapTouchZoomControls />
                 </Map>
               </APIProvider>
             ) : (
-              <div className="relative w-full h-full">
-                <div ref={leafletContainerRef} className="w-full h-full z-10" />
-                <div className="absolute right-3.5 bottom-4 z-[500] flex flex-col bg-gray-950/95 border border-white/20 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-md">
-                  <button
-                    type="button"
-                    onClick={() => leafletMapRef.current?.zoomIn()}
-                    onTouchEnd={(e) => { e.preventDefault(); leafletMapRef.current?.zoomIn(); }}
-                    className="w-12 h-12 flex items-center justify-center text-white hover:bg-gray-800 active:bg-gray-700 border-b border-white/10 transition cursor-pointer select-none"
-                    title="Acercar mapa (Zoom in / Sum)"
-                    aria-label="Acercar mapa"
-                  >
-                    <Plus className="w-5 h-5 stroke-[2.5]" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => leafletMapRef.current?.zoomOut()}
-                    onTouchEnd={(e) => { e.preventDefault(); leafletMapRef.current?.zoomOut(); }}
-                    className="w-12 h-12 flex items-center justify-center text-white hover:bg-gray-800 active:bg-gray-700 transition cursor-pointer select-none"
-                    title="Alejar mapa (Zoom out)"
-                    aria-label="Alejar mapa"
-                  >
-                    <Minus className="w-5 h-5 stroke-[2.5]" />
-                  </button>
-                </div>
-              </div>
+              <div ref={leafletContainerRef} className="w-full h-full z-10" />
             )}
 
             {/* Instruction Overlay Badge */}
             <div className="absolute top-3 left-3 z-[400] bg-gray-950/90 border border-gray-800/90 px-3 py-1.5 rounded-xl text-[10px] font-bold text-gray-200 backdrop-blur-md shadow-lg flex items-center gap-1.5 pointer-events-none">
               <MapPin className="w-3.5 h-3.5 text-[#E63946]" />
               <span>Arrastra el puntero o toca el mapa para reubicar</span>
+            </div>
+
+            {/* Mobile & Desktop Dedicated Zoom Controls (+ / -) */}
+            <div className="absolute top-3 right-3 z-[400] flex flex-col gap-1.5 shadow-xl">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleZoomIn();
+                }}
+                className="w-10 h-10 rounded-xl bg-gray-950/95 hover:bg-gray-800 active:bg-gray-700 active:scale-95 border border-gray-700/90 text-white shadow-lg backdrop-blur-md flex items-center justify-center font-black text-xl cursor-pointer transition select-none touch-manipulation"
+                title="Acercar mapa (Zoom in)"
+                aria-label="Acercar mapa"
+              >
+                <Plus className="w-5 h-5 text-white" />
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleZoomOut();
+                }}
+                className="w-10 h-10 rounded-xl bg-gray-950/95 hover:bg-gray-800 active:bg-gray-700 active:scale-95 border border-gray-700/90 text-white shadow-lg backdrop-blur-md flex items-center justify-center font-black text-xl cursor-pointer transition select-none touch-manipulation"
+                title="Alejar mapa (Zoom out)"
+                aria-label="Alejar mapa"
+              >
+                <Minus className="w-5 h-5 text-white" />
+              </button>
             </div>
 
             {/* Geocoding indicator */}
@@ -666,7 +758,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             <label className="text-[10px] font-black uppercase text-gray-300 tracking-wider flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Dirección de Entrega</span>
+                <span>Dirección Detectada / Punto de Entrega y Recogida</span>
               </span>
               <span className="text-[9px] text-gray-500 font-normal">Editable</span>
             </label>
@@ -685,6 +777,51 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                   <Loader2 className="w-4 h-4 text-emerald-400 animate-spin" />
                 </div>
               )}
+            </div>
+            {isGeocoding && (
+              <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin inline" />
+                <span>Actualizando dirección con la nueva ubicación del mapa...</span>
+              </p>
+            )}
+          </div>
+
+          {/* Exact GPS Coordinates Inputs */}
+          <div className="p-3 bg-gray-900/60 border border-gray-800/80 rounded-2xl space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider flex items-center gap-1.5">
+                <Compass className="w-3.5 h-3.5 text-blue-400" />
+                Coordenadas GPS de Precisión
+              </span>
+              <span className="text-[9px] text-gray-500 font-mono">Ipiales: 0.83028, -77.64444</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] text-gray-500 block mb-0.5">Latitud</label>
+                <input
+                  type="text"
+                  value={latInput}
+                  onChange={(e) => {
+                    setLatInput(e.target.value);
+                    handleApplyCustomCoords(e.target.value, lngInput);
+                  }}
+                  placeholder="0.83028"
+                  className="w-full h-9 bg-gray-950 border border-gray-800 focus:border-blue-500 px-2.5 rounded-lg text-xs font-mono text-blue-300 outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-[9px] text-gray-500 block mb-0.5">Longitud</label>
+                <input
+                  type="text"
+                  value={lngInput}
+                  onChange={(e) => {
+                    setLngInput(e.target.value);
+                    handleApplyCustomCoords(latInput, e.target.value);
+                  }}
+                  placeholder="-77.64444"
+                  className="w-full h-9 bg-gray-950 border border-gray-800 focus:border-blue-500 px-2.5 rounded-lg text-xs font-mono text-blue-300 outline-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -721,6 +858,86 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
         </div>
 
       </div>
+
+      {/* Hostinger Google Maps Configuration Helper Modal */}
+      {showKeyConfigModal && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-lg p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-400" />
+                <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                  Configuración de API para Hostinger
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKeyConfigModal(false)}
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-gray-300">
+              <p>
+                Para que el mapa interactivo de <strong className="text-white">Google Maps</strong> funcione en tu dominio de Hostinger, tienes 2 opciones sencillas:
+              </p>
+
+              <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-2 font-mono text-[11px]">
+                <div className="text-amber-400 font-bold">Opción 1 (Recomendada en Hostinger):</div>
+                <p className="text-gray-400 font-sans">
+                  Entra a tu Administrador de Archivos de Hostinger en <code className="text-white bg-gray-900 px-1 py-0.5 rounded">public_html/api/</code> y edita o crea el archivo <code className="text-emerald-400">keys.php</code>:
+                </p>
+                <pre className="bg-gray-900 p-2 rounded text-emerald-300 text-[10px] overflow-x-auto">
+{`<?php
+define('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY', 'TU_API_KEY_DE_GOOGLE');`}
+                </pre>
+              </div>
+
+              <div className="bg-gray-950 border border-gray-800 rounded-xl p-3 space-y-2">
+                <div className="text-amber-400 font-bold">Opción 2 (Pruébala ahora mismo):</div>
+                <p className="text-gray-400">
+                  Pega aquí tu API Key de Google Maps para activarla de inmediato en este navegador:
+                </p>
+                <form onSubmit={handleSaveManualKey} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualKeyInput}
+                    onChange={(e) => setManualKeyInput(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="flex-1 h-9 bg-gray-900 border border-gray-700 rounded-lg px-3 text-xs font-mono text-white outline-none focus:border-amber-400"
+                  />
+                  <button
+                    type="submit"
+                    className="h-9 px-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-bold rounded-lg text-xs transition"
+                  >
+                    Guardar
+                  </button>
+                </form>
+                {keySavedNotice && (
+                  <p className="text-emerald-400 text-[11px] font-bold">{keySavedNotice}</p>
+                )}
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-emerald-300 text-[11px]">
+                ✓ <strong>Nota:</strong> Si no tienes una clave de Google Maps, el sistema utiliza <strong>OpenStreetMap</strong> automáticamente, el cual funciona al 100% en Hostinger sin costo ni clave.
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowKeyConfigModal(false)}
+                className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold"
+              >
+                Entendido / Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

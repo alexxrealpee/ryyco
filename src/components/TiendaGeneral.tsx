@@ -2595,16 +2595,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     address={custAddress}
                     onChangeAddress={setCustAddress}
                     coordinates={custCoordinates}
-                    onCoordinatesChange={(coords) => {
-                      setCustCoordinates({
-                        lat: coords.lat,
-                        lng: coords.lng,
-                        mapUrl: coords.mapUrl
-                      });
-                      if (coords.address && coords.address.trim()) {
-                        setCustAddress(coords.address.trim());
-                      }
-                    }}
                     onOpenMapPicker={() => setIsMapPickerOpen(true)}
                     required={true}
                   />
