@@ -38,7 +38,17 @@ import {
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
-import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone } from '../lib/firebase';
+import { 
+  fetchAllActiveProductsAndStores, 
+  saveOrder, 
+  fetchSystemSettings, 
+  checkIsStoreClosed, 
+  findStoreForProduct, 
+  fetchCustomerProfileByPhone,
+  fetchFastInitialHomeData,
+  saveFastHomeCache,
+  getFastHomeInitialData
+} from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
@@ -231,29 +241,12 @@ interface TiendaGeneralProps {
   onNavigateToStore: (username: string) => void;
 }
 
-// Fast synchronous local cache retrieval for instant initial render
-const getInitialGeneralData = () => {
-  try {
-    const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
-    if (rawLocal) {
-      const parsed = JSON.parse(rawLocal);
-      if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
-        return {
-          products: parsed.products as ProductItem[],
-          profiles: (parsed.profiles || {}) as Record<string, UserProfile>,
-          hasCache: true
-        };
-      }
-    }
-  } catch (e) {}
-  return { products: [] as ProductItem[], profiles: {} as Record<string, UserProfile>, hasCache: false };
-};
-
 export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: TiendaGeneralProps) {
-  const [cachedInitial] = useState(() => getInitialGeneralData());
+  const [cachedInitial] = useState(() => getFastHomeInitialData());
   const [products, setProducts] = useState<ProductItem[]>(cachedInitial.products);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>(cachedInitial.profiles);
   const [loading, setLoading] = useState(!cachedInitial.hasCache);
+  const [hasLoadedFullCatalog, setHasLoadedFullCatalog] = useState(false);
   
   // Filtering & search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -429,64 +422,90 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, [selectedProduct]);
 
   useEffect(() => {
+    let isMounted = true;
+
     async function loadData() {
       if (!cachedInitial.hasCache) {
         setLoading(true);
       }
-      try {
-        const [res, sysSettings] = await Promise.all([
-          fetchAllActiveProductsAndStores(),
-          fetchSystemSettings()
-        ]);
-        setProducts(res.products);
-        setProfiles(res.profiles);
-        registerProductImages(res.products);
-        
-        // Rehydrate any cart items that may be missing an image URL
-        setCart(prev => {
-          let changed = false;
-          const updated = prev.map(item => {
-            if (!item.product.imageURL) {
-              const found = res.products.find(p => p.id === item.product.id);
-              const img = found?.imageURL || getProductImage(item.product.id);
-              if (img) {
-                changed = true;
-                return {
-                  ...item,
-                  product: {
-                    ...item.product,
-                    imageURL: img
-                  }
-                };
-              }
-            }
-            return item;
-          });
-          return changed ? updated : prev;
-        });
 
-        if (sysSettings?.defaultDeliveryFee) {
-          setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
+      try {
+        // --- PHASE 1: Super Fast Initial Load (Store logos & top 4 products) ---
+        // Responds quickly to render logos & first products without waiting for full catalog
+        const [fastRes, sysSettings] = await Promise.all([
+          fetchFastInitialHomeData(),
+          fetchSystemSettings().catch(() => null)
+        ]);
+
+        if (isMounted) {
+          if (fastRes.products.length > 0) {
+            setProducts(prev => (prev.length <= 4 ? fastRes.products : prev));
+          }
+          if (Object.keys(fastRes.profiles).length > 0) {
+            setProfiles(prev => ({ ...prev, ...fastRes.profiles }));
+          }
+          setLoading(false);
+
+          if (sysSettings?.defaultDeliveryFee) {
+            setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
+          }
         }
 
-        // Detect shared product deep link (?product=ID or ?p=ID) and open details
-        try {
-          const searchParams = new URLSearchParams(window.location.search);
-          const sharedProductId = searchParams.get('product') || searchParams.get('p') || searchParams.get('id');
-          if (sharedProductId) {
-            const foundProduct = res.products.find(p => p.id === sharedProductId);
-            if (foundProduct) {
-              setSelectedProduct(foundProduct);
-            }
+        // --- PHASE 2: Background Full Catalog Stream ---
+        fetchAllActiveProductsAndStores().then(res => {
+          if (isMounted && res && res.products.length > 0) {
+            setProducts(res.products);
+            setProfiles(prev => ({ ...prev, ...res.profiles }));
+            registerProductImages(res.products);
+            setHasLoadedFullCatalog(true);
+
+            // Rehydrate any cart items that may be missing an image URL
+            setCart(prev => {
+              let changed = false;
+              const updated = prev.map(item => {
+                if (!item.product.imageURL) {
+                  const found = res.products.find(p => p.id === item.product.id);
+                  const img = found?.imageURL || getProductImage(item.product.id);
+                  if (img) {
+                    changed = true;
+                    return {
+                      ...item,
+                      product: {
+                        ...item.product,
+                        imageURL: img
+                      }
+                    };
+                  }
+                }
+                return item;
+              });
+              return changed ? updated : prev;
+            });
+
+            // Detect shared product deep link (?product=ID or ?p=ID) and open details
+            try {
+              const searchParams = new URLSearchParams(window.location.search);
+              const sharedProductId = searchParams.get('product') || searchParams.get('p') || searchParams.get('id');
+              if (sharedProductId) {
+                const foundProduct = res.products.find(p => p.id === sharedProductId);
+                if (foundProduct) {
+                  setSelectedProduct(foundProduct);
+                }
+              }
+            } catch (e) {}
           }
-        } catch (e) {}
+        }).catch(err => {
+          console.warn("Background catalog fetch non-blocking error:", err);
+        });
       } catch (err) {
-        console.error("Error loading TiendaGeneral data:", err);
+        console.error("Error loading fast TiendaGeneral data:", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
+
     loadData();
+    return () => { isMounted = false; };
   }, [cachedInitial.hasCache]);
 
   // Helper to normalize categories for robust matching (removes emojis and trims)
@@ -511,10 +530,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return products.filter(product => {
       const profile = findStoreForProduct(product, profiles);
       if (!profile || checkIsStoreClosed(profile) || profile.suspended) return false;
-      // Check if trial has expired and store subscription is not active
-      if (profile.subscriptionTrialExpires && new Date(profile.subscriptionTrialExpires).getTime() < Date.now() && profile.subscriptionStatus !== 'active') {
-        return false;
-      }
       if (selectedStore !== 'all' && product.userId !== selectedStore && profile.uid !== selectedStore) {
         return false;
       }
@@ -561,18 +576,18 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
   }, [availableBaseProducts]);
 
-  // Get list of unique store profiles with active products (memoized)
+  // Get list of unique store profiles (memoized)
   const uniqueStores = useMemo(() => {
     const storeMap = new Map<string, UserProfile>();
     (Object.values(profiles) as UserProfile[]).forEach(profile => {
       if (profile && profile.uid && !storeMap.has(profile.uid)) {
-        if (!checkIsStoreClosed(profile) && !profile.suspended && products.some(p => p.userId === profile.uid || p.storeUsername === profile.username)) {
+        if (!checkIsStoreClosed(profile) && !profile.suspended) {
           storeMap.set(profile.uid, profile);
         }
       }
     });
     return Array.from(storeMap.values());
-  }, [profiles, products]);
+  }, [profiles]);
 
   // Pre-load top restaurant logos and the first 6 products into browser cache for instant rendering
   useEffect(() => {

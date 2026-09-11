@@ -2576,6 +2576,9 @@ export function findStoreForProduct(
   };
 }
 
+import { saveFastHomeCache, fetchFastInitialHomeData, getFastHomeInitialData } from './fastHomeCache';
+export { saveFastHomeCache, fetchFastInitialHomeData, getFastHomeInitialData };
+
 // In-memory cache for products & stores to minimize Firestore reads
 let _cachedProductsData: { products: ProductItem[]; profiles: Record<string, UserProfile>; timestamp: number } | null = null;
 const PRODUCTS_CACHE_TTL_MS = 180 * 1000; // 3 minutes cache
@@ -2757,7 +2760,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
     };
 
     try {
-      localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
+      saveFastHomeCache(profilesMap, activeProductsForClients.slice(0, 6));
     } catch (e) {}
 
     return { products: activeProductsForClients, profiles: profilesMap };
