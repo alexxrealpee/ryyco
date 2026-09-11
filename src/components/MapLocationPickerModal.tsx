@@ -14,9 +14,7 @@ import {
   Layers, 
   Globe,
   Key,
-  HelpCircle,
-  Plus,
-  Minus
+  HelpCircle
 } from 'lucide-react';
 
 interface MapLocationPickerModalProps {
@@ -32,21 +30,14 @@ interface MapLocationPickerModalProps {
 const DEFAULT_LAT = 0.83028;
 const DEFAULT_LNG = -77.64444;
 
-// Smooth map panning & instance capture helper for Google Maps
-const MapController: React.FC<{ 
-  lat: number; 
-  lng: number; 
-  onMapReady?: (map: google.maps.Map | null) => void;
-}> = ({ lat, lng, onMapReady }) => {
+// Smooth map panning helper for Google Maps
+const MapController: React.FC<{ lat: number; lng: number }> = ({ lat, lng }) => {
   const map = useMap();
   useEffect(() => {
-    if (map) {
-      if (onMapReady) onMapReady(map);
-      if (!isNaN(lat) && !isNaN(lng)) {
-        map.panTo({ lat, lng });
-      }
+    if (map && !isNaN(lat) && !isNaN(lng)) {
+      map.panTo({ lat, lng });
     }
-  }, [map, lat, lng, onMapReady]);
+  }, [map, lat, lng]);
   return null;
 };
 
@@ -81,29 +72,9 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   });
 
   const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>('google');
-  const [googleMapInstance, setGoogleMapInstance] = useState<google.maps.Map | null>(null);
   const [showKeyConfigModal, setShowKeyConfigModal] = useState<boolean>(false);
   const [manualKeyInput, setManualKeyInput] = useState<string>('');
   const [keySavedNotice, setKeySavedNotice] = useState<string>('');
-
-  // Mobile-friendly Zoom In / Zoom Out actions
-  const handleZoomIn = useCallback(() => {
-    if (mapProvider === 'google' && googleMapInstance) {
-      const currentZoom = googleMapInstance.getZoom() ?? 15;
-      googleMapInstance.setZoom(Math.min(21, currentZoom + 1));
-    } else if (leafletMapRef.current) {
-      leafletMapRef.current.zoomIn();
-    }
-  }, [mapProvider, googleMapInstance]);
-
-  const handleZoomOut = useCallback(() => {
-    if (mapProvider === 'google' && googleMapInstance) {
-      const currentZoom = googleMapInstance.getZoom() ?? 15;
-      googleMapInstance.setZoom(Math.max(1, currentZoom - 1));
-    } else if (leafletMapRef.current) {
-      leafletMapRef.current.zoomOut();
-    }
-  }, [mapProvider, googleMapInstance]);
 
   // Track latest geocode request to prevent out-of-order race conditions
   const latestGeocodeIdRef = useRef<number>(0);
@@ -532,7 +503,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider">
-                Ubicación
+                Ubicación en Google Maps
               </h3>
               <p className="text-[11px] text-gray-400">
                 Arrastra el marcador rojo o toca en el mapa para fijar tu dirección
@@ -643,25 +614,19 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           </div>
 
           {/* Interactive Map View */}
-          <div 
-            className="relative rounded-2xl border border-gray-800 overflow-hidden bg-gray-900 h-[340px] sm:h-[380px] shadow-inner"
-            style={{ touchAction: 'none' }}
-          >
+          <div className="relative rounded-2xl border border-gray-800 overflow-hidden bg-gray-900 h-[340px] shadow-inner">
             
             {mapProvider === 'google' && googleMapsApiKey ? (
               <APIProvider apiKey={googleMapsApiKey} libraries={['marker', 'places']}>
                 <Map
                   mapId="DEMO_MAP_ID"
                   defaultCenter={{ lat, lng }}
+                  center={{ lat, lng }}
                   defaultZoom={15}
                   gestureHandling="greedy"
                   disableDefaultUI={false}
-                  zoomControl={true}
-                  streetViewControl={false}
-                  mapTypeControl={false}
-                  fullscreenControl={false}
                   internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                  style={{ width: '100%', height: '100%', touchAction: 'none' }}
+                  style={{ width: '100%', height: '100%' }}
                   onClick={(e) => {
                     if (e.detail?.latLng) {
                       const clickedLat = typeof e.detail.latLng.lat === 'function' ? e.detail.latLng.lat() : Number(e.detail.latLng.lat);
@@ -672,7 +637,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                     }
                   }}
                 >
-                  <MapController lat={lat} lng={lng} onMapReady={setGoogleMapInstance} />
+                  <MapController lat={lat} lng={lng} />
                   <AdvancedMarker
                     position={{ lat, lng }}
                     draggable={true}
@@ -704,28 +669,6 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             <div className="absolute top-3 left-3 z-[400] bg-gray-950/90 border border-gray-800/90 px-3 py-1.5 rounded-xl text-[10px] font-bold text-gray-200 backdrop-blur-md shadow-lg flex items-center gap-1.5 pointer-events-none">
               <MapPin className="w-3.5 h-3.5 text-[#E63946]" />
               <span>Arrastra el puntero o toca el mapa para reubicar</span>
-            </div>
-
-            {/* Dedicated Mobile-Friendly Zoom Controls (+ / -) */}
-            <div className="absolute top-3 right-3 z-[400] flex flex-col bg-gray-950/95 border border-gray-700/80 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-md">
-              <button
-                type="button"
-                onClick={handleZoomIn}
-                className="w-11 h-11 flex items-center justify-center text-white hover:bg-gray-800 active:bg-[#E63946] transition cursor-pointer border-b border-gray-800 select-none active:scale-95 touch-manipulation"
-                title="Acercar mapa (Zoom in)"
-                aria-label="Acercar mapa"
-              >
-                <Plus className="w-5 h-5 text-white" />
-              </button>
-              <button
-                type="button"
-                onClick={handleZoomOut}
-                className="w-11 h-11 flex items-center justify-center text-white hover:bg-gray-800 active:bg-[#E63946] transition cursor-pointer select-none active:scale-95 touch-manipulation"
-                title="Alejar mapa (Zoom out)"
-                aria-label="Alejar mapa"
-              >
-                <Minus className="w-5 h-5 text-white" />
-              </button>
             </div>
 
             {/* Geocoding indicator */}

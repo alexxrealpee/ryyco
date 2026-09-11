@@ -379,9 +379,8 @@ export default function DeliveryTrackingModal({
                   defaultZoom={15}
                   gestureHandling="greedy"
                   disableDefaultUI={false}
-                  zoomControl={true}
                   internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
-                  style={{ width: '100%', height: '100%', touchAction: 'none' }}
+                  style={{ width: '100%', height: '100%' }}
                 >
                   {/* Courier Marker */}
                   <AdvancedMarker
