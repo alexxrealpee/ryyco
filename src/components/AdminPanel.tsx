@@ -459,7 +459,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               uid: p.uid,
               name: sName,
               username: p.username || '',
-              phone: p.whatsapp || p.phone || '',
+              phone: p.whatsapp || p.customerServiceWhatsapp || p.ownerWhatsapp || p.phone || '',
               address: p.address || p.location || ''
             });
           }
@@ -1271,6 +1271,47 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return '';
   };
 
+  const getStoreWhatsappForOrder = (order: OrderItem): string => {
+    // 1. Direct store phone on order object
+    if (order.storePhone && order.storePhone.trim() !== '') {
+      return order.storePhone.trim();
+    }
+    // 2. Lookup in storesMap by storeOwnerId
+    if (order.storeOwnerId && storesMap[order.storeOwnerId]) {
+      const p = storesMap[order.storeOwnerId];
+      const num = p.whatsapp || p.customerServiceWhatsapp || p.ownerWhatsapp || p.phone;
+      if (num && num.trim() !== '') return num.trim();
+    }
+    // 3. Lookup in allStoresList
+    const storeInList = allStoresList.find(s => s.uid === order.storeOwnerId);
+    if (storeInList?.phone && storeInList.phone.trim() !== '') {
+      return storeInList.phone.trim();
+    }
+    // 4. Lookup in users list
+    const userMatch = users.find(u => u.uid === order.storeOwnerId);
+    if (userMatch) {
+      const num = userMatch.whatsapp || userMatch.customerServiceWhatsapp || userMatch.ownerWhatsapp || userMatch.phone;
+      if (num && num.trim() !== '') return num.trim();
+    }
+    // 5. Fallback scan in Object.values of storesMap
+    const storeFromValues = (Object.values(storesMap) as UserProfile[]).find(
+      p => p && (p.uid === order.storeOwnerId || (p.username && order.storeName && p.displayName === order.storeName))
+    );
+    if (storeFromValues) {
+      const num = storeFromValues.whatsapp || storeFromValues.customerServiceWhatsapp || storeFromValues.ownerWhatsapp || storeFromValues.phone;
+      if (num && num.trim() !== '') return num.trim();
+    }
+    return '';
+  };
+
+  const getCleanWhatsappNumber = (phoneStr: string): string => {
+    let clean = (phoneStr || '').replace(/[^0-9]/g, '');
+    if (clean.length === 10 && clean.startsWith('3')) {
+      clean = '57' + clean;
+    }
+    return clean;
+  };
+
   const storeNamesMap = useMemo(() => {
     const map: Record<string, string> = {};
     (Object.values(storesMap) as UserProfile[]).forEach((p: UserProfile) => {
@@ -1367,7 +1408,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         const matchesDriverVehicle = order.deliveryVehicle?.toLowerCase().includes(query) || false;
         const storeNameText = getStoreNameForOrder(order).toLowerCase();
         const storeUsernameText = getStoreUsernameForOrder(order).toLowerCase();
-        const matchesStore = storeNameText.includes(query) || storeUsernameText.includes(query);
+        const storeWhatsappText = getStoreWhatsappForOrder(order).toLowerCase();
+        const matchesStore = storeNameText.includes(query) || storeUsernameText.includes(query) || storeWhatsappText.includes(query);
         return matchesName || matchesPhone || matchesEmail || matchesNumber || matchesNotes || matchesDriverName || matchesDriverPhone || matchesDriverVehicle || matchesStore;
       }
       return true;
@@ -2775,6 +2817,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     }).replace(/\./g, '').toUpperCase();
                     const storeName = getStoreNameForOrder(order);
                     const storeUsername = getStoreUsernameForOrder(order);
+                    const storeWhatsapp = getStoreWhatsappForOrder(order);
                     const isTable = checkIsTableOrder(order);
                     const isPickup = checkIsPickupOrder(order);
 
@@ -2829,10 +2872,40 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             )}
                           </div>
 
-                          {/* Store badge (vital in admin since orders are from multiple stores) */}
-                          <div className="flex items-center gap-1.5 text-[10.5px] text-indigo-400 font-semibold">
-                            <Store className="w-3 h-3 shrink-0" />
-                            <span className="truncate">{storeName} {storeUsername ? `(@${storeUsername})` : ''}</span>
+                          {/* Store badge & WhatsApp del Restaurante */}
+                          <div className="py-2 px-2.5 bg-indigo-950/25 border border-indigo-900/40 rounded-xl space-y-1.5">
+                            <div className="flex items-center justify-between gap-2 min-w-0">
+                              <div className="flex items-center gap-1.5 text-[11px] text-indigo-300 font-bold min-w-0">
+                                <Store className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
+                                <span className="truncate">{storeName} {storeUsername ? `(@${storeUsername})` : ''}</span>
+                              </div>
+                              <span className="text-[9px] text-indigo-400/80 font-mono font-semibold shrink-0 uppercase tracking-wider">
+                                Tienda
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between gap-2 text-xs flex-wrap pt-1 border-t border-indigo-900/30">
+                              <span className="text-[10px] text-gray-400 font-semibold flex items-center gap-1">
+                                WhatsApp Restaurante:
+                              </span>
+                              {storeWhatsapp ? (
+                                <a
+                                  href={`https://wa.me/${getCleanWhatsappNumber(storeWhatsapp)}?text=${encodeURIComponent(`Hola ${storeName}, te contactamos desde la administración general respecto al pedido #${order.orderNumber || 'S/N'}.`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 text-emerald-400 border border-emerald-800/70 font-mono font-bold text-[11px] transition shadow-sm"
+                                  title={`Chatear por WhatsApp con el restaurante (${storeName})`}
+                                >
+                                  <MessageCircle className="w-3 h-3 text-emerald-400 shrink-0" />
+                                  <span>{storeWhatsapp}</span>
+                                </a>
+                              ) : (
+                                <span className="text-[10px] text-gray-500 font-mono italic">
+                                  No registrado
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           <div className="text-xs text-gray-400 leading-normal font-medium">
@@ -2909,7 +2982,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             className="py-2.5 px-3 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-400 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-emerald-800/60 transition active:scale-98 shadow-sm cursor-pointer"
                           >
                             <MessageCircle className="w-4 h-4 text-emerald-400" />
-                            <span>WhatsApp</span>
+                            <span>WhatsApp Cliente</span>
                           </button>
                         </div>
                       </div>
@@ -2962,6 +3035,22 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   {getStoreUsernameForOrder(order) && (
                                     <span className="text-[10px] text-gray-400 font-mono block truncate max-w-[170px]">
                                      @{getStoreUsernameForOrder(order)}
+                                    </span>
+                                  )}
+                                  {getStoreWhatsappForOrder(order) ? (
+                                    <a
+                                      href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(order))}?text=${encodeURIComponent(`Hola ${getStoreNameForOrder(order)}, te contactamos desde administración general sobre el pedido #${order.orderNumber || 'S/N'}.`)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-mono font-bold mt-0.5"
+                                      title={`WhatsApp del Restaurante (${getStoreNameForOrder(order)})`}
+                                    >
+                                      <MessageCircle className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                                      <span>WA: {getStoreWhatsappForOrder(order)}</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-[9px] text-gray-500 font-mono block mt-0.5">
+                                      WA: No registrado
                                     </span>
                                   )}
                                   <span className="text-[9px] text-gray-500 font-mono block">
@@ -3671,13 +3760,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               {/* Scrollable Body */}
               <div className="overflow-y-auto space-y-4 pr-1 text-xs">
                 {/* Store of Origin */}
-                <div className="p-3.5 bg-indigo-950/30 border border-indigo-850/60 rounded-2xl flex items-center justify-between gap-3">
+                <div className="p-3.5 bg-indigo-950/30 border border-indigo-850/60 rounded-2xl flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
                       <Store className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-black tracking-wider text-indigo-400 block">Tienda de Origen</span>
+                      <span className="text-[10px] uppercase font-black tracking-wider text-indigo-400 block">Tienda / Restaurante de Origen</span>
                       <p className="font-extrabold text-white truncate text-xs sm:text-sm">
                         {getStoreNameForOrder(viewingOrder)}
                       </p>
@@ -3688,9 +3777,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       )}
                     </div>
                   </div>
-                  <span className="text-[9.5px] text-gray-500 font-mono shrink-0">
-                    ID: {viewingOrder.storeOwnerId.substring(0, 8)}...
-                  </span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {getStoreWhatsappForOrder(viewingOrder) ? (
+                      <a
+                        href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(viewingOrder))}?text=${encodeURIComponent(`Hola ${getStoreNameForOrder(viewingOrder)}, te contactamos desde administración general sobre el pedido #${viewingOrder.orderNumber || 'S/N'}.`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 text-[11px] font-mono font-bold transition shadow-sm"
+                        title="Chatear por WhatsApp con el restaurante"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>WA Restaurante: {getStoreWhatsappForOrder(viewingOrder)}</span>
+                      </a>
+                    ) : (
+                      <span className="text-[10px] text-gray-500 font-mono italic">
+                        WhatsApp: No registrado
+                      </span>
+                    )}
+                    <span className="text-[9.5px] text-gray-500 font-mono">
+                      ID: {viewingOrder.storeOwnerId.substring(0, 8)}...
+                    </span>
+                  </div>
                 </div>
 
                 {/* Customer Information */}
