@@ -35,7 +35,7 @@ import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 import CustomerPortalModal from './CustomerPortalModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
-import { DeliveryAddressCard } from './DeliveryAddressCard';
+import { DeliveryAddressCard, isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import { 
   UserProfile, 
   LinkItem, 
@@ -204,6 +204,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [phoneError, setPhoneError] = useState('');
   const [custEmail, setCustEmail] = useState('');
   const [custAddress, setCustAddress] = useState('');
+  const [pickupNotes, setPickupNotes] = useState('');
   const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(null);
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
@@ -232,7 +233,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           setActiveCustomer(cust);
           if (!custPhone) setCustPhone(cust.phone);
           if (!custName) setCustName(cust.name);
-          if (!custAddress && cust.address) setCustAddress(cust.address);
+          if (!custAddress && cust.address && !isPickupOrInvalidAddress(cust.address)) {
+            setCustAddress(cust.address);
+          }
           if (!custEmail && cust.email) setCustEmail(cust.email);
           if (!custNotes && cust.notes) setCustNotes(cust.notes);
         }
@@ -775,7 +778,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const finalAddress = isTable
       ? `Mesa ${tableNumber.trim()} (Servicio en Restaurante / Salón)`
       : isPickup 
-      ? (custAddress.trim() ? `Recoger en Restaurante / Local (Nota: ${custAddress.trim()})` : `Recoger en Restaurante / Local (${profile.displayName || profile.username})`)
+      ? (pickupNotes.trim() ? `Recoger en Restaurante / Local (Nota: ${pickupNotes.trim()})` : `Recoger en Restaurante / Local (${profile.displayName || profile.username})`)
       : custAddress.trim();
 
     let finalNotes = custNotes.trim();
@@ -826,10 +829,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       // Save / update customer profile with details and address
       if (createAccountWithOrder || custPhone) {
         try {
+          const isRealAddress = !isPickup && !isTable && custAddress.trim() && !isPickupOrInvalidAddress(custAddress);
           saveCustomerProfile({
             phone: cleanedPhone,
             name: custName.trim(),
-            address: custAddress.trim(),
+            address: isRealAddress ? custAddress.trim() : (activeCustomer?.address && !isPickupOrInvalidAddress(activeCustomer.address) ? activeCustomer.address : ''),
             email: custEmail.trim(),
             notes: custNotes.trim()
           }).then(updated => {
@@ -2958,7 +2962,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className={`grid ${profile.restaurantAcceptsTableOrders !== false ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                 <button
                   type="button"
-                  onClick={() => setDeliveryType('delivery')}
+                  onClick={() => {
+                    setDeliveryType('delivery');
+                    if (isPickupOrInvalidAddress(custAddress)) {
+                      setCustAddress('');
+                    }
+                  }}
                   className={`p-2.5 sm:p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
                     deliveryType === 'delivery'
                       ? 'bg-indigo-500/10 border-indigo-500 text-white'
@@ -3115,8 +3124,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 </label>
                 <input 
                   type="text" 
-                  value={custAddress}
-                  onChange={(e) => setCustAddress(e.target.value)}
+                  value={pickupNotes}
+                  onChange={(e) => setPickupNotes(e.target.value)}
                   placeholder="Ej: Paso a las 2:00 PM o voy en carro placa XYZ"
                   className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-bold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
                 />
@@ -3128,8 +3137,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 address={custAddress}
                 onChangeAddress={setCustAddress}
                 coordinates={custCoordinates}
+                onSelectCoordinates={setCustCoordinates}
                 onOpenMapPicker={() => setIsMapPickerOpen(true)}
                 required={true}
+                placeholder="¿A donde entregamos su pedido?"
               />
             )}
 

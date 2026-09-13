@@ -4246,10 +4246,17 @@ export async function fetchCustomerProfileByPhone(rawPhone: string): Promise<Cus
     const custDoc = await getDoc(doc(db, 'customers', phone));
     if (custDoc.exists()) {
       const data = custDoc.data() as CustomerProfile;
+      const rawAddr = data.address || '';
+      const isPickupAddress = rawAddr.toLowerCase().includes('recoger en') || 
+        rawAddr.toLowerCase().includes('restaurante / local') || 
+        rawAddr.toLowerCase().includes('para llevar') || 
+        rawAddr.toLowerCase().includes('en mesa') || 
+        rawAddr.toLowerCase().startsWith('mesa ');
       const fullCust: CustomerProfile = {
         ...data,
         id: phone,
         phone,
+        address: isPickupAddress ? '' : rawAddr,
         wonPrizes: Array.isArray(data.wonPrizes) ? data.wonPrizes : []
       };
       try {
@@ -4375,11 +4382,17 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
   const spinsAwarded = 1; // 1 spin per order for the Free Dish Wheel!
 
   let existing = await fetchCustomerProfileByPhone(phone);
+  const isInvalidAddr = (addr?: string) => {
+    if (!addr) return true;
+    const l = addr.toLowerCase().trim();
+    return l.includes('recoger en') || l.includes('restaurante / local') || l.includes('para llevar') || l.includes('en mesa') || l.startsWith('mesa ');
+  };
+
   if (!existing) {
     existing = await saveCustomerProfile({
       phone,
       name: order.customerName || 'Cliente Ryyco',
-      address: order.customerAddress || '',
+      address: isInvalidAddr(order.customerAddress) ? '' : (order.customerAddress || ''),
       points: 1000, // Welcome bonus (1.000 Pts = $1.000 COP)
       spinsAvailable: 1
     });
@@ -4390,13 +4403,17 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
   const updatedOrders = (existing.totalOrdersCount || 0) + 1;
   const updatedSpent = (existing.totalSpent || 0) + (order.totalAmount || 0);
 
+  const finalDeliveryAddr = !isInvalidAddr(order.customerAddress) && order.customerAddress
+    ? order.customerAddress
+    : (!isInvalidAddr(existing.address) ? existing.address : '');
+
   const updatedCust: CustomerProfile = {
     ...existing,
     points: updatedPoints,
     spinsAvailable: updatedSpins,
     totalOrdersCount: updatedOrders,
     totalSpent: updatedSpent,
-    address: order.customerAddress || existing.address,
+    address: finalDeliveryAddr,
     updatedAt: new Date().toISOString()
   };
 

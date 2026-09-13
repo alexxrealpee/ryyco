@@ -371,7 +371,7 @@ export default function DeliveryTrackingModal({
           {/* Interactive Map */}
           <div className="relative rounded-2xl border border-gray-800 overflow-hidden bg-gray-950 h-[340px] shadow-inner">
             {mapProvider === 'google' && googleMapsApiKey ? (
-              <APIProvider apiKey={googleMapsApiKey} libraries={['marker', 'places']}>
+              <APIProvider apiKey={googleMapsApiKey} libraries={['marker']}>
                 <Map
                   mapId="DELIVERY_TRACKING_MAP"
                   defaultCenter={{ lat: driverLat, lng: driverLng }}

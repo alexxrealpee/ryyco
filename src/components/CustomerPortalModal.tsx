@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
+import { isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
@@ -162,7 +163,7 @@ export default function CustomerPortalModal({
       if (profile) {
         setCustomer(profile);
         setNameInput(profile.name || '');
-        setAddressInput(profile.address || '');
+        setAddressInput(profile.address && !isPickupOrInvalidAddress(profile.address) ? profile.address : '');
         setEmailInput(profile.email || '');
         setNotesInput(profile.notes || '');
         localStorage.setItem('ryyco_active_customer_phone', cleaned);
@@ -244,7 +245,7 @@ export default function CustomerPortalModal({
         setNameInput(updated.name);
         setPhoneInput(updated.phone);
         setEmailInput(updated.email || gEmail);
-        setAddressInput(updated.address || '');
+        setAddressInput(updated.address && !isPickupOrInvalidAddress(updated.address) ? updated.address : '');
         setNotesInput(updated.notes || '');
         localStorage.setItem('ryyco_active_customer_phone', updated.phone);
         localStorage.setItem('ryyco_auth_mode', 'customer');
@@ -359,7 +360,7 @@ export default function CustomerPortalModal({
 
         setCustomer(existing);
         setNameInput(existing.name || '');
-        setAddressInput(existing.address || '');
+        setAddressInput(existing.address && !isPickupOrInvalidAddress(existing.address) ? existing.address : '');
         setEmailInput(existing.email || '');
         setNotesInput(existing.notes || '');
         localStorage.setItem('ryyco_active_customer_phone', cleaned);

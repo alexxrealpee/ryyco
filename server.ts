@@ -471,7 +471,11 @@ Formatos válidos para:
   app.get(['/api/maps/geocode', '/api/maps-geocode.php'], async (req, res) => {
     const lat = req.query.lat as string | undefined;
     const lng = req.query.lng as string | undefined;
-    const address = req.query.address as string | undefined;
+    const rawAddress = req.query.address as string | undefined;
+    // Always bias searches to Ipiales, Nariño, Colombia
+    const address = rawAddress 
+      ? (rawAddress.toLowerCase().includes('ipiales') ? rawAddress : `${rawAddress}, Ipiales, Nariño, Colombia`) 
+      : undefined;
 
     const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
 
@@ -482,7 +486,7 @@ Formatos válidos para:
         if (lat && lng) {
           url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=es&key=${mapsKey}`;
         } else if (address) {
-          url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&language=es&key=${mapsKey}`;
+          url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&components=country:CO&bounds=0.70,-77.75|0.95,-77.50&language=es&key=${mapsKey}`;
         }
         if (url) {
           try {
@@ -546,7 +550,7 @@ Formatos válidos para:
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2000);
-          const pRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&limit=1`, { signal: controller.signal });
+          const pRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&lat=0.83028&lon=-77.64444&limit=1`, { signal: controller.signal });
           clearTimeout(timeoutId);
           if (pRes.ok) {
             const pData = await pRes.json();
@@ -566,8 +570,8 @@ Formatos válidos para:
               return res.json({
                 status: 'OK',
                 formatted_address: parts.join(', ') || address,
-                lat: coords ? coords[1] : 0,
-                lng: coords ? coords[0] : 0,
+                lat: coords ? coords[1] : 0.83028,
+                lng: coords ? coords[0] : -77.64444,
                 source: 'photon'
               });
             }
@@ -619,7 +623,7 @@ Formatos válidos para:
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500);
           const nomRes = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`,
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=co&viewbox=-77.75,0.95,-77.50,0.70&limit=1`,
             { 
               signal: controller.signal,
               headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
@@ -639,19 +643,18 @@ Formatos válidos para:
             }
           }
         } catch (nomErr) {
-          console.warn('Nominatim search skipped:', nomErr);
+          console.warn('Nominatim forward geocode skipped:', nomErr);
         }
-
-        return res.json({
-          status: 'OK',
-          formatted_address: address,
-          lat: null,
-          lng: null,
-          source: 'manual'
-        });
       }
 
-      res.status(400).json({ error: 'Could not geocode location' });
+      // Default safe fallback centered on Ipiales, Nariño, Colombia
+      return res.json({
+        status: 'OK',
+        formatted_address: address || 'Centro, Ipiales, Nariño, Colombia',
+        lat: 0.83028,
+        lng: -77.64444,
+        source: 'default_ipiales'
+      });
     } catch (err: any) {
       console.warn('Geocoding error:', err);
       res.status(500).json({ error: err.message || 'Geocoding request failed' });

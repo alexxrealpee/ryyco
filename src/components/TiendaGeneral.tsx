@@ -44,7 +44,7 @@ import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
-import { DeliveryAddressCard } from './DeliveryAddressCard';
+import { DeliveryAddressCard, isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
@@ -343,6 +343,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [custPhone, setCustPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [custAddress, setCustAddress] = useState('');
+  const [pickupNotes, setPickupNotes] = useState('');
   const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(null);
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
@@ -362,7 +363,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           setActiveCustomer(cust);
           if (!custPhone) setCustPhone(cust.phone);
           if (!custName) setCustName(cust.name);
-          if (!custAddress && cust.address) setCustAddress(cust.address);
+          if (!custAddress && cust.address && !isPickupOrInvalidAddress(cust.address)) {
+            setCustAddress(cust.address);
+          }
         }
       }).catch(() => {});
     }
@@ -892,7 +895,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         const sellerPhone = sellerProfile?.whatsapp || sellerProfile?.phone;
         const formattedPhone = formatColombianPhoneWith57(custPhone);
         const finalAddress = deliveryType === 'pickup' 
-          ? (custAddress.trim() ? `Recoger en Restaurante / Local (Nota: ${custAddress.trim()})` : 'Recoger en Restaurante / Local')
+          ? (pickupNotes.trim() ? `Recoger en Restaurante / Local (Nota: ${pickupNotes.trim()})` : 'Recoger en Restaurante / Local')
           : custAddress.trim();
 
         const newOrder: OrderItem = {
@@ -2525,7 +2528,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setDeliveryType('delivery')}
+                      onClick={() => {
+                        setDeliveryType('delivery');
+                        if (isPickupOrInvalidAddress(custAddress)) {
+                          setCustAddress('');
+                        }
+                      }}
                       className={`p-3 rounded-xl border flex flex-col items-start gap-1 cursor-pointer transition text-left ${
                         deliveryType === 'delivery'
                           ? 'bg-[#E63946]/10 border-[#E63946] shadow-sm'
@@ -2582,8 +2590,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     </label>
                     <input 
                       type="text" 
-                      value={custAddress}
-                      onChange={(e) => setCustAddress(e.target.value)}
+                      value={pickupNotes}
+                      onChange={(e) => setPickupNotes(e.target.value)}
                       placeholder="Ej: Paso a las 2:00 PM o voy en carro placa XYZ"
                       className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 text-xs font-bold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20"
                     />
@@ -2595,8 +2603,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     address={custAddress}
                     onChangeAddress={setCustAddress}
                     coordinates={custCoordinates}
+                    onSelectCoordinates={setCustCoordinates}
                     onOpenMapPicker={() => setIsMapPickerOpen(true)}
                     required={true}
+                    placeholder="¿A donde entregamos su pedido?"
                   />
                 )}
 
