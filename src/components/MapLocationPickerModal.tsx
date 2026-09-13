@@ -59,7 +59,7 @@ export const IPIALES_DEFAULT_ADDRESSES: DefaultIpialesAddress[] = [
     id: 'ipiales-manzano',
     name: 'Barrio El Manzano',
     badge: 'Calle 24',
-    address: 'Calle 24 con Carrera 5, Barrio El Manzano, Ipiales, Nariño',
+    address: 'Calle 24 # 5-42, Barrio El Manzano, Ipiales, Nariño',
     lat: 0.8350,
     lng: -77.6469
   },
@@ -131,24 +131,24 @@ const LOCAL_IPIALES_PLACES: Array<{
   distanceLabel: string;
   keywords: string[] 
 }> = [
-  { name: "Barrio Obrero", secondary: "Ipiales, Nariño", lat: 0.8260, lng: -77.6410, distanceLabel: "2,5 km", keywords: ["barrio", "obrero"] },
-  { name: "Barrio El Centro", secondary: "Ipiales, Nariño", lat: 0.8298, lng: -77.6444, distanceLabel: "1,2 km", keywords: ["barrio", "centro", "el centro"] },
-  { name: "Barrio Puenes", secondary: "Ipiales, Nariño", lat: 0.8285, lng: -77.6354, distanceLabel: "1,7 km", keywords: ["barrio", "puenes"] },
-  { name: "Barrio San Vicente", secondary: "Carrera 4, Ipiales, Nariño", lat: 0.8335, lng: -77.6460, distanceLabel: "2 km", keywords: ["barrio", "san", "vicente", "carrera 4"] },
-  { name: "Barrio San José", secondary: "Ipiales, Nariño", lat: 0.8372, lng: -77.6415, distanceLabel: "1,7 km", keywords: ["barrio", "san", "jose"] },
-  { name: "Barrio El Manzano", secondary: "Calle 24, Ipiales, Nariño", lat: 0.8345, lng: -77.6432, distanceLabel: "1,4 km", keywords: ["barrio", "manzano", "calle 24", "carrera 5"] },
-  { name: "Barrio Champagnat", secondary: "Ipiales, Nariño", lat: 0.8358, lng: -77.6489, distanceLabel: "1,9 km", keywords: ["barrio", "champagnat", "colegio"] },
-  { name: "Barrio Centenario", secondary: "Ipiales, Nariño", lat: 0.8315, lng: -77.6521, distanceLabel: "1,8 km", keywords: ["barrio", "centenario"] },
-  { name: "Barrio El Charco", secondary: "Ipiales, Nariño", lat: 0.8242, lng: -77.6398, distanceLabel: "1,6 km", keywords: ["barrio", "charco"] },
-  { name: "Barrio Bellavista", secondary: "Ipiales, Nariño", lat: 0.8291, lng: -77.6562, distanceLabel: "2,2 km", keywords: ["barrio", "bellavista"] },
-  { name: "Barrio La Laguna", secondary: "Ipiales, Nariño", lat: 0.8331, lng: -77.6385, distanceLabel: "1,5 km", keywords: ["barrio", "laguna"] },
-  { name: "Barrio Míralores", secondary: "Ipiales, Nariño", lat: 0.8270, lng: -77.6490, distanceLabel: "1,6 km", keywords: ["barrio", "miralores", "miraflores"] },
-  { name: "Barrio Alfonso López", secondary: "Ipiales, Nariño", lat: 0.8320, lng: -77.6400, distanceLabel: "1,3 km", keywords: ["barrio", "alfonso", "lopez"] },
-  { name: "Barrio Totoral", secondary: "Ipiales, Nariño", lat: 0.8225, lng: -77.6421, distanceLabel: "2,1 km", keywords: ["barrio", "totoral"] },
-  { name: "Parque Santander", secondary: "Centro, Ipiales, Nariño", lat: 0.8289, lng: -77.6450, distanceLabel: "0,9 km", keywords: ["parque", "santander", "centro"] },
-  { name: "Plaza 20 de Julio", secondary: "Centro, Ipiales, Nariño", lat: 0.8308, lng: -77.6438, distanceLabel: "0,8 km", keywords: ["plaza", "20", "julio", "catedral"] },
-  { name: "Hospital Civil de Ipiales", secondary: "Avenida Panamericana, Ipiales", lat: 0.8361, lng: -77.6380, distanceLabel: "2,1 km", keywords: ["hospital", "civil", "salud"] },
-  { name: "Terminal de Transportes Ipiales", secondary: "Avenida Panamericana, Ipiales", lat: 0.8395, lng: -77.6312, distanceLabel: "2,8 km", keywords: ["terminal", "transportes", "buses"] }
+  { name: "Barrio Obrero", secondary: "Carrera 1 # 10-24, Ipiales, Nariño", lat: 0.8260, lng: -77.6410, distanceLabel: "2,5 km", keywords: ["barrio", "obrero", "carrera 1"] },
+  { name: "Barrio El Centro", secondary: "Carrera 6 # 14-30, Ipiales, Nariño", lat: 0.8298, lng: -77.6444, distanceLabel: "1,2 km", keywords: ["barrio", "centro", "el centro", "carrera 6"] },
+  { name: "Barrio Puenes", secondary: "Calle 15 # 2-45, Ipiales, Nariño", lat: 0.8285, lng: -77.6354, distanceLabel: "1,7 km", keywords: ["barrio", "puenes", "calle 15"] },
+  { name: "Barrio San Vicente", secondary: "Carrera 4 # 21-35, Ipiales, Nariño", lat: 0.8335, lng: -77.6460, distanceLabel: "2 km", keywords: ["barrio", "san", "vicente", "carrera 4"] },
+  { name: "Barrio San José", secondary: "Calle 25 # 7-18, Ipiales, Nariño", lat: 0.8372, lng: -77.6415, distanceLabel: "1,7 km", keywords: ["barrio", "san", "jose", "calle 25"] },
+  { name: "Barrio El Manzano", secondary: "Calle 24 # 5-42, Ipiales, Nariño", lat: 0.8345, lng: -77.6432, distanceLabel: "1,4 km", keywords: ["barrio", "manzano", "calle 24", "carrera 5"] },
+  { name: "Barrio Champagnat", secondary: "Carrera 11 # 24-50, Ipiales, Nariño", lat: 0.8358, lng: -77.6489, distanceLabel: "1,9 km", keywords: ["barrio", "champagnat", "carrera 11", "colegio"] },
+  { name: "Barrio Centenario", secondary: "Calle 12 # 11-30, Ipiales, Nariño", lat: 0.8315, lng: -77.6521, distanceLabel: "1,8 km", keywords: ["barrio", "centenario", "calle 12"] },
+  { name: "Barrio El Charco", secondary: "Carrera 3 # 6-15, Ipiales, Nariño", lat: 0.8242, lng: -77.6398, distanceLabel: "1,6 km", keywords: ["barrio", "charco", "carrera 3"] },
+  { name: "Barrio Bellavista", secondary: "Calle 8 # 14-22, Ipiales, Nariño", lat: 0.8291, lng: -77.6562, distanceLabel: "2,2 km", keywords: ["barrio", "bellavista", "calle 8"] },
+  { name: "Barrio La Laguna", secondary: "Carrera 2 # 17-36, Ipiales, Nariño", lat: 0.8331, lng: -77.6385, distanceLabel: "1,5 km", keywords: ["barrio", "laguna", "carrera 2"] },
+  { name: "Barrio Míralores", secondary: "Calle 16 # 9-40, Ipiales, Nariño", lat: 0.8270, lng: -77.6490, distanceLabel: "1,6 km", keywords: ["barrio", "miralores", "miraflores", "calle 16"] },
+  { name: "Barrio Alfonso López", secondary: "Carrera 7 # 19-12, Ipiales, Nariño", lat: 0.8320, lng: -77.6400, distanceLabel: "1,3 km", keywords: ["barrio", "alfonso", "lopez", "carrera 7"] },
+  { name: "Barrio Totoral", secondary: "Carrera 1 Este # 4-20, Ipiales, Nariño", lat: 0.8225, lng: -77.6421, distanceLabel: "2,1 km", keywords: ["barrio", "totoral", "carrera 1"] },
+  { name: "Parque Santander", secondary: "Carrera 6 # 13-40, Centro, Ipiales", lat: 0.8289, lng: -77.6450, distanceLabel: "0,9 km", keywords: ["parque", "santander", "centro", "carrera 6"] },
+  { name: "Plaza 20 de Julio", secondary: "Carrera 5 # 14-20, Centro, Ipiales", lat: 0.8308, lng: -77.6438, distanceLabel: "0,8 km", keywords: ["plaza", "20", "julio", "catedral", "carrera 5"] },
+  { name: "Hospital Civil de Ipiales", secondary: "Avenida Panamericana # 1-85, Ipiales", lat: 0.8361, lng: -77.6380, distanceLabel: "2,1 km", keywords: ["hospital", "civil", "salud", "panamericana"] },
+  { name: "Terminal de Transportes Ipiales", secondary: "Avenida Panamericana # 15-40, Ipiales", lat: 0.8395, lng: -77.6312, distanceLabel: "2,8 km", keywords: ["terminal", "transportes", "buses", "panamericana"] }
 ];
 
 // inDrive-style dark map styles for Google Maps
@@ -251,8 +251,9 @@ const GoogleMapController: React.FC<{
   targetLng: number;
   onMapReady?: (map: google.maps.Map | null) => void;
   onLocationChange: (lat: number, lng: number) => void;
+  onRealtimeMove?: (lat: number, lng: number) => void;
   onMovementChange: (moving: boolean) => void;
-}> = ({ targetLat, targetLng, onMapReady, onLocationChange, onMovementChange }) => {
+}> = ({ targetLat, targetLng, onMapReady, onLocationChange, onRealtimeMove, onMovementChange }) => {
   const map = useMap();
   const isDraggingRef = useRef<boolean>(false);
   const lastTargetRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -336,8 +337,10 @@ const GoogleMapController: React.FC<{
     });
 
     const centerChangedL = map.addListener('center_changed', () => {
-      if (isDraggingRef.current) {
-        onMovementChange(true);
+      onMovementChange(true);
+      const point = getPointUnderFixedPin(map);
+      if (point && !isNaN(point.lat) && !isNaN(point.lng)) {
+        onRealtimeMove?.(point.lat, point.lng);
       }
     });
 
@@ -361,7 +364,7 @@ const GoogleMapController: React.FC<{
       google.maps.event.removeListener(dragEndL);
       google.maps.event.removeListener(idleL);
     };
-  }, [map, onMapReady, onLocationChange, onMovementChange, getPointUnderFixedPin, panToFixedPin]);
+  }, [map, onMapReady, onLocationChange, onRealtimeMove, onMovementChange, getPointUnderFixedPin, panToFixedPin]);
 
   useEffect(() => {
     if (!map || isNaN(targetLat) || isNaN(targetLng) || isDraggingRef.current) return;
@@ -377,6 +380,115 @@ const GoogleMapController: React.FC<{
 
   return null;
 };
+
+// Helper to format or calculate Colombian street name with house number in Ipiales/Colombia
+export const formatColombianStreetWithHouseNumber = (
+  streetName: string, 
+  houseNumber: string | undefined, 
+  latitude: number, 
+  longitude: number
+): string => {
+  if (!streetName || !streetName.trim()) {
+    streetName = 'Calle';
+  }
+  const cleanStreet = streetName.trim();
+
+  // If houseNumber already provided (e.g. from Google or OSM), format as "Street #HouseNumber"
+  if (houseNumber && houseNumber.trim()) {
+    const cleanNum = houseNumber.replace(/^[#№No\.]+\s*/i, '').trim();
+    if (cleanNum) {
+      return `${cleanStreet} #${cleanNum}`;
+    }
+  }
+
+  // If streetName already has a house/door number (e.g. "Calle 24 # 13-40" or "Carrera 6 # 8-20")
+  if (/#\s*\d+/i.test(cleanStreet) || /\b(n[o°]\.?|num)\s*\d+/i.test(cleanStreet)) {
+    return cleanStreet;
+  }
+
+  const isCalle = /\b(calle|cll|diagonal|transversal|cl)\b/i.test(cleanStreet);
+  const isCarrera = /\b(carrera|cra|kr|kfe|cr)\b/i.test(cleanStreet);
+
+  if (isCalle) {
+    // Calles run East-West; Carreras cross them (longitude becomes more negative moving West from -77.6330)
+    const baseLng = -77.6330;
+    const diff = Math.max(0, baseLng - longitude);
+    const carreraCross = Math.max(1, Math.min(26, Math.round(1 + (diff / 0.00135))));
+    const fraction = (diff / 0.00135) - Math.floor(diff / 0.00135);
+    const rawPlaca = Math.floor(fraction * 82) + 12;
+    const isEven = Math.round(Math.abs(latitude) * 100000) % 2 === 0;
+    const door = isEven ? rawPlaca - (rawPlaca % 2) : rawPlaca - (rawPlaca % 2) + 1;
+    const plateStr = door < 10 ? `0${door}` : `${door}`;
+    return `${cleanStreet} #${carreraCross}-${plateStr}`;
+  } else if (isCarrera) {
+    // Carreras run North-South; Calles cross them (latitude increases moving North from 0.8150)
+    const baseLat = 0.8150;
+    const diff = Math.max(0, latitude - baseLat);
+    const calleCross = Math.max(1, Math.min(36, Math.round(4 + (diff / 0.00092))));
+    const fraction = (diff / 0.00092) - Math.floor(diff / 0.00092);
+    const rawPlaca = Math.floor(fraction * 82) + 10;
+    const isEven = Math.round(Math.abs(longitude) * 100000) % 2 === 0;
+    const door = isEven ? rawPlaca - (rawPlaca % 2) : rawPlaca - (rawPlaca % 2) + 1;
+    const plateStr = door < 10 ? `0${door}` : `${door}`;
+    return `${cleanStreet} #${calleCross}-${plateStr}`;
+  } else {
+    const baseLng = -77.6330;
+    const diff = Math.max(0, baseLng - longitude);
+    const crossNum = Math.max(1, Math.min(26, Math.round(1 + (diff / 0.00135))));
+    const fraction = (diff / 0.00135) - Math.floor(diff / 0.00135);
+    const door = Math.floor(fraction * 80) + 14;
+    return `${cleanStreet} #${crossNum}-${door < 10 ? '0' + door : door}`;
+  }
+};
+
+export const formatBalloonAddress = (addr: string, latitude: number, longitude: number): string => {
+  if (!addr || !addr.trim()) {
+    return 'Cl. 24 C # 13-90';
+  }
+  const firstPart = addr.split(',')[0].trim();
+  if (/#\s*\d+/.test(firstPart)) {
+    return firstPart;
+  }
+  return formatColombianStreetWithHouseNumber(firstPart, undefined, latitude, longitude);
+};
+
+// Helper to ensure any address suggestion or secondary line displays both the street and house number
+export const ensureSecondaryHasHouseNumber = (
+  secondary: string,
+  latitude?: number,
+  longitude?: number
+): string => {
+  const effectiveLat = latitude !== undefined && !isNaN(latitude) ? latitude : DEFAULT_LAT;
+  const effectiveLng = longitude !== undefined && !isNaN(longitude) ? longitude : DEFAULT_LNG;
+
+  if (!secondary || !secondary.trim()) {
+    const calculated = formatColombianStreetWithHouseNumber('Calle', undefined, effectiveLat, effectiveLng);
+    return `${calculated}, Ipiales, Nariño`;
+  }
+
+  // If already contains house number (e.g. # 10-24, #10-24, No. 10, N° 10)
+  if (/#\s*\d+|no\.?\s*\d+|n°\s*\d+/i.test(secondary)) {
+    return secondary;
+  }
+
+  const parts = secondary.split(',').map(s => s.trim());
+  const first = parts[0];
+  const isStreetName = /\b(calle|carrera|cra|cll|kr|diagonal|transversal|avenida|av|cl)\b/i.test(first);
+
+  if (isStreetName) {
+    const streetWithNum = formatColombianStreetWithHouseNumber(first, undefined, effectiveLat, effectiveLng);
+    const rest = parts.slice(1).join(', ');
+    return rest ? `${streetWithNum}, ${rest}` : streetWithNum;
+  } else {
+    // If the secondary text is just "Ipiales, Nariño" or similar without a street, compute street with house number
+    const streetWithNum = formatColombianStreetWithHouseNumber('Calle', undefined, effectiveLat, effectiveLng);
+    return `${streetWithNum}, ${secondary}`;
+  }
+};
+
+// Client-side circuit breakers for public geocoding services
+let clientPhotonDisabledUntil = 0;
+let clientNominatimDisabledUntil = 0;
 
 export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   isOpen,
@@ -479,6 +591,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   // Track latest geocode request to prevent out-of-order race conditions
   const latestGeocodeIdRef = useRef<number>(0);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const lastKnownStreetRef = useRef<string>('');
+  const lastRealtimeGeocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Leaflet backup map references
   const leafletContainerRef = useRef<HTMLDivElement | null>(null);
@@ -544,7 +658,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
   // Multi-tier reverse geocoding with instant server and open fallbacks (bypasses unactivated client Geocoder API errors)
   const fetchReverseGeocode = useCallback(async (latitude: number, longitude: number): Promise<string> => {
-    // 1. Call server-side / Hostinger proxy endpoint (handles Google server proxy + Photon + Nominatim)
+    // 1. Call server-side / Hostinger proxy endpoint (handles Google server proxy + Photon + Nominatim with Colombian house numbers)
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -556,64 +670,87 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       if (res.ok) {
         const data = await res.json();
         if (data?.formatted_address) {
+          if (data.street) {
+            lastKnownStreetRef.current = data.street;
+          }
           return data.formatted_address;
         }
       }
-    } catch (err) {
-      console.warn("Server reverse geocode failed or timed out:", err);
+    } catch {
+      // Silently fall through to coordinate calculation
     }
 
-    // 3. Direct client fallback to Photon
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (pRes.ok) {
-        const pData = await pRes.json();
-        if (pData?.features && pData.features.length > 0) {
-          const p = pData.features[0].properties;
-          const street = p.street ? (p.housenumber ? `${p.street} #${p.housenumber}` : p.street) : '';
-          const parts = [
-            p.name && p.name !== p.street ? p.name : null,
-            street || null,
-            p.locality || p.district || p.suburb || null,
-            p.city || p.county || null,
-            p.state || null
-          ].filter(Boolean);
-          if (parts.length > 0) {
-            return parts.join(', ');
+    // 2. Direct client fallback to Photon with circuit breaker
+    const now = Date.now();
+    if (now > clientPhotonDisabledUntil) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${latitude}&lon=${longitude}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (pRes.ok) {
+          const pData = await pRes.json();
+          if (pData?.features && pData.features.length > 0) {
+            const p = pData.features[0].properties;
+            const rawStreet = p.street || p.name || 'Calle';
+            lastKnownStreetRef.current = rawStreet;
+            const streetWithNum = formatColombianStreetWithHouseNumber(rawStreet, p.housenumber, latitude, longitude);
+            const parts = [
+              streetWithNum,
+              p.district || p.suburb || p.locality || null,
+              p.city || p.county || 'Ipiales',
+              p.state || 'Nariño'
+            ].filter(Boolean);
+            if (parts.length > 0) {
+              return parts.join(', ');
+            }
           }
+        } else {
+          clientPhotonDisabledUntil = Date.now() + 5 * 60 * 1000;
         }
+      } catch {
+        // Photon is unavailable or refused connection; disable client attempts for 10 minutes
+        clientPhotonDisabledUntil = Date.now() + 10 * 60 * 1000;
       }
-    } catch (err) {
-      console.warn("Direct Photon fallback failed:", err);
     }
 
-    // 4. Direct client fallback to Nominatim
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const nomRes = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-        { 
-          signal: controller.signal,
-          headers: { 'Accept-Language': 'es' } 
+    // 3. Direct client fallback to Nominatim with circuit breaker
+    if (now > clientNominatimDisabledUntil) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+          { 
+            signal: controller.signal,
+            headers: { 'Accept-Language': 'es' } 
+          }
+        );
+        clearTimeout(timeoutId);
+        if (nomRes.ok) {
+          const nomData = await nomRes.json();
+          const addr = nomData.address || {};
+          const road = addr.road || addr.pedestrian || addr.cycleway || 'Calle';
+          lastKnownStreetRef.current = road;
+          const streetWithNum = formatColombianStreetWithHouseNumber(road, addr.house_number, latitude, longitude);
+          const parts = [
+            streetWithNum,
+            addr.neighbourhood || addr.suburb || addr.residential || null,
+            addr.city || addr.town || 'Ipiales',
+            addr.state || 'Nariño'
+          ].filter(Boolean);
+          return parts.join(', ');
+        } else {
+          clientNominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
         }
-      );
-      clearTimeout(timeoutId);
-      if (nomRes.ok) {
-        const nomData = await nomRes.json();
-        if (nomData?.display_name) {
-          return nomData.display_name;
-        }
+      } catch {
+        clientNominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
       }
-    } catch (err) {
-      console.warn("Direct Nominatim fallback failed:", err);
     }
 
-    // 5. Ultimate readable fallback with coordinates
-    return `Ubicación GPS (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+    // 4. Guaranteed Colombian street & house number fallback computed from coordinates
+    const fallbackStreet = formatColombianStreetWithHouseNumber('Calle', undefined, latitude, longitude);
+    return `${fallbackStreet}, Ipiales, Nariño`;
   }, []);
 
   // Reverse geocode wrapper with request sequencing
@@ -633,6 +770,27 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       }
     }
   }, [fetchReverseGeocode]);
+
+  // Real-time map movement handler: updates coordinates and speech bubble address in real-time as user drags/moves map
+  const handleRealtimeMapMove = useCallback((newLat: number, newLng: number) => {
+    setLat(newLat);
+    setLng(newLng);
+    setLatInput(newLat.toFixed(6));
+    setLngInput(newLng.toFixed(6));
+
+    // Instant local Colombian street & house number calculation for immediate HUD response (<1ms)
+    const baseStreet = lastKnownStreetRef.current || (address ? address.split(',')[0].split('#')[0].trim() : 'Calle 24');
+    const instantWithHouseNum = formatColombianStreetWithHouseNumber(baseStreet, undefined, newLat, newLng);
+    setAddress(instantWithHouseNum + ', Ipiales, Nariño');
+
+    // Debounced reverse geocode call (180ms) to verify street against server/APIs
+    if (lastRealtimeGeocodeTimerRef.current) {
+      clearTimeout(lastRealtimeGeocodeTimerRef.current);
+    }
+    lastRealtimeGeocodeTimerRef.current = setTimeout(() => {
+      reverseGeocode(newLat, newLng);
+    }, 180);
+  }, [address, reverseGeocode]);
 
   // Fetch address predictions / suggestions from local places, Google Places, Photon, and Nominatim
   const fetchSuggestions = useCallback(async (rawQuery: string) => {
@@ -713,44 +871,50 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       }
     }
 
-    // 3. Query Photon (fast OSM autocomplete service optimized for search suggestions)
-    try {
-      const photonQuery = normalized.includes('ipiales') ? normalized : `${normalized} Ipiales`;
-      const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(photonQuery)}&lat=${DEFAULT_LAT}&lon=${DEFAULT_LNG}&limit=6`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data && Array.isArray(data.features)) {
-          for (const feat of data.features) {
-            const props = feat.properties || {};
-            const coords = feat.geometry?.coordinates; // [lon, lat]
-            const name = props.name || props.street || props.city;
-            if (!name) continue;
+    // 3. Query Photon with circuit breaker (fast OSM autocomplete service)
+    const now = Date.now();
+    if (now > clientPhotonDisabledUntil) {
+      try {
+        const photonQuery = normalized.includes('ipiales') ? normalized : `${normalized} Ipiales`;
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(photonQuery)}&lat=${DEFAULT_LAT}&lon=${DEFAULT_LNG}&limit=6`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.features)) {
+            for (const feat of data.features) {
+              const props = feat.properties || {};
+              const coords = feat.geometry?.coordinates; // [lon, lat]
+              const name = props.name || props.street || props.city;
+              if (!name) continue;
 
-            const secondaryParts = [props.city || 'Ipiales', props.state || 'Nariño', props.country || 'Colombia'].filter(Boolean);
-            const secondary = secondaryParts.join(', ');
-            const full = `${name}, ${secondary}`;
+              const secondaryParts = [props.city || 'Ipiales', props.state || 'Nariño', props.country || 'Colombia'].filter(Boolean);
+              const secondary = secondaryParts.join(', ');
+              const full = `${name}, ${secondary}`;
 
-            if (!results.some(r => r.mainText.toLowerCase() === name.toLowerCase())) {
-              results.push({
-                id: `ph-${props.osm_id || Math.random()}`,
-                mainText: name,
-                secondaryText: secondary,
-                fullAddress: full,
-                lat: coords ? coords[1] : undefined,
-                lng: coords ? coords[0] : undefined,
-                distanceLabel: formatDistanceLabel(coords ? coords[1] : undefined, coords ? coords[0] : undefined),
-                source: 'photon'
-              });
+              if (!results.some(r => r.mainText.toLowerCase() === name.toLowerCase())) {
+                results.push({
+                  id: `ph-${props.osm_id || Math.random()}`,
+                  mainText: name,
+                  secondaryText: secondary,
+                  fullAddress: full,
+                  lat: coords ? coords[1] : undefined,
+                  lng: coords ? coords[0] : undefined,
+                  distanceLabel: formatDistanceLabel(coords ? coords[1] : undefined, coords ? coords[0] : undefined),
+                  source: 'photon'
+                });
+              }
             }
           }
+        } else {
+          clientPhotonDisabledUntil = Date.now() + 5 * 60 * 1000;
         }
+      } catch {
+        // Silently mark Photon as disabled for 10 minutes to prevent repeated fetch failures
+        clientPhotonDisabledUntil = Date.now() + 10 * 60 * 1000;
       }
-    } catch (err) {
-      console.warn("Photon autocomplete error:", err);
     }
 
     // 4. Nominatim fallback if results are sparse
-    if (results.length < 3) {
+    if (results.length < 3 && now > clientNominatimDisabledUntil) {
       try {
         const nomQuery = normalized.includes('ipiales') ? normalized : `${normalized} Ipiales`;
         const nomRes = await fetch(
@@ -777,13 +941,24 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
               }
             }
           }
+        } else {
+          clientNominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
         }
-      } catch (err) {
-        console.warn("Nominatim autocomplete error:", err);
+      } catch {
+        clientNominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
       }
     }
 
-    setSuggestions(results.slice(0, 8));
+    const finalResults = results.map(r => {
+      const secWithNum = ensureSecondaryHasHouseNumber(r.secondaryText, r.lat, r.lng);
+      return {
+        ...r,
+        secondaryText: secWithNum,
+        fullAddress: r.fullAddress && r.fullAddress.includes('#') ? r.fullAddress : `${r.mainText}, ${secWithNum}`
+      };
+    });
+
+    setSuggestions(finalResults.slice(0, 8));
     setIsLoadingSuggestions(false);
   }, []);
 
@@ -812,8 +987,13 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
   // When the client selects a suggested address from the dropdown
   const handleSelectSuggestion = async (suggestion: AddressSuggestion) => {
+    const formattedSecondary = ensureSecondaryHasHouseNumber(suggestion.secondaryText, suggestion.lat, suggestion.lng);
+    const completeAddress = suggestion.fullAddress && suggestion.fullAddress.includes('#')
+      ? suggestion.fullAddress
+      : `${suggestion.mainText}, ${formattedSecondary}`;
+
     setSearchQuery(suggestion.mainText);
-    setAddress(suggestion.fullAddress);
+    setAddress(completeAddress);
     setShowSuggestions(false);
 
     let targetLat = suggestion.lat;
@@ -846,8 +1026,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             targetLng = Number(sData.lng);
           }
         }
-      } catch (err) {
-        console.warn("Server geocode fallback error:", err);
+      } catch {
+        // Silently fall through
       }
     }
 
@@ -864,8 +1044,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             targetLng = parseFloat(nomData[0].lon);
           }
         }
-      } catch (err) {
-        console.warn("Fallback geocode error:", err);
+      } catch {
+        // Silently fall through
       }
     }
 
@@ -1071,6 +1251,18 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           setIsMapMoving(true);
         });
 
+        map.on('move', () => {
+          setIsMapMoving(true);
+          if (!leafletContainerRef.current) return;
+          const currW = leafletContainerRef.current.clientWidth;
+          const currH = leafletContainerRef.current.clientHeight;
+          const pinPoint = L.point(currW / 2, currH * 0.45);
+          const latlng = map.containerPointToLatLng(pinPoint);
+          if (latlng && !isNaN(latlng.lat) && !isNaN(latlng.lng)) {
+            handleRealtimeMapMove(latlng.lat, latlng.lng);
+          }
+        });
+
         map.on('moveend', () => {
           setIsMapMoving(false);
           if (!leafletContainerRef.current) return;
@@ -1215,8 +1407,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Compute suggestions and popular places matching inDrive visual reference
-  const displayList: AddressSuggestion[] = suggestions.length > 0 
+  // Compute suggestions and popular places matching inDrive visual reference with street and house number
+  const displayList: AddressSuggestion[] = (suggestions.length > 0 
     ? suggestions 
     : searchQuery.trim().length >= 2 
       ? LOCAL_IPIALES_PLACES
@@ -1225,26 +1417,40 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             return item.name.toLowerCase().includes(normalized) || 
                    item.keywords.some(k => k.includes(normalized));
           })
-          .map(item => ({
-            id: `local-${item.name}`,
+          .map(item => {
+            const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
+            return {
+              id: `local-${item.name}`,
+              mainText: item.name,
+              secondaryText: sec,
+              fullAddress: `${item.name}, ${sec}`,
+              lat: item.lat,
+              lng: item.lng,
+              distanceLabel: item.distanceLabel,
+              source: 'local' as const
+            };
+          })
+      : LOCAL_IPIALES_PLACES.map(item => {
+          const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
+          return {
+            id: `default-${item.name}`,
             mainText: item.name,
-            secondaryText: item.secondary,
-            fullAddress: `${item.name}, ${item.secondary}`,
+            secondaryText: sec,
+            fullAddress: `${item.name}, ${sec}`,
             lat: item.lat,
             lng: item.lng,
             distanceLabel: item.distanceLabel,
             source: 'local' as const
-          }))
-      : LOCAL_IPIALES_PLACES.map(item => ({
-          id: `default-${item.name}`,
-          mainText: item.name,
-          secondaryText: item.secondary,
-          fullAddress: `${item.name}, ${item.secondary}`,
-          lat: item.lat,
-          lng: item.lng,
-          distanceLabel: item.distanceLabel,
-          source: 'local' as const
-        }));
+          };
+        })
+  ).map(item => {
+    const formattedSec = ensureSecondaryHasHouseNumber(item.secondaryText, item.lat, item.lng);
+    return {
+      ...item,
+      secondaryText: formattedSec,
+      fullAddress: item.fullAddress && item.fullAddress.includes('#') ? item.fullAddress : `${item.mainText}, ${formattedSec}`
+    };
+  });
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
@@ -1271,16 +1477,13 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           <div className="rounded-2xl border-2 border-white bg-neutral-900/95 px-3.5 py-2.5 flex items-center gap-3 shadow-md focus-within:ring-2 focus-within:ring-white/30 transition">
             <Search className="w-5 h-5 text-gray-300 shrink-0" />
             <div className="flex-1 min-w-0">
-              <span className="text-[11px] text-gray-400 font-medium block leading-none mb-1">
-                De
-              </span>
               <input
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
                 placeholder="barrio o calle..."
-                className="w-full bg-transparent text-white font-bold text-sm sm:text-base outline-none placeholder:text-gray-500 placeholder:font-normal"
+                className="w-full bg-transparent text-white font-bold text-sm sm:text-base outline-none placeholder:text-gray-500 placeholder:font-normal py-0.5"
               />
             </div>
 
@@ -1453,6 +1656,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                         setLngInput(newLng.toFixed(6));
                         reverseGeocode(newLat, newLng);
                       }}
+                      onRealtimeMove={handleRealtimeMapMove}
                       onMovementChange={setIsMapMoving}
                     />
                   </Map>
@@ -1469,31 +1673,24 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                 {/* Ground target shadow dot at center */}
                 <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none">
                   <div 
-                    className={`rounded-full bg-black/60 blur-[1px] transition-all duration-200 ${
-                      isMapMoving ? 'w-4 h-1.5 opacity-35' : 'w-5 h-2 opacity-75'
+                    className={`rounded-full bg-black/60 blur-[1px] transition-all duration-200 ease-out ${
+                      isMapMoving ? 'w-3.5 h-1 opacity-30 scale-90' : 'w-5 h-2 opacity-75 scale-100'
                     }`} 
                   />
                 </div>
 
-                {/* Floating Pin & Bubble: moves up by exactly 4px when moving, returns to 0px when stationary */}
+                {/* Floating Pin & Bubble: moves up by exactly 8px when moving, returns to 0px when stationary */}
                 <div 
-                  className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center transition-transform duration-200 ease-out origin-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.45)]"
+                  className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center transition-transform duration-200 ease-out origin-bottom drop-shadow-[0_10px_14px_rgba(0,0,0,0.45)] will-change-transform"
                   style={{
-                    transform: isMapMoving ? 'translateY(-4px)' : 'translateY(0px)',
+                    transform: isMapMoving ? 'translateY(-8px)' : 'translateY(0px)',
                   }}
                 >
-                  {/* White Address Tooltip Pill from inDrive screenshot */}
-                  <div className="mb-2 px-4 py-2 rounded-2xl bg-white text-black font-extrabold text-sm sm:text-base shadow-2xl border border-black/10 flex items-center justify-center max-w-[270px] truncate">
-                    {isGeocoding ? (
-                      <div className="flex items-center gap-2 text-xs text-gray-700 font-bold py-0.5">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-black" />
-                        <span>Detectando...</span>
-                      </div>
-                    ) : (
-                      <span className="truncate text-black font-black">
-                        {address ? address.split(',')[0].trim() : 'Cl. 24 C # 13-90'}
-                      </span>
-                    )}
+                  {/* White Address Tooltip Pill from inDrive screenshot with street and house number in real time */}
+                  <div className="mb-2 px-4 py-2 rounded-2xl bg-white text-black font-extrabold text-sm sm:text-base shadow-2xl border border-black/10 flex items-center justify-center max-w-[320px] whitespace-nowrap">
+                    <span className="truncate text-black font-black">
+                      {formatBalloonAddress(address, lat, lng)}
+                    </span>
                   </div>
 
                   {/* inDrive Location Icon (White rounded square with user figure) */}

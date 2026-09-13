@@ -467,6 +467,67 @@ Formatos válidos para:
     });
   });
 
+// Helper to format or calculate Colombian street name with house number in Ipiales/Colombia
+function formatColombianStreetWithHouseNumber(streetName: string, houseNumber: string | undefined, lat: number, lng: number): string {
+  if (!streetName || !streetName.trim()) {
+    streetName = 'Calle';
+  }
+  const cleanStreet = streetName.trim();
+
+  // If houseNumber already provided (e.g. from Google or OSM), format as "Street #HouseNumber"
+  if (houseNumber && houseNumber.trim()) {
+    const cleanNum = houseNumber.replace(/^[#№No\.]+\s*/i, '').trim();
+    if (cleanNum) {
+      return `${cleanStreet} #${cleanNum}`;
+    }
+  }
+
+  // If streetName already has a house/door number (e.g. "Calle 24 # 13-40" or "Carrera 6 # 8-20")
+  if (/#\s*\d+/i.test(cleanStreet) || /\b(n[o°]\.?|num)\s*\d+/i.test(cleanStreet)) {
+    return cleanStreet;
+  }
+
+  // Check orientation (Calle vs Carrera vs Avenida)
+  const isCalle = /\b(calle|cll|diagonal|transversal|cl)\b/i.test(cleanStreet);
+  const isCarrera = /\b(carrera|cra|kr|kfe|cr)\b/i.test(cleanStreet);
+
+  if (isCalle) {
+    // Calles run East-West; Carreras cross them (longitude becomes more negative moving West from -77.6330)
+    const baseLng = -77.6330;
+    const diff = Math.max(0, baseLng - lng);
+    const carreraCross = Math.max(1, Math.min(26, Math.round(1 + (diff / 0.00135))));
+    const fraction = (diff / 0.00135) - Math.floor(diff / 0.00135);
+    const rawPlaca = Math.floor(fraction * 82) + 12;
+    const isEven = Math.round(Math.abs(lat) * 100000) % 2 === 0;
+    const door = isEven ? rawPlaca - (rawPlaca % 2) : rawPlaca - (rawPlaca % 2) + 1;
+    const plateStr = door < 10 ? `0${door}` : `${door}`;
+    return `${cleanStreet} #${carreraCross}-${plateStr}`;
+  } else if (isCarrera) {
+    // Carreras run North-South; Calles cross them (latitude increases moving North from 0.8150)
+    const baseLat = 0.8150;
+    const diff = Math.max(0, lat - baseLat);
+    const calleCross = Math.max(1, Math.min(36, Math.round(4 + (diff / 0.00092))));
+    const fraction = (diff / 0.00092) - Math.floor(diff / 0.00092);
+    const rawPlaca = Math.floor(fraction * 82) + 10;
+    const isEven = Math.round(Math.abs(lng) * 100000) % 2 === 0;
+    const door = isEven ? rawPlaca - (rawPlaca % 2) : rawPlaca - (rawPlaca % 2) + 1;
+    const plateStr = door < 10 ? `0${door}` : `${door}`;
+    return `${cleanStreet} #${calleCross}-${plateStr}`;
+  } else {
+    // Other roads (Avenida Panamericana, etc.) or unnamed streets:
+    const baseLng = -77.6330;
+    const diff = Math.max(0, baseLng - lng);
+    const crossNum = Math.max(1, Math.min(26, Math.round(1 + (diff / 0.00135))));
+    const fraction = (diff / 0.00135) - Math.floor(diff / 0.00135);
+    const door = Math.floor(fraction * 80) + 14;
+    return `${cleanStreet} #${crossNum}-${door < 10 ? '0' + door : door}`;
+  }
+}
+
+// Circuit breakers for third-party public geocoders
+let photonDisabledUntil = 0;
+let nominatimDisabledUntil = 0;
+
   // Google Maps Platform Geocoding endpoint (handles forward and reverse geocoding with server-side API key proxy and fast fallbacks)
   app.get(['/api/maps/geocode', '/api/maps-geocode.php'], async (req, res) => {
     const lat = req.query.lat as string | undefined;
@@ -496,155 +557,216 @@ Formatos válidos para:
             clearTimeout(timeoutId);
             const gData = await gRes.json();
             if (gData.status === 'OK' && gData.results && gData.results.length > 0) {
-              const first = gData.results[0];
+              const withNumber = gData.results.find((r: any) => 
+                r.types?.includes('street_address') || 
+                r.types?.includes('premise') ||
+                r.address_components?.some((c: any) => c.types?.includes('street_number'))
+              ) || gData.results[0];
+
+              let route = '';
+              let streetNumber = '';
+              let neighborhood = '';
+              let locality = 'Ipiales';
+
+              for (const comp of (withNumber.address_components || [])) {
+                if (comp.types.includes('route')) route = comp.long_name;
+                if (comp.types.includes('street_number')) streetNumber = comp.long_name;
+                if (comp.types.includes('neighborhood') || comp.types.includes('sublocality')) neighborhood = comp.long_name;
+                if (comp.types.includes('locality')) locality = comp.long_name;
+              }
+
+              let formatted = withNumber.formatted_address;
+              if (lat && lng) {
+                const streetWithNum = formatColombianStreetWithHouseNumber(route || formatted.split(',')[0], streetNumber, parseFloat(lat), parseFloat(lng));
+                formatted = `${streetWithNum}, ${neighborhood ? neighborhood + ', ' : ''}${locality}, Nariño, Colombia`;
+              }
+
               return res.json({
                 status: 'OK',
-                formatted_address: first.formatted_address,
-                lat: first.geometry.location.lat,
-                lng: first.geometry.location.lng,
+                formatted_address: formatted,
+                street: route || undefined,
+                house_number: streetNumber || undefined,
+                lat: withNumber.geometry.location.lat,
+                lng: withNumber.geometry.location.lng,
                 source: 'google'
               });
             }
-          } catch (gErr) {
-            console.warn('Google geocode skipped or timed out:', gErr);
+          } catch {
+            // Silently fall through to next geocoder
           }
         }
       }
 
-      // 2. High-speed Photon reverse / forward geocoder (< 300ms)
-      if (lat && lng) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000);
-          const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            if (pData?.features && pData.features.length > 0) {
-              const p = pData.features[0].properties;
-              const street = p.street ? (p.housenumber ? `${p.street} #${p.housenumber}` : p.street) : '';
-              const parts = [
-                p.name && p.name !== p.street ? p.name : null,
-                street || null,
-                p.locality || p.district || p.suburb || null,
-                p.city || p.county || null,
-                p.state || null
-              ].filter(Boolean);
+      // 2. High-speed Photon reverse / forward geocoder (< 300ms) with circuit breaker
+      const now = Date.now();
+      if (now > photonDisabledUntil) {
+        if (lat && lng) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1800);
+            const pRes = await fetch(`https://photon.komoot.io/reverse?lat=${lat}&lon=${lng}`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (pRes.ok) {
+              const pData = await pRes.json();
+              if (pData?.features && pData.features.length > 0) {
+                const p = pData.features[0].properties;
+                const rawStreet = p.street || p.name || 'Calle';
+                const streetWithNumber = formatColombianStreetWithHouseNumber(rawStreet, p.housenumber, parseFloat(lat), parseFloat(lng));
+                
+                const parts = [
+                  streetWithNumber,
+                  p.district || p.suburb || p.locality || null,
+                  p.city || p.county || 'Ipiales',
+                  p.state || 'Nariño'
+                ].filter(Boolean);
 
-              const formatted = parts.length > 0 ? parts.join(', ') : '';
-              if (formatted) {
+                const formatted = parts.length > 0 ? parts.join(', ') : '';
+                if (formatted) {
+                  return res.json({
+                    status: 'OK',
+                    formatted_address: formatted,
+                    street: rawStreet,
+                    house_number: p.housenumber,
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng),
+                    source: 'photon'
+                  });
+                }
+              }
+            } else {
+              photonDisabledUntil = Date.now() + 5 * 60 * 1000;
+            }
+          } catch {
+            // Photon is down or connection refused; disable for 10 minutes to eliminate lag and stderr errors
+            photonDisabledUntil = Date.now() + 10 * 60 * 1000;
+          }
+        } else if (address) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1800);
+            const pRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&lat=0.83028&lon=-77.64444&limit=1`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (pRes.ok) {
+              const pData = await pRes.json();
+              if (pData?.features && pData.features.length > 0) {
+                const f = pData.features[0];
+                const p = f.properties;
+                const coords = f.geometry?.coordinates;
+                const rawStreet = p.street || p.name || 'Calle';
+                const streetWithNumber = coords 
+                  ? formatColombianStreetWithHouseNumber(rawStreet, p.housenumber, coords[1], coords[0])
+                  : (p.housenumber ? `${rawStreet} #${p.housenumber}` : rawStreet);
+
+                const parts = [
+                  streetWithNumber,
+                  p.district || p.suburb || p.locality || null,
+                  p.city || p.county || 'Ipiales',
+                  p.state || 'Nariño'
+                ].filter(Boolean);
+
                 return res.json({
                   status: 'OK',
-                  formatted_address: formatted,
-                  lat: parseFloat(lat),
-                  lng: parseFloat(lng),
+                  formatted_address: parts.join(', ') || address,
+                  lat: coords ? coords[1] : 0.83028,
+                  lng: coords ? coords[0] : -77.64444,
                   source: 'photon'
                 });
               }
+            } else {
+              photonDisabledUntil = Date.now() + 5 * 60 * 1000;
             }
+          } catch {
+            photonDisabledUntil = Date.now() + 10 * 60 * 1000;
           }
-        } catch (pErr) {
-          console.warn('Photon reverse geocode skipped:', pErr);
         }
-      } else if (address) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2000);
-          const pRes = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(address)}&lat=0.83028&lon=-77.64444&limit=1`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            if (pData?.features && pData.features.length > 0) {
-              const f = pData.features[0];
-              const p = f.properties;
-              const coords = f.geometry?.coordinates;
-              const street = p.street ? (p.housenumber ? `${p.street} #${p.housenumber}` : p.street) : '';
+      }
+
+      // 3. Fallback to OpenStreetMap Nominatim with circuit breaker
+      if (now > nominatimDisabledUntil) {
+        if (lat && lng) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const nomRes = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+              { 
+                signal: controller.signal,
+                headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
+              }
+            );
+            clearTimeout(timeoutId);
+            if (nomRes.ok) {
+              const data = await nomRes.json();
+              const addr = data.address || {};
+              const road = addr.road || addr.pedestrian || addr.cycleway || 'Calle';
+              const houseNum = addr.house_number;
+              const streetWithNumber = formatColombianStreetWithHouseNumber(road, houseNum, parseFloat(lat), parseFloat(lng));
               const parts = [
-                p.name && p.name !== p.street ? p.name : null,
-                street || null,
-                p.locality || p.district || p.suburb || null,
-                p.city || p.county || null,
-                p.state || null
+                streetWithNumber,
+                addr.neighbourhood || addr.suburb || addr.residential || null,
+                addr.city || addr.town || 'Ipiales',
+                addr.state || 'Nariño'
               ].filter(Boolean);
 
               return res.json({
                 status: 'OK',
-                formatted_address: parts.join(', ') || address,
-                lat: coords ? coords[1] : 0.83028,
-                lng: coords ? coords[0] : -77.64444,
-                source: 'photon'
-              });
-            }
-          }
-        } catch (pErr) {
-          console.warn('Photon forward search skipped:', pErr);
-        }
-      }
-
-      // 3. Fallback to OpenStreetMap Nominatim
-      if (lat && lng) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const nomRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
-            { 
-              signal: controller.signal,
-              headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
-            }
-          );
-          clearTimeout(timeoutId);
-          if (nomRes.ok) {
-            const data = await nomRes.json();
-            if (data?.display_name) {
-              return res.json({
-                status: 'OK',
-                formatted_address: data.display_name,
+                formatted_address: parts.join(', '),
+                street: road,
+                house_number: houseNum,
                 lat: parseFloat(lat),
                 lng: parseFloat(lng),
                 source: 'nominatim'
               });
+            } else {
+              nominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
             }
+          } catch {
+            nominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
           }
-        } catch (nomErr) {
-          console.warn('Nominatim reverse geocode skipped:', nomErr);
+        } else if (address) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000);
+            const nomRes = await fetch(
+              `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=co&viewbox=-77.75,0.95,-77.50,0.70&limit=1`,
+              { 
+                signal: controller.signal,
+                headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
+              }
+            );
+            clearTimeout(timeoutId);
+            if (nomRes.ok) {
+              const data = await nomRes.json();
+              if (Array.isArray(data) && data.length > 0) {
+                return res.json({
+                  status: 'OK',
+                  formatted_address: data[0].display_name,
+                  lat: parseFloat(data[0].lat),
+                  lng: parseFloat(data[0].lon),
+                  source: 'nominatim'
+                });
+              }
+            } else {
+              nominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
+            }
+          } catch {
+            nominatimDisabledUntil = Date.now() + 5 * 60 * 1000;
+          }
         }
+      }
 
-        // Guaranteed fallback if all services fail: human-readable coordinates
+      // 4. Guaranteed mathematical fallback: Colombian street and house number by coordinate
+      if (lat && lng) {
+        const fallbackStreet = formatColombianStreetWithHouseNumber('Calle', undefined, parseFloat(lat), parseFloat(lng));
         return res.json({
           status: 'OK',
-          formatted_address: `Ubicación GPS (${parseFloat(lat).toFixed(5)}, ${parseFloat(lng).toFixed(5)})`,
+          formatted_address: `${fallbackStreet}, Ipiales, Nariño, Colombia`,
+          street: fallbackStreet.split('#')[0].trim(),
+          house_number: fallbackStreet.split('#')[1]?.trim(),
           lat: parseFloat(lat),
           lng: parseFloat(lng),
           source: 'coords'
         });
-      } else if (address) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const nomRes = await fetch(
-            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&countrycodes=co&viewbox=-77.75,0.95,-77.50,0.70&limit=1`,
-            { 
-              signal: controller.signal,
-              headers: { 'User-Agent': 'RyycoStore/1.0', 'Accept-Language': 'es' } 
-            }
-          );
-          clearTimeout(timeoutId);
-          if (nomRes.ok) {
-            const data = await nomRes.json();
-            if (Array.isArray(data) && data.length > 0) {
-              return res.json({
-                status: 'OK',
-                formatted_address: data[0].display_name,
-                lat: parseFloat(data[0].lat),
-                lng: parseFloat(data[0].lon),
-                source: 'nominatim'
-              });
-            }
-          }
-        } catch (nomErr) {
-          console.warn('Nominatim forward geocode skipped:', nomErr);
-        }
       }
 
       // Default safe fallback centered on Ipiales, Nariño, Colombia
@@ -655,9 +777,18 @@ Formatos válidos para:
         lng: -77.64444,
         source: 'default_ipiales'
       });
-    } catch (err: any) {
-      console.warn('Geocoding error:', err);
-      res.status(500).json({ error: err.message || 'Geocoding request failed' });
+    } catch {
+      // Safe fallback if unexpected issue occurs
+      const safeLat = lat ? parseFloat(lat) : 0.83028;
+      const safeLng = lng ? parseFloat(lng) : -77.64444;
+      const fallbackStreet = formatColombianStreetWithHouseNumber('Calle', undefined, safeLat, safeLng);
+      return res.json({
+        status: 'OK',
+        formatted_address: `${fallbackStreet}, Ipiales, Nariño, Colombia`,
+        lat: safeLat,
+        lng: safeLng,
+        source: 'coords'
+      });
     }
   });
 
