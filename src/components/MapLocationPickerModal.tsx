@@ -1955,18 +1955,17 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                   </div>
 
                   {/* inDrive Location Icon (White rounded square with user figure) */}
-                  <div className="w-11 h-11 rounded-2xl bg-white text-black shadow-xl flex items-center justify-center border border-gray-200 mb-1">
+                  <div className="w-11 h-11 rounded-2xl bg-white text-black shadow-xl flex items-center justify-center border border-gray-200">
                     <svg className="w-6 h-6 text-black" viewBox="0 0 24 24" fill="currentColor">
                       <circle cx="12" cy="7" r="3.2" />
                       <path d="M12 12.5c-4.2 0-6.5 2.5-6.5 5.5V20h13v-2c0-3-2.3-5.5-6.5-5.5z" />
                     </svg>
                   </div>
 
-                  {/* Pin stick / stem ("palito") pointing down to the exact ground coordinate */}
-                  <div className="flex flex-col items-center pointer-events-none" style={{ marginBottom: '-10px' }}>
-                    <div className="w-1.5 h-5 bg-black rounded-b-full shadow-md" />
-                    <div className="w-1.5 h-1.5 rounded-full bg-black border border-white shadow-sm" />
-                  </div>
+                  {/* Pin stick ("palito") with white background and black border on left and right sides - more slender (delgadito) */}
+                  <div 
+                    className="w-1 h-5 bg-white border-l-[1.5px] border-r-[1.5px] border-black border-t-0 border-b-0 shadow-md pointer-events-none" 
+                  />
                 </div>
               </div>
 
