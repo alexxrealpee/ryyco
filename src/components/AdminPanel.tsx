@@ -2622,7 +2622,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             )}
           </div>
         ) : activeAdminTab === 'orders' ? (
-          <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-3.5 sm:p-6 backdrop-blur-sm space-y-5 max-w-full overflow-hidden">
+          <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-3.5 sm:p-6 backdrop-blur-sm space-y-5 max-w-full">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-900 pb-4">
               <div>
                 <div className="flex items-center gap-2.5 mb-1">
@@ -2990,21 +2990,30 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   })}
                 </div>
 
-                {/* Desktop View: Full Table (hidden md:block) */}
-                <div className="hidden md:block overflow-x-auto w-full">
-                  <table className="w-full text-left border-collapse">
+                {/* Desktop View: Full Responsive Table (hidden md:block) */}
+                <div className="hidden md:block w-full overflow-x-auto rounded-2xl border border-gray-800/80 bg-gray-950/40 shadow-inner [scrollbar-width:thin] [scrollbar-color:rgba(99,102,241,0.35)_rgba(15,23,42,0.6)]">
+                  <table className="w-full text-left border-collapse table-fixed min-w-[960px]">
+                    <colgroup>
+                      <col className="w-[80px]" /> {/* Pedido # */}
+                      <col className="w-[165px]" /> {/* Tienda de Origen */}
+                      <col className="w-[220px]" /> {/* Cliente / Contacto */}
+                      <col className="w-[190px]" /> {/* Artículos del Pedido */}
+                      <col className="w-[125px]" /> {/* Monto / Pago */}
+                      <col className="w-[125px]" /> {/* Estado del Pedido */}
+                      <col className="w-[85px]" /> {/* Acciones */}
+                    </colgroup>
                     <thead>
-                      <tr className="border-b border-gray-800 text-[10px] text-gray-450 uppercase font-black tracking-widest bg-gray-900/15">
-                        <th className="py-4 px-4">Pedido #</th>
-                        <th className="py-2.5 px-4">Tienda de Origen</th>
-                        <th className="py-2.5 px-4">Cliente / Contacto</th>
-                        <th className="py-2.5 px-4">Artículos del Pedido</th>
-                        <th className="py-2.5 px-4">Monto / Pago</th>
-                        <th className="py-2.5 px-4 text-center">Estado del Pedido</th>
-                        <th className="py-2.5 px-4 text-right">Acciones</th>
+                      <tr className="border-b border-gray-800 text-[10px] text-gray-400 uppercase font-black tracking-widest bg-gray-900/50">
+                        <th className="py-3 px-3 w-[80px]">Pedido #</th>
+                        <th className="py-3 px-3">Tienda de Origen</th>
+                        <th className="py-3 px-3">Cliente / Contacto</th>
+                        <th className="py-3 px-3">Artículos del Pedido</th>
+                        <th className="py-3 px-3">Monto / Pago</th>
+                        <th className="py-3 px-3 text-center">Estado</th>
+                        <th className="py-3 px-3 text-right sticky right-0 bg-[#0d111d] z-20 border-l border-gray-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.35)]">Acciones</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-850 text-xs">
+                    <tbody className="divide-y divide-gray-850/80 text-xs">
                       {displayedOrders.map((order) => {
                         const dateObj = order.createdAt ? new Date(order.createdAt) : new Date();
                         const timeFormatted = dateObj.toLocaleTimeString('es-CO', {
@@ -3013,28 +3022,38 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           hour12: true
                         }).replace(/\./g, '').toUpperCase();
                         return (
-                          <tr key={order.id} className="hover:bg-gray-900/10 transition">
-                            <td className="py-4 px-4">
-                              <span className="font-extrabold text-white text-xs block">#{order.orderNumber || 'S/N'}</span>
-                              <span className="text-[10px] text-gray-400 font-mono block">
+                          <tr key={order.id} className="hover:bg-gray-900/30 group transition-colors">
+                            <td className="py-3.5 px-3 align-top w-[80px]">
+                              <span className="font-extrabold text-white text-xs block font-mono">#{order.orderNumber || 'S/N'}</span>
+                              <span className="text-[10px] text-gray-400 font-mono block mt-0.5">
                                 {dateObj.getDate()}/{dateObj.getMonth() + 1}/{dateObj.getFullYear()}
                               </span>
                               <span className="text-[10px] text-indigo-300 font-mono font-bold block">
                                 {timeFormatted}
                               </span>
+                              {checkIsTableOrder(order) && (
+                                <span className="inline-block mt-1 px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-black text-[9px] uppercase tracking-wider">
+                                  🍽️ Mesa
+                                </span>
+                              )}
+                              {checkIsPickupOrder(order) && (
+                                <span className="inline-block mt-1 px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-black text-[9px] uppercase tracking-wider">
+                                  🛍️ Recoger
+                                </span>
+                              )}
                             </td>
-                            <td className="py-4 px-4">
-                              <div className="flex items-start gap-2">
-                                <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
-                                  <Store className="w-3.5 h-3.5 text-indigo-400" />
+                            <td className="py-3.5 px-3 align-top">
+                              <div className="flex items-start gap-2 min-w-0">
+                                <div className="w-6 h-6 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                                  <Store className="w-3 h-3 text-indigo-400" />
                                 </div>
-                                <div className="min-w-0">
-                                  <span className="font-extrabold text-indigo-300 text-xs block truncate max-w-[170px]" title={getStoreNameForOrder(order)}>
+                                <div className="min-w-0 flex-1">
+                                  <span className="font-extrabold text-indigo-300 text-xs block truncate" title={getStoreNameForOrder(order)}>
                                     {getStoreNameForOrder(order)}
                                   </span>
                                   {getStoreUsernameForOrder(order) && (
-                                    <span className="text-[10px] text-gray-400 font-mono block truncate max-w-[170px]">
-                                     @{getStoreUsernameForOrder(order)}
+                                    <span className="text-[10px] text-gray-400 font-mono block truncate">
+                                      @{getStoreUsernameForOrder(order)}
                                     </span>
                                   )}
                                   {getStoreWhatsappForOrder(order) ? (
@@ -3042,11 +3061,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(order))}?text=${encodeURIComponent(`Hola ${getStoreNameForOrder(order)}, te contactamos desde administración general sobre el pedido #${order.orderNumber || 'S/N'}.`)}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-mono font-bold mt-0.5"
+                                      className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-mono font-bold mt-0.5 truncate max-w-full"
                                       title={`WhatsApp del Restaurante (${getStoreNameForOrder(order)})`}
                                     >
                                       <MessageCircle className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
-                                      <span>WA: {getStoreWhatsappForOrder(order)}</span>
+                                      <span className="truncate">WA: {getStoreWhatsappForOrder(order)}</span>
                                     </a>
                                   ) : (
                                     <span className="text-[9px] text-gray-500 font-mono block mt-0.5">
@@ -3054,63 +3073,77 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                     </span>
                                   )}
                                   <span className="text-[9px] text-gray-500 font-mono block">
-                                    ID: {order.storeOwnerId.substring(0, 8)}...
+                                    ID: {order.storeOwnerId ? order.storeOwnerId.substring(0, 8) : '---'}...
                                   </span>
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-4">
-                              <div className="font-bold text-white text-xs">{order.customerName}</div>
-                              <div className="text-[10px] text-gray-400 font-mono">{order.customerPhone}</div>
+                            <td className="py-3.5 px-3 align-top">
+                              <div className="font-bold text-white text-xs truncate" title={order.customerName}>
+                                {order.customerName}
+                              </div>
+                              <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1 mt-0.5">
+                                <span>{order.customerPhone}</span>
+                              </div>
                               {order.customerEmail && (
-                                <div className="text-[9px] text-gray-500">{order.customerEmail}</div>
+                                <div className="text-[9px] text-gray-500 truncate" title={order.customerEmail}>
+                                  {order.customerEmail}
+                                </div>
                               )}
-                              <div className="text-[10px] text-gray-400 mt-1 max-w-xs truncate" title={order.customerAddress}>
-                                📍 {order.customerAddress}
+                              <div className="text-[10px] text-gray-300 mt-1 line-clamp-2 leading-tight" title={order.customerAddress}>
+                                📍 {order.customerAddress || 'Retiro local / Sin dirección'}
                               </div>
                               {order.notes && (
-                                <div className="text-[9px] text-amber-400/80 italic mt-0.5 max-w-xs truncate" title={order.notes}>
+                                <div className="text-[9px] text-amber-400/90 italic mt-1 line-clamp-1" title={order.notes}>
                                   Nota: "{order.notes}"
                                 </div>
                               )}
 
                               {order.deliveryDriverName && (
-                                <div className="mt-2 p-2 bg-emerald-950/30 border border-emerald-800/40 rounded-xl text-[10.5px] space-y-0.5 text-emerald-300 max-w-xs">
+                                <div className="mt-1.5 p-1.5 bg-emerald-950/40 border border-emerald-800/40 rounded-lg text-[9.5px] text-emerald-300 space-y-0.5">
                                   <div className="font-bold flex items-center justify-between gap-1 text-emerald-400">
-                                    <span className="flex items-center gap-1">
-                                      <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                      {order.deliveryDriverName}
+                                    <span className="flex items-center gap-1 truncate">
+                                      <Bike className="w-3 h-3 text-emerald-400 shrink-0" />
+                                      <span className="truncate">{order.deliveryDriverName}</span>
                                     </span>
-                                    <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold uppercase">
-                                      {order.deliveryStep === 'delivered' ? '✓ Entregado' : '🛵 Domicilio'}
+                                    <span className="text-[8px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold uppercase shrink-0">
+                                      {order.deliveryStep === 'delivered' ? '✓ Entregado' : '🛵 Moto'}
                                     </span>
                                   </div>
                                   {order.deliveryDriverPhone && (
-                                    <div className="text-[9.5px] text-gray-300 font-mono">📱 {order.deliveryDriverPhone}</div>
+                                    <div className="text-[9px] text-gray-300 font-mono truncate">📱 {order.deliveryDriverPhone}</div>
                                   )}
                                   {order.deliveryVehicle && (
-                                    <div className="text-[9.5px] text-gray-400">🚘 {order.deliveryVehicle} {order.deliveryVehiclePlate ? `(${order.deliveryVehiclePlate})` : ''}</div>
+                                    <div className="text-[8.5px] text-gray-400 truncate">🚘 {order.deliveryVehicle} {order.deliveryVehiclePlate ? `(${order.deliveryVehiclePlate})` : ''}</div>
                                   )}
                                 </div>
                               )}
                             </td>
-                            <td className="py-4 px-4">
-                              <div className="space-y-1 max-w-xs">
+                            <td className="py-3.5 px-3 align-top">
+                              <div className="space-y-1.5 max-w-full">
                                 {order.items?.map((item, idx) => (
-                                  <div key={idx} className="flex justify-between text-gray-300 gap-2">
-                                    <span className="truncate text-[11px]">
+                                  <div key={idx} className="flex items-start justify-between text-gray-300 gap-1.5 text-[11px] leading-tight">
+                                    <span className="truncate flex-1 font-medium text-gray-200" title={`${item.name} ${item.selectedVariant ? `(${item.selectedVariant})` : ''}`}>
                                       {item.name} {item.selectedVariant ? `(${item.selectedVariant})` : ''}
                                     </span>
-                                    <span className="font-mono text-gray-500 shrink-0">x{item.quantity}</span>
+                                    <span className="font-mono text-gray-400 font-bold shrink-0 bg-gray-900/80 px-1 py-0.5 rounded text-[10px]">
+                                      x{item.quantity}
+                                    </span>
                                   </div>
                                 ))}
+                                {(!order.items || order.items.length === 0) && (
+                                  <span className="text-[10px] text-gray-500 italic">Sin artículos detallados</span>
+                                )}
                               </div>
                             </td>
-                            <td className="py-4 px-4 font-mono">
-                              <span className="font-extrabold text-white block">
-                                ${order.totalAmount.toLocaleString()} COP
+                            <td className="py-3.5 px-3 align-top font-mono">
+                              <span className="font-black text-emerald-400 text-xs block">
+                                ${(order.totalAmount || 0).toLocaleString('es-CO')}
                               </span>
-                              <span className="text-[9px] uppercase font-black tracking-wider text-gray-500 block">
+                              <span className="text-[9px] text-gray-400 font-bold uppercase block mt-0.5">
+                                COP
+                              </span>
+                              <span className="inline-block mt-1 text-[8.5px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-gray-300 truncate max-w-full">
                                 {order.paymentMethod === 'whatsapp' 
                                   ? 'Contraentrega (WA)' 
                                   : order.paymentMethod === 'transfer' 
@@ -3120,12 +3153,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   : 'Efectivo'}
                               </span>
                             </td>
-                            <td className="py-4 px-4 text-center">
+                            <td className="py-3.5 px-3 align-top text-center">
                               {checkIsTableOrder(order) ? (
                                 <select
                                   value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status}
                                   onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                  className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2.5 cursor-pointer outline-none"
+                                  className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2 cursor-pointer outline-none w-full max-w-[120px]"
                                 >
                                   <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
                                   <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
@@ -3135,7 +3168,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 <select
                                   value={order.status || 'pending'}
                                   onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                  className={`rounded-lg py-1 px-2.5 text-[10px] uppercase font-black border cursor-pointer outline-none ${
+                                  className={`rounded-lg py-1 px-2 text-[10px] uppercase font-black border cursor-pointer outline-none w-full max-w-[120px] ${
                                     order.status === 'delivered'
                                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                       : order.status === 'processing'
@@ -3155,34 +3188,23 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 </select>
                               )}
                             </td>
-                            <td className="py-4 px-4 text-right">
+                            <td className="py-3.5 px-3 align-top text-right sticky right-0 bg-[#090b14] group-hover:bg-[#0f1424] z-10 border-l border-gray-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.35)] transition-colors">
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => setViewingOrder(order)}
-                                  className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-850 text-white font-bold text-[10px] rounded-lg border border-gray-800 transition inline-flex items-center gap-1 cursor-pointer"
-                                  title="Ver detalles completos del pedido"
+                                  className="p-1.5 bg-indigo-600/15 hover:bg-indigo-600 text-indigo-300 hover:text-white rounded-lg border border-indigo-500/30 transition inline-flex items-center justify-center cursor-pointer active:scale-95"
+                                  title="Ver detalles del pedido"
                                 >
-                                  <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                                  <span>Detalles</span>
+                                  <Eye className="w-3.5 h-3.5" />
                                 </button>
-                                <a
-                                  href={`https://api.whatsapp.com/send?phone=${order.customerPhone.replace(/[^0-9]/g, '')}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500 hover:text-black text-emerald-400 font-bold text-[10px] rounded-lg border border-emerald-500/25 transition inline-flex items-center gap-1 cursor-pointer"
-                                  title="Contactar cliente por WhatsApp"
-                                >
-                                  WhatsApp
-                                </a>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteOrder(order)}
-                                  className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 font-bold text-[10px] rounded-lg border border-red-500/25 transition inline-flex items-center gap-1 cursor-pointer"
+                                  className="p-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 rounded-lg border border-red-500/25 transition inline-flex items-center justify-center cursor-pointer active:scale-95"
                                   title="Eliminar pedido permanentemente"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
-                                  <span>Eliminar</span>
                                 </button>
                               </div>
                             </td>

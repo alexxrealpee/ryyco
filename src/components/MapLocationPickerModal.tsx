@@ -9,10 +9,8 @@ import {
   X, 
   Search, 
   Loader2, 
-  ExternalLink, 
   Compass, 
   Layers, 
-  Globe,
   Key,
   HelpCircle,
   Plus,
@@ -529,9 +527,6 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
   if (!isOpen) return null;
 
-  const googleMapsWebUrl = `https://www.google.com/maps/search/?api=1&query=${lat.toFixed(6)},${lng.toFixed(6)}`;
-  const googleDirectionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat.toFixed(6)},${lng.toFixed(6)}`;
-
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
       <div className="bg-gray-950 border border-gray-800 rounded-3xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
@@ -556,9 +551,10 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="w-8 h-8 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+              className="w-8 h-8 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-white flex items-center justify-center transition cursor-pointer shadow-md shadow-[#E63946]/30 border border-[#E63946] active:scale-95"
+              title="Cerrar"
             >
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
         </div>
@@ -607,8 +603,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             </button>
           </form>
 
-          {/* Action Row: GPS & Direct Google Maps Links */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Action Row: GPS Location Button */}
+          <div className="flex items-center justify-between gap-2">
             <button
               type="button"
               onClick={handleUseCurrentLocation}
@@ -627,31 +623,6 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                 </>
               )}
             </button>
-
-            <div className="flex items-center gap-2">
-              <a
-                href={googleMapsWebUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-9 px-3 bg-emerald-600/15 hover:bg-emerald-600/25 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-bold flex items-center gap-1.5 transition"
-                title="Abrir este punto directamente en la app o web de Google Maps"
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <span>Abrir en Google Maps</span>
-                <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
-              </a>
-
-              <a
-                href={googleDirectionsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="h-9 px-3 bg-amber-600/15 hover:bg-amber-600/25 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition hidden sm:flex"
-                title="Cómo llegar con Google Maps Domicilios"
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>Ruta / Cómo llegar</span>
-              </a>
-            </div>
           </div>
 
           {/* Interactive Map View */}
