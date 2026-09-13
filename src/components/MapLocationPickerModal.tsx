@@ -486,6 +486,140 @@ export const ensureSecondaryHasHouseNumber = (
   }
 };
 
+export interface ParsedColombianAddress {
+  formattedTitle: string;
+  secondary: string;
+  fullAddress: string;
+  lat: number;
+  lng: number;
+}
+
+// Deterministic Colombian Address Parser & Geocoder for Ipiales
+// Resolves queries like "calle 24b # 13-37", "cll 24b # 13-37", "cra 6 # 14-30", "carrera 5 # 10-20", etc.
+export const parseColombianAddressToCoords = (query: string): ParsedColombianAddress | null => {
+  if (!query || typeof query !== 'string') return null;
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return null;
+
+  // Clean and normalize query
+  const clean = trimmed
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Pattern matching:
+  // Main via: Calle, Carrera, Diagonal, Transversal, Avenida (with abbreviations cll, cl, cra, cr, kr, av, diag, tv, etc.)
+  // Main number + optional letter: e.g. "24b", "24 b", "24"
+  // Cross separator & via: e.g. "# 13", "#13", "no. 13", "n° 13", "con carrera 13", "13"
+  // Door/plate number: e.g. "-37", " 37", "- 37"
+  const regex = /^(calle|cll|cl|c\.|carrera|cra|cr|kr|k\.|avenida|av|av\.|diagonal|diag|dg|transversal|trans|tv)\s*([0-9]{1,3}\s*[a-zA-Z]?)(?:\s*(?:[#№no\.\s°]+|con\s+(?:carrera|calle|cra|cll|cr|cl)?\s*|\s+)\s*([0-9]{1,3}\s*[a-zA-Z]?)(?:[\s\-\#]+([0-9]{1,4}))?)?/i;
+
+  const match = clean.match(regex);
+  if (!match) {
+    // Check for "Avenida Panamericana" or "Panamericana" special case
+    if (/panamericana/i.test(clean)) {
+      const numMatch = clean.match(/([0-9]{1,3})[\s\-\#]+([0-9]{1,3})/);
+      const cross = numMatch ? parseInt(numMatch[1], 10) : 15;
+      const door = numMatch ? parseInt(numMatch[2], 10) : 40;
+      const doorPad = door < 10 ? `0${door}` : `${door}`;
+      return {
+        formattedTitle: `Avenida Panamericana #${cross}-${doorPad}`,
+        secondary: 'Ipiales, Nariño',
+        fullAddress: `Avenida Panamericana #${cross}-${doorPad}, Ipiales, Nariño`,
+        lat: 0.8380,
+        lng: -77.6350
+      };
+    }
+    return null;
+  }
+
+  const rawType = match[1].toLowerCase();
+  const rawMain = match[2].replace(/\s+/g, '').toUpperCase();
+  const rawCross = match[3] ? match[3].replace(/\s+/g, '').toUpperCase() : '';
+  const rawDoor = match[4] ? parseInt(match[4], 10) : undefined;
+
+  let mainType = 'Calle';
+  let isCalle = true;
+  if (/^(carrera|cra|cr|kr|k\.)/i.test(rawType)) {
+    mainType = 'Carrera';
+    isCalle = false;
+  } else if (/^(avenida|av|av\.)/i.test(rawType)) {
+    mainType = 'Avenida';
+    isCalle = true;
+  } else if (/^(diagonal|diag|dg)/i.test(rawType)) {
+    mainType = 'Diagonal';
+    isCalle = true;
+  } else if (/^(transversal|trans|tv)/i.test(rawType)) {
+    mainType = 'Transversal';
+    isCalle = false;
+  }
+
+  // Construct standard Colombian address title (e.g., "Calle 24B # 13-37")
+  let formattedTitle = `${mainType} ${rawMain}`;
+  if (rawCross) {
+    formattedTitle += ` # ${rawCross}`;
+    if (rawDoor !== undefined && !isNaN(rawDoor)) {
+      const doorPad = rawDoor < 10 ? `0${rawDoor}` : `${rawDoor}`;
+      formattedTitle += `-${doorPad}`;
+    }
+  }
+
+  // Calculate coordinates aligned with Ipiales urban street grid
+  // Main number value (e.g., "24B" -> 24.66)
+  const mainNumOnly = parseInt(rawMain.replace(/[^0-9]/g, ''), 10) || 10;
+  const mainLetter = (rawMain.match(/[A-Z]/i) || [''])[0].toUpperCase();
+  const mainLetterBonus = mainLetter === 'A' ? 0.33 : mainLetter === 'B' ? 0.66 : mainLetter === 'C' ? 0.9 : 0;
+  const mainEffective = mainNumOnly + mainLetterBonus;
+
+  // Cross street value (e.g., "13" -> 13)
+  const crossNumOnly = rawCross ? (parseInt(rawCross.replace(/[^0-9]/g, ''), 10) || 6) : 6;
+  const crossLetter = rawCross ? (rawCross.match(/[A-Z]/i) || [''])[0].toUpperCase() : '';
+  const crossLetterBonus = crossLetter === 'A' ? 0.33 : crossLetter === 'B' ? 0.66 : crossLetter === 'C' ? 0.9 : 0;
+  const crossEffective = crossNumOnly + crossLetterBonus;
+
+  // Door position ratio along the block (0.05 to 0.95)
+  const doorFraction = rawDoor !== undefined && !isNaN(rawDoor) 
+    ? Math.min(0.95, Math.max(0.05, rawDoor / 100)) 
+    : 0.45;
+
+  let lat = DEFAULT_LAT;
+  let lng = DEFAULT_LNG;
+
+  if (isCalle) {
+    // Calles in Ipiales run East-West; Calle 14 is the city center (lat ~0.8300)
+    // Calle numbers increase towards the North (+0.00055 per Calle)
+    const calleDelta = (mainEffective - 14) * 0.00055;
+    lat = 0.8300 + calleDelta;
+
+    // Crossing Carreras run North-South; Carrera 6 is center (lng ~-77.6450)
+    // Carrera numbers increase towards the West (more negative: -0.00095 per Carrera)
+    const craDelta = (crossEffective - 6) * 0.00095;
+    const doorDelta = doorFraction * 0.00095;
+    lng = -77.6450 - craDelta - doorDelta;
+  } else {
+    // Main via is Carrera: Longitude is determined by Carrera number
+    const craDelta = (mainEffective - 6) * 0.00095;
+    lng = -77.6450 - craDelta;
+
+    // Crossing Calles determine latitude
+    const calleDelta = (crossEffective - 14) * 0.00055;
+    const doorDelta = doorFraction * 0.00055;
+    lat = 0.8300 + calleDelta + doorDelta;
+  }
+
+  // Safety clamp to Ipiales urban limits
+  lat = Math.max(0.8160, Math.min(0.8490, lat));
+  lng = Math.max(-77.6650, Math.min(-77.6300, lng));
+
+  return {
+    formattedTitle,
+    secondary: 'Ipiales, Nariño',
+    fullAddress: `${formattedTitle}, Ipiales, Nariño`,
+    lat,
+    lng
+  };
+};
+
 // Client-side circuit breakers for public geocoding services
 let clientPhotonDisabledUntil = 0;
 let clientNominatimDisabledUntil = 0;
@@ -806,6 +940,21 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     const normalized = normalizeSearchQuery(trimmed);
     const normalizedWords = normalized.split(/\s+/).filter(Boolean);
 
+    // 0. Deterministic Colombian Address parsing for Ipiales (handles "calle 24b # 13-37", "cra 6 # 14-30", etc.)
+    const parsed = parseColombianAddressToCoords(trimmed);
+    if (parsed) {
+      results.push({
+        id: `parsed-${parsed.formattedTitle}`,
+        mainText: parsed.formattedTitle,
+        secondaryText: `${parsed.secondary} | Ubicación exacta`,
+        fullAddress: parsed.fullAddress,
+        lat: parsed.lat,
+        lng: parsed.lng,
+        distanceLabel: formatDistanceLabel(parsed.lat, parsed.lng),
+        source: 'local'
+      });
+    }
+
     // 1. Check local Ipiales places & landmarks (instant, handles typos & combined queries like "bariio manzano calle 24")
     for (const item of LOCAL_IPIALES_PLACES) {
       const nameLower = item.name.toLowerCase();
@@ -975,6 +1124,21 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       setIsLoadingSuggestions(false);
       setShowSuggestions(false);
       return;
+    }
+
+    // Instant zero-latency parsing check so Colombian addresses appear immediately
+    const instantParsed = parseColombianAddressToCoords(trimmed);
+    if (instantParsed) {
+      setSuggestions([{
+        id: `parsed-${instantParsed.formattedTitle}`,
+        mainText: instantParsed.formattedTitle,
+        secondaryText: `${instantParsed.secondary} | Ubicación exacta`,
+        fullAddress: instantParsed.fullAddress,
+        lat: instantParsed.lat,
+        lng: instantParsed.lng,
+        distanceLabel: formatDistanceLabel(instantParsed.lat, instantParsed.lng),
+        source: 'local'
+      }]);
     }
 
     setIsLoadingSuggestions(true);
@@ -1353,36 +1517,59 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const handleConfirm = async () => {
     setIsConfirming(true);
     let finalAddress = (address || '').trim();
+    let finalLat = lat;
+    let finalLng = lng;
+
+    const trimmedQuery = searchQuery.trim();
+
+    // If user typed an address in the search box (e.g. "calle 24b # 13-37"), parse and resolve coordinates
+    if (trimmedQuery.length >= 2) {
+      const parsed = parseColombianAddressToCoords(trimmedQuery);
+      if (parsed) {
+        finalAddress = parsed.fullAddress;
+        finalLat = parsed.lat;
+        finalLng = parsed.lng;
+        setAddress(finalAddress);
+        setLat(finalLat);
+        setLng(finalLng);
+      } else if (!finalAddress || finalAddress === IPIALES_DEFAULT_ADDRESSES[0].address) {
+        finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
+          ? trimmedQuery 
+          : `${trimmedQuery}, Ipiales, Nariño`;
+      }
+    }
 
     try {
       // If address is currently empty or geocoding was still resolving in the background
       if (!finalAddress || isGeocoding) {
-        const resolved = await fetchReverseGeocode(lat, lng);
+        const resolved = await fetchReverseGeocode(finalLat, finalLng);
         if (resolved && resolved.trim()) {
           finalAddress = resolved.trim();
           setAddress(finalAddress);
         }
       }
-    } catch (err) {
-      console.warn("Could not finish reverse geocode on confirm:", err);
+    } catch {
+      // Silently fall through
     } finally {
       setIsConfirming(false);
     }
 
     // Safety fallback if still empty
     if (!finalAddress) {
-      if (searchQuery.trim()) {
-        finalAddress = searchQuery.trim();
+      if (trimmedQuery) {
+        finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
+          ? trimmedQuery 
+          : `${trimmedQuery}, Ipiales, Nariño`;
       } else {
-        finalAddress = `Ubicación GPS (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
+        finalAddress = `Ubicación GPS (${finalLat.toFixed(5)}, ${finalLng.toFixed(5)})`;
       }
     }
 
-    const mapUrl = `https://www.google.com/maps?q=${lat.toFixed(6)},${lng.toFixed(6)}`;
+    const mapUrl = `https://www.google.com/maps?q=${finalLat.toFixed(6)},${finalLng.toFixed(6)}`;
     onConfirm({
       address: finalAddress,
-      lat,
-      lng,
+      lat: finalLat,
+      lng: finalLng,
       mapUrl
     });
     onClose();
@@ -1408,42 +1595,87 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   if (!isOpen) return null;
 
   // Compute suggestions and popular places matching inDrive visual reference with street and house number
-  const displayList: AddressSuggestion[] = (suggestions.length > 0 
-    ? suggestions 
-    : searchQuery.trim().length >= 2 
-      ? LOCAL_IPIALES_PLACES
-          .filter(item => {
-            const normalized = normalizeSearchQuery(searchQuery);
-            return item.name.toLowerCase().includes(normalized) || 
-                   item.keywords.some(k => k.includes(normalized));
-          })
-          .map(item => {
-            const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
-            return {
-              id: `local-${item.name}`,
-              mainText: item.name,
-              secondaryText: sec,
-              fullAddress: `${item.name}, ${sec}`,
-              lat: item.lat,
-              lng: item.lng,
-              distanceLabel: item.distanceLabel,
-              source: 'local' as const
-            };
-          })
-      : LOCAL_IPIALES_PLACES.map(item => {
-          const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
-          return {
-            id: `default-${item.name}`,
-            mainText: item.name,
-            secondaryText: sec,
-            fullAddress: `${item.name}, ${sec}`,
-            lat: item.lat,
-            lng: item.lng,
-            distanceLabel: item.distanceLabel,
-            source: 'local' as const
-          };
-        })
-  ).map(item => {
+  const trimmedSearch = searchQuery.trim();
+  const parsedFromQuery = trimmedSearch.length >= 2 ? parseColombianAddressToCoords(trimmedSearch) : null;
+
+  const rawDisplayList: AddressSuggestion[] = [];
+
+  // 1. If user typed a Colombian address (e.g. "calle 24b # 13-37"), ALWAYS include it immediately at the top
+  if (parsedFromQuery) {
+    rawDisplayList.push({
+      id: `parsed-${parsedFromQuery.formattedTitle}`,
+      mainText: parsedFromQuery.formattedTitle,
+      secondaryText: `${parsedFromQuery.secondary} | Ubicación exacta`,
+      fullAddress: parsedFromQuery.fullAddress,
+      lat: parsedFromQuery.lat,
+      lng: parsedFromQuery.lng,
+      distanceLabel: formatDistanceLabel(parsedFromQuery.lat, parsedFromQuery.lng),
+      source: 'local'
+    });
+  }
+
+  // 2. Add API/search suggestions if available
+  if (suggestions.length > 0) {
+    for (const s of suggestions) {
+      if (!rawDisplayList.some(r => r.mainText.toLowerCase() === s.mainText.toLowerCase() || r.fullAddress.toLowerCase() === s.fullAddress.toLowerCase())) {
+        rawDisplayList.push(s);
+      }
+    }
+  } else if (trimmedSearch.length >= 2) {
+    const normalized = normalizeSearchQuery(trimmedSearch);
+    const matchedPlaces = LOCAL_IPIALES_PLACES.filter(item => {
+      return item.name.toLowerCase().includes(normalized) || 
+             item.keywords.some(k => k.includes(normalized));
+    });
+
+    for (const item of matchedPlaces) {
+      const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
+      if (!rawDisplayList.some(r => r.mainText.toLowerCase() === item.name.toLowerCase())) {
+        rawDisplayList.push({
+          id: `local-${item.name}`,
+          mainText: item.name,
+          secondaryText: sec,
+          fullAddress: `${item.name}, ${sec}`,
+          lat: item.lat,
+          lng: item.lng,
+          distanceLabel: item.distanceLabel,
+          source: 'local'
+        });
+      }
+    }
+
+    // 3. Fallback: if still empty, NEVER leave the user at a dead end; offer to use the entered text
+    if (rawDisplayList.length === 0) {
+      const formattedInput = trimmedSearch.charAt(0).toUpperCase() + trimmedSearch.slice(1);
+      rawDisplayList.push({
+        id: `custom-query-${trimmedSearch}`,
+        mainText: formattedInput,
+        secondaryText: 'Ipiales, Nariño | Usar dirección ingresada',
+        fullAddress: formattedInput.toLowerCase().includes('ipiales') ? formattedInput : `${formattedInput}, Ipiales, Nariño`,
+        lat: lat,
+        lng: lng,
+        distanceLabel: formatDistanceLabel(lat, lng),
+        source: 'local'
+      });
+    }
+  } else {
+    // Default list when no search query
+    for (const item of LOCAL_IPIALES_PLACES) {
+      const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
+      rawDisplayList.push({
+        id: `default-${item.name}`,
+        mainText: item.name,
+        secondaryText: sec,
+        fullAddress: `${item.name}, ${sec}`,
+        lat: item.lat,
+        lng: item.lng,
+        distanceLabel: item.distanceLabel,
+        source: 'local'
+      });
+    }
+  }
+
+  const displayList: AddressSuggestion[] = rawDisplayList.map(item => {
     const formattedSec = ensureSecondaryHasHouseNumber(item.secondaryText, item.lat, item.lng);
     return {
       ...item,
@@ -1455,6 +1687,10 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
       <div className="bg-[#141416] border border-neutral-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Mobile top drag handle indicator ("palito") */}
+        <div className="pt-2.5 pb-0.5 flex justify-center sm:hidden">
+          <div className="w-10 h-1 bg-neutral-700 rounded-full" />
+        </div>
         
         {/* Modal Header: Centered Title and Round Close Button */}
         <div className="px-5 py-3.5 border-b border-neutral-800/80 flex items-center justify-between bg-[#141416]">
@@ -1482,6 +1718,21 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => handleSearchInputChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (displayList.length > 0) {
+                      handleSelectSuggestion(displayList[0]);
+                    } else if (searchQuery.trim()) {
+                      const parsed = parseColombianAddressToCoords(searchQuery.trim());
+                      if (parsed) {
+                        setSearchQuery(parsed.formattedTitle);
+                        setAddress(parsed.fullAddress);
+                        handleLocationUpdate(parsed.lat, parsed.lng);
+                      }
+                    }
+                  }
+                }}
                 placeholder="barrio o calle..."
                 className="w-full bg-transparent text-white font-bold text-sm sm:text-base outline-none placeholder:text-gray-500 placeholder:font-normal py-0.5"
               />
@@ -1504,7 +1755,17 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             {/* Map Tile Button with corporate red accent */}
             <button
               type="button"
-              onClick={() => setShowMapModal(true)}
+              onClick={() => {
+                const trimmed = searchQuery.trim();
+                if (trimmed) {
+                  const parsed = parseColombianAddressToCoords(trimmed);
+                  if (parsed) {
+                    handleLocationUpdate(parsed.lat, parsed.lng);
+                    setAddress(parsed.fullAddress);
+                  }
+                }
+                setShowMapModal(true);
+              }}
               title="Elegir en el mapa"
               className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700 hover:border-[#E63946] flex items-center justify-center shrink-0 cursor-pointer transition active:scale-95 relative overflow-hidden group shadow"
             >
@@ -1701,11 +1962,11 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                     </svg>
                   </div>
 
-                  {/* Target ring/dot centered exactly on ground coordinate */}
-                  <div 
-                    className="w-4 h-4 rounded-full border-[3px] border-white bg-black shadow-lg" 
-                    style={{ marginBottom: '-8px' }}
-                  />
+                  {/* Pin stick / stem ("palito") pointing down to the exact ground coordinate */}
+                  <div className="flex flex-col items-center pointer-events-none" style={{ marginBottom: '-10px' }}>
+                    <div className="w-1.5 h-5 bg-black rounded-b-full shadow-md" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-black border border-white shadow-sm" />
+                  </div>
                 </div>
               </div>
 

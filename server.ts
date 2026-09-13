@@ -524,6 +524,90 @@ function formatColombianStreetWithHouseNumber(streetName: string, houseNumber: s
   }
 }
 
+// Deterministic Colombian Address Parser & Geocoder for Ipiales
+function parseColombianAddressToCoords(query: string): { formattedTitle: string; lat: number; lng: number } | null {
+  if (!query || typeof query !== 'string') return null;
+  const clean = query.trim().replace(/,/g, ' ').replace(/\s+/g, ' ');
+  const regex = /^(calle|cll|cl|c\.|carrera|cra|cr|kr|k\.|avenida|av|av\.|diagonal|diag|dg|transversal|trans|tv)\s*([0-9]{1,3}\s*[a-zA-Z]?)(?:\s*(?:[#№no\.\s°]+|con\s+(?:carrera|calle|cra|cll|cr|cl)?\s*|\s+)\s*([0-9]{1,3}\s*[a-zA-Z]?)(?:[\s\-\#]+([0-9]{1,4}))?)?/i;
+  const match = clean.match(regex);
+  if (!match) {
+    if (/panamericana/i.test(clean)) {
+      const numMatch = clean.match(/([0-9]{1,3})[\s\-\#]+([0-9]{1,3})/);
+      const cross = numMatch ? parseInt(numMatch[1], 10) : 15;
+      const door = numMatch ? parseInt(numMatch[2], 10) : 40;
+      return {
+        formattedTitle: `Avenida Panamericana #${cross}-${door < 10 ? '0' + door : door}`,
+        lat: 0.8380,
+        lng: -77.6350
+      };
+    }
+    return null;
+  }
+
+  const rawType = match[1].toLowerCase();
+  const rawMain = match[2].replace(/\s+/g, '').toUpperCase();
+  const rawCross = match[3] ? match[3].replace(/\s+/g, '').toUpperCase() : '';
+  const rawDoor = match[4] ? parseInt(match[4], 10) : undefined;
+
+  let mainType = 'Calle';
+  let isCalle = true;
+  if (/^(carrera|cra|cr|kr|k\.)/i.test(rawType)) {
+    mainType = 'Carrera';
+    isCalle = false;
+  } else if (/^(avenida|av|av\.)/i.test(rawType)) {
+    mainType = 'Avenida';
+    isCalle = true;
+  } else if (/^(diagonal|diag|dg)/i.test(rawType)) {
+    mainType = 'Diagonal';
+    isCalle = true;
+  } else if (/^(transversal|trans|tv)/i.test(rawType)) {
+    mainType = 'Transversal';
+    isCalle = false;
+  }
+
+  let formattedTitle = `${mainType} ${rawMain}`;
+  if (rawCross) {
+    formattedTitle += ` # ${rawCross}`;
+    if (rawDoor !== undefined && !isNaN(rawDoor)) {
+      formattedTitle += `-${rawDoor < 10 ? '0' + rawDoor : rawDoor}`;
+    }
+  }
+
+  const mainNumOnly = parseInt(rawMain.replace(/[^0-9]/g, ''), 10) || 10;
+  const mainLetter = (rawMain.match(/[A-Z]/i) || [''])[0].toUpperCase();
+  const mainLetterBonus = mainLetter === 'A' ? 0.33 : mainLetter === 'B' ? 0.66 : mainLetter === 'C' ? 0.9 : 0;
+  const mainEffective = mainNumOnly + mainLetterBonus;
+
+  const crossNumOnly = rawCross ? (parseInt(rawCross.replace(/[^0-9]/g, ''), 10) || 6) : 6;
+  const crossLetter = rawCross ? (rawCross.match(/[A-Z]/i) || [''])[0].toUpperCase() : '';
+  const crossLetterBonus = crossLetter === 'A' ? 0.33 : crossLetter === 'B' ? 0.66 : crossLetter === 'C' ? 0.9 : 0;
+  const crossEffective = crossNumOnly + crossLetterBonus;
+
+  const doorFraction = rawDoor !== undefined && !isNaN(rawDoor) ? Math.min(0.95, Math.max(0.05, rawDoor / 100)) : 0.45;
+
+  let lat = 0.83028;
+  let lng = -77.64444;
+
+  if (isCalle) {
+    const calleDelta = (mainEffective - 14) * 0.00055;
+    lat = 0.8300 + calleDelta;
+    const craDelta = (crossEffective - 6) * 0.00095;
+    const doorDelta = doorFraction * 0.00095;
+    lng = -77.6450 - craDelta - doorDelta;
+  } else {
+    const craDelta = (mainEffective - 6) * 0.00095;
+    lng = -77.6450 - craDelta;
+    const calleDelta = (crossEffective - 14) * 0.00055;
+    const doorDelta = doorFraction * 0.00055;
+    lat = 0.8300 + calleDelta + doorDelta;
+  }
+
+  lat = Math.max(0.8160, Math.min(0.8490, lat));
+  lng = Math.max(-77.6650, Math.min(-77.6300, lng));
+
+  return { formattedTitle, lat, lng };
+}
+
 // Circuit breakers for third-party public geocoders
 let photonDisabledUntil = 0;
 let nominatimDisabledUntil = 0;
@@ -767,6 +851,22 @@ let nominatimDisabledUntil = 0;
           lng: parseFloat(lng),
           source: 'coords'
         });
+      }
+
+      // 5. Deterministic Colombian address forward geocoding fallback for Ipiales
+      if (rawAddress) {
+        const parsed = parseColombianAddressToCoords(rawAddress);
+        if (parsed) {
+          return res.json({
+            status: 'OK',
+            formatted_address: `${parsed.formattedTitle}, Ipiales, Nariño, Colombia`,
+            street: parsed.formattedTitle.split('#')[0].trim(),
+            house_number: parsed.formattedTitle.split('#')[1]?.trim(),
+            lat: parsed.lat,
+            lng: parsed.lng,
+            source: 'colombian_grid'
+          });
+        }
       }
 
       // Default safe fallback centered on Ipiales, Nariño, Colombia
