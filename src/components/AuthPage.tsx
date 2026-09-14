@@ -42,6 +42,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
   const [isCreatingStore, setIsCreatingStore] = useState(false);
   const [creationSuccess, setCreationSuccess] = useState(false);
   const [createdProfile, setCreatedProfile] = useState<UserProfile | null>(null);
@@ -337,17 +338,27 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) return;
     setLoading(true);
     setError('');
     setSuccessMsg('');
 
     try {
-      await sendPasswordResetEmail(auth, email);
-      setSuccessMsg('Se ha enviado un enlace para restablecer tu contraseña a tu correo.');
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setSuccessMsg(`Se ha enviado la solicitud de restablecimiento a ${cleanEmail}.`);
+      setResetEmailSent(true);
     } catch (err: any) {
       console.error(err);
-      setError('No pudimos enviar el enlace. Verifica tu correo.');
+      if (err.code === 'auth/invalid-email') {
+        setError('El correo electrónico ingresado no es válido.');
+      } else if (err.code === 'auth/user-not-found') {
+        setError('No se encontró una cuenta registrada con este correo. Si usaste Google, intenta iniciar sesión con el botón de Google.');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Demasiados intentos recientes. Por favor espera un momento antes de volver a solicitar.');
+      } else {
+        setError('No pudimos enviar el enlace. Verifica tu correo o intenta ingresar con tu cuenta de Google.');
+      }
     } finally {
       setLoading(false);
     }
@@ -510,7 +521,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
           </div>
         )}
 
-        {successMsg && (
+        {successMsg && view !== 'forgot' && (
           <div className="bg-[#F4B400]/10 border border-[#F4B400]/30 text-[#F4B400] p-4 rounded-xl text-xs flex items-start gap-2.5 mb-6">
             <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{successMsg}</span>
@@ -756,40 +767,169 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
 
         {/* Forgot Password */}
         {view === 'forgot' && (
-          <form onSubmit={handleResetPassword} className="space-y-4">
-            <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-[#A9B2C3] block mb-2">Correo Electrónico</label>
-              <div className="relative">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[#A9B2C3]">
-                  <Mail className="w-4 h-4" />
-                </span>
-                <input 
-                  type="email" 
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ejemplo@correo.com"
-                  className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] outline-none rounded-xl py-3.5 pl-11 pr-4 text-sm font-semibold text-white placeholder-[#A9B2C3]/60 transition-all"
-                />
+          <div className="space-y-4">
+            {resetEmailSent ? (
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs">
+                  <div className="flex items-center gap-2 font-black text-sm text-emerald-300 mb-1">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                    ¡Solicitud de restablecimiento enviada!
+                  </div>
+                  <p className="text-gray-300 leading-relaxed text-xs">
+                    El enlace para restablecer la contraseña fue enviado a <strong className="text-white font-bold">{email.trim().toLowerCase()}</strong>.
+                  </p>
+                </div>
+
+                {/* Helpful troubleshooting container */}
+                <div className="p-4 rounded-2xl bg-[#090B12] border border-[#232B3A] text-xs space-y-3">
+                  <div className="font-extrabold text-amber-400 flex items-center gap-2 text-xs">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>¿Por qué no llega el correo a la bandeja principal?</span>
+                  </div>
+                  
+                  <div className="space-y-2.5 text-gray-300 text-[11px] leading-relaxed">
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-[#E63946]/20 text-[#E63946] flex items-center justify-center shrink-0 font-black text-[10px] mt-0.5">1</span>
+                      <p>
+                        <strong className="text-white">Revisa tu carpeta de Spam / Correo no deseado:</strong> Por filtros automáticos de Gmail, los correos enviados por Firebase (<code className="text-amber-300 bg-black/40 px-1 py-0.5 rounded text-[10px]">noreply@studio-9002217802-13e05.firebaseapp.com</code>) casi siempre se reciben en Spam o en la pestaña Promociones.
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-[#E63946]/20 text-[#E63946] flex items-center justify-center shrink-0 font-black text-[10px] mt-0.5">2</span>
+                      <p>
+                        <strong className="text-white">Búsqueda rápida en Gmail:</strong> En la barra de búsqueda de Gmail escribe <code className="text-emerald-300 bg-black/40 px-1 py-0.5 rounded text-[10px]">in:anywhere noreply</code> para encontrarlo al instante aunque esté archivado o en Spam.
+                      </p>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <span className="w-5 h-5 rounded-full bg-[#E63946]/20 text-[#E63946] flex items-center justify-center shrink-0 font-black text-[10px] mt-0.5">3</span>
+                      <p>
+                        <strong className="text-white">¿Te registraste con Google?</strong> Si creaste tu cuenta usando el botón de Google, <strong>no tienes una contraseña que restablecer</strong>. Puedes entrar directamente usando tu cuenta de Google.
+                      </p>
+                    </div>
+                  </div>
+
+                  <a
+                    href="https://mail.google.com/mail/u/0/#search/in%3Aanywhere+noreply%40studio-9002217802-13e05.firebaseapp.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-3 rounded-xl bg-[#141A23] hover:bg-[#1C2532] text-white font-bold text-xs flex items-center justify-center gap-2 border border-[#232B3A] transition cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                    Abrir Gmail y buscar correo de reinicio
+                  </a>
+
+                  {/* Direct WhatsApp Support Option */}
+                  <a
+                    href={`https://wa.me/573043867623?text=${encodeURIComponent(`Hola, no me llega el correo para restablecer mi contraseña en la plataforma. Mi correo registrado es: ${email.trim().toLowerCase()}. ¿Me pueden ayudar a restablecerla o ingresar?`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2.5 px-3 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>¿Aún no llega? Ayuda inmediata por WhatsApp</span>
+                  </a>
+                </div>
+
+                {/* Instant Google Sign-in alternative */}
+                <div className="pt-1">
+                  <p className="text-[11px] text-[#A9B2C3] text-center mb-2 font-medium">
+                    O si tu cuenta fue creada con Google:
+                  </p>
+                  <button 
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-2xl py-3 px-4 text-xs font-black transition-all shadow-md active:scale-[0.99] cursor-pointer"
+                  >
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.65-.49-1.13-1.15-1.31-1.85z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                    <span>Ingresar directamente con Google</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={(e) => handleResetPassword(e)}
+                    disabled={loading}
+                    className="flex-1 text-center py-2.5 bg-[#141A23] hover:bg-[#1C2532] text-gray-200 font-bold text-xs rounded-xl border border-[#232B3A] transition cursor-pointer disabled:opacity-50"
+                  >
+                    {loading ? 'Reenviando...' : 'Reenviar Correo'}
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={() => { setView('login'); setResetEmailSent(false); }}
+                    className="flex-1 text-center text-xs font-bold text-[#A9B2C3] hover:text-white transition-colors py-2.5 bg-[#090B12] border border-[#232B3A] rounded-xl cursor-pointer"
+                  >
+                    Regresar al login
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-[#A9B2C3] block mb-2">Correo Electrónico</label>
+                  <div className="relative">
+                    <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-[#A9B2C3]">
+                      <Mail className="w-4 h-4" />
+                    </span>
+                    <input 
+                      type="email" 
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="ejemplo@correo.com"
+                      className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] outline-none rounded-xl py-3.5 pl-11 pr-4 text-sm font-semibold text-white placeholder-[#A9B2C3]/60 transition-all"
+                    />
+                  </div>
+                  <p className="text-[11px] text-[#A9B2C3]/80 mt-1.5 leading-snug">
+                    Nota: Los correos de recuperación provienen de Firebase y pueden tardar unos minutos o filtrarse a la carpeta de <strong>Spam / Correo no deseado</strong> o <strong>Promociones</strong>.
+                  </p>
+                </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full text-center py-4 bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-sm rounded-xl mt-6 transition-all shadow-lg shadow-[#E63946]/20 cursor-pointer"
-            >
-              {loading ? 'Enviando...' : 'Enviar Enlace de Reinicio'}
-            </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full text-center py-4 bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-sm rounded-xl mt-4 transition-all shadow-lg shadow-[#E63946]/20 cursor-pointer disabled:opacity-50"
+                >
+                  {loading ? 'Enviando...' : 'Enviar Enlace de Reinicio'}
+                </button>
 
-            <button 
-              type="button" 
-              onClick={() => setView('login')}
-              className="w-full text-center text-xs font-semibold text-[#A9B2C3] hover:text-white transition-colors py-2 cursor-pointer"
-            >
-              Regresar al login
-            </button>
-          </form>
+                <div className="relative flex py-1 items-center my-2">
+                  <div className="flex-grow border-t border-[#232B3A]" />
+                  <span className="flex-shrink mx-4 text-xs font-bold text-[#A9B2C3] lowercase">o alternativa</span>
+                  <div className="flex-grow border-t border-[#232B3A]" />
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-100 text-slate-900 border border-slate-200 rounded-2xl py-3.5 px-4 text-xs font-black transition-all shadow-md active:scale-[0.99] cursor-pointer"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.65-.49-1.13-1.15-1.31-1.85z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                  </svg>
+                  <span>Ingresar directamente con Google</span>
+                </button>
+
+                <button 
+                  type="button" 
+                  onClick={() => setView('login')}
+                  className="w-full text-center text-xs font-semibold text-[#A9B2C3] hover:text-white transition-colors py-2 cursor-pointer"
+                >
+                  Regresar al login
+                </button>
+              </form>
+            )}
+          </div>
         )}
 
         {/* Auth Mode Toggle Footer Link */}

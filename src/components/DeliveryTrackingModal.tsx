@@ -13,30 +13,37 @@ import {
   AlertCircle,
   Compass,
   Layers,
-  Sparkles
+  Sparkles,
+  ArrowRight,
+  Store
 } from 'lucide-react';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { OrderItem, DeliveryTrackingData } from '../types';
 import { listenToDeliveryTracking } from '../lib/firebase';
+import { buildGoogleFullRouteUrl } from '../lib/coordinateUtils';
 
 interface DeliveryTrackingModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: OrderItem | null;
+  driverLiveCoords?: { latitude: number; longitude: number } | null;
+  storeLocationCoords?: { lat?: number; lng?: number; address?: string } | null;
 }
 
 export default function DeliveryTrackingModal({
   isOpen,
   onClose,
-  order
+  order,
+  driverLiveCoords,
+  storeLocationCoords
 }: DeliveryTrackingModalProps) {
   const [tracking, setTracking] = useState<DeliveryTrackingData | null>(null);
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
   );
-  const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>('google');
+  const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>('leaflet');
   const [secondsAgo, setSecondsAgo] = useState<number>(0);
 
   // Leaflet references
@@ -45,7 +52,8 @@ export default function DeliveryTrackingModal({
   const driverMarkerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
   const storeMarkerRef = useRef<L.Marker | null>(null);
-  const routePolylineRef = useRef<L.Polyline | null>(null);
+  const stage1PolylineRef = useRef<L.Polyline | null>(null);
+  const stage2PolylineRef = useRef<L.Polyline | null>(null);
 
   // Fetch Hostinger Google Maps configuration if not already configured
   useEffect(() => {
@@ -100,19 +108,23 @@ export default function DeliveryTrackingModal({
     return () => clearInterval(interval);
   }, [tracking?.updatedAt]);
 
+  // Delivery status step
+  const currentStep = tracking?.status || order?.deliveryStep || 'accepted';
+  const isPickedUp = currentStep === 'picked_up' || currentStep === 'to_client' || currentStep === 'at_destination' || currentStep === 'delivered';
+
   // Determine positions
   // Destination: customer coordinates or fallback
   const destLat = order?.customerLat || tracking?.customerLat || 0.83028;
   const destLng = order?.customerLng || tracking?.customerLng || -77.64444;
 
-  // Courier live position (if available) or default near store/destination
-  const driverLat = tracking?.lat || destLat + 0.0035;
-  const driverLng = tracking?.lng || destLng - 0.0035;
-  const hasLiveGps = !!tracking?.lat && !!tracking?.lng;
+  // Store coordinates
+  const storeLat = storeLocationCoords?.lat || order?.storeLat || tracking?.storeLat || (destLat - 0.004);
+  const storeLng = storeLocationCoords?.lng || order?.storeLng || tracking?.storeLng || (destLng + 0.003);
 
-  // Store coordinates fallback
-  const storeLat = tracking?.storeLat || destLat - 0.004;
-  const storeLng = tracking?.storeLng || destLng + 0.003;
+  // Courier live position (prefer instant device live coords from portal, then tracking telemetry, then default offset)
+  const driverLat = driverLiveCoords?.latitude || tracking?.lat || (storeLat - 0.002);
+  const driverLng = driverLiveCoords?.longitude || tracking?.lng || (storeLng - 0.002);
+  const hasLiveGps = (!!driverLiveCoords?.latitude && !!driverLiveCoords?.longitude) || (!!tracking?.lat && !!tracking?.lng);
 
   // Courier vehicle type
   const vehicleType = tracking?.vehicleType || order?.deliveryVehicle || 'moto';
@@ -172,34 +184,51 @@ export default function DeliveryTrackingModal({
         const storeIcon = L.divIcon({
           className: 'store-live-pin',
           html: `
-            <div style="width: 32px; height: 32px; background: #F59E0B; border: 2px solid #FFFFFF; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;">
-              <div style="transform: rotate(45deg); font-size: 13px;">🍽️</div>
+            <div style="width: 34px; height: 34px; background: ${isPickedUp ? '#059669' : '#F59E0B'}; border: 2px solid #FFFFFF; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 10px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;">
+              <div style="transform: rotate(45deg); font-size: 14px;">${isPickedUp ? '✓' : '🍽️'}</div>
             </div>
           `,
-          iconSize: [32, 32],
-          iconAnchor: [16, 32]
+          iconSize: [34, 34],
+          iconAnchor: [17, 34]
         });
 
         const dMarker = L.marker([driverLat, driverLng], { icon: driverIcon, zIndexOffset: 1000 }).addTo(map);
         const cMarker = L.marker([destLat, destLng], { icon: destIcon }).addTo(map);
         const sMarker = L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(map);
 
-        // Connective dash line between courier and destination
-        const poly = L.polyline([[driverLat, driverLng], [destLat, destLng]], {
-          color: '#E63946',
-          weight: 4,
-          dashArray: '8, 8',
-          opacity: 0.75
-        }).addTo(map);
+        // ETAPA 1: Domiciliario (Ubicación en tiempo real) ➔ Restaurante
+        const poly1 = L.polyline(
+          [[driverLat, driverLng], [storeLat, storeLng]],
+          {
+            color: isPickedUp ? '#059669' : '#F59E0B',
+            weight: isPickedUp ? 3 : 5,
+            dashArray: isPickedUp ? '4, 4' : '6, 6',
+            opacity: isPickedUp ? 0.4 : 0.95
+          }
+        ).addTo(map);
+
+        // ETAPA 2: Restaurante ➔ Cliente (o Domiciliario directo al Cliente si ya recogió)
+        const poly2 = L.polyline(
+          isPickedUp ? [[driverLat, driverLng], [destLat, destLng]] : [[storeLat, storeLng], [destLat, destLng]],
+          {
+            color: isPickedUp ? '#E63946' : '#10B981',
+            weight: isPickedUp ? 5 : 4,
+            dashArray: '8, 8',
+            opacity: isPickedUp ? 0.95 : 0.75
+          }
+        ).addTo(map);
 
         driverMarkerRef.current = dMarker;
         destMarkerRef.current = cMarker;
         storeMarkerRef.current = sMarker;
-        routePolylineRef.current = poly;
+        stage1PolylineRef.current = poly1;
+        stage2PolylineRef.current = poly2;
         leafletMapRef.current = map;
 
-        // Auto fit bounds to see both
-        const bounds = L.latLngBounds([[driverLat, driverLng], [destLat, destLng]]);
+        // Fit bounds for the entire 2-stage route: Domiciliario -> Restaurante -> Cliente
+        const bounds = isPickedUp
+          ? L.latLngBounds([[driverLat, driverLng], [destLat, destLng]])
+          : L.latLngBounds([[driverLat, driverLng], [storeLat, storeLng], [destLat, destLng]]);
         map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
       } else {
         // Update marker position smoothly
@@ -209,14 +238,32 @@ export default function DeliveryTrackingModal({
         if (destMarkerRef.current) {
           destMarkerRef.current.setLatLng([destLat, destLng]);
         }
-        if (routePolylineRef.current) {
-          routePolylineRef.current.setLatLngs([[driverLat, driverLng], [destLat, destLng]]);
+        if (storeMarkerRef.current) {
+          storeMarkerRef.current.setLatLng([storeLat, storeLng]);
+        }
+        if (stage1PolylineRef.current) {
+          stage1PolylineRef.current.setLatLngs([[driverLat, driverLng], [storeLat, storeLng]]);
+          stage1PolylineRef.current.setStyle({
+            color: isPickedUp ? '#059669' : '#F59E0B',
+            weight: isPickedUp ? 3 : 5,
+            opacity: isPickedUp ? 0.4 : 0.95
+          });
+        }
+        if (stage2PolylineRef.current) {
+          stage2PolylineRef.current.setLatLngs(
+            isPickedUp ? [[driverLat, driverLng], [destLat, destLng]] : [[storeLat, storeLng], [destLat, destLng]]
+          );
+          stage2PolylineRef.current.setStyle({
+            color: isPickedUp ? '#E63946' : '#10B981',
+            weight: isPickedUp ? 5 : 4,
+            opacity: isPickedUp ? 0.95 : 0.75
+          });
         }
       }
     }, 150);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isUsingLeaflet, driverLat, driverLng, destLat, destLng, storeLat, storeLng, tracking?.heading, isBike]);
+  }, [isOpen, isUsingLeaflet, driverLat, driverLng, destLat, destLng, storeLat, storeLng, tracking?.heading, isBike, isPickedUp]);
 
   // Clean up leaflet when closing modal
   useEffect(() => {
@@ -226,15 +273,14 @@ export default function DeliveryTrackingModal({
       driverMarkerRef.current = null;
       destMarkerRef.current = null;
       storeMarkerRef.current = null;
-      routePolylineRef.current = null;
+      stage1PolylineRef.current = null;
+      stage2PolylineRef.current = null;
     }
   }, [isOpen]);
 
   if (!isOpen || !order) return null;
 
   // Status mapping
-  const currentStep = tracking?.status || order.deliveryStep || 'accepted';
-
   const getStatusInfo = (step: string) => {
     switch (step) {
       case 'to_store':
@@ -284,7 +330,17 @@ export default function DeliveryTrackingModal({
   const driverPhone = tracking?.driverPhone || order.deliveryDriverPhone;
   const vehiclePlate = tracking?.vehiclePlate || order.deliveryVehiclePlate;
 
-  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${driverLat.toFixed(6)},${driverLng.toFixed(6)}&destination=${destLat.toFixed(6)},${destLng.toFixed(6)}`;
+  const googleMapsUrl = buildGoogleFullRouteUrl({
+    driverLat,
+    driverLng,
+    storeLat,
+    storeLng,
+    storeAddress: order.storeAddress,
+    destLat,
+    destLng,
+    destAddress: order.customerAddress,
+    isPickedUp
+  });
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
@@ -299,14 +355,14 @@ export default function DeliveryTrackingModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-black text-white">
-                  Seguimiento de mi Pedido
+                  Ruta en Tiempo Real (2 Etapas)
                 </h3>
                 <span className="font-mono text-xs font-black text-[#E63946] bg-[#E63946]/15 px-2 py-0.5 rounded-md border border-[#E63946]/30">
                   #{order.orderNumber}
                 </span>
               </div>
               <p className="text-[11px] text-gray-400">
-                {order.storeName || 'Tienda Aliada'} • Actualización satelital en vivo
+                {order.storeName || 'Restaurante'} ➔ {order.customerAddress || 'Cliente'}
               </p>
             </div>
           </div>
@@ -336,7 +392,7 @@ export default function DeliveryTrackingModal({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1">
+        <div className="p-4 sm:p-5 space-y-3.5 overflow-y-auto flex-1">
           
           {/* Status Banner */}
           <div className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 ${statusInfo.color}`}>
@@ -366,6 +422,55 @@ export default function DeliveryTrackingModal({
                 </span>
               </div>
             )}
+          </div>
+
+          {/* Two Stages Indicator Banner */}
+          <div className="bg-[#090D16] border border-[#232B3A] p-2.5 rounded-2xl">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              {/* Etapa 1 */}
+              <div className={`flex items-center gap-2 p-2 rounded-xl flex-1 transition ${
+                !isPickedUp 
+                  ? 'bg-amber-500/15 border border-amber-500/35 text-amber-300 ring-1 ring-amber-500/30' 
+                  : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+              }`}>
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                  !isPickedUp ? 'bg-amber-500 text-gray-950 font-black' : 'bg-emerald-500/30 text-emerald-300'
+                }`}>
+                  {!isPickedUp ? '1' : '✓'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black uppercase tracking-wider block opacity-90">
+                    Etapa 1 {!isPickedUp ? '(En curso)' : '(Completada)'}
+                  </span>
+                  <span className="text-[11px] font-bold truncate block text-white">
+                    Domiciliario ➔ Restaurante
+                  </span>
+                </div>
+              </div>
+
+              <div className="text-gray-500 text-xs font-bold px-1">➔</div>
+
+              {/* Etapa 2 */}
+              <div className={`flex items-center gap-2 p-2 rounded-xl flex-1 transition ${
+                isPickedUp 
+                  ? 'bg-[#E63946]/15 border border-[#E63946]/35 text-[#E63946] ring-1 ring-[#E63946]/30 animate-pulse' 
+                  : 'bg-gray-900/60 border border-gray-800 text-gray-400'
+              }`}>
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                  isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
+                }`}>
+                  2
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[9px] font-black uppercase tracking-wider block opacity-90">
+                    Etapa 2 {isPickedUp ? '(En curso)' : '(Siguiente etapa)'}
+                  </span>
+                  <span className="text-[11px] font-bold truncate block text-white">
+                    Restaurante ➔ Cliente
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Interactive Map */}

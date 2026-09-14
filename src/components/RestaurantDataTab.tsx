@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, WeeklySchedule, DaySchedule } from '../types';
 import { isUsernameAvailable } from '../lib/firebase';
+import { buildGoogleNavigationUrl, buildNormalizedMapUrl, extractCoordinates } from '../lib/coordinateUtils';
 
 // Custom Tiktok Icon component to match lucide-react styling
 const Tiktok = ({ className = "w-4 h-4", ...props }: React.SVGProps<SVGSVGElement>) => (
@@ -900,19 +901,26 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                     <span>Fija el marcador en Google Maps para que los domiciliarios y clientes encuentren la ubicación exacta.</span>
                     {(profile.mapUrl || (profile.lat && profile.lng) || restaurantAddress) && (
                       <a
-                        href={profile.mapUrl || (profile.lat && profile.lng ? `https://www.google.com/maps/search/?api=1&query=${profile.lat},${profile.lng}` : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantAddress)}`)}
+                        href={buildGoogleNavigationUrl({
+                          lat: profile.lat,
+                          lng: profile.lng,
+                          mapUrl: profile.mapUrl,
+                          address: restaurantAddress,
+                          storeName: profile.displayName || profile.storeName
+                        })}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-400 hover:text-blue-300 hover:underline flex items-center gap-1 font-bold text-[10px] shrink-0"
+                        className="text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 font-bold text-[10px] shrink-0"
+                        title="Abrir cómo llegar con coordenadas exactas"
                       >
-                        <ExternalLink className="w-3 h-3" /> Ver en Google Maps
+                        <ExternalLink className="w-3 h-3" /> Probar Cómo Llegar (GPS)
                       </a>
                     )}
                   </div>
                   {profile.lat && profile.lng && (
                     <div className="mt-1 flex items-center gap-1.5 text-[9px] text-emerald-400/90 font-mono">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      <span>Coordenadas fijadas: {profile.lat.toFixed(5)}, {profile.lng.toFixed(5)}</span>
+                      <span>Coordenadas exactas fijadas: {profile.lat.toFixed(6)}, {profile.lng.toFixed(6)}</span>
                     </div>
                   )}
                 </div>

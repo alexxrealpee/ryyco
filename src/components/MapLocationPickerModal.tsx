@@ -674,6 +674,9 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [showMapModal, setShowMapModal] = useState<boolean>(false);
   const [isMapMoving, setIsMapMoving] = useState<boolean>(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<AddressSuggestion | null>(null);
+  const [selectedExactAddress, setSelectedExactAddress] = useState<string>(() => (initialAddress || '').trim());
+  const selectedExactAddressRef = useRef<string>((initialAddress || '').trim());
 
   // Google Maps API key state (reads from env, localStorage or fetches from /api/maps/config on Hostinger)
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(() => {
@@ -767,19 +770,22 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       const isCustomValidAddr = Boolean(
         initialAddress && 
         initialAddress.trim().length > 3 && 
-        !isPickupOrInvalidAddress(initialAddress) &&
-        !initialAddress.toLowerCase().includes('carrera 1a')
+        !isPickupOrInvalidAddress(initialAddress)
       );
 
       const defaultAddrObj = IPIALES_DEFAULT_ADDRESSES[0];
       const validLat = hasValidIpiales ? initialLat : defaultAddrObj.lat;
       const validLng = hasValidIpiales ? initialLng : defaultAddrObj.lng;
 
+      const initialCleanAddr = isCustomValidAddr ? (initialAddress || '').trim() : '';
+
       setLat(validLat);
       setLng(validLng);
       setLatInput(String(validLat.toFixed(6)));
       setLngInput(String(validLng.toFixed(6)));
-      setAddress(isCustomValidAddr ? (initialAddress || '').trim() : defaultAddrObj.address);
+      setAddress(initialCleanAddr || defaultAddrObj.address);
+      setSelectedExactAddress(initialCleanAddr);
+      selectedExactAddressRef.current = initialCleanAddr;
       setSearchQuery('');
       setSuggestions([]);
       setShowSuggestions(false);
@@ -1149,6 +1155,31 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     }, 280);
   };
 
+  // Update position callback WITHOUT reverse geocoding to preserve exact selected address
+  const applyCoordsWithoutReverseGeocode = useCallback((newLat: number, newLng: number) => {
+    const effectiveLat = isWithinIpiales(newLat, newLng) ? newLat : DEFAULT_LAT;
+    const effectiveLng = isWithinIpiales(newLat, newLng) ? newLng : DEFAULT_LNG;
+
+    setLat(effectiveLat);
+    setLng(effectiveLng);
+    setLatInput(String(effectiveLat.toFixed(6)));
+    setLngInput(String(effectiveLng.toFixed(6)));
+    latestGeocodeIdRef.current++;
+    setIsGeocoding(false);
+
+    if (googleMapRef.current) {
+      googleMapRef.current.panTo({ lat: effectiveLat, lng: effectiveLng });
+    }
+
+    if (leafletMapRef.current && leafletContainerRef.current) {
+      const H = leafletContainerRef.current.clientHeight || 500;
+      const zoom = leafletMapRef.current.getZoom() || 16;
+      const targetWorld = leafletMapRef.current.project([effectiveLat, effectiveLng], zoom);
+      const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.08));
+      leafletMapRef.current.panTo(leafletMapRef.current.unproject(centerWorld, zoom));
+    }
+  }, []);
+
   // When the client selects a suggested address from the dropdown
   const handleSelectSuggestion = async (suggestion: AddressSuggestion) => {
     const formattedSecondary = ensureSecondaryHasHouseNumber(suggestion.secondaryText, suggestion.lat, suggestion.lng);
@@ -1156,8 +1187,20 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       ? suggestion.fullAddress
       : `${suggestion.mainText}, ${formattedSecondary}`;
 
-    setSearchQuery(suggestion.mainText);
+    // Cancel any pending or in-flight reverse geocode requests immediately!
+    latestGeocodeIdRef.current++;
+    setIsGeocoding(false);
+    if (lastRealtimeGeocodeTimerRef.current) {
+      clearTimeout(lastRealtimeGeocodeTimerRef.current);
+      lastRealtimeGeocodeTimerRef.current = null;
+    }
+
+    // Set exact selected address across all states and refs
+    selectedExactAddressRef.current = completeAddress;
+    setSelectedExactAddress(completeAddress);
+    setSelectedSuggestion(suggestion);
     setAddress(completeAddress);
+    setSearchQuery(completeAddress);
     setShowSuggestions(false);
 
     let targetLat = suggestion.lat;
@@ -1214,7 +1257,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     }
 
     if (targetLat !== undefined && targetLng !== undefined && !isNaN(targetLat) && !isNaN(targetLng)) {
-      handleLocationUpdate(targetLat, targetLng);
+      applyCoordsWithoutReverseGeocode(targetLat, targetLng);
     }
   };
 
@@ -1516,45 +1559,45 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   // Final Confirmation with guaranteed address resolution
   const handleConfirm = async () => {
     setIsConfirming(true);
-    let finalAddress = (address || '').trim();
+
+    // 1. If user explicitly selected an address or has an address set, use it unconditionally
+    let finalAddress = (selectedExactAddressRef.current || selectedExactAddress || address || '').trim();
     let finalLat = lat;
     let finalLng = lng;
 
     const trimmedQuery = searchQuery.trim();
 
-    // If user typed an address in the search box (e.g. "calle 24b # 13-37"), parse and resolve coordinates
-    if (trimmedQuery.length >= 2) {
-      const parsed = parseColombianAddressToCoords(trimmedQuery);
-      if (parsed) {
-        finalAddress = parsed.fullAddress;
-        finalLat = parsed.lat;
-        finalLng = parsed.lng;
-        setAddress(finalAddress);
-        setLat(finalLat);
-        setLng(finalLng);
-      } else if (!finalAddress || finalAddress === IPIALES_DEFAULT_ADDRESSES[0].address) {
-        finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
-          ? trimmedQuery 
-          : `${trimmedQuery}, Ipiales, Nariño`;
+    // 2. If no address was selected, but user typed something in search box, parse or use it
+    if (!finalAddress || finalAddress === IPIALES_DEFAULT_ADDRESSES[0].address) {
+      if (trimmedQuery.length >= 2) {
+        const parsed = parseColombianAddressToCoords(trimmedQuery);
+        if (parsed) {
+          finalAddress = parsed.fullAddress;
+          finalLat = parsed.lat;
+          finalLng = parsed.lng;
+          setAddress(finalAddress);
+          setLat(finalLat);
+          setLng(finalLng);
+        } else {
+          finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
+            ? trimmedQuery 
+            : `${trimmedQuery}, Ipiales, Nariño`;
+        }
       }
     }
 
-    try {
-      // If address is currently empty or geocoding was still resolving in the background
-      if (!finalAddress || isGeocoding) {
+    // 3. Fallback only if address is still completely empty
+    if (!finalAddress) {
+      try {
         const resolved = await fetchReverseGeocode(finalLat, finalLng);
         if (resolved && resolved.trim()) {
           finalAddress = resolved.trim();
-          setAddress(finalAddress);
         }
+      } catch {
+        // Fall through
       }
-    } catch {
-      // Silently fall through
-    } finally {
-      setIsConfirming(false);
     }
 
-    // Safety fallback if still empty
     if (!finalAddress) {
       if (trimmedQuery) {
         finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
@@ -1564,6 +1607,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
         finalAddress = `Ubicación GPS (${finalLat.toFixed(5)}, ${finalLng.toFixed(5)})`;
       }
     }
+
+    setIsConfirming(false);
 
     const mapUrl = `https://www.google.com/maps?q=${finalLat.toFixed(6)},${finalLng.toFixed(6)}`;
     onConfirm({
@@ -1803,24 +1848,37 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           ) : displayList.length > 0 ? (
             displayList.map((item) => {
               const isSelected = 
-                (address && address.toLowerCase().includes(item.mainText.toLowerCase())) ||
-                (item.lat && Math.abs(lat - item.lat) < 0.0002 && Math.abs(lng - item.lng) < 0.0002);
+                (selectedExactAddress && (
+                  selectedExactAddress.trim().toLowerCase() === item.fullAddress?.trim().toLowerCase() ||
+                  selectedExactAddress.trim().toLowerCase() === item.mainText.trim().toLowerCase() ||
+                  selectedExactAddress.toLowerCase().includes(item.mainText.toLowerCase())
+                )) ||
+                (address && (
+                  address.trim().toLowerCase() === item.fullAddress?.trim().toLowerCase() ||
+                  address.toLowerCase().includes(item.mainText.toLowerCase())
+                ));
 
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => handleSelectSuggestion(item)}
-                  className={`w-full py-3.5 px-2.5 rounded-xl flex items-center justify-between gap-3 text-left transition cursor-pointer ${
+                  className={`w-full py-3.5 px-3 rounded-xl flex items-center justify-between gap-3 text-left transition cursor-pointer ${
                     isSelected 
-                      ? 'bg-neutral-800/80 text-white' 
-                      : 'hover:bg-neutral-800/40 active:bg-neutral-800/60 text-gray-300'
+                      ? 'bg-neutral-800/95 border border-[#E63946]/60 text-white shadow-lg' 
+                      : 'hover:bg-neutral-800/40 active:bg-neutral-800/60 text-gray-300 border border-transparent'
                   }`}
                 >
                   <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                    <MapPin className={`w-5 h-5 shrink-0 mt-0.5 ${isSelected ? 'text-[#E63946]' : 'text-gray-400'}`} />
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'bg-[#E63946] text-white' : 'bg-neutral-800 text-gray-400'}`}>
+                      {isSelected ? (
+                        <Check className="w-4 h-4 stroke-[3]" />
+                      ) : (
+                        <MapPin className="w-4 h-4" />
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate leading-snug">
+                      <p className={`text-sm leading-snug truncate ${isSelected ? 'font-black text-white' : 'font-semibold text-gray-200'}`}>
                         {renderHighlightedText(item.mainText, searchQuery)}
                       </p>
                       <p className="text-xs text-gray-400 truncate mt-0.5">
@@ -1843,7 +1901,19 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
         </div>
 
         {/* Modal Footer: Full Width Confirm Button with corporate color */}
-        <div className="p-4 border-t border-neutral-800/80 bg-[#141416] flex items-center justify-center shrink-0 mt-auto">
+        <div className="p-4 border-t border-neutral-800/80 bg-[#141416] flex flex-col gap-2.5 shrink-0 mt-auto">
+          {Boolean(selectedExactAddress || address) && (
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-xs">
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Check className="w-3.5 h-3.5 stroke-[3]" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Dirección a confirmar</p>
+                <p className="font-extrabold text-white truncate text-xs">{selectedExactAddress || address}</p>
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleConfirm}

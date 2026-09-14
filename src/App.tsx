@@ -16,7 +16,7 @@ import PublicProfile from './components/PublicProfile';
 import AdminPanel from './components/AdminPanel';
 import TiendaGeneral from './components/TiendaGeneral';
 import DriverRegister from './components/DriverRegister';
-import DriverPortal from './components/DriverPortal';
+import DriverPortal, { getStoredDriverSession } from './components/DriverPortal';
 import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
 import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
@@ -82,7 +82,7 @@ const detectInitialRouteFromUrl = (): {
     hashLower === 'admin' || 
     hashLower.startsWith('admin/') || 
     searchParams.has('admin') ||
-    (searchTab && ['users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general'].includes(searchTab))
+    (searchTab && ['users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general', 'stores', 'tiendas'].includes(searchTab))
   ) {
     return { view: 'admin', username: null, reelId: null };
   }
@@ -138,6 +138,16 @@ const detectInitialRouteFromUrl = (): {
   if (['driver-register'].includes(pathLower) || ['driver-register'].includes(hashLower)) {
     return { view: 'driver-register', username: null, reelId: null };
   }
+
+  // If driver session is cached in local storage and user is accessing root or default view without another specific route
+  try {
+    const rawDriver = localStorage.getItem('ryyco_driver_session');
+    const authMode = localStorage.getItem('ryyco_auth_mode');
+    if (rawDriver && authMode === 'driver' && (!pathLower || pathLower === 'index.html')) {
+      return { view: 'driver-portal', username: null, reelId: null };
+    }
+  } catch (e) {}
+
   if (['tienda', 'tiendas', 'catalogo', ''].includes(pathLower) || ['tienda', 'tiendas', 'catalogo'].includes(hashLower)) {
     return { view: 'tienda', username: null, reelId: null };
   }
@@ -156,10 +166,18 @@ const detectInitialRouteFromUrl = (): {
 export default function App() {
   // Routing initial states computed synchronously to prevent flash on refresh
   const initialRoute = detectInitialRouteFromUrl();
-  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'>(initialRoute.view);
+  const initialDriverSession = getStoredDriverSession();
+
+  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'>(() => {
+    if (initialRoute.view === 'driver-portal') return 'driver-portal';
+    if (initialDriverSession && (window.location.pathname.toLowerCase().includes('domiciliario') || localStorage.getItem('ryyco_auth_mode') === 'driver')) {
+      return 'driver-portal';
+    }
+    return initialRoute.view;
+  });
   const [targetUsername, setTargetUsername] = useState<string | null>(initialRoute.username);
   const [targetReelId, setTargetReelId] = useState<string | null>(initialRoute.reelId);
-  const [activeDriverSession, setActiveDriverSession] = useState<DriverProfile | null>(null);
+  const [activeDriverSession, setActiveDriverSession] = useState<DriverProfile | null>(initialDriverSession);
   
   // Auth state
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -238,11 +256,11 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Distinguish active authentication mode: 'seller' (vendor dashboard) vs 'customer' (buyer on store)
+        // Distinguish active authentication mode: 'seller' (vendor dashboard) vs 'customer' (buyer on store) vs 'driver' (delivery portal)
         const authMode = localStorage.getItem('ryyco_auth_mode');
 
-        if (authMode === 'customer') {
-          // User is authenticated as a customer/buyer. Do not hijack view or set seller userProfile.
+        if (authMode === 'customer' || authMode === 'driver') {
+          // User is authenticated as a customer or driver. Do not hijack view or set seller userProfile.
           setUserProfile(null);
         } else {
           // Seller mode (default for merchant login / admin)
@@ -282,6 +300,9 @@ export default function App() {
                 return 'signup'; // Let AuthPage finish celebratory creation and call handleAuthSuccess
               }
               const routeCheck = detectInitialRouteFromUrl();
+              if (routeCheck.view === 'driver-portal' || prevView === 'driver-portal') {
+                return 'driver-portal';
+              }
               if (routeCheck.view === 'admin' || prevView === 'admin') {
                 return 'admin';
               }
@@ -467,9 +488,13 @@ export default function App() {
       {view === 'driver-register' && (
         <DriverRegister 
           onNavigateHome={handleNavigateHome}
-          onNavigateLogin={() => setView('driver-portal')}
+          onNavigateLogin={() => {
+            window.history.pushState({}, '', '/domiciliario');
+            setView('driver-portal');
+          }}
           onSuccessRegistered={(driver) => {
             setActiveDriverSession(driver);
+            window.history.pushState({}, '', '/domiciliario');
             setView('driver-portal');
           }}
         />
@@ -478,8 +503,14 @@ export default function App() {
       {view === 'driver-portal' && (
         <DriverPortal 
           onNavigateHome={handleNavigateHome}
-          onNavigateRegister={() => setView('driver-register')}
+          onNavigateRegister={() => {
+            window.history.pushState({}, '', '/driver-register');
+            setView('driver-register');
+          }}
           initialDriver={activeDriverSession}
+          onDriverSessionChange={(driver) => {
+            setActiveDriverSession(driver);
+          }}
         />
       )}
 

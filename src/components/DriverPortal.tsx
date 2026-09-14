@@ -34,10 +34,15 @@ import {
   ShieldAlert,
   Wifi,
   Lightbulb,
-  ShieldCheck
+  ShieldCheck,
+  Eye,
+  EyeOff,
+  Compass,
+  ExternalLink
 } from 'lucide-react';
 import { 
   fetchDriverProfileByUid, 
+  fetchProfileByUid,
   updateDriverAvailability, 
   listenToUnassignedOrders, 
   acceptDeliveryOrderTransaction, 
@@ -52,18 +57,72 @@ import {
 import { DriverProfile, OrderItem, VehicleType, DriverRating } from '../types';
 import { useDriverLiveTracking } from '../hooks/useDriverLiveTracking';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
+import { safeGetItem, safeSetItem, safeRemoveItem } from '../lib/safeStorage';
+import { 
+  extractCoordinates, 
+  buildGoogleNavigationUrl, 
+  buildWazeNavigationUrl, 
+  buildGoogleMapSearchUrl,
+  buildGoogleFullRouteUrl
+} from '../lib/coordinateUtils';
+
+export const DRIVER_SESSION_STORAGE_KEY = 'ryyco_driver_session';
+
+export function getStoredDriverSession(): DriverProfile | null {
+  try {
+    const raw = safeGetItem(DRIVER_SESSION_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.id || parsed.uid)) {
+        return parsed as DriverProfile;
+      }
+    }
+  } catch (e) {
+    console.warn("Could not retrieve driver session from storage:", e);
+  }
+  return null;
+}
+
+export function saveDriverSessionToStorage(driverProfile: DriverProfile): void {
+  try {
+    safeSetItem(DRIVER_SESSION_STORAGE_KEY, JSON.stringify(driverProfile));
+    safeSetItem('ryyco_auth_mode', 'driver');
+  } catch (e) {
+    console.warn("Could not save driver session to storage:", e);
+  }
+}
+
+export function clearDriverSessionStorage(): void {
+  try {
+    safeRemoveItem(DRIVER_SESSION_STORAGE_KEY);
+    if (safeGetItem('ryyco_auth_mode') === 'driver') {
+      safeRemoveItem('ryyco_auth_mode');
+    }
+  } catch (e) {
+    console.warn("Could not clear driver session from storage:", e);
+  }
+}
 
 interface DriverPortalProps {
   onNavigateHome: () => void;
   onNavigateRegister: () => void;
   initialDriver?: DriverProfile | null;
+  onDriverSessionChange?: (driver: DriverProfile | null) => void;
 }
 
-export default function DriverPortal({ onNavigateHome, onNavigateRegister, initialDriver }: DriverPortalProps) {
-  // Auth & Driver Session State
-  const [driver, setDriver] = useState<DriverProfile | null>(initialDriver || null);
+export default function DriverPortal({ onNavigateHome, onNavigateRegister, initialDriver, onDriverSessionChange }: DriverPortalProps) {
+  // Auth & Driver Session State - Initialized synchronously from props or localStorage
+  const [driver, setDriver] = useState<DriverProfile | null>(() => {
+    if (initialDriver) {
+      saveDriverSessionToStorage(initialDriver);
+      return initialDriver;
+    }
+    return getStoredDriverSession();
+  });
   const [loginEmail, setLoginEmail] = useState<string>('');
   const [loginDocNumber, setLoginDocNumber] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
 
@@ -71,10 +130,86 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [activeTab, setActiveTab] = useState<'deliveries' | 'history' | 'profile'>('deliveries');
 
   // Real-time Availability & Orders
-  const [isAvailable, setIsAvailable] = useState<boolean>(false);
+  const [isAvailable, setIsAvailable] = useState<boolean>(() => {
+    const init = initialDriver || getStoredDriverSession();
+    return Boolean(init?.isAvailable);
+  });
   const [availableOrders, setAvailableOrders] = useState<OrderItem[]>([]);
   const [activeDelivery, setActiveDelivery] = useState<OrderItem | null>(null);
   const [trackingPreviewOpen, setTrackingPreviewOpen] = useState<boolean>(false);
+
+  // Active store exact location and navigation data (resolved live from order or store profile)
+  const [activeStoreLocation, setActiveStoreLocation] = useState<{
+    lat?: number;
+    lng?: number;
+    mapUrl?: string;
+    address?: string;
+    reference?: string;
+    phone?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!activeDelivery) {
+      setActiveStoreLocation(null);
+      return;
+    }
+
+    let lat = activeDelivery.storeLat;
+    let lng = activeDelivery.storeLng;
+    let mapUrl = activeDelivery.storeMapUrl;
+    let reference = activeDelivery.storeReference || (activeDelivery as any).restaurantReference;
+    let phone = activeDelivery.storePhone;
+
+    if (lat && lng && reference && phone) {
+      setActiveStoreLocation({ lat, lng, mapUrl, address: activeDelivery.storeAddress, reference, phone });
+      return;
+    }
+
+    if (mapUrl && reference && phone) {
+      const parsed = extractCoordinates(mapUrl);
+      if (parsed) {
+        setActiveStoreLocation({ lat: parsed.lat, lng: parsed.lng, mapUrl, address: activeDelivery.storeAddress, reference, phone });
+        return;
+      }
+    }
+
+    // Attempt to fetch live store profile to get the most updated coordinates, reference and phone
+    if (activeDelivery.storeOwnerId && activeDelivery.storeOwnerId !== 'store_general') {
+      fetchProfileByUid(activeDelivery.storeOwnerId).then((storeProf) => {
+        if (storeProf) {
+          let sLat = storeProf.lat;
+          let sLng = storeProf.lng;
+          const sMap = (storeProf as any).mapUrl;
+          const sRef = storeProf.restaurantReference || (storeProf as any).storeReference || reference;
+          const sPhone = storeProf.customerServiceWhatsapp || storeProf.whatsapp || storeProf.ownerWhatsapp || storeProf.phone || phone;
+          if ((!sLat || !sLng) && sMap) {
+            const parsed = extractCoordinates(sMap);
+            if (parsed) {
+              sLat = parsed.lat;
+              sLng = parsed.lng;
+            }
+          }
+          setActiveStoreLocation({
+            lat: sLat || lat,
+            lng: sLng || lng,
+            mapUrl: sMap || mapUrl,
+            address: storeProf.restaurantAddress || storeProf.address || activeDelivery.storeAddress,
+            reference: sRef,
+            phone: sPhone
+          });
+        }
+      }).catch(() => {});
+    } else {
+      setActiveStoreLocation({
+        lat,
+        lng,
+        mapUrl,
+        address: activeDelivery.storeAddress,
+        reference,
+        phone
+      });
+    }
+  }, [activeDelivery?.id, activeDelivery?.storeOwnerId, activeDelivery?.storeLat, activeDelivery?.storeLng, activeDelivery?.storeMapUrl, activeDelivery?.storeReference, activeDelivery?.storePhone]);
 
   // Real-time GPS Geolocation Tracking Engine for Domiciliario
   const {
@@ -92,9 +227,35 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<OrderItem | null>(null);
   const selectedIncomingOrderRef = useRef<OrderItem | null>(null);
   selectedIncomingOrderRef.current = selectedIncomingOrder;
+  const [incomingStoreRef, setIncomingStoreRef] = useState<string>('');
   const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(7000);
   const [claimingLoading, setClaimingLoading] = useState<boolean>(false);
   const [claimStatusMsg, setClaimStatusMsg] = useState<string>('');
+
+  // Resolve store reference for incoming order popup modal
+  useEffect(() => {
+    if (!selectedIncomingOrder) {
+      setIncomingStoreRef('');
+      return;
+    }
+
+    const directRef = selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference;
+    if (directRef) {
+      setIncomingStoreRef(directRef);
+      return;
+    }
+
+    if (selectedIncomingOrder.storeOwnerId && selectedIncomingOrder.storeOwnerId !== 'store_general') {
+      fetchProfileByUid(selectedIncomingOrder.storeOwnerId).then((storeProf) => {
+        if (storeProf) {
+          const sRef = storeProf.restaurantReference || (storeProf as any).storeReference || '';
+          setIncomingStoreRef(sRef);
+        }
+      }).catch(() => {});
+    } else {
+      setIncomingStoreRef('');
+    }
+  }, [selectedIncomingOrder?.id, selectedIncomingOrder?.storeOwnerId, selectedIncomingOrder?.storeReference]);
 
   // History & Ratings
   const [orderHistory, setOrderHistory] = useState<OrderItem[]>([]);
@@ -149,6 +310,37 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     return () => unsubscribe();
   }, []);
 
+  // Sync with initialDriver prop changes if provided from parent
+  useEffect(() => {
+    if (initialDriver) {
+      setDriver(initialDriver);
+      saveDriverSessionToStorage(initialDriver);
+    }
+  }, [initialDriver]);
+
+  // Keep driver record updated with fresh Firestore data in the background on mount / refresh
+  useEffect(() => {
+    if (!driver?.id) return;
+    let isCancelled = false;
+
+    fetchDriverProfileByUid(driver.id)
+      .then((fresh) => {
+        if (isCancelled) return;
+        if (fresh) {
+          setDriver(fresh);
+          saveDriverSessionToStorage(fresh);
+          if (onDriverSessionChange) onDriverSessionChange(fresh);
+        }
+      })
+      .catch((err) => {
+        console.warn("Silent fallback: could not fetch latest driver record from Firestore:", err);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [driver?.id]);
+
   useEffect(() => {
     if (driver) {
       setIsAvailable(driver.isAvailable || false);
@@ -160,7 +352,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       setEditVehiclePlate(driver.vehiclePlate || '');
       loadHistoryAndRatings(driver.id);
     }
-  }, [driver]);
+  }, [driver?.id]);
 
   // Real-time unassigned orders listener when available
   useEffect(() => {
@@ -234,8 +426,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
-    if (!loginEmail.trim() || !loginDocNumber.trim()) {
-      setLoginError('Por favor ingresa tu correo y número de documento.');
+    if (!loginEmail.trim() || !loginDocNumber.trim() || !loginPassword.trim()) {
+      setLoginError('Por favor ingresa tu correo, número de documento y contraseña.');
       return;
     }
 
@@ -246,10 +438,32 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
       if (found) {
         // Verify doc match
-        if (found.docNumber.trim() === loginDocNumber.trim()) {
-          setDriver(found);
-        } else {
+        if (found.docNumber.trim() !== loginDocNumber.trim()) {
           setLoginError('El número de documento no coincide con el correo ingresado.');
+          return;
+        }
+
+        // Verify password if set on account
+        if (found.password && found.password.trim()) {
+          if (found.password.trim() !== loginPassword.trim()) {
+            setLoginError('La contraseña ingresada es incorrecta.');
+            return;
+          }
+        } else {
+          // If no password set yet in legacy profile, save the new password for future logins
+          try {
+            await updateDriverProfile(found.id, { password: loginPassword.trim() });
+            found.password = loginPassword.trim();
+          } catch (passErr) {
+            console.warn('Could not update driver password:', passErr);
+          }
+        }
+
+        setDriver(found);
+        setIsAvailable(Boolean(found.isAvailable));
+        saveDriverSessionToStorage(found);
+        if (onDriverSessionChange) {
+          onDriverSessionChange(found);
         }
       } else {
         setLoginError('No se encontró ninguna cuenta de domiciliario con esos datos. Por favor regístrate.');
@@ -262,7 +476,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     }
   };
 
-  // Logout Handler
+  // Logout Handler - Clears persistent storage and offline status
   const handleLogout = async () => {
     if (driver) {
       try {
@@ -271,10 +485,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         console.error(e);
       }
     }
+    clearDriverSessionStorage();
     setDriver(null);
     setIsAvailable(false);
     setActiveDelivery(null);
     setSelectedIncomingOrder(null);
+    if (onDriverSessionChange) {
+      onDriverSessionChange(null);
+    }
   };
 
   // Toggle Availability Switch
@@ -286,7 +504,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     setIsAvailable(nextState);
     try {
       await updateDriverAvailability(driver.id, nextState);
-      setDriver(prev => prev ? { ...prev, isAvailable: nextState, isOnline: nextState } : null);
+      const updated: DriverProfile = { ...driver, isAvailable: nextState, isOnline: nextState };
+      setDriver(updated);
+      saveDriverSessionToStorage(updated);
+      if (onDriverSessionChange) onDriverSessionChange(updated);
     } catch (e) {
       console.error("Error toggling availability:", e);
       setIsAvailable(!nextState);
@@ -305,6 +526,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         // Order assigned to this driver!
         setActiveDelivery({
           ...orderToClaim,
+          storeReference: incomingStoreRef || orderToClaim.storeReference || (orderToClaim as any).restaurantReference,
           deliveryFee: systemDeliveryFee || orderToClaim.deliveryFee || 7000,
           deliveryDriverId: driver.id,
           deliveryStep: 'accepted'
@@ -351,7 +573,11 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         setActiveDelivery(null);
         // Refresh driver stats & order history
         const updatedDriver = await fetchDriverProfileByUid(driver.id);
-        if (updatedDriver) setDriver(updatedDriver);
+        if (updatedDriver) {
+          setDriver(updatedDriver);
+          saveDriverSessionToStorage(updatedDriver);
+          if (onDriverSessionChange) onDriverSessionChange(updatedDriver);
+        }
         loadHistoryAndRatings(driver.id);
       }
     } catch (e) {
@@ -367,24 +593,25 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     setProfileSuccessMsg('');
 
     try {
-      await updateDriverProfile(driver.id, {
+      const updates = {
         phone: editPhone.trim(),
         address: editAddress.trim(),
         city: editCity.trim(),
         vehicleType: editVehicleType,
         vehicleBrand: editVehicleBrand.trim(),
         vehiclePlate: editVehiclePlate.trim().toUpperCase()
-      });
+      };
 
-      setDriver(prev => prev ? {
-        ...prev,
-        phone: editPhone.trim(),
-        address: editAddress.trim(),
-        city: editCity.trim(),
-        vehicleType: editVehicleType,
-        vehicleBrand: editVehicleBrand.trim(),
-        vehiclePlate: editVehiclePlate.trim().toUpperCase()
-      } : null);
+      await updateDriverProfile(driver.id, updates);
+
+      const updated: DriverProfile = {
+        ...driver,
+        ...updates
+      };
+
+      setDriver(updated);
+      saveDriverSessionToStorage(updated);
+      if (onDriverSessionChange) onDriverSessionChange(updated);
 
       setProfileSuccessMsg('¡Perfil de domiciliario actualizado correctamente!');
       setTimeout(() => setProfileSuccessMsg(''), 3000);
@@ -493,6 +720,28 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold text-[#A9B2C3] mb-1.5">Contraseña</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Ingresa tu contraseña"
+                    className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl pl-3.5 pr-11 py-2.5 text-sm text-white placeholder-[#A9B2C3]/60 focus:outline-none focus:border-[#E63946] transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A9B2C3] hover:text-white transition p-1 cursor-pointer"
+                    title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={authLoading}
@@ -539,6 +788,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   /* ==========================================================================
      MAIN LOGGED-IN DRIVER DASHBOARD & STATUS CHECKS
      ========================================================================== */
+  const effectiveStorePhone = activeDelivery ? (activeDelivery.storePhone || activeStoreLocation?.phone) : undefined;
+
   return (
     <div className="min-h-screen bg-[#090B12] text-gray-100 flex flex-col">
       {/* Top Portal Navbar */}
@@ -594,10 +845,12 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
             <button
               onClick={handleLogout}
-              title="Cerrar sesión"
-              className="p-2.5 bg-[#090B12] hover:bg-[#232B3A] text-[#A9B2C3] hover:text-white rounded-2xl border border-[#232B3A] transition cursor-pointer"
+              title="Cerrar sesión / Salir"
+              aria-label="Cerrar sesión y salir del portal de domiciliarios"
+              className="px-3 py-2 bg-[#090B12] hover:bg-rose-500/10 text-[#A9B2C3] hover:text-rose-400 hover:border-rose-500/30 rounded-2xl border border-[#232B3A] transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 group"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 group-hover:text-rose-400 transition-colors" />
+              <span className="text-xs font-bold hidden sm:inline group-hover:text-rose-400 transition-colors">Salir</span>
             </button>
           </div>
         </div>
@@ -632,7 +885,15 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
             <div className="pt-2">
               <button
-                onClick={() => fetchDriverProfileByUid(driver.id).then(d => d && setDriver(d))}
+                onClick={() => {
+                  fetchDriverProfileByUid(driver.id).then(d => {
+                    if (d) {
+                      setDriver(d);
+                      saveDriverSessionToStorage(d);
+                      if (onDriverSessionChange) onDriverSessionChange(d);
+                    }
+                  });
+                }}
                 className="px-5 py-2.5 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition cursor-pointer inline-flex items-center gap-2"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
@@ -782,87 +1043,352 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       </div>
                     </div>
 
-                    {/* Real-time GPS Telemetry & Transmission status */}
-                    <div className="bg-[#090B12] border border-[#232B3A] p-3.5 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                          isGpsTracking 
-                            ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-400' 
-                            : 'bg-amber-500/15 border border-amber-500/30 text-amber-400'
-                        }`}>
-                          <Navigation className={`w-4 h-4 ${isGpsTracking ? 'animate-pulse text-emerald-400' : ''}`} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-black text-white">
-                              {isGpsTracking ? 'GPS en Vivo Transmitiendo al Cliente' : 'Transmisión GPS Pausada'}
-                            </span>
-                            <span className={`w-2 h-2 rounded-full ${isGpsTracking ? 'bg-emerald-400 animate-ping' : 'bg-amber-400'}`} />
-                          </div>
-                          <p className="text-[11px] text-[#A9B2C3]">
-                            {gpsError ? (
-                              <span className="text-red-400">{gpsError}</span>
-                            ) : lastGpsUpdate ? (
-                              <span>
-                                Actualizado hace {Math.max(0, Math.floor((Date.now() - lastGpsUpdate.getTime()) / 1000))}s
-                                {currentCoords?.speed ? ` • ~${currentCoords.speed} km/h` : ''}
-                                {' • Cada 3-6s / movimiento'}
-                              </span>
-                            ) : (
-                              'Conectando con satélites GPS...'
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                    {/* Panel de Ruta Completa en 2 Etapas: Domiciliario -> Restaurante -> Cliente */}
+                    {(() => {
+                      const currentStepIdx = getStepIndex(activeDelivery.deliveryStep);
+                      const isPickedUp = currentStepIdx >= 2;
+                      const driverHasGps = !!currentCoords?.latitude && !!currentCoords?.longitude;
 
-                      <button
-                        type="button"
-                        onClick={() => setTrackingPreviewOpen(true)}
-                        className="px-3 py-1.5 bg-[#161F30] hover:bg-[#202B40] text-gray-200 hover:text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-[#2B384E] cursor-pointer"
-                      >
-                        <Bike className="w-3.5 h-3.5 text-[#E63946]" />
-                        <span>Ver Mapa del Cliente</span>
-                      </button>
-                    </div>
+                      return (
+                        <div className="bg-[#090D16] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1C2433] pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
+                                <Compass className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                                  <span>Ruta Completa del Domiciliario</span>
+                                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">
+                                    2 Etapas
+                                  </span>
+                                </h3>
+                                <p className="text-[11px] text-gray-400">
+                                  Navegación secuencial con origen en tu GPS en tiempo real
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* GPS Live Status pill */}
+                            <div className="flex items-center gap-1.5 self-start sm:self-center">
+                              {driverHasGps ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold">
+                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                  GPS en Vivo ({currentCoords?.latitude?.toFixed(4)}, {currentCoords?.longitude?.toFixed(4)})
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-bold">
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                  Obteniendo GPS en tiempo real...
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Visual Sequence: Domiciliario -> Restaurante -> Cliente */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {/* Etapa 1 Card */}
+                            <div className={`p-3.5 rounded-xl border transition ${
+                              !isPickedUp
+                                ? 'bg-amber-500/10 border-amber-500/40 text-white ring-1 ring-amber-500/30'
+                                : 'bg-[#121824] border-[#232B3A] text-gray-400 opacity-80'
+                            }`}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                  !isPickedUp ? 'bg-amber-500 text-black font-black' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                }`}>
+                                  {!isPickedUp ? 'Etapa 1 (Activa)' : 'Etapa 1 (Completada ✓)'}
+                                </span>
+                                <span className="text-xs font-bold text-gray-400">Paso 1 de 2</span>
+                              </div>
+
+                              <div className="space-y-1 mt-2">
+                                <div className="text-xs font-black text-white flex items-center gap-1.5">
+                                  <span>📍 Domiciliario</span>
+                                  <span className="text-amber-400 font-bold">➔</span>
+                                  <span className="text-amber-300">🍽️ {activeDelivery.storeName || 'Restaurante'}</span>
+                                </div>
+                                <p className="text-[11px] text-gray-300">
+                                  {!isPickedUp 
+                                    ? 'Dirígete primero a la ubicación del restaurante a reclamar el pedido.' 
+                                    : 'Pedido reclamado en el restaurante.'}
+                                </p>
+                                <p className="text-[10px] text-gray-400 truncate">
+                                  {activeDelivery.storeAddress}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Etapa 2 Card */}
+                            <div className={`p-3.5 rounded-xl border transition ${
+                              isPickedUp
+                                ? 'bg-[#E63946]/10 border-[#E63946]/40 text-white ring-1 ring-[#E63946]/30'
+                                : 'bg-[#121824] border-[#232B3A] text-gray-400'
+                            }`}>
+                              <div className="flex items-center justify-between mb-1.5">
+                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                                  isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
+                                }`}>
+                                  {isPickedUp ? 'Etapa 2 (Activa)' : 'Etapa 2 (Siguiente)'}
+                                </span>
+                                <span className="text-xs font-bold text-gray-400">Paso 2 de 2</span>
+                              </div>
+
+                              <div className="space-y-1 mt-2">
+                                <div className="text-xs font-black text-white flex items-center gap-1.5">
+                                  <span>🍽️ Restaurante</span>
+                                  <span className="text-[#E63946] font-bold">➔</span>
+                                  <span className="text-emerald-400">🏠 {activeDelivery.customerName || 'Cliente'}</span>
+                                </div>
+                                <p className="text-[11px] text-gray-300">
+                                  {isPickedUp 
+                                    ? 'Continúa desde el restaurante hasta la dirección de entrega del cliente.' 
+                                    : 'Se activará automáticamente al marcar el pedido como recogido.'}
+                                </p>
+                                <p className="text-[10px] text-gray-400 truncate">
+                                  {activeDelivery.customerAddress}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setTrackingPreviewOpen(true)}
+                              className="flex-1 py-3 px-4 bg-gradient-to-r from-[#161F30] via-[#1E293B] to-[#161F30] hover:from-[#1E293B] hover:to-[#2B384E] text-white font-bold text-xs sm:text-sm rounded-xl border border-[#2B384E] hover:border-cyan-500/50 transition shadow-lg shadow-black/40 flex items-center justify-center gap-2.5 active:scale-[0.99] cursor-pointer group"
+                            >
+                              <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition">
+                                <Compass className="w-4 h-4 text-cyan-400" />
+                              </div>
+                              <span>Mirar Ruta Completa (Mapa en Vivo)</span>
+                              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">
+                                {!isPickedUp ? 'Domiciliario ➔ Restaurante ➔ Cliente' : 'Domiciliario ➔ Cliente'}
+                              </span>
+                            </button>
+
+                            <a
+                              href={buildGoogleFullRouteUrl({
+                                driverLat: currentCoords?.latitude,
+                                driverLng: currentCoords?.longitude,
+                                storeLat: activeStoreLocation?.lat || activeDelivery.storeLat,
+                                storeLng: activeStoreLocation?.lng || activeDelivery.storeLng,
+                                storeAddress: activeDelivery.storeAddress,
+                                storeMapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
+                                destLat: activeDelivery.customerLat,
+                                destLng: activeDelivery.customerLng,
+                                destAddress: activeDelivery.customerAddress,
+                                destMapUrl: activeDelivery.customerMapUrl,
+                                isPickedUp
+                              })}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 shrink-0 active:scale-[0.99] cursor-pointer"
+                              title="Navegar ruta completa en Google Maps"
+                            >
+                              <Navigation className="w-4 h-4 text-white" />
+                              <span>Navegar en Google Maps</span>
+                              <ExternalLink className="w-3.5 h-3.5 text-white/80" />
+                            </a>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Locations & Contact Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Store Pickup Location */}
-                      <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-2">
-                        <span className="text-[10px] font-extrabold uppercase text-[#F4B400] block">
-                          1. Punto de Recogida (Tienda)
-                        </span>
-                        <p className="text-sm font-bold text-white">
-                          {activeDelivery.storeName || 'Tienda en la plataforma'}
-                        </p>
-                        <p className="text-xs text-[#A9B2C3] flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
-                          <span>{activeDelivery.storeAddress || 'Dirección de la Tienda'}</span>
-                        </p>
-                        {activeDelivery.storePhone && (
+                      <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold uppercase text-[#F4B400] block">
+                            1. Punto de Recogida (Tienda)
+                          </span>
+                          {((activeStoreLocation?.lat && activeStoreLocation?.lng) || (activeStoreLocation?.mapUrl && extractCoordinates(activeStoreLocation.mapUrl))) && (
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                              GPS Satelital Exacto
+                            </span>
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-base font-black text-white">
+                            {activeDelivery.storeName || 'Tienda en la plataforma'}
+                          </p>
+                          <p className="text-xs text-[#A9B2C3] flex items-center gap-1.5 mt-1">
+                            <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
+                            <span>{activeDelivery.storeAddress || 'Dirección de la Tienda'}</span>
+                          </p>
+
+                          {/* Punto de Referencia para Domiciliarios (Tienda) */}
+                          {(activeStoreLocation?.reference || activeDelivery.storeReference || (activeDelivery as any).restaurantReference) && (
+                            <div className="bg-amber-500/10 border border-amber-500/25 p-2.5 rounded-xl flex items-start gap-2 mt-2">
+                              <Navigation className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block">
+                                  Punto de Referencia para Domiciliarios:
+                                </span>
+                                <p className="text-xs font-semibold text-amber-100 mt-0.5">
+                                  {activeStoreLocation?.reference || activeDelivery.storeReference || (activeDelivery as any).restaurantReference}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Exact Coordinates info badge */}
+                        {activeStoreLocation?.lat && activeStoreLocation?.lng && (
+                          <div className="text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-lg flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 font-mono font-medium truncate">
+                              <Navigation className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span>GPS: {activeStoreLocation.lat.toFixed(6)}, {activeStoreLocation.lng.toFixed(6)}</span>
+                            </div>
+                            <a
+                              href={`https://www.google.com/maps?q=${activeStoreLocation.lat},${activeStoreLocation.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-emerald-200 underline hover:text-white font-bold shrink-0 ml-2"
+                            >
+                              Ver punto
+                            </a>
+                          </div>
+                        )}
+
+                        {/* Nota para comunicarse por WhatsApp con el restaurante */}
+                        <div className="bg-emerald-950/40 border border-emerald-500/35 p-3 rounded-xl flex items-start gap-2.5 shadow-sm">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
+                            <MessageSquare className="w-4 h-4 text-emerald-400" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">
+                                Nota Importante:
+                              </span>
+                            </div>
+                            <p className="text-xs font-bold text-emerald-100 mt-0.5 leading-snug">
+                              Comunicarse por WhatsApp con el restaurante para que preparen el pedido.
+                            </p>
+                            {effectiveStorePhone && (
+                              <a
+                                href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor tenerlo en preparación, ya voy en camino a recogerlo.`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-gray-950 text-xs font-black rounded-lg transition active:scale-95 shadow-md shadow-emerald-500/20"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5 fill-current" />
+                                <span>Escribir por WhatsApp al Restaurante</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Navigation Buttons to Store */}
+                        <div className="pt-1 flex flex-col sm:flex-row gap-2">
                           <a
-                            href={`tel:${activeDelivery.storePhone}`}
-                            className="inline-flex items-center gap-1.5 text-xs text-[#F4B400] hover:underline font-semibold pt-1"
+                            href={buildGoogleNavigationUrl({
+                              lat: activeStoreLocation?.lat || activeDelivery.storeLat,
+                              lng: activeStoreLocation?.lng || activeDelivery.storeLng,
+                              mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
+                              address: activeDelivery.storeAddress,
+                              storeName: activeDelivery.storeName
+                            })}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95"
                           >
-                            <Phone className="w-3.5 h-3.5" />
-                            <span>Llamar a la Tienda</span>
+                            <Navigation className="w-4 h-4 fill-current" />
+                            <span>¿Cómo llegar al Restaurante?</span>
                           </a>
+
+                          <a
+                            href={buildWazeNavigationUrl({
+                              lat: activeStoreLocation?.lat || activeDelivery.storeLat,
+                              lng: activeStoreLocation?.lng || activeDelivery.storeLng,
+                              mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
+                              address: activeDelivery.storeAddress
+                            })}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-2.5 px-3 bg-[#1C2433] hover:bg-[#2A364A] text-sky-400 border border-sky-500/30 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
+                            title="Navegar usando Waze"
+                          >
+                            <Compass className="w-4 h-4" />
+                            <span>Waze</span>
+                          </a>
+                        </div>
+
+                        {effectiveStorePhone && (
+                          <div className="pt-1.5 border-t border-[#232B3A]/60 flex items-center justify-between">
+                            <a
+                              href={`tel:${effectiveStorePhone}`}
+                              className="inline-flex items-center gap-1.5 text-xs text-[#F4B400] hover:underline font-semibold"
+                            >
+                              <Phone className="w-3.5 h-3.5" />
+                              <span>Llamar Tienda</span>
+                            </a>
+                            <a
+                              href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor tenerlo en preparación, ya voy en camino a recogerlo.`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition font-bold"
+                            >
+                              <MessageSquare className="w-3 h-3" />
+                              <span>WhatsApp</span>
+                            </a>
+                          </div>
                         )}
                       </div>
 
                       {/* Customer Delivery Destination */}
-                      <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-2">
+                      <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-3">
                         <span className="text-[10px] font-extrabold uppercase text-[#E63946] block">
                           2. Punto de Entrega (Cliente)
                         </span>
-                        <p className="text-sm font-bold text-white">
-                          {activeDelivery.customerName}
-                        </p>
-                        <p className="text-xs text-[#A9B2C3] flex items-center gap-1.5">
-                          <MapPin className="w-3.5 h-3.5 text-[#E63946] shrink-0" />
-                          <span>{activeDelivery.customerAddress}</span>
-                        </p>
-                        <div className="flex items-center gap-3 pt-1">
+                        <div>
+                          <p className="text-base font-black text-white">
+                            {activeDelivery.customerName}
+                          </p>
+                          <p className="text-xs text-[#A9B2C3] flex items-center gap-1.5 mt-1">
+                            <MapPin className="w-3.5 h-3.5 text-[#E63946] shrink-0" />
+                            <span>{activeDelivery.customerAddress}</span>
+                          </p>
+
+                          {/* Punto de Referencia Entrega (Cliente) */}
+                          {(activeDelivery.customerReference || activeDelivery.notes) && (
+                            <div className="bg-sky-500/10 border border-sky-500/25 p-2.5 rounded-xl flex items-start gap-2 mt-2">
+                              <Navigation className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                              <div>
+                                <span className="text-[10px] font-black uppercase text-sky-400 tracking-wider block">
+                                  Punto de Referencia Entrega (Cliente):
+                                </span>
+                                <p className="text-xs font-semibold text-sky-100 mt-0.5">
+                                  {activeDelivery.customerReference || activeDelivery.notes}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Direct navigation to customer button */}
+                        <div className="pt-1">
+                          <a
+                            href={buildGoogleNavigationUrl({
+                              lat: activeDelivery.customerLat,
+                              lng: activeDelivery.customerLng,
+                              mapUrl: activeDelivery.customerMapUrl,
+                              address: activeDelivery.customerAddress
+                            })}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-2.5 px-3 bg-[#E63946]/15 hover:bg-[#E63946]/25 border border-[#E63946]/40 text-[#E63946] hover:text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 active:scale-95"
+                          >
+                            <Navigation className="w-4 h-4" />
+                            <span>¿Cómo llegar al Cliente? (GPS)</span>
+                          </a>
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-1 border-t border-[#232B3A]/60">
                           <a
                             href={`tel:${activeDelivery.customerPhone}`}
                             className="inline-flex items-center gap-1.5 text-xs text-[#E63946] hover:underline font-semibold"
@@ -928,19 +1454,35 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                         </button>
                       )}
 
-                      {/* Map Location Helper */}
+                      {/* Map Location Helper with exact coordinates */}
                       <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                        href={
                           activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store'
-                            ? activeDelivery.storeAddress || activeDelivery.storeName || ''
-                            : activeDelivery.customerAddress
-                        )}`}
+                            ? buildGoogleNavigationUrl({
+                                lat: activeStoreLocation?.lat || activeDelivery.storeLat,
+                                lng: activeStoreLocation?.lng || activeDelivery.storeLng,
+                                mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
+                                address: activeDelivery.storeAddress,
+                                storeName: activeDelivery.storeName
+                              })
+                            : buildGoogleNavigationUrl({
+                                lat: activeDelivery.customerLat,
+                                lng: activeDelivery.customerLng,
+                                mapUrl: activeDelivery.customerMapUrl,
+                                address: activeDelivery.customerAddress
+                              })
+                        }
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-4 py-3 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer"
+                        className="px-4 py-3 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer shadow-md"
+                        title="Abrir indicaciones de ruta en Google Maps"
                       >
-                        <Navigation className="w-4 h-4 text-[#E63946]" />
-                        <span>Abrir GPS / Mapa</span>
+                        <Navigation className="w-4 h-4 text-emerald-400" />
+                        <span>
+                          {activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store'
+                            ? 'Cómo Llegar a la Tienda (GPS)'
+                            : 'Cómo Llegar al Cliente (GPS)'}
+                        </span>
                       </a>
                     </div>
                   </div>
@@ -1082,6 +1624,12 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                 <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
                                 <span>Recogida: <strong>{order.storeAddress || 'Dirección de la Tienda'}</strong></span>
                               </div>
+                              {(order.storeReference || (order as any).restaurantReference) && (
+                                <div className="flex items-center gap-2 pl-5 text-[11px] text-amber-300">
+                                  <Navigation className="w-3 h-3 text-amber-400 shrink-0" />
+                                  <span>Punto Ref: <strong>{order.storeReference || (order as any).restaurantReference}</strong></span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-2">
                                 <MapPin className="w-3.5 h-3.5 text-[#E63946] shrink-0" />
                                 <span>Entrega: <strong>{order.customerAddress}</strong></span>
@@ -1296,6 +1844,29 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                     <span>Guardar Cambios</span>
                   </button>
                 </form>
+
+                {/* Session Persistence & Explicit Logout Section */}
+                <div className="pt-6 border-t border-[#232B3A] max-w-xl">
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                        <span>Sesión Segura de Domiciliario</span>
+                      </h4>
+                      <p className="text-[11px] text-[#A9B2C3] mt-0.5">
+                        Tu sesión permanece activa en este navegador aunque refresques la pantalla.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shrink-0 active:scale-95"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Cerrar Sesión</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1393,15 +1964,73 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             )}
 
             <div className="space-y-3 bg-[#090B12] border border-[#232B3A] p-4 rounded-xl text-xs">
-              <div className="flex justify-between border-b border-[#232B3A] pb-2">
-                <span className="text-[#A9B2C3]">Punto de Recogida:</span>
-                <strong className="text-white text-right">{selectedIncomingOrder.storeAddress || 'Tienda en la plataforma'}</strong>
+              <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start">
+                <span className="text-[#A9B2C3] shrink-0">Punto de Recogida:</span>
+                <div className="text-right">
+                  <strong className="text-white block">{selectedIncomingOrder.storeAddress || 'Tienda en la plataforma'}</strong>
+                  {((selectedIncomingOrder.storeLat && selectedIncomingOrder.storeLng) || selectedIncomingOrder.storeMapUrl) && (
+                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono font-bold mt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      GPS Exacto Configurado
+                    </span>
+                  )}
+                </div>
               </div>
+
+              {/* Punto de Referencia para Domiciliarios (Tienda) */}
+              {(incomingStoreRef || selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference) && (
+                <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start bg-amber-500/10 -mx-1 px-2.5 py-2 rounded-xl border border-amber-500/25">
+                  <span className="text-amber-400 font-bold shrink-0 flex items-center gap-1.5 text-xs">
+                    <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    Punto de Referencia para Domiciliarios:
+                  </span>
+                  <div className="text-right ml-2">
+                    <strong className="text-amber-200 text-xs font-bold block">
+                      {incomingStoreRef || selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {((selectedIncomingOrder.storeLat && selectedIncomingOrder.storeLng) || selectedIncomingOrder.storeMapUrl) && (
+                <div className="flex justify-end -mt-1 pb-1">
+                  <a
+                    href={buildGoogleNavigationUrl({
+                      lat: selectedIncomingOrder.storeLat,
+                      lng: selectedIncomingOrder.storeLng,
+                      mapUrl: selectedIncomingOrder.storeMapUrl,
+                      address: selectedIncomingOrder.storeAddress,
+                      storeName: selectedIncomingOrder.storeName
+                    })}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[10px] text-amber-400 hover:text-amber-300 underline font-bold flex items-center gap-1"
+                  >
+                    <Navigation className="w-3 h-3" />
+                    <span>Ver ubicación exacta del restaurante</span>
+                  </a>
+                </div>
+              )}
 
               <div className="flex justify-between border-b border-[#232B3A] pb-2">
                 <span className="text-[#A9B2C3]">Cliente y Destino:</span>
                 <strong className="text-[#E63946] text-right">{selectedIncomingOrder.customerName} ({selectedIncomingOrder.customerAddress})</strong>
               </div>
+
+              {/* Punto de Referencia Entrega (Cliente) */}
+              {(selectedIncomingOrder.customerReference || selectedIncomingOrder.notes) && (
+                <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start text-xs bg-sky-500/10 -mx-1 px-2.5 py-2 rounded-xl border border-sky-500/20">
+                  <span className="text-sky-300 font-bold shrink-0 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                    Punto de Referencia Entrega:
+                  </span>
+                  <div className="text-right ml-2">
+                    <strong className="text-sky-100 text-xs font-semibold block">
+                      {selectedIncomingOrder.customerReference || selectedIncomingOrder.notes}
+                    </strong>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-between border-b border-[#232B3A] pb-2">
                 <span className="text-[#A9B2C3]">Método de Pago:</span>
@@ -1449,6 +2078,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           isOpen={trackingPreviewOpen}
           onClose={() => setTrackingPreviewOpen(false)}
           order={activeDelivery}
+          driverLiveCoords={currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude } : null}
+          storeLocationCoords={activeStoreLocation}
         />
       )}
     </div>

@@ -30,6 +30,7 @@ import {
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
+import AdminStoresManager from './AdminStoresManager';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule } from '../types';
 import { 
@@ -131,24 +132,27 @@ interface AdminUser {
   restaurantDaysOpen?: string[];
 }
 
-const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' => {
+const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores' => {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTab = urlParams.get('tab')?.toLowerCase();
-    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general'> = [
-      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general'
+    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores'> = [
+      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general', 'stores'
     ];
+    if (queryTab === 'tiendas') return 'stores';
     if (queryTab && validTabs.includes(queryTab as any)) {
       return queryTab as any;
     }
     const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
     if (hash.startsWith('admin/')) {
       const hashTab = hash.split('/')[1];
+      if (hashTab === 'tiendas') return 'stores';
       if (hashTab && validTabs.includes(hashTab as any)) {
         return hashTab as any;
       }
     }
     const storedTab = localStorage.getItem('ryyco_admin_active_tab');
+    if (storedTab === 'tiendas') return 'stores';
     if (storedTab && validTabs.includes(storedTab as any)) {
       return storedTab as any;
     }
@@ -176,13 +180,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [notif, setNotif] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general'>(getInitialAdminTab());
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
 
   // Tab switching with instant URL query and storage synchronization
-  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general') => {
+  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores') => {
     setActiveAdminTab(tab);
     try {
       localStorage.setItem('ryyco_admin_active_tab', tab);
@@ -452,16 +456,72 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         setStoresMap(stores);
 
         const storeMapUnique = new Map<string, { uid: string; name: string; username: string; phone?: string; address?: string }>();
+        const seenUids = new Set<string>();
+        const seenUsernames = new Set<string>();
+        const seenEmails = new Set<string>();
+        const seenPhones = new Set<string>();
+        const seenNames = new Set<string>();
+
+        const normalizePhone = (phone?: string): string => {
+          if (!phone) return '';
+          const d = phone.replace(/\D/g, '');
+          return d.length >= 10 ? d.slice(-10) : (d.length >= 7 ? d : '');
+        };
+
+        const normalizeName = (name?: string): string => {
+          if (!name) return '';
+          return name
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9]/g, '')
+            .trim();
+        };
+
+        const GENERIC_NAMES = new Set(['tienda', 'mitienda', 'restaurante', 'mirestaurante', 'usuario', 'admin', 'store']);
+
         (Object.values(stores) as UserProfile[]).forEach((p: UserProfile) => {
-          if (p && p.uid && !storeMapUnique.has(p.uid)) {
-            const sName = p.displayName || p.storeName || p.username || 'Tienda';
-            storeMapUnique.set(p.uid, {
-              uid: p.uid,
-              name: sName,
-              username: p.username || '',
-              phone: p.whatsapp || p.customerServiceWhatsapp || p.ownerWhatsapp || p.phone || '',
-              address: p.address || p.location || ''
-            });
+          if (p) {
+            const uid = (p.uid || (p as any).id || '').trim();
+            const uname = (p.username || '').replace(/^@+/, '').trim().toLowerCase();
+            const email = (p.email || '').trim().toLowerCase();
+            const phone = normalizePhone(p.whatsapp || p.customerServiceWhatsapp || p.ownerWhatsapp || p.phone);
+            const rawName = (p.displayName || p.storeName || '').trim();
+            const normName = normalizeName(rawName);
+            const isUsableName = normName.length >= 3 && !GENERIC_NAMES.has(normName);
+
+            // Check if already registered under any alias
+            const isDuplicate = 
+              (uid && seenUids.has(uid)) ||
+              (uname && seenUsernames.has(uname)) ||
+              (uid && seenUsernames.has(uid)) ||
+              (uname && seenUids.has(uname)) ||
+              (email && email.includes('@') && seenEmails.has(email)) ||
+              (phone && seenPhones.has(phone)) ||
+              (isUsableName && seenNames.has(normName));
+
+            if (isDuplicate) {
+              return;
+            }
+
+            if (uid || uname || isUsableName) {
+              const primaryKey = uid || (uname ? `store_${uname}` : `store_${normName}`);
+              const sName = rawName || p.username || 'Tienda';
+              storeMapUnique.set(primaryKey, {
+                uid: primaryKey,
+                name: sName,
+                username: p.username || '',
+                phone: p.whatsapp || p.customerServiceWhatsapp || p.ownerWhatsapp || p.phone || '',
+                address: p.address || p.location || ''
+              });
+
+              if (uid) seenUids.add(uid);
+              if (primaryKey) seenUids.add(primaryKey);
+              if (uname) seenUsernames.add(uname);
+              if (email && email.includes('@')) seenEmails.add(email);
+              if (phone) seenPhones.add(phone);
+              if (isUsableName) seenNames.add(normName);
+            }
           }
         });
         setAllStoresList(Array.from(storeMapUnique.values()).sort((a, b) => a.name.localeCompare(b.name)));
@@ -1597,6 +1657,26 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </div>
                   </button>
 
+                  {/* Datos de las Tiendas (New tab placed where requested by user) */}
+                  <button
+                    onClick={() => handleSwitchTab('stores')}
+                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                      activeAdminTab === 'stores' 
+                        ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-lg shadow-pink-600/30 font-extrabold' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Store className="w-4 h-4 text-pink-400 shrink-0" />
+                      <span className="truncate">Datos de las Tiendas</span>
+                    </div>
+                    {allStoresList.length > 0 && (
+                      <span className="bg-pink-950/90 text-pink-300 border border-pink-700/60 font-mono text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0">
+                        {allStoresList.length}
+                      </span>
+                    )}
+                  </button>
+
                   <button
                     onClick={() => handleSwitchTab('payments')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
@@ -1726,6 +1806,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             >
               <Sparkles className="w-5 h-5" />
               <span className="text-[10px] font-medium leading-none whitespace-nowrap">Suscripciones</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab('stores')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
+                activeAdminTab === 'stores'
+                  ? 'text-pink-400 font-bold bg-pink-500/10 border border-pink-500/20'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <Store className="w-5 h-5 text-pink-400" />
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">Tiendas</span>
             </button>
 
             <button
@@ -1936,6 +2028,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ) : activeAdminTab === 'drivers' ? (
           <div className="animate-fade-in">
             <AdminDriversManager />
+          </div>
+        ) : activeAdminTab === 'stores' ? (
+          <div className="animate-fade-in">
+            <AdminStoresManager
+              storesMap={storesMap}
+              allStores={allStoresList}
+              users={users}
+              allOrders={allOrders}
+              onOpenScheduleModal={handleOpenScheduleModal}
+              onSelectStoreOrders={(storeUid) => {
+                setSelectedOrderStoreFilter(storeUid);
+                handleSwitchTab('orders');
+              }}
+              onRefreshData={loadAdminData}
+            />
           </div>
         ) : activeAdminTab === 'subscriptions' ? (
           <div className="space-y-6 animate-fade-in">

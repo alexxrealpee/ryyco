@@ -5569,6 +5569,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             ...p,
             address: data.address || p.address,
             location: data.address || p.location,
+            restaurantAddress: data.address || p.restaurantAddress || p.address,
             lat: data.lat,
             lng: data.lng,
             mapUrl: data.mapUrl

@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { registerDriverProfile } from '../lib/firebase';
 import { VehicleType, DriverProfile } from '../types';
+import { saveDriverSessionToStorage } from './DriverPortal';
 
 interface DriverRegisterProps {
   onNavigateLogin: () => void;
@@ -175,6 +176,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
         phone: phone.trim(),
         address: address.trim(),
         city: city.trim(),
+        password: password.trim(),
         vehicleType,
         vehicleBrand: vehicleBrand.trim(),
         vehiclePlate: vehiclePlate.trim().toUpperCase(),
@@ -187,6 +189,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
 
       setRegisteredDriver(created);
       setIsSuccess(true);
+      saveDriverSessionToStorage(created);
       if (onSuccessRegistered) {
         onSuccessRegistered(created);
       }

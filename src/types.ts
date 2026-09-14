@@ -21,6 +21,7 @@ export interface DriverProfile {
   id: string; // Firestore doc ID (usually user.uid)
   uid: string;
   email: string;
+  password?: string; // Driver access password
   photoURL?: string;
   firstName: string;
   lastName: string;
@@ -137,6 +138,10 @@ export interface UserProfile {
   restaurantPaymentMethods?: string[];
   restaurantChefNote?: string;
   restaurantDaysOpen?: string[];
+  // Exact Geolocation / Google Maps Coordinates
+  lat?: number;
+  lng?: number;
+  mapUrl?: string;
 }
 
 export interface DaySchedule {
@@ -203,12 +208,17 @@ export interface OrderItem {
   storeOwnerId: string;
   storeName?: string;
   storeAddress?: string;
+  storeReference?: string; // Punto de referencia de la tienda para domiciliarios
   storePhone?: string;
+  storeMapUrl?: string;
+  storeLat?: number;
+  storeLng?: number;
   orderNumber: number; // Numeric sequential order number
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
   customerAddress: string;
+  customerReference?: string; // Punto de referencia del cliente
   customerMapUrl?: string;
   customerLat?: number;
   customerLng?: number;
@@ -261,10 +271,12 @@ export interface DeliveryTrackingData {
   status: 'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered' | 'cancelled';
   storeName?: string;
   storeAddress?: string;
+  storeReference?: string;
   storeLat?: number;
   storeLng?: number;
   customerName?: string;
   customerAddress?: string;
+  customerReference?: string;
   customerPhone?: string;
   customerLat?: number;
   customerLng?: number;

@@ -44,6 +44,7 @@ import {
 } from 'firebase/firestore';
 import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData } from '../types';
 import { safeSetItem } from './safeStorage';
+import { extractCoordinates } from './coordinateUtils';
 
 // Concrete public config from firebase-applet-config.json
 const firebaseConfig = {
@@ -59,6 +60,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+auth.languageCode = 'es';
 
 // Configure Firestore with resilient cache and auto-detecting transport for optimal reliability
 if (typeof window !== 'undefined') {
@@ -1300,18 +1302,46 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   const docRef = doc(collection(db, 'orders'));
   result.id = docRef.id;
 
-  // Auto-resolve store name and store contact details if not set or generic
-  if ((!result.storeName || result.storeName.trim() === '' || result.storeName === 'Tienda Linnk' || result.storeName === 'Tienda en la plataforma') && result.storeOwnerId && result.storeOwnerId !== 'store_general') {
+  // Auto-resolve store name and store contact/location details with exact coordinates
+  if (result.storeOwnerId && result.storeOwnerId !== 'store_general') {
     try {
       const storeDoc = await getDoc(doc(db, 'profiles', result.storeOwnerId));
       if (storeDoc.exists()) {
         const sData = storeDoc.data() as UserProfile;
-        result.storeName = sData.displayName || sData.storeName || sData.username || 'Mi Tienda';
-        if (!result.storeAddress && (sData.address || sData.location)) {
-          result.storeAddress = sData.address || sData.location;
+        if (!result.storeName || result.storeName.trim() === '' || result.storeName === 'Tienda Linnk' || result.storeName === 'Tienda en la plataforma') {
+          result.storeName = sData.displayName || sData.storeName || sData.username || 'Mi Tienda';
         }
-        if (!result.storePhone && (sData.whatsapp || sData.phone)) {
-          result.storePhone = sData.whatsapp || sData.phone;
+        if (!result.storeAddress || result.storeAddress === 'Dirección de la Tienda') {
+          result.storeAddress = sData.restaurantAddress || sData.address || sData.location || '';
+        }
+        if (!result.storeReference && (sData.restaurantReference || (sData as any).storeReference)) {
+          result.storeReference = sData.restaurantReference || (sData as any).storeReference;
+        }
+        if (!result.storePhone && (sData.whatsapp || sData.phone || sData.ownerWhatsapp)) {
+          result.storePhone = sData.whatsapp || sData.phone || sData.ownerWhatsapp;
+        }
+        
+        // Exact store coordinates & map URL
+        const storeMapUrl = (sData as any).mapUrl;
+        if (storeMapUrl && !result.storeMapUrl) {
+          result.storeMapUrl = storeMapUrl;
+        }
+
+        let storeLat = sData.lat;
+        let storeLng = sData.lng;
+        if ((!storeLat || !storeLng) && storeMapUrl) {
+          const parsed = extractCoordinates(storeMapUrl);
+          if (parsed) {
+            storeLat = parsed.lat;
+            storeLng = parsed.lng;
+          }
+        }
+
+        if (storeLat && !result.storeLat) {
+          result.storeLat = storeLat;
+        }
+        if (storeLng && !result.storeLng) {
+          result.storeLng = storeLng;
         }
       }
     } catch (e) {}
@@ -3419,7 +3449,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
 
       const now = new Date().toISOString();
       const effectiveFee = systemFee || 7000;
-      const driverDataUpdates = {
+      const driverDataUpdates: any = {
         deliveryFee: effectiveFee,
         deliveryDriverId: driver.id,
         deliveryDriverName: `${driver.firstName} ${driver.lastName}`,
@@ -3431,6 +3461,29 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         deliveryStepUpdatedAt: now,
         status: orderData.status === 'pending' ? 'processing' : orderData.status
       };
+
+      // Enrich with store reference and GPS if missing on the order
+      if (!orderData.storeReference && orderData.storeOwnerId && orderData.storeOwnerId !== 'store_general') {
+        try {
+          const storeDoc = await transaction.get(doc(db, 'profiles', orderData.storeOwnerId));
+          if (storeDoc.exists()) {
+            const sData = storeDoc.data() as UserProfile;
+            const sRef = sData.restaurantReference || (sData as any).storeReference;
+            if (sRef) {
+              driverDataUpdates.storeReference = sRef;
+            }
+            if (!orderData.storeLat && sData.lat) {
+              driverDataUpdates.storeLat = sData.lat;
+            }
+            if (!orderData.storeLng && sData.lng) {
+              driverDataUpdates.storeLng = sData.lng;
+            }
+            if (!orderData.storeMapUrl && (sData as any).mapUrl) {
+              driverDataUpdates.storeMapUrl = (sData as any).mapUrl;
+            }
+          }
+        } catch (e) {}
+      }
 
       transaction.update(orderRef, driverDataUpdates);
 
