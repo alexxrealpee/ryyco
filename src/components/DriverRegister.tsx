@@ -55,6 +55,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
   const [vehicleType, setVehicleType] = useState<VehicleType>('moto');
   const [vehicleBrand, setVehicleBrand] = useState<string>('');
   const [vehiclePlate, setVehiclePlate] = useState<string>('');
+  const [vehiclePhotoUrl, setVehiclePhotoUrl] = useState<string>('');
   const [vehicleOwnershipCardUrl, setVehicleOwnershipCardUrl] = useState<string>('');
   const [driverLicenseUrl, setDriverLicenseUrl] = useState<string>('');
 
@@ -76,6 +77,21 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
       const reader = new FileReader();
       reader.onloadend = () => {
         setPhotoURL(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleVehiclePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 4 * 1024 * 1024) {
+        setErrorMsg('La foto del vehículo no debe superar los 4MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setVehiclePhotoUrl(reader.result as string);
       };
       reader.readAsDataURL(file);
     }
@@ -147,8 +163,12 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
       setErrorMsg('Para motos y carros es obligatorio ingresar la placa del vehículo.');
       return;
     }
-    if ((vehicleType === 'moto' || vehicleType === 'carro') && (!vehicleOwnershipCardUrl || !driverLicenseUrl)) {
-      setErrorMsg('Para motos y carros es obligatorio adjuntar foto de la tarjeta de propiedad y de la licencia de conducción.');
+    if ((vehicleType === 'moto' || vehicleType === 'carro') && (!vehiclePhotoUrl || !vehicleOwnershipCardUrl || !driverLicenseUrl)) {
+      setErrorMsg('Para motos y carros es obligatorio adjuntar foto del vehículo, tarjeta de propiedad y licencia de conducción.');
+      return;
+    }
+    if (vehicleType === 'bicicleta' && !vehiclePhotoUrl) {
+      setErrorMsg('Por favor adjunta una foto clara de tu bicicleta para continuar.');
       return;
     }
     if (!acceptedTerms) {
@@ -180,6 +200,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
         vehicleType,
         vehicleBrand: vehicleBrand.trim(),
         vehiclePlate: vehiclePlate.trim().toUpperCase(),
+        vehiclePhotoUrl: vehiclePhotoUrl || '',
         vehicleOwnershipCardUrl: vehicleOwnershipCardUrl || '',
         driverLicenseUrl: driverLicenseUrl || '',
         status: 'pending',
@@ -544,7 +565,46 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                 </div>
 
                 {/* Documentación del Vehículo y Conductor */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                  {/* Foto del Vehículo */}
+                  <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl flex items-center gap-4">
+                    <div className="relative group shrink-0">
+                      {vehiclePhotoUrl ? (
+                        <img
+                          src={vehiclePhotoUrl}
+                          alt="Foto del vehículo"
+                          className="w-16 h-16 rounded-xl object-cover border border-[#10B981]/40 bg-[#111827]"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl border border-dashed border-[#232B3A] bg-[#111827] flex flex-col items-center justify-center text-[#A9B2C3]">
+                          {vehicleType === 'carro' ? (
+                            <Car className="w-6 h-6 text-[#10B981]" />
+                          ) : (
+                            <Bike className="w-6 h-6 text-[#10B981]" />
+                          )}
+                        </div>
+                      )}
+                      <label className="absolute inset-0 bg-black/60 rounded-xl flex flex-col items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition cursor-pointer">
+                        <Upload className="w-4 h-4 mb-0.5 text-[#10B981]" />
+                        <span>Subir</span>
+                        <input type="file" accept="image/*" onChange={handleVehiclePhotoUpload} className="hidden" />
+                      </label>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-xs font-bold text-white mb-0.5">
+                        Foto del Vehículo {(vehicleType === 'moto' || vehicleType === 'carro' || vehicleType === 'bicicleta') ? '*' : '(Opcional)'}
+                      </h4>
+                      <p className="text-[11px] text-[#A9B2C3] mb-2.5 leading-tight">
+                        Foto visible de tu {vehicleType === 'moto' ? 'motocicleta' : vehicleType === 'carro' ? 'automóvil' : vehicleType === 'bicicleta' ? 'bicicleta' : 'vehículo'}.
+                      </p>
+                      <label className="px-3 py-1.5 bg-[#111827] hover:bg-[#232B3A] text-[#10B981] font-bold text-xs rounded-lg border border-[#232B3A] cursor-pointer inline-flex items-center gap-1.5 transition">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{vehiclePhotoUrl ? 'Cambiar Foto' : 'Seleccionar Foto'}</span>
+                        <input type="file" accept="image/*" onChange={handleVehiclePhotoUpload} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+
                   {/* Foto Tarjeta de Propiedad */}
                   <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl flex items-center gap-4">
                     <div className="relative group shrink-0">

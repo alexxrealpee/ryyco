@@ -38,7 +38,11 @@ import {
   Eye,
   EyeOff,
   Compass,
-  ExternalLink
+  ExternalLink,
+  CreditCard,
+  Banknote,
+  Receipt,
+  HelpCircle
 } from 'lucide-react';
 import { 
   fetchDriverProfileByUid, 
@@ -47,6 +51,7 @@ import {
   listenToUnassignedOrders, 
   acceptDeliveryOrderTransaction, 
   updateOrderDeliveryStep, 
+  updateOrderDriverPaymentInfo,
   fetchDriverOrdersHistory, 
   fetchDriverRatings, 
   updateDriverProfile,
@@ -585,6 +590,50 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     }
   };
 
+  // State & Handler for Restaurant and Customer COD payment verification (Etapa 1)
+  const [paymentFeedbackMsg, setPaymentFeedbackMsg] = useState<string>('');
+
+  const handleUpdatePaymentStatus = async (
+    status: 'already_paid' | 'not_paid' | 'unconfirmed',
+    codConfirmed?: boolean,
+    paidToStore?: boolean
+  ) => {
+    if (!activeDelivery) return;
+    const fee = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
+    const foodAmount = Math.max(0, (activeDelivery.totalAmount || 0) - fee);
+
+    const updates: Partial<OrderItem> = {
+      restaurantPaymentStatus: status,
+      customerCodConfirmed: codConfirmed !== undefined ? codConfirmed : (status === 'already_paid' ? false : activeDelivery.customerCodConfirmed),
+      driverPaidToRestaurant: paidToStore !== undefined ? paidToStore : (status === 'already_paid' ? false : activeDelivery.driverPaidToRestaurant),
+      driverPaidAmount: paidToStore ? foodAmount : (paidToStore === false ? undefined : activeDelivery.driverPaidAmount),
+      driverPaidAt: paidToStore ? new Date().toISOString() : (paidToStore === false ? undefined : activeDelivery.driverPaidAt)
+    };
+
+    const updated = {
+      ...activeDelivery,
+      ...updates
+    };
+    setActiveDelivery(updated);
+
+    if (status === 'already_paid') {
+      setPaymentFeedbackMsg('✓ Registrado: Pedido ya pagado al restaurante por el cliente.');
+    } else if (status === 'not_paid' && !codConfirmed) {
+      setPaymentFeedbackMsg('⚠️ Registrado: Pedido no pagado. Pregunta al cliente si paga contra entrega.');
+    } else if (codConfirmed && !paidToStore) {
+      setPaymentFeedbackMsg('✓ Cliente confirmó pago contra entrega. Procede a pagar al restaurante.');
+    } else if (paidToStore) {
+      setPaymentFeedbackMsg(`✓ ¡Pago de $${foodAmount.toLocaleString('es-CO')} registrado al restaurante! Recuerda recaudar $${(activeDelivery.totalAmount || 0).toLocaleString('es-CO')} al cliente.`);
+    }
+    setTimeout(() => setPaymentFeedbackMsg(''), 4500);
+
+    try {
+      await updateOrderDriverPaymentInfo(activeDelivery.id, updates);
+    } catch (err) {
+      console.error("Error updating driver payment info:", err);
+    }
+  };
+
   // Save Driver Profile Updates
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1049,6 +1098,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       const isPickedUp = currentStepIdx >= 2;
                       const driverHasGps = !!currentCoords?.latitude && !!currentCoords?.longitude;
 
+                      const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
+                      const totalOrderAmount = activeDelivery.totalAmount || 0;
+                      const foodCost = Math.max(0, totalOrderAmount - deliveryFeeVal);
+                      const restPaymentStatus = activeDelivery.restaurantPaymentStatus || 'unconfirmed';
+                      const codConfirmed = !!activeDelivery.customerCodConfirmed;
+                      const driverPaid = !!activeDelivery.driverPaidToRestaurant;
+                      const paidAmount = activeDelivery.driverPaidAmount || foodCost;
+
                       return (
                         <div className="bg-[#090D16] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1C2433] pb-3">
@@ -1086,68 +1143,336 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           </div>
 
                           {/* Visual Sequence: Domiciliario -> Restaurante -> Cliente */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {/* Etapa 1 Card */}
-                            <div className={`p-3.5 rounded-xl border transition ${
+                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                            {/* Etapa 1 Card: Restaurante & Gestión de Pago */}
+                            <div className={`p-4 rounded-xl border transition flex flex-col justify-between ${
                               !isPickedUp
-                                ? 'bg-amber-500/10 border-amber-500/40 text-white ring-1 ring-amber-500/30'
+                                ? 'bg-gradient-to-b from-amber-500/10 via-[#0E1524] to-[#0A0E18] border-amber-500/40 text-white ring-1 ring-amber-500/30 shadow-lg'
                                 : 'bg-[#121824] border-[#232B3A] text-gray-400 opacity-80'
                             }`}>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                                  !isPickedUp ? 'bg-amber-500 text-black font-black' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                }`}>
-                                  {!isPickedUp ? 'Etapa 1 (Activa)' : 'Etapa 1 (Completada ✓)'}
-                                </span>
-                                <span className="text-xs font-bold text-gray-400">Paso 1 de 2</span>
-                              </div>
-
-                              <div className="space-y-1 mt-2">
-                                <div className="text-xs font-black text-white flex items-center gap-1.5">
-                                  <span>📍 Domiciliario</span>
-                                  <span className="text-amber-400 font-bold">➔</span>
-                                  <span className="text-amber-300">🍽️ {activeDelivery.storeName || 'Restaurante'}</span>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
+                                    !isPickedUp ? 'bg-amber-500 text-black font-black' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                  }`}>
+                                    {!isPickedUp ? 'Etapa 1 (Activa)' : 'Etapa 1 (Completada ✓)'}
+                                  </span>
+                                  <span className="text-xs font-bold text-gray-400">Paso 1 de 2</span>
                                 </div>
-                                <p className="text-[11px] text-gray-300">
-                                  {!isPickedUp 
-                                    ? 'Dirígete primero a la ubicación del restaurante a reclamar el pedido.' 
-                                    : 'Pedido reclamado en el restaurante.'}
-                                </p>
-                                <p className="text-[10px] text-gray-400 truncate">
-                                  {activeDelivery.storeAddress}
-                                </p>
+
+                                <div className="space-y-1 mt-2">
+                                  <div className="text-xs font-black text-white flex items-center gap-1.5">
+                                    <span>📍 Domiciliario</span>
+                                    <span className="text-amber-400 font-bold">➔</span>
+                                    <span className="text-amber-300">🍽️ {activeDelivery.storeName || 'Restaurante'}</span>
+                                  </div>
+                                  <p className="text-[11px] text-gray-300">
+                                    {!isPickedUp 
+                                      ? 'Dirígete primero a la ubicación del restaurante a reclamar el pedido.' 
+                                      : 'Pedido reclamado en el restaurante.'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
+                                    <span>{activeDelivery.storeAddress}</span>
+                                  </p>
+                                </div>
+
+                                {/* Flow when Etapa 1 is active: Payment Verification & COD confirmation */}
+                                {!isPickedUp && (
+                                  <div className="mt-3 pt-3 border-t border-amber-500/20 space-y-2.5">
+                                    {paymentFeedbackMsg && (
+                                      <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold animate-fadeIn flex items-center gap-1.5">
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                                        <span>{paymentFeedbackMsg}</span>
+                                      </div>
+                                    )}
+
+                                    {/* PASO 1: Preguntar al restaurante si el cliente ya pagó */}
+                                    <div className="bg-[#090D16] border border-[#232B3A] rounded-xl p-3 space-y-2">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                                          <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                                          1. ¿Cliente ya pagó al restaurante?
+                                        </span>
+                                        {restPaymentStatus !== 'unconfirmed' && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdatePaymentStatus('unconfirmed')}
+                                            className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
+                                          >
+                                            Cambiar
+                                          </button>
+                                        )}
+                                      </div>
+
+                                      {restPaymentStatus === 'unconfirmed' ? (
+                                        <div className="space-y-2">
+                                          <p className="text-[11px] text-gray-300">
+                                            Pregunta al restaurante si el pedido #{activeDelivery.orderNumber} ya fue pagado por el cliente o si está pendiente de pago.
+                                          </p>
+
+                                          <div className="flex gap-2">
+                                            {effectiveStorePhone && (
+                                              <a
+                                                href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor me confirmas: ¿el cliente ya pagó el pedido o está pendiente de pago? Gracias.`)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                                              >
+                                                <MessageSquare className="w-3.5 h-3.5 fill-current" />
+                                                <span>Preguntar por WhatsApp</span>
+                                              </a>
+                                            )}
+                                            {effectiveStorePhone && (
+                                              <a
+                                                href={`tel:${effectiveStorePhone}`}
+                                                className="py-2 px-3 bg-[#1C2433] hover:bg-[#2A364A] text-gray-200 border border-gray-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1"
+                                                title="Llamar a restaurante"
+                                              >
+                                                <Phone className="w-3.5 h-3.5" />
+                                              </a>
+                                            )}
+                                          </div>
+
+                                          <div className="grid grid-cols-2 gap-2 pt-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdatePaymentStatus('already_paid', false, false)}
+                                              className="py-2 px-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                                            >
+                                              <Check className="w-3.5 h-3.5" />
+                                              <span>✓ Sí, ya pagó</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdatePaymentStatus('not_paid', false, false)}
+                                              className="py-2 px-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
+                                            >
+                                              <AlertTriangle className="w-3.5 h-3.5" />
+                                              <span>✗ No ha pagado</span>
+                                            </button>
+                                          </div>
+                                        </div>
+                                      ) : restPaymentStatus === 'already_paid' ? (
+                                        <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-start gap-2">
+                                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                          <div className="leading-snug">
+                                            <p className="text-white font-black">✓ Pedido Pagado al Restaurante</p>
+                                            <p className="text-[11px] text-emerald-200 mt-0.5">El cliente ya pagó al restaurante. No debes pagar ni cobrar el pedido. Solo reclamar y entregar.</p>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-start gap-2">
+                                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                          <div className="leading-snug">
+                                            <p className="text-white font-black">Restaurante confirmó: Pedido NO pagado</p>
+                                            <p className="text-[11px] text-amber-200 mt-0.5">Debes preguntar al cliente si pagará contra entrega.</p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* PASO 2: Si no ha pagado -> Preguntar al cliente si paga contra entrega */}
+                                    {restPaymentStatus === 'not_paid' && (
+                                      <div className="bg-[#090D16] border border-amber-500/40 rounded-xl p-3 space-y-2">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                                            <Phone className="w-3.5 h-3.5 text-amber-400" />
+                                            2. Confirmar Contra Entrega con Cliente
+                                          </span>
+                                          {codConfirmed && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdatePaymentStatus('not_paid', false, false)}
+                                              className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
+                                            >
+                                              Cambiar
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {!codConfirmed ? (
+                                          <div className="space-y-2">
+                                            <p className="text-[11px] text-gray-300">
+                                              Pregunta a <strong>{activeDelivery.customerName}</strong> si pagará contra entrega al recibir el pedido (Total: <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong>).
+                                            </p>
+
+                                            <div className="flex gap-2">
+                                              {activeDelivery.customerPhone && (
+                                                <a
+                                                  href={`https://wa.me/${activeDelivery.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName}! 👋 Te habla tu domiciliario del pedido #${activeDelivery.orderNumber || ''}. El restaurante me indica que el pedido aún no está pagado. ¿Confirmas que vas a pagar contra entrega al recibirlo en tu dirección ($${totalOrderAmount.toLocaleString('es-CO')})? Quedo atento para pagar en la tienda y llevártelo inmediatamente.`)}`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                                                >
+                                                  <MessageSquare className="w-3.5 h-3.5 fill-current" />
+                                                  <span>Preguntar por WhatsApp al Cliente</span>
+                                                </a>
+                                              )}
+                                              {activeDelivery.customerPhone && (
+                                                <a
+                                                  href={`tel:${activeDelivery.customerPhone}`}
+                                                  className="py-2 px-3 bg-[#1C2433] hover:bg-[#2A364A] text-gray-200 border border-gray-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1"
+                                                  title="Llamar al cliente"
+                                                >
+                                                  <Phone className="w-3.5 h-3.5" />
+                                                </a>
+                                              )}
+                                            </div>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
+                                              className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                                            >
+                                              <Banknote className="w-4 h-4" />
+                                              <span>✓ Cliente confirma: Paga Contra Entrega (${totalOrderAmount.toLocaleString('es-CO')})</span>
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <div className="p-2.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-start gap-2">
+                                            <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                                            <div className="leading-snug">
+                                              <p className="text-white font-black">✓ Cliente Confirmó Pago Contra Entrega</p>
+                                              <p className="text-[11px] text-cyan-200 mt-0.5">El cliente pagará <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong> en efectivo o transferencia al recibir.</p>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+
+                                    {/* PASO 3: Pagar el pedido en el restaurante */}
+                                    {restPaymentStatus === 'not_paid' && codConfirmed && (
+                                      <div className="bg-[#090D16] border border-emerald-500/40 rounded-xl p-3 space-y-2.5">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                                            <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                                            3. Pagar Pedido en el Restaurante
+                                          </span>
+                                          {driverPaid && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
+                                              className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
+                                            >
+                                              Corregir
+                                            </button>
+                                          )}
+                                        </div>
+
+                                        {/* Liquidación clara */}
+                                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-[#141B2D] p-2.5 rounded-lg border border-[#232B3A]">
+                                          <div>
+                                            <span className="text-gray-400 block text-[10px]">Pagas en Restaurante (Comida):</span>
+                                            <strong className="text-amber-300 text-sm font-mono font-black">${foodCost.toLocaleString('es-CO')}</strong>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400 block text-[10px]">Cobras al Cliente al Entregar:</span>
+                                            <strong className="text-emerald-400 text-sm font-mono font-black">${totalOrderAmount.toLocaleString('es-CO')}</strong>
+                                          </div>
+                                        </div>
+
+                                        {!driverPaid ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdatePaymentStatus('not_paid', true, true)}
+                                            className="w-full py-3 px-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-95"
+                                          >
+                                            <CreditCard className="w-4 h-4" />
+                                            <span>Pagar Pedido en Restaurante (${foodCost.toLocaleString('es-CO')})</span>
+                                          </button>
+                                        ) : (
+                                          <div className="space-y-2">
+                                            <div className="p-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-start gap-2">
+                                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                              <div className="leading-snug">
+                                                <p className="font-black text-white">✓ ¡Pedido Pagado en Restaurante (${paidAmount.toLocaleString('es-CO')})!</p>
+                                                <p className="text-[11px] text-emerald-200 mt-0.5">Recuerda cobrar <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong> al cliente al entregar.</p>
+                                              </div>
+                                            </div>
+
+                                            <button
+                                              type="button"
+                                              onClick={() => handleAdvanceStep('picked_up')}
+                                              className="w-full py-2.5 px-3 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#F4B400]/20 active:scale-95"
+                                            >
+                                              <ShoppingBag className="w-4 h-4" />
+                                              <span>2. Marcar Pedido Recogido (Pasar a Etapa 2) ➔</span>
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Compact summary when Etapa 1 is completed */}
+                                {isPickedUp && (
+                                  <div className="mt-2.5 pt-2 border-t border-[#232B3A]">
+                                    {restPaymentStatus === 'already_paid' ? (
+                                      <div className="text-[11px] text-emerald-400 font-bold flex items-center gap-1.5">
+                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                        <span>Pedido pagado directamente al restaurante por el cliente</span>
+                                      </div>
+                                    ) : driverPaid ? (
+                                      <div className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                        <span>Pagaste ${paidAmount.toLocaleString('es-CO')} en restaurante • Cobrar ${totalOrderAmount.toLocaleString('es-CO')} al cliente</span>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
                             {/* Etapa 2 Card */}
-                            <div className={`p-3.5 rounded-xl border transition ${
+                            <div className={`p-4 rounded-xl border transition flex flex-col justify-between ${
                               isPickedUp
                                 ? 'bg-[#E63946]/10 border-[#E63946]/40 text-white ring-1 ring-[#E63946]/30'
                                 : 'bg-[#121824] border-[#232B3A] text-gray-400'
                             }`}>
-                              <div className="flex items-center justify-between mb-1.5">
-                                <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                                  isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
-                                }`}>
-                                  {isPickedUp ? 'Etapa 2 (Activa)' : 'Etapa 2 (Siguiente)'}
-                                </span>
-                                <span className="text-xs font-bold text-gray-400">Paso 2 de 2</span>
-                              </div>
-
-                              <div className="space-y-1 mt-2">
-                                <div className="text-xs font-black text-white flex items-center gap-1.5">
-                                  <span>🍽️ Restaurante</span>
-                                  <span className="text-[#E63946] font-bold">➔</span>
-                                  <span className="text-emerald-400">🏠 {activeDelivery.customerName || 'Cliente'}</span>
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
+                                    isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
+                                  }`}>
+                                    {isPickedUp ? 'Etapa 2 (Activa)' : 'Etapa 2 (Siguiente)'}
+                                  </span>
+                                  <span className="text-xs font-bold text-gray-400">Paso 2 de 2</span>
                                 </div>
-                                <p className="text-[11px] text-gray-300">
-                                  {isPickedUp 
-                                    ? 'Continúa desde el restaurante hasta la dirección de entrega del cliente.' 
-                                    : 'Se activará automáticamente al marcar el pedido como recogido.'}
-                                </p>
-                                <p className="text-[10px] text-gray-400 truncate">
-                                  {activeDelivery.customerAddress}
-                                </p>
+
+                                <div className="space-y-1 mt-2">
+                                  <div className="text-xs font-black text-white flex items-center gap-1.5">
+                                    <span>🍽️ Restaurante</span>
+                                    <span className="text-[#E63946] font-bold">➔</span>
+                                    <span className="text-emerald-400">🏠 {activeDelivery.customerName || 'Cliente'}</span>
+                                  </div>
+                                  <p className="text-[11px] text-gray-300">
+                                    {isPickedUp 
+                                      ? 'Continúa desde el restaurante hasta la dirección de entrega del cliente.' 
+                                      : 'Se activará automáticamente al marcar el pedido como recogido.'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-400 truncate flex items-center gap-1">
+                                    <MapPin className="w-3 h-3 text-[#E63946] shrink-0" />
+                                    <span>{activeDelivery.customerAddress}</span>
+                                  </p>
+                                </div>
+
+                                {/* Highlight COD collection on active Etapa 2 */}
+                                {isPickedUp && driverPaid && (
+                                  <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-100 text-xs font-bold space-y-1">
+                                    <div className="flex items-center gap-1.5 text-emerald-300 font-black">
+                                      <Banknote className="w-4 h-4" />
+                                      <span>RECAUDAR AL CLIENTE CONTRA ENTREGA:</span>
+                                    </div>
+                                    <div className="text-base font-black text-white font-mono">
+                                      ${totalOrderAmount.toLocaleString('es-CO')}
+                                    </div>
+                                    <p className="text-[10px] text-emerald-200">
+                                      Recuperas ${paidAmount.toLocaleString('es-CO')} pagados en restaurante + ${deliveryFeeVal.toLocaleString('es-CO')} tu tarifa de domicilio.
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1415,6 +1740,23 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                         <span>Método de Pago: <strong className="text-white uppercase">{activeDelivery.paymentMethod}</strong></span>
                         <span>Total Pedido: <strong className="text-white">${activeDelivery.totalAmount?.toLocaleString('es-CO')}</strong></span>
                       </div>
+                      {activeDelivery.restaurantPaymentStatus === 'already_paid' ? (
+                        <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                            Pago en Restaurante:
+                          </span>
+                          <span className="text-white">Pagado previamente por el cliente ($0 a cobrar comida)</span>
+                        </div>
+                      ) : activeDelivery.driverPaidToRestaurant ? (
+                        <div className="p-2.5 rounded-lg bg-gradient-to-r from-emerald-500/20 to-amber-500/20 border border-emerald-500/35 text-xs text-emerald-200 font-bold flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <Banknote className="w-4 h-4 text-emerald-400" />
+                            Cobrar al Cliente Contra Entrega:
+                          </span>
+                          <span className="text-white font-black text-sm">${activeDelivery.totalAmount?.toLocaleString('es-CO')}</span>
+                        </div>
+                      ) : null}
                       {activeDelivery.notes && (
                         <p className="text-xs text-[#F4B400] bg-[#F4B400]/10 p-2 rounded-lg border border-[#F4B400]/20">
                           <strong>Observaciones:</strong> {activeDelivery.notes}
@@ -1445,13 +1787,29 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       )}
 
                       {(activeDelivery.deliveryStep === 'to_client' || activeDelivery.deliveryStep === 'at_destination') && (
-                        <button
-                          onClick={() => handleAdvanceStep('delivered')}
-                          className="flex-1 py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2"
-                        >
-                          <CheckCircle2 className="w-5 h-5" />
-                          <span>4. Confirmar Pedido Entregado ✓</span>
-                        </button>
+                        <div className="w-full space-y-2">
+                          {activeDelivery.driverPaidToRestaurant && (
+                            <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-100 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Banknote className="w-5 h-5 text-emerald-400 shrink-0" />
+                                <div>
+                                  <span className="text-[10px] uppercase font-black tracking-wider text-emerald-300 block">Recaudar al Cliente Contra Entrega:</span>
+                                  <span className="text-xs text-gray-200">Recupera lo pagado en tienda + tu domicilio</span>
+                                </div>
+                              </div>
+                              <span className="text-base font-black text-white font-mono shrink-0 ml-2">
+                                ${(activeDelivery.totalAmount || 0).toLocaleString('es-CO')}
+                              </span>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => handleAdvanceStep('delivered')}
+                            className="w-full py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2"
+                          >
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span>4. Confirmar Pedido Entregado ✓</span>
+                          </button>
+                        </div>
                       )}
 
                       {/* Map Location Helper with exact coordinates */}

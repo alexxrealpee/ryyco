@@ -115,6 +115,7 @@ import { formatColombianPhoneWith57 } from './PublicProfile';
 import { BasicPlanTrialModal } from './BasicPlanTrialModal';
 import { DashboardTrialBanner } from './DashboardTrialBanner';
 import { getProductParsedVariants, getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
+import { generateRyycoImageName } from '../lib/seoImageRenamer';
 
 export const RESTAURANT_CATEGORIES = [
   '🍔 Hamburguesas',
@@ -154,6 +155,7 @@ const Tiktok = ({ className = "w-4 h-4", ...props }: React.SVGProps<SVGSVGElemen
 const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 800, quality = 0.85): Promise<string> => {
   return new Promise((resolve) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.src = base64Str;
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -177,7 +179,17 @@ const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 800, qual
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
-        // High fidelity compression
+        
+        // Convert automatically to modern WebP format for optimal SEO & compression
+        try {
+          const webpDataUrl = canvas.toDataURL('image/webp', quality);
+          if (webpDataUrl.startsWith('data:image/webp')) {
+            resolve(webpDataUrl);
+            return;
+          }
+        } catch (_) {
+          // Fallback to JPEG below if WebP canvas export throws
+        }
         const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
         resolve(compressedBase64);
       } else {
@@ -493,6 +505,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [prodPrice, setProdPrice] = useState('');
   const [prodComparePrice, setProdComparePrice] = useState('');
   const [prodImage, setProdImage] = useState('');
+  const [prodImageFileName, setProdImageFileName] = useState('');
   const [prodCategory, setProdCategory] = useState('');
   const [prodStock, setProdStock] = useState('10');
   const [prodVariants, setProdVariants] = useState(''); // Comma separated e.g. "S, M, L"
@@ -502,6 +515,22 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     if (!prodVariants || !prodVariants.trim()) return [];
     return getProductParsedVariants(prodVariants, prodVariantPrices, Number(prodPrice) || 0);
   }, [prodVariants, prodVariantPrices, prodPrice]);
+
+  // Automatically synchronize SEO image filename when product name, category or city updates
+  useEffect(() => {
+    if (prodImage && isAddingProd) {
+      const existingId = prodImageFileName ? prodImageFileName.replace(/\.webp$/, '').split('-').pop() : undefined;
+      const updatedSeo = generateRyycoImageName({
+        productName: prodName.trim() || 'producto',
+        category: prodCategory.trim() || 'general',
+        storeName: profile.displayName || profile.storeName,
+        city: profile.restaurantCity || profile.location || profile.address,
+        intent: 'domicilio',
+        uniqueId: existingId
+      });
+      setProdImageFileName(updatedSeo);
+    }
+  }, [prodName, prodCategory, isAddingProd, profile.restaurantCity, profile.location, profile.displayName]);
 
   const [prodAllowsHalfAndHalf, setProdAllowsHalfAndHalf] = useState(false);
   const [prodFlavorsText, setProdFlavorsText] = useState('');
@@ -857,6 +886,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdPrice('');
     setProdComparePrice('');
     setProdImage('');
+    setProdImageFileName('');
     setProdCategory('🍔 Hamburguesas');
     setProdStock('15');
     setProdVariants('');
@@ -876,6 +906,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdPrice(prod.price !== undefined && prod.price !== null ? prod.price.toString() : '');
     setProdComparePrice(prod.compareAtPrice !== undefined && prod.compareAtPrice !== null ? prod.compareAtPrice.toString() : '');
     setProdImage(prod.imageURL || '');
+    setProdImageFileName(prod.imageFileName || (prod.imageURL ? generateRyycoImageName({
+      productName: prod.name,
+      category: prod.category,
+      storeName: profile.displayName || profile.storeName,
+      city: profile.restaurantCity || profile.location || profile.address,
+      intent: 'domicilio'
+    }) : ''));
     setProdCategory(prod.category || 'General');
     setProdStock(prod.stock !== undefined && prod.stock !== null ? prod.stock.toString() : '10');
     setProdVariants(prod.variantsText || '');
@@ -1006,6 +1043,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       });
     }
 
+    const finalImageFileName = prodImage ? (prodImageFileName || generateRyycoImageName({
+      productName: prodName.trim() || 'producto',
+      category: prodCategory ? prodCategory.trim() : 'General',
+      storeName: profile.displayName || profile.storeName,
+      city: profile.restaurantCity || profile.location || profile.address,
+      intent: 'domicilio'
+    })) : undefined;
+
     const payload: ProductItem = {
       id: editingProd ? editingProd.id : `temp_${Date.now()}`,
       userId: profile.uid,
@@ -1014,6 +1059,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       price: cleanPrice,
       compareAtPrice: cleanComparePrice,
       imageURL: prodImage || undefined,
+      imageFileName: finalImageFileName,
       category: prodCategory ? prodCategory.trim() : 'General',
       stock: isNaN(parseInt(prodStock)) ? 10 : parseInt(prodStock),
       variantsText: prodVariants ? prodVariants.trim() : '',
@@ -2365,9 +2411,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                           {/* Imagen del Producto */}
                           <div>
-                            <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
-                              Imagen del Producto (Subir y Comprimir)
-                            </label>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">
+                                Imagen del Producto (WebP & Renombrado SEO RYYCO)
+                              </label>
+                              <span className="text-[8.5px] font-mono text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/20">
+                                Auto-SEO .webp
+                              </span>
+                            </div>
                             
                             <div className="relative border border-dashed border-gray-800 hover:border-emerald-500/50 rounded-xl p-3 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[96px]">
                               <input
@@ -2381,12 +2432,22 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     reader.onloadend = async () => {
                                       try {
                                         const base64 = reader.result as string;
-                                        // Compress the image before setting state
+                                        // Compress image to modern WebP format
                                         const compressed = await compressImage(base64, 800, 800);
                                         setProdImage(compressed);
+
+                                        // Automatically generate SEO WebP filename using available database info
+                                        const autoSeoName = generateRyycoImageName({
+                                          productName: prodName.trim() || file.name.replace(/\.[^/.]+$/, ''),
+                                          category: prodCategory.trim() || 'general',
+                                          storeName: profile.displayName || profile.storeName,
+                                          city: profile.restaurantCity || profile.location || profile.address,
+                                          intent: 'domicilio'
+                                        });
+                                        setProdImageFileName(autoSeoName);
                                       } catch (err) {
                                         console.error("Error compressing image:", err);
-                                        alert("Error al comprimir la imagen. Intenta con otra.");
+                                        alert("Error al procesar la imagen. Intenta con otra.");
                                       } finally {
                                         setIsCompressingImage(false);
                                       }
@@ -2400,19 +2461,32 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               {isCompressingImage ? (
                                 <div className="flex flex-col items-center justify-center gap-1.5 py-2">
                                   <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
-                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Comprimiendo imagen...</span>
-                                  <span className="text-[8px] text-gray-550">Optimizando peso de la imagen</span>
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">Comprimiendo y convirtiendo a WebP...</span>
+                                  <span className="text-[8px] text-gray-550">Generando nombre SEO optimizado para RYYCO</span>
                                 </div>
                               ) : prodImage ? (
-                                <div className="relative z-20 w-full flex items-center justify-between gap-3 bg-emerald-950/20 p-2 rounded-xl border border-emerald-500/20">
-                                  <img 
-                                    src={prodImage} 
-                                    alt="Vista previa del producto" 
-                                    className="w-12 h-12 object-cover rounded-lg border border-emerald-500/10" 
-                                  />
-                                  <div className="flex-grow text-left">
-                                    <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">¡Optimizado!</span>
-                                    <span className="text-[8px] text-gray-400 font-semibold truncate block max-w-[120px]">Cargado desde el celular</span>
+                                <div className="relative z-20 w-full flex items-center justify-between gap-3 bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-500/25">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="relative shrink-0">
+                                      <img 
+                                        src={prodImage} 
+                                        alt={prodImageFileName || prodName || "Vista previa del producto"} 
+                                        className="w-12 h-12 object-cover rounded-lg border border-emerald-500/20" 
+                                      />
+                                      <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-black text-[7px] font-mono font-black px-1 rounded">
+                                        WEBP
+                                      </span>
+                                    </div>
+                                    <div className="flex-grow text-left min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block">¡Optimizado WebP!</span>
+                                        <span className="text-[8px] bg-emerald-500/20 text-emerald-300 font-mono px-1.5 py-0.2 rounded border border-emerald-500/30">RYYCO SEO</span>
+                                      </div>
+                                      <span className="text-[9.5px] text-emerald-200/90 font-mono font-bold truncate block max-w-[180px] sm:max-w-[260px]" title={prodImageFileName}>
+                                        {prodImageFileName || 'ryyco-producto-domicilio-ipiales.webp'}
+                                      </span>
+                                      <span className="text-[7.5px] text-gray-400 block truncate">Renombrado automático con datos del sistema</span>
+                                    </div>
                                   </div>
                                   <button
                                     type="button"
@@ -2420,8 +2494,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       e.stopPropagation();
                                       e.preventDefault();
                                       setProdImage('');
+                                      setProdImageFileName('');
                                     }}
-                                    className="p-1 px-2.5 bg-gray-900 hover:bg-gray-805 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30 animate-none cursor-pointer"
+                                    className="p-1 px-2.5 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30 shrink-0 border border-gray-800"
                                   >
                                     Quitar
                                   </button>
@@ -2430,11 +2505,36 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 <div className="flex flex-col items-center justify-center gap-1 text-gray-450 hover:text-white transition">
                                   <Plus className="w-4 h-4 text-gray-500 animate-pulse" />
                                   <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 leading-none">Cargar foto del dispositivo</span>
-                                  <span className="text-[8px] text-gray-550">Haz clic para subir (Compresión automática)</span>
+                                  <span className="text-[8px] text-gray-550">Compresión automática WebP y generación de nombre SEO RYYCO</span>
                                 </div>
                               )}
                             </div>
-                            <p className="text-[9px] text-gray-550 mt-1 font-semibold">Deja vacío para usar el marcador por defecto de la categoría.</p>
+
+                            {/* SEO Image Filename Details Box */}
+                            {prodImage && prodImageFileName && (
+                              <div className="mt-1.5 p-2 bg-[#09101d] rounded-lg border border-emerald-500/20 text-left">
+                                <div className="flex items-center justify-between text-[8.5px] text-gray-400">
+                                  <span className="font-bold text-gray-300">Nombre de archivo SEO generado:</span>
+                                  <span className="text-emerald-400 font-mono font-bold text-[8px] uppercase tracking-wide">Estructura RYYCO .webp</span>
+                                </div>
+                                <div className="font-mono text-[9px] text-emerald-300 break-all select-all mt-1 bg-black/40 px-2 py-1 rounded border border-emerald-500/10 flex items-center justify-between gap-2">
+                                  <span className="truncate">{prodImageFileName}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(prodImageFileName);
+                                      alert(`Nombre SEO copiado: ${prodImageFileName}`);
+                                    }}
+                                    title="Copiar nombre de archivo SEO"
+                                    className="text-gray-400 hover:text-emerald-300 shrink-0 p-0.5 transition"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            <p className="text-[9px] text-gray-550 mt-1 font-semibold">El sistema asigna automáticamente un nombre descriptivo WebP para posicionamiento en Google.</p>
                           </div>
 
                           <div className="flex items-center gap-2 pt-2">
@@ -2637,16 +2737,33 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     </div>
 
                                     <div className="flex gap-3 mb-3">
-                                      <div className="w-16 h-16 rounded-xl bg-gray-900 border border-gray-850 shrink-0 flex items-center justify-center text-xl font-bold overflow-hidden">
+                                      <div className="w-16 h-16 rounded-xl bg-gray-900 border border-gray-850 shrink-0 flex items-center justify-center text-xl font-bold overflow-hidden relative group/img">
                                         {prod.imageURL ? (
-                                          <img src={prod.imageURL} alt={prod.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                                          <>
+                                            <img 
+                                              src={prod.imageURL} 
+                                              alt={prod.imageFileName ? prod.imageFileName.replace(/\.webp$/, '').replace(/-/g, ' ') : prod.name} 
+                                              title={prod.imageFileName || prod.name}
+                                              className="w-full h-full object-cover" 
+                                              referrerPolicy="no-referrer" 
+                                            />
+                                            <span className="absolute bottom-0.5 right-0.5 bg-black/80 backdrop-blur-xs text-[7px] font-mono text-emerald-400 px-1 py-0.2 rounded font-bold border border-emerald-500/20">
+                                              WEBP
+                                            </span>
+                                          </>
                                         ) : (
                                           <span>📦</span>
                                         )}
                                       </div>
-                                      <div className="overflow-hidden">
+                                      <div className="overflow-hidden flex-1 min-w-0">
                                         <h4 className="font-extrabold text-white text-xs md:text-sm truncate" title={prod.name}>{prod.name}</h4>
                                         <p className="text-[10.5px] text-gray-550 leading-relaxed font-semibold line-clamp-2 h-8 mt-0.5">{prod.description || 'Sin descripción'}</p>
+                                        {prod.imageFileName && (
+                                          <p className="text-[8px] font-mono text-emerald-400/80 truncate mt-0.5 flex items-center gap-1" title={`Archivo SEO: ${prod.imageFileName}`}>
+                                            <span className="text-[7px] bg-emerald-950/60 text-emerald-300 px-1 py-0.2 rounded border border-emerald-500/20 shrink-0">SEO</span>
+                                            <span className="truncate">{prod.imageFileName}</span>
+                                          </p>
+                                        )}
                                       </div>
                                     </div>
 

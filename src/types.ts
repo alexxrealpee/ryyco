@@ -37,6 +37,7 @@ export interface DriverProfile {
   vehicleType: VehicleType;
   vehicleBrand?: string;
   vehiclePlate?: string;
+  vehiclePhotoUrl?: string; // Foto del vehículo (moto, carro, bicicleta)
   vehicleOwnershipCardUrl?: string; // Foto de la tarjeta de propiedad
   driverLicenseUrl?: string; // Foto de la licencia de conducción
   
@@ -190,6 +191,7 @@ export interface ProductItem {
   price: number;
   compareAtPrice?: number; // Original price for sales/discounts
   imageURL?: string; // Product photo URL
+  imageFileName?: string; // SEO-optimized WebP filename (e.g. ryyco-hamburguesa-especial-domicilio-ipiales-8f32ac.webp)
   category?: string; // e.g. "Ropa", "Calzado", "Accesorios"
   stock: number; // Inventory count
   variantsText?: string; // Comma separated variants like "S, M, L" or "Azul, Rojo"
@@ -244,6 +246,13 @@ export interface OrderItem {
   deliveryStep?: 'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered';
   deliveryStepUpdatedAt?: string;
   driverRatingGiven?: boolean;
+
+  // Restaurant & COD Payment Verification by Domiciliario (Etapa 1)
+  restaurantPaymentStatus?: 'unconfirmed' | 'already_paid' | 'not_paid';
+  customerCodConfirmed?: boolean;
+  driverPaidToRestaurant?: boolean;
+  driverPaidAmount?: number;
+  driverPaidAt?: string;
 
   // Content Creator Referral fields
   referralCode?: string;

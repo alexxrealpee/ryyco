@@ -45,6 +45,7 @@ import {
 import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData } from '../types';
 import { safeSetItem } from './safeStorage';
 import { extractCoordinates } from './coordinateUtils';
+import { generateRyycoImageName } from './seoImageRenamer';
 
 // Concrete public config from firebase-applet-config.json
 const firebaseConfig = {
@@ -1122,7 +1123,13 @@ export async function saveProduct(product: ProductItem): Promise<ProductItem> {
     category: (product.category || 'General').trim() || 'General',
     stock: typeof product.stock === 'number' && !isNaN(product.stock) ? product.stock : parseInt(product.stock as any) || 0,
     active: product.active !== false,
-    imageURL: product.imageURL || ''
+    imageURL: product.imageURL || '',
+    imageFileName: product.imageFileName || (product.imageURL ? generateRyycoImageName({
+      productName: (product.name || '').trim() || 'Producto',
+      category: product.category,
+      storeName: product.storeName,
+      intent: 'domicilio'
+    }) : undefined)
   };
 
   try {
@@ -2801,6 +2808,185 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
   }
 }
 
+/**
+ * Sistema de Carga Progresiva en React
+ * Paso 1: Consulta a Firebase para obtener los restaurantes que están abiertos.
+ */
+export async function fetchOpenRestaurantsFromFirebase(): Promise<UserProfile[]> {
+  try {
+    const snap = await getDocs(collection(db, 'profiles'));
+    const openStores: UserProfile[] = [];
+    const seenUids = new Set<string>();
+
+    snap.forEach(docSnap => {
+      const data = docSnap.data() as UserProfile;
+      const uid = data.uid || docSnap.id;
+      const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+      const profileObj: UserProfile = {
+        ...data,
+        uid,
+        suspended: isSuspended,
+        isClosed: isSuspended ? true : data.isClosed === true
+      };
+
+      // Check if store is open according to its schedule and flags
+      if (!checkIsStoreClosed(profileObj) && !isSuspended && (profileObj.displayName || profileObj.username)) {
+        if (!seenUids.has(uid)) {
+          seenUids.add(uid);
+          openStores.push(profileObj);
+        }
+      }
+    });
+
+    // Merge with locally stored profiles if any are present
+    try {
+      const rawLocal = localStorage.getItem('linnk_profiles');
+      if (rawLocal) {
+        const parsed = JSON.parse(rawLocal);
+        Object.keys(parsed).forEach(k => {
+          const p = parsed[k];
+          if (p && !seenUids.has(p.uid || k)) {
+            const isSuspended = p.suspended === true || p.subscriptionStatus === 'suspended' || p.subscriptionStatus === 'expired';
+            const profileObj: UserProfile = { 
+              ...p, 
+              uid: p.uid || k, 
+              suspended: isSuspended, 
+              isClosed: isSuspended ? true : p.isClosed === true 
+            };
+            if (!checkIsStoreClosed(profileObj) && !isSuspended && (profileObj.displayName || profileObj.username)) {
+              seenUids.add(profileObj.uid);
+              openStores.push(profileObj);
+            }
+          }
+        });
+      }
+    } catch (e) {}
+
+    // Sort stores: those with photoURL first for best visual experience
+    return openStores.sort((a, b) => {
+      if (a.photoURL && !b.photoURL) return -1;
+      if (!a.photoURL && b.photoURL) return 1;
+      return 0;
+    });
+  } catch (err) {
+    console.warn("Error fetching open restaurants from Firebase:", err);
+    return [];
+  }
+}
+
+/**
+ * Sistema de Carga Progresiva en React
+ * Paso 2 y Scroll: Consulta a Firebase para obtener los primeros 4 productos de un restaurante (o siguientes por scroll).
+ */
+export async function fetchProductsForStoreFromFirebase(
+  store: UserProfile,
+  limitCount: number = 4,
+  startAfterDoc?: any
+): Promise<{ products: ProductItem[]; lastDoc: any; hasMore: boolean }> {
+  try {
+    const products: ProductItem[] = [];
+    let last: any = null;
+
+    // 1. Query Firestore products collection by userId
+    const constraints: any[] = [
+      where('userId', '==', store.uid),
+      limit(limitCount)
+    ];
+    if (startAfterDoc) {
+      constraints.push(startAfter(startAfterDoc));
+    }
+
+    const q = query(collection(db, 'products'), ...constraints);
+    const snap = await getDocs(q);
+
+    if (!snap.empty) {
+      last = snap.docs[snap.docs.length - 1];
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data() as ProductItem;
+        if (data && data.active !== false) {
+          products.push({
+            ...data,
+            id: docSnap.id,
+            userId: data.userId || store.uid,
+            storeName: data.storeName || store.displayName,
+            storeUsername: data.storeUsername || store.username,
+            name: data.name || 'Producto sin nombre',
+            price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+            stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+            active: true
+          });
+        }
+      });
+    }
+
+    // 2. Fallback: If no products found by userId, try matching by storeUsername
+    if (products.length === 0 && store.username) {
+      try {
+        const uConstraints: any[] = [
+          where('storeUsername', '==', store.username),
+          limit(limitCount)
+        ];
+        if (startAfterDoc) uConstraints.push(startAfter(startAfterDoc));
+        const qUser = query(collection(db, 'products'), ...uConstraints);
+        const snapUser = await getDocs(qUser);
+        if (!snapUser.empty) {
+          last = snapUser.docs[snapUser.docs.length - 1];
+          snapUser.docs.forEach(docSnap => {
+            const data = docSnap.data() as ProductItem;
+            if (data && data.active !== false) {
+              products.push({
+                ...data,
+                id: docSnap.id,
+                userId: data.userId || store.uid,
+                storeName: data.storeName || store.displayName,
+                storeUsername: data.storeUsername || store.username,
+                name: data.name || 'Producto sin nombre',
+                price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+                stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+                active: true
+              });
+            }
+          });
+        }
+      } catch (e) {}
+    }
+
+    // 3. Fallback to local products for developer / offline testing
+    if (products.length === 0) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('linnk_products_')) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                parsed.forEach((lp: any) => {
+                  if (lp && (lp.userId === store.uid || lp.storeUsername === store.username) && lp.active !== false) {
+                    if (!products.some(p => p.id === lp.id)) {
+                      products.push(lp);
+                    }
+                  }
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    const finalProducts = products.slice(0, limitCount);
+    return {
+      products: finalProducts,
+      lastDoc: last,
+      hasMore: snap.docs ? snap.docs.length >= limitCount : false
+    };
+  } catch (err) {
+    console.warn(`Error in fetchProductsForStoreFromFirebase for ${store.displayName || store.uid}:`, err);
+    return { products: [], lastDoc: null, hasMore: false };
+  }
+}
+
 // Fetch orders in progressive batches (Lazy loading / Pagination for Admin)
 // Fetch comprehensive map of all store profiles (Remote Firestore + Local cached profiles)
 export async function fetchAllStoresMap(): Promise<Record<string, UserProfile>> {
@@ -3573,6 +3759,41 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
       console.error("Error updating driver stats on delivery complete:", e);
     }
   }
+}
+
+/**
+ * Update restaurant payment verification and COD confirmation by delivery driver (Etapa 1)
+ */
+export async function updateOrderDriverPaymentInfo(
+  orderId: string,
+  paymentData: {
+    restaurantPaymentStatus?: 'unconfirmed' | 'already_paid' | 'not_paid';
+    customerCodConfirmed?: boolean;
+    driverPaidToRestaurant?: boolean;
+    driverPaidAmount?: number;
+    driverPaidAt?: string;
+  }
+): Promise<void> {
+  const orderRef = doc(db, 'orders', orderId);
+  await updateDoc(orderRef, paymentData);
+
+  // Sync local storage cache for store & admin
+  try {
+    const allKey = 'linnk_orders_all';
+    const allOrders = JSON.parse(localStorage.getItem(allKey) || '[]');
+    const idxAll = allOrders.findIndex((o: any) => o.id === orderId);
+    if (idxAll > -1) {
+      allOrders[idxAll] = { ...allOrders[idxAll], ...paymentData };
+      localStorage.setItem(allKey, JSON.stringify(allOrders));
+      const storeKey = `linnk_orders_${allOrders[idxAll].storeOwnerId}`;
+      const storeOrders = JSON.parse(localStorage.getItem(storeKey) || '[]');
+      const idx = storeOrders.findIndex((o: any) => o.id === orderId);
+      if (idx > -1) {
+        storeOrders[idx] = { ...storeOrders[idx], ...paymentData };
+        localStorage.setItem(storeKey, JSON.stringify(storeOrders));
+      }
+    }
+  } catch (e) {}
 }
 
 /**

@@ -2526,7 +2526,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       {/* Main Image, large & prominent with cover fit default and toggle */}
                       <img 
                         src={selectedProduct.imageURL} 
-                        alt={selectedProduct.name} 
+                        alt={selectedProduct.imageFileName ? selectedProduct.imageFileName.replace(/\.webp$/, '').replace(/-/g, ' ') : selectedProduct.name}
+                        title={selectedProduct.imageFileName || selectedProduct.name}
                         onClick={() => setModalImageFit(f => f === 'cover' ? 'contain' : 'cover')}
                         className={`relative z-10 w-full h-full transition-all duration-300 cursor-pointer ${
                           modalImageFit === 'cover' ? 'object-cover' : 'object-contain p-2'

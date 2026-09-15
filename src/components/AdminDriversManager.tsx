@@ -53,6 +53,7 @@ export default function AdminDriversManager() {
   const [rejectionTarget, setRejectionTarget] = useState<DriverProfile | null>(null);
   const [rejectionReason, setRejectionReason] = useState<string>('');
   const [actionLoading, setActionLoading] = useState<boolean>(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   useEffect(() => {
     loadDrivers();
@@ -382,6 +383,47 @@ export default function AdminDriversManager() {
                     Vehículo: <strong className="text-white uppercase">{dr.vehicleType}</strong> ({dr.vehicleBrand || 'N/A'}) - Placa: <strong className="text-white">{dr.vehiclePlate || 'N/A'}</strong>
                   </span>
                 </div>
+
+                {/* Vehicle & Document Attachments Preview */}
+                {(dr.vehiclePhotoUrl || dr.vehicleOwnershipCardUrl || dr.driverLicenseUrl) && (
+                  <div className="pt-2 border-t border-gray-850/80 space-y-1.5">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider block">
+                      Archivos y Fotos Adjuntas:
+                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {dr.vehiclePhotoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage({ url: dr.vehiclePhotoUrl!, title: `Foto del Vehículo - ${dr.firstName} ${dr.lastName}` })}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[11px] text-emerald-300 font-bold transition cursor-pointer"
+                        >
+                          <Bike className="w-3 h-3 text-emerald-400" />
+                          <span>Foto Vehículo</span>
+                        </button>
+                      )}
+                      {dr.vehicleOwnershipCardUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage({ url: dr.vehicleOwnershipCardUrl!, title: `Tarjeta de Propiedad - ${dr.firstName} ${dr.lastName}` })}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-[11px] text-rose-300 font-bold transition cursor-pointer"
+                        >
+                          <ExternalLink className="w-3 h-3 text-rose-400" />
+                          <span>Tarjeta Propiedad</span>
+                        </button>
+                      )}
+                      {dr.driverLicenseUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewImage({ url: dr.driverLicenseUrl!, title: `Licencia de Conducción - ${dr.firstName} ${dr.lastName}` })}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[11px] text-amber-300 font-bold transition cursor-pointer"
+                        >
+                          <ExternalLink className="w-3 h-3 text-amber-400" />
+                          <span>Licencia</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="pt-2 border-t border-gray-850/80 flex items-center justify-between">
                   <span className="text-[11px] text-gray-400 font-medium">Disponibilidad:</span>
                   {dr.isAvailable ? (
@@ -494,6 +536,53 @@ export default function AdminDriversManager() {
               >
                 Confirmar Rechazo
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Document/Photo Preview Modal */}
+      {previewImage && (
+        <div 
+          onClick={() => setPreviewImage(null)}
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 cursor-pointer"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-[#0d1322] border border-gray-800 rounded-2xl max-w-2xl w-full p-5 space-y-4 shadow-2xl cursor-default"
+          >
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Bike className="w-4 h-4 text-emerald-400" />
+                <span>{previewImage.title}</span>
+              </h3>
+              <button
+                onClick={() => setPreviewImage(null)}
+                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="max-h-[70vh] overflow-auto flex items-center justify-center bg-black/40 rounded-xl p-2 border border-gray-900">
+              <img
+                src={previewImage.url}
+                alt={previewImage.title}
+                className="max-h-[65vh] w-auto max-w-full rounded-lg object-contain shadow-lg"
+              />
+            </div>
+
+            <div className="flex justify-between items-center pt-1 text-xs text-gray-400">
+              <span>Clic fuera de la imagen o en cerrar para salir</span>
+              <a
+                href={previewImage.url}
+                target="_blank"
+                rel="noreferrer"
+                download="documento-domiciliario.jpg"
+                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-lg transition inline-flex items-center gap-1.5"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Ver en pantalla completa</span>
+              </a>
             </div>
           </div>
         </div>
