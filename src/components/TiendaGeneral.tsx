@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Store, 
@@ -63,123 +63,55 @@ import {
   GeneralCartItem, 
   CART_UPDATED_EVENT 
 } from '../lib/cartHelper';
+import { isFoodCategory, isFoodProduct, orderProductBatch } from '../lib/productUtils';
+export { isFoodCategory, isFoodProduct, orderProductBatch };
 
-export const isFoodCategory = (cat?: string): boolean => {
-  if (!cat || cat === 'all' || cat === 'Todos') return false;
-  const c = cat.toLowerCase().trim();
+// --- Skeleton Screen Components (Delivery App Pattern with Subdued Shimmer & Zero CLS) ---
+const ProductCardSkeleton: React.FC<{ index?: number }> = ({ index }) => {
   return (
-    c.includes('comida') ||
-    c.includes('caldo') ||
-    c.includes('plato') ||
-    c.includes('menu') ||
-    c.includes('menú') ||
-    c.includes('restaurante') ||
-    c.includes('alimento') ||
-    c.includes('gastronom') ||
-    c.includes('postre') ||
-    c.includes('reposter') ||
-    c.includes('panader') ||
-    c.includes('asado') ||
-    c.includes('fast food') ||
-    c.includes('snack') ||
-    c.includes('hamburguesa') ||
-    c.includes('pizza') ||
-    c.includes('picada') ||
-    c.includes('comidas') ||
-    c.includes('pollo') ||
-    c.includes('perro') ||
-    c.includes('combo') ||
-    c.includes('ensalada') ||
-    c.includes('pasta') ||
-    c.includes('arroz') ||
-    c.includes('bebida') ||
-    c.includes('desayuno') ||
-    c.includes('carne') ||
-    c.includes('pescado') ||
-    c.includes('marisco') ||
-    c.includes('vegetariano') ||
-    c.includes('mexicana') ||
-    c.includes('licor') ||
-    c.includes('cerveza') ||
-    c.includes('vino') ||
-    c.includes('trago')
-  );
-};
-
-export const isFoodProduct = (product: { name?: string; description?: string; category?: string }): boolean => {
-  if (product.category && isFoodCategory(product.category)) return true;
-  const text = `${product.name || ''} ${product.description || ''} ${product.category || ''}`.toLowerCase();
-  
-  const matchesFoodKeyword = (
-    text.includes('comida') ||
-    text.includes('plato') ||
-    text.includes('menu') ||
-    text.includes('menú') ||
-    text.includes('caldo') ||
-    text.includes('sopa') ||
-    text.includes('picada') ||
-    text.includes('hornado') ||
-    text.includes('pollo') ||
-    text.includes('carne') ||
-    text.includes('hamburguesa') ||
-    text.includes('pizza') ||
-    text.includes('combo') ||
-    text.includes('asado') ||
-    text.includes('almuerzo') ||
-    text.includes('desayuno') ||
-    text.includes('cena') ||
-    text.includes('salchipapa') ||
-    text.includes('perro') ||
-    text.includes('arepa') ||
-    text.includes('empana') ||
-    text.includes('postre') ||
-    text.includes('pan ') ||
-    text.includes('sandwich') ||
-    text.includes('sándwich')
-  );
-
-  const isPureAlcohol = (
-    (text.includes('aguardiente') || text.includes('ron ') || text.includes('cerveza') || text.includes('whisky') || text.includes('tequila') || text.includes('vodka') || text.includes('licor') || text.includes('budweiser') || text.includes('corona')) &&
-    !text.includes('combo') && !text.includes('picada') && !text.includes('comida') && !text.includes('plato')
-  );
-
-  return matchesFoodKeyword && !isPureAlcohol;
-};
-
-// --- Skeleton Screen Components ---
-function ProductCardSkeleton() {
-  return (
-    <div className="bg-[#111827] border border-[#232B3A] rounded-2xl overflow-hidden flex flex-col relative animate-pulse shadow-sm">
+    <div 
+      aria-hidden="true"
+      className="bg-[#111827] border border-[#232B3A] rounded-2xl overflow-hidden flex flex-col relative shadow-sm"
+    >
       {/* Top Store Badge Skeleton */}
       <div className="absolute top-3 left-3 z-20">
-        <div className="h-5 w-20 bg-[#090B12]/80 border border-[#232B3A] rounded-full" />
+        <div className="h-5 w-20 bg-[#090B12]/80 border border-[#232B3A] rounded-full overflow-hidden relative animate-shimmer" />
       </div>
 
       {/* Product Image Skeleton */}
-      <div className="relative aspect-square w-full bg-gradient-to-br from-[#0D111A] via-[#1E293B]/70 to-[#0D111A] overflow-hidden shrink-0 flex items-center justify-center">
-        <div className="w-10 h-10 rounded-2xl bg-[#111827]/80 flex items-center justify-center border border-white/5">
-          <Utensils className="w-5 h-5 text-gray-600/40" />
+      <div className="relative aspect-square w-full bg-[#090B12] overflow-hidden shrink-0 flex items-center justify-center animate-shimmer">
+        <div className="w-10 h-10 rounded-2xl bg-[#111827]/80 flex items-center justify-center border border-white/5 opacity-40">
+          <Utensils className="w-5 h-5 text-gray-600/50" />
         </div>
       </div>
 
       {/* Card Information Skeleton */}
       <div className="p-3 sm:p-4.5 flex flex-col flex-grow justify-between space-y-3 sm:space-y-4">
         <div className="space-y-2">
-          {/* Category Pill Line */}
-          <div className="h-2 w-16 bg-[#F4B400]/20 rounded-full" />
-          {/* Title Line */}
-          <div className="h-3.5 w-4/5 bg-[#2B3548] rounded" />
+          {/* Category Pill Line & Action space */}
+          <div className="flex items-center justify-between gap-2 min-h-[24px]">
+            <div className="h-2.5 w-16 bg-[#F4B400]/20 rounded-full overflow-hidden relative animate-shimmer" />
+            <div className="w-6 h-6 rounded-full bg-[#1A2234] opacity-40 shrink-0" />
+          </div>
+          {/* Title Line (Product Name) */}
+          <div 
+            className="h-4 bg-[#232B3A] rounded-md overflow-hidden relative animate-shimmer" 
+            style={{ width: (index ?? 0) % 2 === 0 ? '84%' : '72%' }}
+          />
           {/* Description Lines */}
           <div className="space-y-1.5 pt-0.5">
-            <div className="h-2.5 w-full bg-[#1F2937] rounded" />
-            <div className="h-2.5 w-3/5 bg-[#1F2937] rounded" />
+            <div className="h-2.5 w-full bg-[#1A2234] rounded overflow-hidden relative animate-shimmer" />
+            <div 
+              className="h-2.5 bg-[#1A2234] rounded overflow-hidden relative animate-shimmer" 
+              style={{ width: (index ?? 0) % 2 === 0 ? '62%' : '76%' }}
+            />
           </div>
         </div>
 
         {/* Price & Action Button Bar */}
         <div className="pt-2 border-t border-[#232B3A] flex items-center justify-between">
-          <div className="h-4 w-16 bg-[#2B3548] rounded" />
-          <div className="h-7 w-16 bg-[#E63946]/30 rounded-lg border border-[#E63946]/20" />
+          <div className="h-4 w-16 bg-[#232B3A] rounded overflow-hidden relative animate-shimmer" />
+          <div className="h-7 w-16 bg-[#E63946]/30 rounded-lg border border-[#E63946]/20 overflow-hidden relative animate-shimmer" />
         </div>
       </div>
     </div>
@@ -188,19 +120,23 @@ function ProductCardSkeleton() {
 
 function StoresSkeleton() {
   return (
-    <div className="space-y-2 border-t border-[#232B3A] pt-4 animate-pulse">
-      <div className="flex items-center gap-2 px-1">
-        <Store className="w-4 h-4 text-[#E63946]" />
-        <span className="text-xs font-black uppercase text-white tracking-wider">Restaurantes</span>
-        <div className="h-3 w-8 bg-[#1F2937] rounded-full" />
+    <div className="space-y-2 border-t border-[#232B3A] pt-4" aria-busy="true" aria-label="Cargando restaurantes">
+      <div className="flex items-center justify-between px-1">
+        <div className="flex items-center gap-2">
+          <Store className="w-4 h-4 text-[#E63946]" />
+          <span className="text-xs font-black uppercase text-white tracking-wider">Restaurantes Abiertos</span>
+        </div>
       </div>
-      <div className="-mx-5 px-2 sm:px-3 flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <div key={i} className="flex flex-col items-center gap-1.5 flex-shrink-0">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-tr from-[#111827] via-[#1E293B] to-[#111827] border-2 border-[#232B3A] p-0.5 relative overflow-hidden">
-              <div className="w-full h-full rounded-full bg-[#1F2937]/70" />
+      <div 
+        className="-mx-5 px-2 sm:px-3 flex items-center gap-3.5 sm:gap-5 overflow-x-auto pb-1 pt-1 hide-scrollbar select-none" 
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5 flex-shrink-0" aria-hidden="true">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#111827] border-2 border-[#232B3A] p-0.5 relative overflow-hidden animate-shimmer">
+              <div className="w-full h-full rounded-full bg-[#1A2234]" />
             </div>
-            <div className="h-2.5 w-12 bg-[#1F2937] rounded-full" />
+            <div className="h-2.5 w-12 sm:w-14 bg-[#1F2937] rounded-full overflow-hidden relative animate-shimmer" />
           </div>
         ))}
       </div>
@@ -210,17 +146,18 @@ function StoresSkeleton() {
 
 function CategoriesSkeleton() {
   return (
-    <div className="border-t border-[#232B3A] pt-3 space-y-2 animate-pulse">
+    <div className="border-t border-[#232B3A] pt-3 space-y-2" aria-busy="true" aria-label="Cargando categorías">
       <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
         <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
         <span>Categorías:</span>
       </div>
       <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {[75, 115, 90, 85, 105, 95].map((w, idx) => (
+        {[76, 110, 92, 88, 116, 96].map((w, idx) => (
           <div 
             key={idx} 
-            className="h-8 rounded-xl bg-gradient-to-r from-[#111827] via-[#1E293B] to-[#111827] border border-[#232B3A] shrink-0" 
+            className="h-8 rounded-xl bg-[#111827] border border-[#232B3A] shrink-0 overflow-hidden relative animate-shimmer" 
             style={{ width: `${w}px` }} 
+            aria-hidden="true"
           />
         ))}
       </div>
@@ -264,11 +201,27 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     hasMore: hasMoreProgressive,
     totalOpenCount,
     loadNextFourProducts,
-    statusMessage: progressiveStatusMessage
+    statusMessage: progressiveStatusMessage,
+    isLoadingRestaurants,
+    isLoadingProducts
   } = useProgressiveStoreLoader();
 
+  // Non-blocking initial delivery brand loader indicator (400-700ms max)
+  const [isInitialBrandLoader, setIsInitialBrandLoader] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsInitialBrandLoader(false);
+    }, 550);
+    return () => clearTimeout(timer);
+  }, []);
+
   const [cachedInitial] = useState(() => getInitialGeneralData());
-  const [products, setProducts] = useState<ProductItem[]>(cachedInitial.products);
+  const [products, setProducts] = useState<ProductItem[]>(() => {
+    if (cachedInitial.hasCache && cachedInitial.products.length > 0) {
+      return orderProductBatch(cachedInitial.products.slice(0, 4));
+    }
+    return [];
+  });
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>(cachedInitial.profiles);
   const [loading, setLoading] = useState(false);
 
@@ -565,6 +518,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return Array.from(storeMap.values());
   }, [profiles, products, loadedLogos]);
 
+  // Real-time loading states tied strictly to actual Firebase data presence (no fake delays)
+  const isRestaurantsLoading = (isLoadingRestaurants || progressiveStage === 'fetching_open_restaurants') && uniqueStores.length === 0;
+  const isProductsLoading = (isLoadingProducts || (products.length === 0 && progressiveStage !== 'idle'));
+  const isCategoriesLoading = isProductsLoading && categories.length <= 1;
+
   // Pre-load top restaurant logos and the first 6 products into browser cache for instant rendering
   useEffect(() => {
     if (uniqueStores.length === 0 && products.length === 0) return;
@@ -679,7 +637,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Filter & sort logic (food products prioritized first)
   const filteredProducts = useMemo(() => {
-    return availableBaseProducts.filter(product => {
+    const matched = availableBaseProducts.filter(product => {
       const profile = findStoreForProduct(product, profiles);
 
       const matchesSearch = 
@@ -693,73 +651,90 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       const matchesCategory = matchesCategoryFilter(product.category, selectedCategory);
 
       return matchesSearch && matchesCategory;
-    }).sort((a, b) => {
-      // 1. Food items first
-      const foodA = isFoodProduct(a);
-      const foodB = isFoodProduct(b);
-      if (foodA && !foodB) return -1;
-      if (!foodA && foodB) return 1;
-
-      // 2. Secondary sort according to user selection
-      if (sortBy === 'price_asc') {
-        return a.price - b.price;
-      } else if (sortBy === 'price_desc') {
-        return b.price - a.price;
-      } else {
-        // Latest (default)
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateB - dateA;
-      }
     });
+
+    if (sortBy === 'price_asc') {
+      return [...matched].sort((a, b) => a.price - b.price);
+    } else if (sortBy === 'price_desc') {
+      return [...matched].sort((a, b) => b.price - a.price);
+    }
+
+    // Default 'latest': Preserve the exact sequential arrival order of the 4-by-4 batches!
+    // Each batch was already ordered when retrieved. Preserving this sequence ensures products
+    // already rendered on screen NEVER jump, shift, or get desorganized when new products load.
+    return matched;
   }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy]);
 
   // Smart 4-by-4 progressive loading
   const [visibleLimit, setVisibleLimit] = useState(4);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const isFetchingNextBatchRef = useRef(false);
 
   // Reset limit to 4 when filter/search/sort changes
   useEffect(() => {
     setVisibleLimit(4);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
-  // Infinite Scroll scroll listener (loads 4 by 4 progressively)
+  // Unified function to load the next batch of 4 products in order
+  const loadNextBatchOfFour = useCallback(async () => {
+    if (isFetchingNextBatchRef.current || isProgressiveLoadingMore) return;
+
+    // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
+    if (visibleLimit < filteredProducts.length) {
+      setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length));
+      // If reaching the end of buffered products and Firebase has more, prefetch the next 4
+      if (hasMoreProgressive && visibleLimit + 4 >= filteredProducts.length) {
+        loadNextFourProducts();
+      }
+      return;
+    }
+
+    // 2. Otherwise, fetch the next 4 products directly from Firebase
+    if (hasMoreProgressive) {
+      isFetchingNextBatchRef.current = true;
+      setIsLoadingMore(true);
+      try {
+        const fresh = await loadNextFourProducts();
+        if (fresh && fresh.length > 0) {
+          setVisibleLimit(prev => prev + fresh.length);
+        }
+      } catch (err) {
+        console.warn("Error loading next batch of 4:", err);
+      } finally {
+        setIsLoadingMore(false);
+        isFetchingNextBatchRef.current = false;
+      }
+    }
+  }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
+
+  // Coordinated scroll listener: loads next 4 products when scrolling near bottom
   useEffect(() => {
-    let timeoutId: any = null;
+    let ticking = false;
+
     const handleScroll = () => {
-      if (timeoutId) return;
-      timeoutId = setTimeout(() => {
-        timeoutId = null;
-        if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 350) {
-          setVisibleLimit(prev => {
-            if (prev < filteredProducts.length) {
-              return prev + 4;
-            }
-            return prev;
-          });
-          // Also trigger Firebase progressive loader for next 4 products if available
-          if (hasMoreProgressive && !isProgressiveLoadingMore) {
-            loadNextFourProducts();
+      if (ticking) return;
+      ticking = true;
+
+      window.requestAnimationFrame(() => {
+        const scrollBottom = window.innerHeight + window.scrollY;
+        const pageHeight = document.documentElement.scrollHeight;
+
+        // Trigger when the user is within 350px of the page bottom
+        if (scrollBottom >= pageHeight - 350) {
+          if (!isFetchingNextBatchRef.current && !isProgressiveLoadingMore) {
+            loadNextBatchOfFour();
           }
         }
-      }, 150);
+        ticking = false;
+      });
     };
+
     window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, [filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [loadNextBatchOfFour, isProgressiveLoadingMore]);
 
   const handleLoadMoreFour = () => {
-    setIsLoadingMore(true);
-    if (hasMoreProgressive && !isProgressiveLoadingMore) {
-      loadNextFourProducts();
-    }
-    setTimeout(() => {
-      setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length + 4));
-      setIsLoadingMore(false);
-    }, 200);
+    loadNextBatchOfFour();
   };
 
   const displayedProducts = useMemo(() => {
@@ -1004,7 +979,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     <div className="bg-[#090B12] min-h-screen font-sans text-[#A9B2C3] flex flex-col selection:bg-[#E63946] selection:text-white">
       
       {/* 1. Navbar */}
-      <header className="border-b border-[#232B3A] backdrop-blur-md sticky top-0 z-40 bg-[#090B12]/95">
+      <header className="border-b border-[#232B3A] backdrop-blur-md sticky top-0 z-40 bg-[#090B12]/95 relative">
+        {/* Subtle initial delivery brand loader hairline (400-700ms max, non-blocking) */}
+        {isInitialBrandLoader && (
+          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#111827] overflow-hidden pointer-events-none z-50" aria-hidden="true">
+            <div className="h-full bg-gradient-to-r from-transparent via-[#E63946] to-[#F4B400] w-full animate-shimmer" />
+          </div>
+        )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
           {/* Left: 3-Dots Menu Dropdown Button */}
           <div className="flex-1 flex items-center justify-start z-30 min-w-0">
@@ -1229,7 +1210,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Center: Centered Logo with Dedicated Protected Clearance */}
-          <div className="flex items-center justify-center shrink-0 px-2 z-20">
+          <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
             <LinnkProLogo 
               onClick={() => {
                 setSearchTerm('');
@@ -1471,8 +1452,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Horizontal Store Logos Carousel / Progressive Loading */}
-          {uniqueStores.length > 0 ? (
-            <div className="space-y-2 border-t border-[#232B3A] pt-4">
+          {isRestaurantsLoading ? (
+            <StoresSkeleton />
+          ) : uniqueStores.length > 0 ? (
+            <div className="space-y-2 border-t border-[#232B3A] pt-4 transition-opacity duration-200">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <Store className="w-4 h-4 text-[#E63946]" />
@@ -1734,37 +1717,51 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           ) : null}
 
           {/* Quick Categories section */}
-          <div className="border-t border-[#232B3A] pt-3 space-y-2">
-            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
-              <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
-              <span>Categorías:</span>
+          {isCategoriesLoading ? (
+            <CategoriesSkeleton />
+          ) : (
+            <div className="border-t border-[#232B3A] pt-3 space-y-2 transition-opacity duration-200">
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
+                <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
+                <span>Categorías:</span>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
+                {categories.map((cat) => {
+                  const isAll = cat === 'all';
+                  const isSelected = selectedCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 uppercase tracking-wide cursor-pointer shrink-0 whitespace-nowrap ${
+                        isAll && isSelected
+                          ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20 font-black'
+                          : isSelected
+                          ? 'bg-[#F4B400] text-black shadow-md shadow-[#F4B400]/20 font-black'
+                          : 'bg-transparent border border-[#232B3A] text-white hover:border-[#E63946]/60 hover:text-white'
+                      }`}
+                    >
+                      {isAll ? 'VER TODO' : cat}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
-              {categories.map((cat) => {
-                const isAll = cat === 'all';
-                const isSelected = selectedCategory === cat;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 uppercase tracking-wide cursor-pointer shrink-0 whitespace-nowrap ${
-                      isAll && isSelected
-                        ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20 font-black'
-                        : isSelected
-                        ? 'bg-[#F4B400] text-black shadow-md shadow-[#F4B400]/20 font-black'
-                        : 'bg-transparent border border-[#232B3A] text-white hover:border-[#E63946]/60 hover:text-white'
-                    }`}
-                  >
-                    {isAll ? 'VER TODO' : cat}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* 4. Products Display */}
-        {filteredProducts.length === 0 ? (
+        {isProductsLoading ? (
+          <div 
+            className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
+            aria-busy="true"
+            aria-label="Cargando productos"
+          >
+            {[0, 1, 2, 3, 4, 5, 6, 7].map((idx) => (
+              <ProductCardSkeleton key={idx} index={idx} />
+            ))}
+          </div>
+        ) : filteredProducts.length === 0 ? (
           <div className="bg-[#111827] border border-[#232B3A] rounded-3xl py-16 px-4 text-center max-w-md mx-auto space-y-4">
             <ShoppingBag className="w-12 h-12 text-[#A9B2C3] mx-auto opacity-40" />
             <div className="space-y-1">
@@ -1941,6 +1938,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             })}
 
           </div>
+
+          {/* In-place 4-card skeleton placeholder when progressive loading next batch */}
+          {isProgressiveLoadingMore && (
+            <div 
+              className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 mt-3 sm:mt-6"
+              aria-busy="true"
+              aria-label="Cargando siguientes productos"
+            >
+              {[0, 1, 2, 3].map((idx) => (
+                <ProductCardSkeleton key={`loading-more-${idx}`} index={idx} />
+              ))}
+            </div>
+          )}
 
           {/* Smart 4-by-4 Progressive Loading indicator & control */}
           {(visibleLimit < filteredProducts.length || hasMoreProgressive) ? (

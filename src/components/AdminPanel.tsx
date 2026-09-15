@@ -31,6 +31,8 @@ import {
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
 import AdminStoresManager from './AdminStoresManager';
+import AdminSalesStats from './AdminSalesStats';
+import AdminCustomersRanking from './AdminCustomersRanking';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule } from '../types';
 import { 
@@ -74,7 +76,8 @@ import {
   Bell, 
   Volume2, 
   VolumeX,
-  Copy
+  Copy,
+  BarChart3
 } from 'lucide-react';
 import { 
   collection, 
@@ -132,14 +135,16 @@ interface AdminUser {
   restaurantDaysOpen?: string[];
 }
 
-const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores' => {
+const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' => {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTab = urlParams.get('tab')?.toLowerCase();
-    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores'> = [
-      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general', 'stores'
+    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores'> = [
+      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores'
     ];
     if (queryTab === 'tiendas') return 'stores';
+    if (queryTab === 'ventas' || queryTab === 'estadisticas' || queryTab === 'stats' || queryTab === 'sales' || queryTab === 'sales_stats') return 'sales_stats';
+    if (queryTab === 'clientes' || queryTab === 'customers' || queryTab === 'top_customers' || queryTab === 'whatsapp' || queryTab === 'clientes_whatsapp') return 'top_customers';
     if (queryTab && validTabs.includes(queryTab as any)) {
       return queryTab as any;
     }
@@ -147,12 +152,16 @@ const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders'
     if (hash.startsWith('admin/')) {
       const hashTab = hash.split('/')[1];
       if (hashTab === 'tiendas') return 'stores';
+      if (hashTab === 'ventas' || hashTab === 'estadisticas' || hashTab === 'stats' || hashTab === 'sales' || hashTab === 'sales_stats') return 'sales_stats';
+      if (hashTab === 'clientes' || hashTab === 'customers' || hashTab === 'top_customers' || hashTab === 'whatsapp' || hashTab === 'clientes_whatsapp') return 'top_customers';
       if (hashTab && validTabs.includes(hashTab as any)) {
         return hashTab as any;
       }
     }
     const storedTab = localStorage.getItem('ryyco_admin_active_tab');
     if (storedTab === 'tiendas') return 'stores';
+    if (storedTab === 'ventas' || storedTab === 'estadisticas' || storedTab === 'stats' || storedTab === 'sales' || storedTab === 'sales_stats') return 'sales_stats';
+    if (storedTab === 'clientes' || storedTab === 'customers' || storedTab === 'top_customers' || storedTab === 'whatsapp' || storedTab === 'clientes_whatsapp') return 'top_customers';
     if (storedTab && validTabs.includes(storedTab as any)) {
       return storedTab as any;
     }
@@ -180,13 +189,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [notif, setNotif] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores'>(getInitialAdminTab());
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
 
   // Tab switching with instant URL query and storage synchronization
-  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'referrals' | 'general' | 'stores') => {
+  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores') => {
     setActiveAdminTab(tab);
     try {
       localStorage.setItem('ryyco_admin_active_tab', tab);
@@ -1734,6 +1743,40 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
+                    onClick={() => handleSwitchTab('sales_stats')}
+                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                      activeAdminTab === 'sales_stats' 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <BarChart3 className="w-4 h-4 text-cyan-400 shrink-0" />
+                      <span className="truncate">Estadísticas de Ventas</span>
+                    </div>
+                    <span className="text-[10px] bg-cyan-500/15 text-cyan-300 font-mono font-bold px-1.5 py-0.5 rounded-md border border-cyan-500/30 shrink-0">
+                      KPI
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => handleSwitchTab('top_customers')}
+                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                      activeAdminTab === 'top_customers' 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate">Clientes & WhatsApp</span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-300 font-mono font-bold px-1.5 py-0.5 rounded-md border border-emerald-500/30 shrink-0">
+                      Top
+                    </span>
+                  </button>
+
+                  <button
                     onClick={() => handleSwitchTab('referrals')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'referrals' 
@@ -1868,6 +1911,30 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             >
               <Bike className="w-5 h-5" />
               <span className="text-[10px] font-medium leading-none whitespace-nowrap">Domicilios</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab('sales_stats')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
+                activeAdminTab === 'sales_stats'
+                  ? 'text-cyan-400 font-bold bg-cyan-500/10 border border-cyan-500/20'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">Estadísticas</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab('top_customers')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
+                activeAdminTab === 'top_customers'
+                  ? 'text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <MessageCircle className="w-5 h-5 text-emerald-400" />
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">Clientes WhatsApp</span>
             </button>
 
             <button
@@ -2028,6 +2095,30 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ) : activeAdminTab === 'drivers' ? (
           <div className="animate-fade-in">
             <AdminDriversManager />
+          </div>
+        ) : activeAdminTab === 'sales_stats' ? (
+          <div className="animate-fade-in">
+            <AdminSalesStats
+              allOrders={allOrders}
+              storesMap={storesMap}
+              allStores={allStoresList}
+              onGoToOrders={(storeUid) => {
+                if (storeUid) setSelectedOrderStoreFilter(storeUid);
+                handleSwitchTab('orders');
+              }}
+            />
+          </div>
+        ) : activeAdminTab === 'top_customers' ? (
+          <div className="animate-fade-in">
+            <AdminCustomersRanking
+              allOrders={allOrders}
+              storesMap={storesMap}
+              allStores={allStoresList}
+              onGoToOrders={(storeUid) => {
+                if (storeUid) setSelectedOrderStoreFilter(storeUid);
+                handleSwitchTab('orders');
+              }}
+            />
           </div>
         ) : activeAdminTab === 'stores' ? (
           <div className="animate-fade-in">
