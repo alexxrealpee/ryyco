@@ -2987,6 +2987,52 @@ export async function fetchProductsForStoreFromFirebase(
   }
 }
 
+/**
+ * Fetches all active products for a specific store (by UserProfile or store uid),
+ * ensuring the complete menu is loaded when a user clicks on a restaurant.
+ */
+export async function fetchProductsAllForStore(
+  storeOrUid: UserProfile | string
+): Promise<{ products: ProductItem[]; storeProfile?: UserProfile }> {
+  try {
+    let store: UserProfile;
+    if (typeof storeOrUid === 'string') {
+      const snap = await getDoc(doc(db, 'profiles', storeOrUid)).catch(() => null);
+      if (snap && snap.exists()) {
+        store = { ...snap.data(), uid: snap.id } as UserProfile;
+      } else {
+        // Try searching profile by username if uid lookup was not found
+        const qUser = query(collection(db, 'profiles'), where('username', '==', storeOrUid), limit(1));
+        const userSnap = await getDocs(qUser).catch(() => null);
+        if (userSnap && !userSnap.empty) {
+          const docFirst = userSnap.docs[0];
+          store = { ...docFirst.data(), uid: docFirst.id } as UserProfile;
+        } else {
+          store = { 
+            uid: storeOrUid, 
+            email: `${storeOrUid}@ryyco.com`,
+            username: storeOrUid, 
+            displayName: storeOrUid,
+            bio: '',
+            role: 'user',
+            plan: 'pro',
+            isClosed: false,
+            suspended: false,
+            createdAt: new Date().toISOString()
+          };
+        }
+      }
+    } else {
+      store = storeOrUid;
+    }
+    const res = await fetchProductsForStoreFromFirebase(store, 100);
+    return { products: res.products, storeProfile: store };
+  } catch (err) {
+    console.warn("Error in fetchProductsAllForStore:", err);
+    return { products: [] };
+  }
+}
+
 // Fetch orders in progressive batches (Lazy loading / Pagination for Admin)
 // Fetch comprehensive map of all store profiles (Remote Firestore + Local cached profiles)
 export async function fetchAllStoresMap(): Promise<Record<string, UserProfile>> {

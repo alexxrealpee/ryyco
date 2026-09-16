@@ -95,7 +95,7 @@ function buildWhatsAppUrl(cleanPhone: string, customerName: string, orderCount: 
   if (waNumber.length === 10 && waNumber.startsWith('3')) {
     waNumber = '57' + waNumber;
   }
-  const defaultText = customMessage || `¡Hola ${customerName || ''}! Te saludamos de Linnk. 🌟 Eres uno de nuestros clientes destacados con ${orderCount} pedido${orderCount > 1 ? 's' : ''}. ¡Muchas gracias por tu preferencia! ¿En qué podemos ayudarte hoy?`;
+  const defaultText = customMessage || `¡Hola ${customerName || ''}! Te saludamos de RYYCO. 🌟 Eres uno de nuestros clientes destacados con ${orderCount} pedido${orderCount > 1 ? 's' : ''}. ¡Muchas gracias por tu preferencia! ¿En qué podemos ayudarte hoy?`;
   return `https://wa.me/${waNumber}?text=${encodeURIComponent(defaultText)}`;
 }
 
@@ -936,7 +936,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 🌟 Te saludamos con mucho aprecio desde Linnk. Queremos agradecerte por ser uno de nuestros clientes más especiales con ${customer.totalOrders} pedidos realizados. ¡Tu lealtad hace grande a nuestra comunidad! ¿Hay algo nuevo que te gustaría ver en nuestra plataforma?`
+                              `¡Hola ${customer.name}! 🌟 Te saludamos con mucho aprecio desde RYYCO. Queremos agradecerte por ser uno de nuestros clientes más especiales con ${customer.totalOrders} pedidos realizados. ¡Tu lealtad hace grande a nuestra comunidad! ¿Hay algo nuevo que te gustaría ver en nuestra plataforma?`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -956,7 +956,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 🎁 Por ser un cliente destacado en Linnk con ${customer.totalOrders} pedidos, tenemos un descuento especial para tu próximo antojo. ¡Escríbenos para aplicarlo en tu tienda favorita!`
+                              `¡Hola ${customer.name}! 🎁 Por ser un cliente destacado en RYYCO con ${customer.totalOrders} pedidos, tenemos un descuento especial para tu próximo antojo. ¡Escríbenos para aplicarlo en tu tienda favorita!`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -967,7 +967,7 @@ export default function AdminCustomersRanking({
                               Cupón / Promoción
                             </div>
                             <div className="text-[11px] text-gray-400 line-clamp-2">
-                              "Por ser un cliente destacado en Linnk, tenemos un descuento especial para tu próximo antojo..."
+                              "Por ser un cliente destacado en RYYCO, tenemos un descuento especial para tu próximo antojo..."
                             </div>
                           </a>
 
@@ -976,7 +976,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 👋 En Linnk queremos asegurarnos de que siempre recibas el mejor servicio. ¿Cómo ha sido tu experiencia con las entregas y la comida en tus últimos pedidos? Nos encantaría escucharte.`
+                              `¡Hola ${customer.name}! 👋 En RYYCO queremos asegurarnos de que siempre recibas el mejor servicio. ¿Cómo ha sido tu experiencia con las entregas y la comida en tus últimos pedidos? Nos encantaría escucharte.`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1091,7 +1091,11 @@ export default function AdminCustomersRanking({
                                   </td>
                                   <td className="py-2.5 px-3 text-gray-400 max-w-xs truncate">
                                     {ord.items && ord.items.length > 0 ? (
-                                      ord.items.map(it => `${it.quantity}x ${it.product.name}`).join(', ')
+                                      ord.items.map(it => {
+                                        const itemName = it?.name || (it as any)?.product?.name || (it as any)?.productName || 'Producto';
+                                        const qty = it?.quantity ?? 1;
+                                        return `${qty}x ${itemName}`;
+                                      }).join(', ')
                                     ) : (
                                       <span className="italic text-gray-600">Sin items detallados</span>
                                     )}

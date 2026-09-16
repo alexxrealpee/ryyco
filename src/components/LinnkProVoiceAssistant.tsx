@@ -988,7 +988,10 @@ export default function LinnkProVoiceAssistant({
       if (currentCart.length === 0) {
         responseText = 'Tu carrito de compras está vacío actualmente. Puedes pedirme pollo asado, hamburguesas, pizzas o consultar nuestros menús.';
       } else {
-        const itemsList = currentCart.map(i => `${i.quantity}x ${i.product.name}`).join(', ');
+        const itemsList = currentCart.map(i => {
+          const pName = i?.product?.name || (i as any)?.name || 'plato';
+          return `${i?.quantity || 1}x ${pName}`;
+        }).join(', ');
         responseText = `Tienes ${itemCount} plato(s) en tu carrito: ${itemsList}. Subtotal: ${totalAmount.toLocaleString('es-CO')} pesos. ¿Deseas confirmar tu pedido?`;
       }
     }
@@ -1220,17 +1223,24 @@ export default function LinnkProVoiceAssistant({
       }
 
       const currentCart = getStoredCart();
-      const cartPayload = currentCart.map(c => ({
-        id: c.id,
-        productId: c.product.id,
-        name: c.product.name,
-        price: c.product.price,
-        quantity: c.quantity,
-        selectedVariant: c.selectedVariant,
-        imageURL: c.product.imageURL && c.product.imageURL.startsWith('data:') ? undefined : c.product.imageURL,
-        storeName: catalogStores[c.product.userId]?.displayName || 'Tienda',
-        userId: c.product.userId
-      }));
+      const cartPayload = currentCart.map(c => {
+        const prod = c?.product || (c as any) || {};
+        const pId = prod.id || (c as any)?.productId || c?.id || '';
+        const pName = prod.name || (c as any)?.productName || 'Producto';
+        const pPrice = typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0);
+        const pUserId = prod.userId || (c as any)?.userId || '';
+        return {
+          id: c.id,
+          productId: pId,
+          name: pName,
+          price: pPrice,
+          quantity: c.quantity || 1,
+          selectedVariant: c.selectedVariant,
+          imageURL: prod.imageURL && prod.imageURL.startsWith('data:') ? undefined : prod.imageURL,
+          storeName: (pUserId && catalogStores[pUserId]?.displayName) || 'Tienda',
+          userId: pUserId
+        };
+      });
 
       // Map confirmed prior history strictly alternating and non-empty
       const historyPayload: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
@@ -1420,22 +1430,25 @@ export default function LinnkProVoiceAssistant({
         const newOrder: OrderItem = {
           id: '',
           storeOwnerId: sellerId,
-          storeName: storeProfile?.displayName || 'Restaurante LinnkPro',
+          storeName: storeProfile?.displayName || 'Restaurante RYYCO',
           storeAddress: storeProfile?.address || '',
           storePhone: storeProfile?.phone || storeProfile?.whatsapp || '',
           orderNumber: orderNumberBase,
-          customerName: orderData.customerName || 'Cliente LinnkPro',
+          customerName: orderData.customerName || 'Cliente RYYCO',
           customerPhone: orderData.customerPhone || '',
           customerAddress: orderData.customerAddress || 'Dirección de entrega',
           paymentMethod: (orderData.paymentMethod as any) || 'delivery_cash',
           status: 'pending',
-          items: sellerItems.map(item => ({
-            productId: item.product.id,
-            name: item.product.name,
-            price: item.product.price,
-            quantity: item.quantity,
-            selectedVariant: item.selectedVariant
-          })),
+          items: sellerItems.map(item => {
+            const prod = item?.product || (item as any) || {};
+            return {
+              productId: prod.id || (item as any)?.productId || item.id || '',
+              name: prod.name || (item as any)?.productName || 'Producto',
+              price: typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0),
+              quantity: item.quantity || 1,
+              selectedVariant: item.selectedVariant
+            };
+          }),
           totalAmount: storeTotal,
           deliveryFee: systemDeliveryFee,
           notes: orderData.notes ? `[LinnkPro AI Voice] ${orderData.notes}` : '[LinnkPro AI Voice]',
@@ -1987,8 +2000,8 @@ export default function LinnkProVoiceAssistant({
                                       className="flex items-center justify-between p-2 rounded-xl bg-[#0E131F] border border-white/10 text-xs"
                                     >
                                       <div className="flex-1 truncate pr-2">
-                                        <span className="font-bold text-white truncate block">{item.product.name}</span>
-                                        <span className="text-[11px] text-amber-400 font-semibold">${(item.product.price * item.quantity).toLocaleString('es-CO')} COP</span>
+                                        <span className="font-bold text-white truncate block">{item?.product?.name || (item as any)?.name || 'Producto'}</span>
+                                        <span className="text-[11px] text-amber-400 font-semibold">${((item?.product?.price ?? (item as any)?.price ?? 0) * (item.quantity || 1)).toLocaleString('es-CO')} COP</span>
                                       </div>
                                       <div className="flex items-center gap-1.5">
                                         <button

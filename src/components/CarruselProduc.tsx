@@ -668,7 +668,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                 <ShoppingCart className="w-4 h-4 text-white" />
               </div>
               <div className="truncate text-xs">
-                <p className="font-bold truncate">¡{toastNotification.product.name} añadido!</p>
+                <p className="font-bold truncate">¡{toastNotification.product?.name || 'Producto'} añadido!</p>
                 <p className="text-[10px] text-emerald-100">Listo en tu carrito de compras</p>
               </div>
             </div>
@@ -1031,23 +1031,26 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                   </div>
                 ) : (
                   cartItems.map((item) => {
-                    const prof = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
-                    const storeDisplay = prof?.displayName || item.product.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante');
-                    const itemTotal = (item.product.price || 0) * (item.quantity || 1);
+                    const prod = item?.product || (item as any) || {};
+                    const prodId = prod.id || (item as any)?.productId || item?.id || '';
+                    const prodName = prod.name || (item as any)?.productName || 'Producto';
+                    const prof = profiles[prod.userId] || findStoreForProduct(prod as any, profiles);
+                    const storeDisplay = prof?.displayName || prod.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante');
+                    const itemTotal = (Number(prod.price) || 0) * (item.quantity || 1);
 
                     return (
                       <div 
-                        key={item.id}
+                        key={item.id} 
                         className="bg-[#151D2F] border border-[#232B3A] p-3 rounded-2xl flex gap-3 relative items-center"
                       >
                         {/* Image */}
                         <div className="w-14 h-14 rounded-xl bg-[#090B12] overflow-hidden shrink-0 border border-[#232B3A] flex items-center justify-center">
                           {(() => {
-                            const displayImage = item.product.imageURL || getProductImage(item.product.id) || products.find(p => p.id === item.product.id)?.imageURL;
+                            const displayImage = prod.imageURL || (prodId ? getProductImage(prodId) : undefined) || (prodId ? products.find(p => p.id === prodId)?.imageURL : undefined);
                             return displayImage ? (
                               <img 
                                 src={displayImage} 
-                                alt={item.product.name} 
+                                alt={prodName} 
                                 referrerPolicy="no-referrer"
                                 className="w-full h-full object-cover" 
                               />
@@ -1063,7 +1066,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                             {storeDisplay}
                           </span>
                           <h4 className="font-bold text-xs text-white truncate">
-                            {item.product.name}
+                            {prodName}
                           </h4>
                           {item.selectedVariant && (
                             <span className="text-[10px] font-semibold text-[#A9B2C3] bg-[#090B12] px-1.5 py-0.5 rounded border border-[#232B3A] inline-block">

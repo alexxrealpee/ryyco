@@ -1830,7 +1830,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 <Sparkles className="w-4 h-4 text-indigo-400" />
               </div>
               <div>
-                <p className="text-xs font-extrabold text-white">Linnk.Pro Admin</p>
+                <p className="text-xs font-extrabold text-white">RYYCO Admin</p>
                 <p className="text-[9px] text-gray-500">© 2025 Todos los derechos reservados</p>
               </div>
             </div>

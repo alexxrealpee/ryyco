@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
-import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone } from '../lib/firebase';
+import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone, fetchProductsAllForStore } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
@@ -218,17 +218,22 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [cachedInitial] = useState(() => getInitialGeneralData());
   const [products, setProducts] = useState<ProductItem[]>(() => {
     if (cachedInitial.hasCache && cachedInitial.products.length > 0) {
-      return orderProductBatch(cachedInitial.products.slice(0, 4));
+      return orderProductBatch(cachedInitial.products);
     }
     return [];
   });
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>(cachedInitial.profiles);
   const [loading, setLoading] = useState(false);
+  const [isLoadingSelectedStore, setIsLoadingSelectedStore] = useState(false);
 
   // Sync progressive products and store profiles as they arrive sequentially
   useEffect(() => {
     if (loadedProducts.length > 0) {
-      setProducts(loadedProducts);
+      setProducts(prev => {
+        const seen = new Set(prev.map(p => p.id));
+        const toAdd = loadedProducts.filter(p => !seen.has(p.id));
+        return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+      });
       registerProductImages(loadedProducts);
     }
   }, [loadedProducts]);
@@ -238,6 +243,31 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       setProfiles(prev => ({ ...prev, ...profilesMap }));
     }
   }, [profilesMap]);
+
+  // Non-blocking background sync of all active products and profiles
+  // Guarantees all open restaurants have their full menus ready in memory
+  useEffect(() => {
+    let isMounted = true;
+    fetchAllActiveProductsAndStores().then(({ products: allProds, profiles: allProfs }) => {
+      if (!isMounted) return;
+      if (allProfs && Object.keys(allProfs).length > 0) {
+        setProfiles(prev => ({ ...prev, ...allProfs }));
+      }
+      if (allProds && allProds.length > 0) {
+        setProducts(prev => {
+          const seen = new Set(prev.map(p => p.id));
+          const toAdd = allProds.filter(p => !seen.has(p.id));
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+        registerProductImages(allProds);
+      }
+    }).catch(err => {
+      console.warn("Background fetch of active products:", err);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   
   // Filtering & search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -455,8 +485,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       if (profile.subscriptionTrialExpires && new Date(profile.subscriptionTrialExpires).getTime() < Date.now() && profile.subscriptionStatus !== 'active') {
         return false;
       }
-      if (selectedStore !== 'all' && product.userId !== selectedStore && profile.uid !== selectedStore) {
-        return false;
+      if (selectedStore !== 'all') {
+        const matchesStore = 
+          product.userId === selectedStore || 
+          profile.uid === selectedStore ||
+          (profile.username && profile.username.toLowerCase() === selectedStore.toLowerCase()) ||
+          (product.storeUsername && product.storeUsername.toLowerCase() === selectedStore.toLowerCase());
+        if (!matchesStore) return false;
       }
       return true;
     });
@@ -520,7 +555,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Real-time loading states tied strictly to actual Firebase data presence (no fake delays)
   const isRestaurantsLoading = (isLoadingRestaurants || progressiveStage === 'fetching_open_restaurants') && uniqueStores.length === 0;
-  const isProductsLoading = (isLoadingProducts || (products.length === 0 && progressiveStage !== 'idle'));
+  const isProductsLoading = (isLoadingProducts || (products.length === 0 && progressiveStage !== 'idle')) || isLoadingSelectedStore;
   const isCategoriesLoading = isProductsLoading && categories.length <= 1;
 
   // Pre-load top restaurant logos and the first 6 products into browser cache for instant rendering
@@ -670,10 +705,68 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
 
-  // Reset limit to 4 when filter/search/sort changes
+  // Reset limit when filter/search/sort changes
+  // When a specific store is selected, show up to 40 products so its entire menu is instantly visible
   useEffect(() => {
-    setVisibleLimit(4);
+    if (selectedStore !== 'all') {
+      setVisibleLimit(40);
+    } else {
+      setVisibleLimit(4);
+    }
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
+
+  // Targeted fetch when a specific restaurant is selected - guarantees full menu is loaded immediately
+  useEffect(() => {
+    if (selectedStore === 'all') {
+      setIsLoadingSelectedStore(false);
+      return;
+    }
+
+    const currentStoreObj = 
+      uniqueStores.find(s => s.uid === selectedStore || s.username?.toLowerCase() === selectedStore.toLowerCase()) ||
+      openRestaurants.find(s => s.uid === selectedStore || s.username?.toLowerCase() === selectedStore.toLowerCase()) ||
+      profiles[selectedStore];
+
+    const storeUid = currentStoreObj?.uid || selectedStore;
+    const storeUsername = currentStoreObj?.username;
+
+    // Check if products for this store already exist in current state
+    const alreadyHasProducts = products.some(p => 
+      p.userId === storeUid || 
+      (storeUsername && p.storeUsername?.toLowerCase() === storeUsername.toLowerCase()) ||
+      (currentStoreObj?.displayName && p.storeName?.toLowerCase() === currentStoreObj.displayName.toLowerCase())
+    );
+
+    // If store has no products loaded yet, show skeleton immediately while fetching
+    if (!alreadyHasProducts) {
+      setIsLoadingSelectedStore(true);
+    }
+
+    let isMounted = true;
+    fetchProductsAllForStore(currentStoreObj || storeUid).then(({ products: freshProducts, storeProfile }) => {
+      if (!isMounted) return;
+      if (storeProfile && storeProfile.uid) {
+        setProfiles(prev => ({ ...prev, [storeProfile.uid]: storeProfile }));
+      }
+      if (freshProducts && freshProducts.length > 0) {
+        setProducts(prev => {
+          const seen = new Set(prev.map(p => p.id));
+          const toAdd = freshProducts.filter(p => !seen.has(p.id));
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+        registerProductImages(freshProducts);
+        setVisibleLimit(prev => Math.max(prev, freshProducts.length, 40));
+      }
+      setIsLoadingSelectedStore(false);
+    }).catch(err => {
+      console.warn("Error fetching selected store products:", err);
+      if (isMounted) setIsLoadingSelectedStore(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedStore, uniqueStores, openRestaurants, profiles]);
 
   // Unified function to load the next batch of 4 products in order
   const loadNextBatchOfFour = useCallback(async () => {
@@ -881,13 +974,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
           customerLat: custCoordinates?.lat,
           customerLng: custCoordinates?.lng,
-          items: sellerCart.map(item => ({
-            productId: item.product.id,
-            name: item.product.name,
-            price: item.product.price,
-            quantity: item.quantity,
-            selectedVariant: item.selectedVariant || undefined
-          })),
+          items: sellerCart.map(item => {
+            const prod = item?.product || (item as any) || {};
+            return {
+              productId: prod.id || (item as any)?.productId || item.id || '',
+              name: prod.name || (item as any)?.name || 'Producto',
+              price: typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0),
+              quantity: item.quantity || 1,
+              selectedVariant: item.selectedVariant || undefined
+            };
+          }),
           totalAmount: totalSum,
           deliveryFee: deliveryFee,
           orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
@@ -2316,7 +2412,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   </div>
                 ) : (
                   cart.map((item) => {
-                    const profile = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
+                    const prod = item?.product || (item as any) || {};
+                    const prodId = prod.id || (item as any)?.productId || item?.id || '';
+                    const prodName = prod.name || (item as any)?.productName || 'Producto';
+                    const prodPrice = typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0);
+                    const prodUserId = prod.userId || (item as any)?.userId || (item as any)?.storeOwnerId || '';
+                    const profile = profiles[prodUserId] || findStoreForProduct(prod as any, profiles);
                     const currency = profile?.currency || '$';
 
                     return (
@@ -2333,9 +2434,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         {/* Image */}
                         <div className="w-16 h-16 rounded-xl bg-[#090B12] overflow-hidden shrink-0 border border-[#232B3A] flex items-center justify-center">
                           {(() => {
-                            const displayImg = item.product.imageURL || getProductImage(item.product.id) || products.find(p => p.id === item.product.id)?.imageURL;
+                            const displayImg = prod.imageURL || (prodId ? getProductImage(prodId) : undefined) || (prodId ? products.find(p => p.id === prodId)?.imageURL : undefined);
                             return displayImg ? (
-                              <img src={displayImg} alt={item.product.name} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                              <img src={displayImg} alt={prodName} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                             ) : (
                               <ShoppingBag className="w-6 h-6 text-gray-600" />
                             );
@@ -2348,7 +2449,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             {profile?.displayName || 'Tienda'}
                           </span>
                           <h4 className="font-extrabold text-xs text-white truncate leading-none mb-1">
-                            {item.product.name}
+                            {prodName}
                           </h4>
                           {item.selectedVariant && (
                             <span className="text-[10px] font-bold text-[#A9B2C3] bg-[#090B12] border border-[#232B3A] px-2 py-0.5 rounded-md inline-block">
@@ -2375,7 +2476,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             </div>
 
                             <span className="text-xs font-black text-white font-mono">
-                              {currency}{(item.product.price * item.quantity).toLocaleString()}
+                              {currency}{(prodPrice * (item.quantity || 1)).toLocaleString()}
                             </span>
                           </div>
                         </div>
@@ -2388,11 +2489,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* Cart Footer */}
               <div className="p-5 border-t border-[#232B3A] bg-[#111827]">
                 {cart.length > 0 && (() => {
-                  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-                  const uniqueSellersCount = new Set(cart.map(item => item.product.userId)).size;
+                  const subtotal = cart.reduce((sum, item) => {
+                    const p = item?.product || (item as any) || {};
+                    const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
+                    return sum + (price * (item.quantity || 1));
+                  }, 0);
+                  const uniqueSellersCount = Math.max(1, new Set(cart.map(item => item?.product?.userId || (item as any)?.userId || 'store')).size);
                   const totalDeliveryFee = uniqueSellersCount * systemDeliveryFee;
                   const total = subtotal + totalDeliveryFee;
-                  const curr = profiles[cart[0].product.userId]?.currency || '$';
+                  const firstUserId = cart[0]?.product?.userId || (cart[0] as any)?.userId;
+                  const curr = (firstUserId ? profiles[firstUserId]?.currency : undefined) || '$';
 
                   return (
                     <div className="space-y-3">
@@ -2655,11 +2761,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                 {/* Total Summary */}
                 {cart.length > 0 && (() => {
-                  const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-                  const uniqueSellersCount = new Set(cart.map(item => item.product.userId)).size;
+                  const subtotal = cart.reduce((sum, item) => {
+                    const p = item?.product || (item as any) || {};
+                    const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
+                    return sum + (price * (item.quantity || 1));
+                  }, 0);
+                  const uniqueSellersCount = Math.max(1, new Set(cart.map(item => item?.product?.userId || (item as any)?.userId || 'store')).size);
                   const totalDeliveryFee = deliveryType === 'pickup' ? 0 : uniqueSellersCount * systemDeliveryFee;
                   const total = subtotal + totalDeliveryFee;
-                  const curr = profiles[cart[0].product.userId]?.currency || '$';
+                  const firstUserId = cart[0]?.product?.userId || (cart[0] as any)?.userId;
+                  const curr = (firstUserId ? profiles[firstUserId]?.currency : undefined) || '$';
 
                   return (
                     <div className="border-t border-[#232B3A] pt-4 space-y-2">

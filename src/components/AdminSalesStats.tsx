@@ -144,7 +144,7 @@ export default function AdminSalesStats({
         const storeName = getStoreName(order.storeOwnerId, order.storeName).toLowerCase();
         const customer = (order.customerName || '').toLowerCase();
         const orderNum = `#${order.orderNumber}`.toLowerCase();
-        const itemsNames = (order.items || []).map(i => i.name.toLowerCase()).join(' ');
+        const itemsNames = (order.items || []).map(i => (i?.name || (i as any)?.product?.name || (i as any)?.productName || '').toLowerCase()).join(' ');
 
         if (
           !storeName.includes(query) && 
@@ -243,13 +243,14 @@ export default function AdminSalesStats({
     filteredOrders.forEach(o => {
       const storeName = getStoreName(o.storeOwnerId, o.storeName);
       (o.items || []).forEach(item => {
-        const key = `${item.id || item.name}___${o.storeOwnerId}`;
-        const qty = Number(item.quantity) || 1;
-        const price = Number(item.price) || 0;
+        const itemName = item?.name || (item as any)?.product?.name || (item as any)?.productName || 'Producto';
+        const key = `${item?.id || itemName}___${o.storeOwnerId}`;
+        const qty = Number(item?.quantity) || 1;
+        const price = Number(item?.price) || 0;
 
         if (!prodMap[key]) {
           prodMap[key] = {
-            name: item.name || 'Producto',
+            name: itemName,
             storeName,
             quantity: 0,
             revenue: 0
@@ -812,11 +813,11 @@ export default function AdminSalesStats({
               {topProducts.list.map((prod, index) => {
                 const widthPct = Math.max(Math.round((prod.revenue / topProducts.maxRevenue) * 100), 5);
                 return (
-                  <div key={`${prod.name}-${index}`} className="space-y-1.5 bg-[#111726]/50 p-3 rounded-2xl border border-gray-800/60">
+                  <div key={`${prod?.name || 'prod'}-${index}`} className="space-y-1.5 bg-[#111726]/50 p-3 rounded-2xl border border-gray-800/60">
                     <div className="flex items-center justify-between text-xs">
                       <div className="min-w-0 pr-2">
                         <p className="font-bold text-white truncate max-w-[200px] sm:max-w-[240px]">
-                          {prod.name}
+                          {prod?.name || 'Producto'}
                         </p>
                         <p className="text-[10px] text-gray-400 truncate">
                           {prod.storeName}

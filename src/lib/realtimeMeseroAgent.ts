@@ -50,7 +50,7 @@ export class RealtimeMeseroManager {
   private buildTools() {
     const buscarRestaurantesTool = tool({
       name: 'buscarRestaurantes',
-      description: 'Busca y lista los restaurantes y tiendas actualmente abiertas y disponibles en LinnkPro (isClosed === false).',
+      description: 'Busca y lista los restaurantes y tiendas actualmente abiertas y disponibles en RYYCO (isClosed === false).',
       parameters: z.object({
         query: z.string().optional().describe('Nombre del restaurante o tipo de cocina (ej: hamburguesas, sushi, café)')
       }),
@@ -88,7 +88,7 @@ export class RealtimeMeseroManager {
             restaurantes: filtered.map(s => ({
               nombre: s.displayName || s.username,
               usuario: s.username,
-              descripcion: s.bio || 'Restaurante asociado a LinnkPro',
+              descripcion: s.bio || 'Restaurante asociado a RYYCO',
               estado: 'Abierto y disponible para pedidos'
             }))
           };
@@ -326,10 +326,10 @@ export class RealtimeMeseroManager {
         try {
           const currentCart = getStoredCart();
           const target = nombreProducto.toLowerCase().trim();
-          const item = currentCart.find(i => 
-            i.product.name.toLowerCase().includes(target) || 
-            i.id.toLowerCase().includes(target)
-          );
+          const item = currentCart.find(i => {
+            const pName = (i?.product?.name || (i as any)?.name || '').toLowerCase();
+            return pName.includes(target) || (i?.id || '').toLowerCase().includes(target);
+          });
 
           if (!item) {
             return {
@@ -338,9 +338,14 @@ export class RealtimeMeseroManager {
             };
           }
 
+          const prod = item.product || (item as any) || {};
+          const pName = prod.name || (item as any)?.name || 'Producto';
+          const pId = prod.id || (item as any)?.productId || item.id;
+          const pUserId = prod.userId || (item as any)?.userId || '';
+
           // Live validation
-          if (nuevaCantidad > 0) {
-            const validation = await validateStoreAndProductBeforeCart(item.product.id, item.product.userId);
+          if (nuevaCantidad > 0 && pId) {
+            const validation = await validateStoreAndProductBeforeCart(pId, pUserId);
             if (!validation.valid) {
               return {
                 exito: false,
@@ -358,8 +363,8 @@ export class RealtimeMeseroManager {
           return {
             exito: true,
             mensaje: nuevaCantidad <= 0 
-              ? `Se eliminó ${item.product.name} de tu carrito.` 
-              : `Se actualizó la cantidad de ${item.product.name} a ${nuevaCantidad}.`,
+              ? `Se eliminó ${pName} de tu carrito.` 
+              : `Se actualizó la cantidad de ${pName} a ${nuevaCantidad}.`,
             resumenCarrito: {
               totalProductos: summary.totalItems,
               totalPagar: `$${summary.grandTotal.toLocaleString('es-CO')} pesos`
@@ -381,10 +386,10 @@ export class RealtimeMeseroManager {
         try {
           const currentCart = getStoredCart();
           const target = nombreProducto.toLowerCase().trim();
-          const item = currentCart.find(i => 
-            i.product.name.toLowerCase().includes(target) || 
-            i.id.toLowerCase().includes(target)
-          );
+          const item = currentCart.find(i => {
+            const pName = (i?.product?.name || (i as any)?.name || '').toLowerCase();
+            return pName.includes(target) || (i?.id || '').toLowerCase().includes(target);
+          });
 
           if (!item) {
             return {
@@ -392,6 +397,9 @@ export class RealtimeMeseroManager {
               mensaje: `El producto "${nombreProducto}" no estaba en tu carrito.`
             };
           }
+
+          const prod = item.product || (item as any) || {};
+          const pName = prod.name || (item as any)?.name || 'Producto';
 
           const updatedCart = removeProductFromCart(item.id);
           if (this.callbacks.onCartUpdated) {
@@ -401,7 +409,7 @@ export class RealtimeMeseroManager {
           const summary = calculateCartSummary(updatedCart);
           return {
             exito: true,
-            mensaje: `Eliminé ${item.product.name} de tu carrito.`,
+            mensaje: `Eliminé ${pName} de tu carrito.`,
             totalRestante: summary.totalItems,
             totalPagar: `$${summary.grandTotal.toLocaleString('es-CO')} pesos`
           };
@@ -428,12 +436,17 @@ export class RealtimeMeseroManager {
           const summary = calculateCartSummary(cart);
           return {
             vacio: false,
-            items: cart.map(i => ({
-              nombre: i.product.name,
-              cantidad: i.quantity,
-              precioUnitario: `$${i.product.price.toLocaleString('es-CO')} pesos`,
-              totalItem: `$${(i.product.price * i.quantity).toLocaleString('es-CO')} pesos`
-            })),
+            items: cart.map(i => {
+              const p = i?.product || (i as any) || {};
+              const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
+              const name = p.name || (i as any)?.name || 'Producto';
+              return {
+                nombre: name,
+                cantidad: i.quantity || 1,
+                precioUnitario: `$${price.toLocaleString('es-CO')} pesos`,
+                totalItem: `$${(price * (i.quantity || 1)).toLocaleString('es-CO')} pesos`
+              };
+            }),
             totalArticulos: summary.totalItems,
             subtotal: `$${summary.subtotal.toLocaleString('es-CO')} pesos`,
             domicilio: `$${summary.deliveryFee.toLocaleString('es-CO')} pesos`,
@@ -496,7 +509,7 @@ export class RealtimeMeseroManager {
 
           const summary = calculateCartSummary(cart);
           const firstItem = cart[0];
-          const storeOwnerId = firstItem.product.userId || 'store_general';
+          const storeOwnerId = firstItem?.product?.userId || (firstItem as any)?.userId || 'store_general';
 
           const newOrder: OrderItem = {
             id: 'ord_' + Date.now(),
@@ -506,14 +519,17 @@ export class RealtimeMeseroManager {
             customerPhone: telefono,
             customerAddress: direccion,
             notes: notas,
-            items: cart.map(i => ({
-              productId: i.product.id,
-              name: i.product.name,
-              price: i.product.price,
-              quantity: i.quantity,
-              selectedVariant: i.selectedVariant,
-              imageURL: i.product.imageURL
-            })),
+            items: cart.map(i => {
+              const p = i?.product || (i as any) || {};
+              return {
+                productId: p.id || (i as any)?.productId || i.id || '',
+                name: p.name || (i as any)?.name || 'Producto',
+                price: typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0),
+                quantity: i.quantity || 1,
+                selectedVariant: i.selectedVariant,
+                imageURL: p.imageURL
+              };
+            }),
             deliveryFee: summary.deliveryFee,
             totalAmount: summary.grandTotal,
             paymentMethod: (metodoPago || 'delivery_cash') as 'delivery_cash' | 'whatsapp' | 'transfer' | 'cod',

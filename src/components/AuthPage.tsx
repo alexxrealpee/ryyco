@@ -299,7 +299,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
           uid: user.uid,
           email: user.email || '',
           username: newUsername,
-          displayName: user.displayName || 'Usuario de Linnk',
+          displayName: user.displayName || 'Usuario de RYYCO',
           photoURL: user.photoURL || undefined,
           bio: '¡Hola! Te doy la bienvenida a mi perfil.',
           role: 'user',

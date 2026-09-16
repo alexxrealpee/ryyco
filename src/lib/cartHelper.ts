@@ -71,31 +71,78 @@ export function registerProductImages(products: ProductItem[]): void {
 }
 
 export function rehydrateCartItem(item: GeneralCartItem): GeneralCartItem {
-  if (!item || !item.product) return item;
-  let img = item.product.imageURL;
-  if (!img) {
-    img = getProductImage(item.product.id);
-  }
-  if (img && !item.product.imageURL) {
+  if (!item) {
     return {
-      ...item,
+      id: `item_${Date.now()}`,
+      quantity: 1,
       product: {
-        ...item.product,
-        imageURL: img
-      }
+        id: `prod_${Date.now()}`,
+        name: 'Producto',
+        price: 0,
+        userId: '',
+        active: true,
+        stock: 99
+      } as ProductItem
     };
   }
-  return item;
+
+  // Handle flat or legacy cart item structure where item lacks product object
+  const p: any = item.product || {
+    id: (item as any).productId || item.id || `prod_${Date.now()}`,
+    userId: (item as any).userId || (item as any).storeOwnerId || '',
+    name: (item as any).name || (item as any).productName || 'Producto',
+    description: (item as any).description || '',
+    price: typeof (item as any).price === 'number' ? (item as any).price : parseFloat((item as any).price) || 0,
+    imageURL: (item as any).imageURL,
+    category: (item as any).category,
+    storeName: (item as any).storeName,
+    storeUsername: (item as any).storeUsername,
+    active: true,
+    stock: 99
+  };
+
+  const safeProdId = p.id ? String(p.id).trim() : (p.name ? `prod_${String(p.userId || 'store').trim()}_${encodeURIComponent(p.name.trim().toLowerCase().replace(/\s+/g, '_'))}` : `prod_${Date.now()}`);
+  let img = p.imageURL;
+  if (!img) {
+    img = getProductImage(safeProdId);
+  }
+
+  const safeProduct: ProductItem = {
+    id: safeProdId,
+    userId: String(p.userId || ''),
+    name: String(p.name || (item as any).name || 'Producto'),
+    description: String(p.description || ''),
+    price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : (parseFloat(p.price as any) || 0),
+    compareAtPrice: p.compareAtPrice,
+    imageURL: img,
+    category: p.category,
+    variantsText: p.variantsText,
+    variantPrices: p.variantPrices,
+    allowsHalfAndHalf: p.allowsHalfAndHalf,
+    flavorsText: p.flavorsText,
+    allowSingleFlavor: p.allowSingleFlavor,
+    active: p.active !== false,
+    stock: typeof p.stock === 'number' && !isNaN(p.stock) ? p.stock : 99,
+    storeName: p.storeName,
+    storeUsername: p.storeUsername
+  };
+
+  return {
+    id: item.id || getCartItemId(safeProdId, item.selectedVariant),
+    selectedVariant: item.selectedVariant?.trim() || undefined,
+    quantity: Math.max(1, Number(item.quantity) || 1),
+    product: safeProduct
+  };
 }
 
 // Compaction to prevent quota exceeded errors while safely retaining valid product images
 function compactCartItem(item: GeneralCartItem): GeneralCartItem {
-  if (!item || !item.product) return item;
-  const p = item.product;
+  if (!item) return item;
+  const p = item.product || (item as any);
 
   let safeProdId = p.id ? String(p.id).trim() : '';
   if (!safeProdId || safeProdId === 'undefined' || safeProdId === 'null') {
-    safeProdId = p.name ? `prod_${String(p.userId || 'store').trim()}_${encodeURIComponent(p.name.trim().toLowerCase().replace(/\s+/g, '_'))}` : `prod_${Date.now()}`;
+    safeProdId = p.name ? `prod_${String(p.userId || 'store').trim()}_${encodeURIComponent(String(p.name).trim().toLowerCase().replace(/\s+/g, '_'))}` : `prod_${Date.now()}`;
   }
   
   // Make sure image is cached in memory and session storage before any processing
@@ -124,7 +171,7 @@ function compactCartItem(item: GeneralCartItem): GeneralCartItem {
     product: {
       id: safeProdId,
       userId: String(p.userId || ''),
-      name: String(p.name || 'Producto'),
+      name: String(p.name || (item as any).name || 'Producto'),
       price: cleanPrice,
       compareAtPrice: cleanCompareAt,
       imageURL: cleanImage,

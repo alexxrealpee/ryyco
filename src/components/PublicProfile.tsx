@@ -809,11 +809,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       customerLat: custCoordinates?.lat,
       customerLng: custCoordinates?.lng,
       items: cart.map(item => ({
-        productId: item.product.id,
-        name: item.product.name,
-        price: item.product.price,
-        quantity: item.quantity,
-        selectedVariant: item.selectedVariant || undefined
+        productId: item?.product?.id || (item as any)?.productId || item?.id || '',
+        name: item?.product?.name || (item as any)?.name || 'Producto',
+        price: typeof item?.product?.price === 'number' ? item.product.price : (Number((item as any)?.price) || 0),
+        quantity: item?.quantity || 1,
+        selectedVariant: item?.selectedVariant || undefined
       })),
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
@@ -2738,18 +2738,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     >
                       <div className="flex items-center gap-2.5 overflow-hidden">
                         <div className="w-11 h-11 rounded-lg bg-black shrink-0 overflow-hidden flex items-center justify-center font-bold text-sm">
-                          {item.product.imageURL ? (
-                            <img src={item.product.imageURL} alt={item.product.name} className="w-full h-full object-cover" />
+                          {item?.product?.imageURL ? (
+                            <img src={item.product.imageURL} alt={item?.product?.name || 'Producto'} className="w-full h-full object-cover" />
                           ) : (
                             <span>🎁</span>
                           )}
                         </div>
                         <div className="overflow-hidden">
-                          <h4 className="text-xs font-extrabold text-white truncate max-w-[150px]">{item.product.name}</h4>
+                          <h4 className="text-xs font-extrabold text-white truncate max-w-[150px]">{item?.product?.name || (item as any)?.name || 'Producto'}</h4>
                           {item.selectedVariant && (
                             <span className="text-[10px] text-indigo-400 font-extrabold block">Opción: {item.selectedVariant}</span>
                           )}
-                          <span className="font-mono text-[11px] font-semibold" style={{ color: storeAccent }}>{getStoreCurrency()}{item.product.price.toLocaleString()}</span>
+                          <span className="font-mono text-[11px] font-semibold" style={{ color: storeAccent }}>{getStoreCurrency()}{(item?.product?.price ?? (item as any)?.price ?? 0).toLocaleString()}</span>
                         </div>
                       </div>
 

@@ -572,7 +572,7 @@ export default function AdminReferralsManager() {
                         <div className="text-[10px] text-indigo-400 font-mono">?ref={comm.creatorCode}</div>
                       </td>
                       <td className="py-3 px-3 text-gray-300 font-medium">
-                        {comm.storeName || 'LinnkPro Store'}
+                        {comm.storeName || 'RYYCO Store'}
                         {comm.orderNumber ? <span className="text-[10px] text-gray-500 ml-1">#{comm.orderNumber}</span> : null}
                       </td>
                       <td className="py-3 px-3 text-right font-medium text-white">

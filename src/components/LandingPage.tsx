@@ -1264,7 +1264,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 </div>
 
                 <button
-                  onClick={() => window.open('https://wa.me/573219730865?text=Hola%20LinnkPro,%20estoy%20interesado%20en%20el%20Plan%20Especial%20para%20mi%20tienda.', '_blank')}
+                  onClick={() => window.open('https://wa.me/573219730865?text=Hola%20RYYCO,%20estoy%20interesado%20en%20el%20Plan%20Especial%20para%20mi%20tienda.', '_blank')}
                   className="w-full py-3 px-4 rounded-xl bg-[#F4B400] hover:bg-[#e0a600] text-black font-black text-sm flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />

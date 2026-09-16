@@ -234,7 +234,7 @@ export default function AdminDriversManager() {
             </button>
 
             <a
-              href={`https://wa.me/?text=${encodeURIComponent("¡Hola! Regístrate o ingresa como repartidor/domiciliario en LinnkPro en el siguiente enlace: " + driverLink)}`}
+              href={`https://wa.me/?text=${encodeURIComponent("¡Hola! Regístrate o ingresa como repartidor/domiciliario en RYYCO en el siguiente enlace: " + driverLink)}`}
               target="_blank"
               rel="noreferrer"
               className="px-3.5 py-2 bg-[#F4B400]/10 hover:bg-[#F4B400]/20 text-[#F4B400] border border-[#F4B400]/30 font-extrabold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"

@@ -391,11 +391,13 @@ export async function validateCartBeforeOrder(cartItems: Array<{ product: Produc
     }
 
     for (const item of cartItems) {
-      const storeId = item.product.userId;
+      if (!item) continue;
+      const prod = item.product || (item as any) || {};
+      const storeId = prod.userId || (item as any)?.storeOwnerId;
       if (storeId) {
         const store = catalog.stores.find(s => s.uid === storeId || s.username?.toLowerCase() === storeId.toLowerCase());
         if (!store) {
-          const sName = item.product.storeName || 'El restaurante';
+          const sName = prod.storeName || 'El restaurante';
           return {
             valid: false,
             reason: `No podemos completar tu pedido porque ${sName} se encuentra cerrado en este momento.`
@@ -403,11 +405,13 @@ export async function validateCartBeforeOrder(cartItems: Array<{ product: Produc
         }
       }
 
-      const availableProd = catalog.products.find(p => p.id === item.product.id);
+      const prodId = prod.id || (item as any)?.productId || (item as any)?.id;
+      const availableProd = catalog.products.find(p => p.id === prodId);
       if (!availableProd) {
+        const prodName = prod.name || (item as any)?.name || 'Producto';
         return {
           valid: false,
-          reason: `El producto "${item.product.name}" ya no se encuentra disponible.`
+          reason: `El producto "${prodName}" ya no se encuentra disponible.`
         };
       }
     }
