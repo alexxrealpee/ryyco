@@ -205,6 +205,25 @@ export interface ProductItem {
   createdAt?: string;
 }
 
+export type OrderStatus = 
+  | 'pending'
+  | 'confirmed'
+  | 'preparing'
+  | 'ready'
+  | 'picked_up'
+  | 'delivering'
+  | 'delivered'
+  | 'cancelled'
+  | 'processing'
+  | 'shipped';
+
+export interface OrderStatusHistoryItem {
+  status: OrderStatus;
+  timestamp: string;
+  note?: string;
+  updatedBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+}
+
 export interface OrderItem {
   id: string;
   storeOwnerId: string;
@@ -225,7 +244,13 @@ export interface OrderItem {
   customerLat?: number;
   customerLng?: number;
   paymentMethod: 'whatsapp' | 'transfer' | 'delivery_cash' | 'cod';
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  status: OrderStatus;
+  deliveryType?: 'restaurant' | 'ryyco';
+  driverId?: string; // Standard identifier of the assigned driver
+  cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+  cancellationReason?: string;
+  cancelledAt?: string;
+  statusHistory?: OrderStatusHistoryItem[];
   items: CartItem[];
   totalAmount: number;
   deliveryFee?: number; // Valor del domicilio

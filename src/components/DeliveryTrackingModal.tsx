@@ -136,12 +136,16 @@ export default function DeliveryTrackingModal({
   // Delivery status step resolution
   const currentStep = tracking?.status || activeOrder?.deliveryStep || (
     activeOrder?.status === 'delivered' ? 'delivered' :
+    activeOrder?.status === 'delivering' ? 'to_client' :
+    activeOrder?.status === 'picked_up' ? 'picked_up' :
+    activeOrder?.status === 'ready' ? 'ready' :
     activeOrder?.status === 'shipped' ? 'to_client' :
-    activeOrder?.status === 'processing' ? (activeOrder?.deliveryDriverName ? 'accepted' : 'kitchen') :
+    (activeOrder?.status === 'preparing' || activeOrder?.status === 'processing') ? 'kitchen' :
+    activeOrder?.status === 'confirmed' ? (activeOrder?.deliveryType === 'restaurant' ? 'restaurant_confirmed' : 'accepted') :
     activeOrder?.status === 'cancelled' ? 'cancelled' : 'pending'
   );
   const isPickedUp = currentStep === 'picked_up' || currentStep === 'to_client' || currentStep === 'at_destination' || currentStep === 'delivered';
-  const isPreparationStage = currentStep === 'pending' || currentStep === 'kitchen';
+  const isPreparationStage = currentStep === 'pending' || currentStep === 'kitchen' || currentStep === 'restaurant_confirmed' || currentStep === 'ready' || currentStep === 'accepted';
 
   // Determine positions
   // Destination: customer coordinates or fallback
@@ -317,14 +321,26 @@ export default function DeliveryTrackingModal({
       case 'pending':
         return {
           label: 'Pedido Recibido',
-          desc: 'Esperando confirmación del restaurante',
+          desc: 'Esperando confirmación del restaurante o domiciliario',
           color: 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+        };
+      case 'restaurant_confirmed':
+        return {
+          label: 'Domicilio Propio Confirmado',
+          desc: 'El restaurante confirmó el pedido y realizará la entrega con su propio domiciliario',
+          color: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
         };
       case 'kitchen':
         return {
           label: 'En Preparación / Cocina',
           desc: 'El restaurante está preparando y empacando tu pedido',
           color: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+        };
+      case 'ready':
+        return {
+          label: 'Pedido Listo para Despacho',
+          desc: 'Tu pedido está empacado y listo para ser entregado',
+          color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30'
         };
       case 'cancelled':
         return {
@@ -492,7 +508,9 @@ export default function DeliveryTrackingModal({
                 <div className="min-w-0 flex-1">
                   <span className="text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider block opacity-90 truncate">
                     {isPreparationStage ? (
-                      currentStep === 'pending' ? 'Etapa 1 • Recepción' : 'Etapa 1 • En Cocina'
+                      currentStep === 'pending' ? 'Etapa 1 • Recepción' :
+                      currentStep === 'restaurant_confirmed' ? 'Etapa 1 • Domicilio Propio' :
+                      currentStep === 'ready' ? 'Etapa 1 • Listo' : 'Etapa 1 • En Cocina'
                     ) : (
                       <>
                         <span className="sm:hidden">Etapa 1 {!isPickedUp ? '• En curso' : '• Lista'}</span>
@@ -502,7 +520,10 @@ export default function DeliveryTrackingModal({
                   </span>
                   <span className="text-[10px] sm:text-[11.5px] font-bold truncate block text-white mt-0.5">
                     {isPreparationStage ? (
-                      currentStep === 'pending' ? 'Confirmando Pedido' : 'Preparando Alimentos'
+                      currentStep === 'pending' ? 'Confirmando Pedido' :
+                      currentStep === 'restaurant_confirmed' ? 'Confirmado por Restaurante' :
+                      currentStep === 'ready' ? 'Listo para Despacho' :
+                      currentStep === 'accepted' ? 'Domiciliario Asignado' : 'Preparando Alimentos'
                     ) : (
                       <>
                         <span className="sm:hidden">Hacia Tienda</span>

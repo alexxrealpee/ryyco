@@ -43,7 +43,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, OrderStatus, OrderStatusHistoryItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData } from '../types';
 import { safeSetItem } from './safeStorage';
 import { extractCoordinates } from './coordinateUtils';
 import { generateRyycoImageName } from './seoImageRenamer';
@@ -1326,6 +1326,19 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   const result = { ...order };
   const docRef = doc(collection(db, 'orders'));
   result.id = docRef.id;
+  result.status = 'pending';
+  const orderCreatedAt = result.createdAt || new Date().toISOString();
+  result.createdAt = orderCreatedAt;
+  if (!result.statusHistory || !result.statusHistory.length) {
+    result.statusHistory = [
+      {
+        status: 'pending',
+        timestamp: orderCreatedAt,
+        note: 'Esperando confirmación',
+        updatedBy: 'customer'
+      }
+    ];
+  }
 
   // Auto-resolve store name and store contact/location details with exact coordinates
   if (result.storeOwnerId && result.storeOwnerId !== 'store_general') {
@@ -1593,11 +1606,77 @@ export function subscribeProducts(userId: string, callback: (products: ProductIt
   });
 }
 
-// UPDATE STATUS OF CUSTOMER ORDER
-export async function updateOrderStatus(orderId: string, storeOwnerId: string, status: OrderItem['status']): Promise<void> {
+// UPDATE STATUS OF CUSTOMER ORDER WITH HISTORY AND TRANSITION VALIDATION
+export async function updateOrderStatus(
+  orderId: string, 
+  storeOwnerId: string, 
+  status: OrderItem['status'],
+  options?: string | {
+    note?: string;
+    cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+    cancellationReason?: string;
+    updatedBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+  }
+): Promise<void> {
+  const opts = typeof options === 'string' ? { note: options } : (options || {});
+  const docRef = doc(db, 'orders', orderId);
+  const now = new Date().toISOString();
+
+  let currentOrder: OrderItem | null = null;
   try {
-    const docRef = doc(db, 'orders', orderId);
-    await updateDoc(docRef, { status });
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      currentOrder = snap.data() as OrderItem;
+    }
+  } catch (e) {
+    console.warn("Could not fetch current order for status validation:", e);
+  }
+
+  // Prevent reverting delivered orders
+  if (currentOrder?.status === 'delivered' && status !== 'delivered') {
+    throw new Error("Un pedido entregado está finalizado y no puede cambiar a otro estado.");
+  }
+
+  // Prevent changing cancelled orders
+  if (currentOrder?.status === 'cancelled' && status !== 'cancelled') {
+    throw new Error("Un pedido cancelado no puede reabrirse ni cambiar a otro estado.");
+  }
+
+  const defaultNote = 
+    status === 'confirmed' ? 'Pedido confirmado' :
+    status === 'preparing' ? 'Preparando tu pedido' :
+    status === 'ready' ? 'Pedido listo para recoger' :
+    status === 'picked_up' ? 'Pedido recogido' :
+    status === 'delivering' ? 'En camino / Estamos llegando' :
+    status === 'delivered' ? '¡Pedido entregado!' :
+    status === 'cancelled' ? (opts.cancellationReason || 'Pedido cancelado') :
+    `Estado actualizado a ${status}`;
+
+  const historyItem: OrderStatusHistoryItem = {
+    status,
+    timestamp: now,
+    note: opts.note || defaultNote,
+    updatedBy: opts.updatedBy || opts.cancelledBy || 'restaurant'
+  };
+
+  const updates: Partial<OrderItem> = {
+    status,
+    statusHistory: [
+      ...(currentOrder?.statusHistory || [
+        { status: currentOrder?.status || 'pending', timestamp: currentOrder?.createdAt || now, note: 'Inicio de pedido' }
+      ]),
+      historyItem
+    ]
+  };
+
+  if (status === 'cancelled') {
+    updates.cancelledBy = opts.cancelledBy || 'restaurant';
+    updates.cancellationReason = opts.cancellationReason || opts.note || 'Cancelado por el restaurante';
+    updates.cancelledAt = now;
+  }
+
+  try {
+    await updateDoc(docRef, updates);
   } catch (e) {
     console.warn("DB status update error, modifying local cache icon", e);
   }
@@ -1607,7 +1686,7 @@ export async function updateOrderStatus(orderId: string, storeOwnerId: string, s
     const localOrders = JSON.parse(localStorage.getItem(key) || '[]');
     const idx = localOrders.findIndex((o: any) => o.id === orderId);
     if (idx > -1) {
-      localOrders[idx].status = status;
+      localOrders[idx] = { ...localOrders[idx], ...updates };
       localStorage.setItem(key, JSON.stringify(localOrders));
     }
   } catch (e) {}
@@ -1617,10 +1696,216 @@ export async function updateOrderStatus(orderId: string, storeOwnerId: string, s
     const localAll = JSON.parse(localStorage.getItem(allKey) || '[]');
     const idxAll = localAll.findIndex((o: any) => o.id === orderId);
     if (idxAll > -1) {
-      localAll[idxAll].status = status;
+      localAll[idxAll] = { ...localAll[idxAll], ...updates };
       localStorage.setItem(allKey, JSON.stringify(localAll));
     }
   } catch (e) {}
+}
+
+/**
+ * Atomic Firestore Transaction for restaurant to confirm order with its own delivery.
+ * Sets deliveryType: 'restaurant' and status: 'confirmed'.
+ * Immediately removes it from available RYYCO delivery driver queue.
+ */
+export async function confirmOrderRestaurantTransaction(
+  orderId: string,
+  storeOwnerId?: string,
+  notes?: string
+): Promise<{ success: boolean; message: string }> {
+  const orderRef = doc(db, 'orders', orderId);
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const orderDoc = await transaction.get(orderRef);
+      if (!orderDoc.exists()) {
+        throw new Error("El pedido ya no existe.");
+      }
+
+      const orderData = orderDoc.data() as OrderItem;
+
+      if (orderData.status === 'cancelled') {
+        return {
+          success: false,
+          message: "El pedido se encuentra cancelado y no puede confirmarse."
+        };
+      }
+
+      if (orderData.deliveryType === 'ryyco' || (orderData.deliveryDriverId && orderData.deliveryDriverId.trim() !== '')) {
+        return {
+          success: false,
+          message: `El pedido ya fue aceptado por el domiciliario RYYCO ${orderData.deliveryDriverName || ''}.`
+        };
+      }
+
+      if (orderData.deliveryType === 'restaurant' && orderData.status !== 'pending') {
+        return {
+          success: false,
+          message: "El pedido ya fue confirmado previamente con domiciliario propio."
+        };
+      }
+
+      if (orderData.status !== 'pending') {
+        return {
+          success: false,
+          message: "El pedido no se encuentra en estado esperando confirmación."
+        };
+      }
+
+      const now = new Date().toISOString();
+      const historyItem: OrderStatusHistoryItem = {
+        status: 'confirmed',
+        timestamp: now,
+        note: notes || 'Confirmado por el restaurante con domiciliario propio',
+        updatedBy: 'restaurant'
+      };
+
+      const restaurantUpdates: Partial<OrderItem> = {
+        deliveryType: 'restaurant',
+        status: 'confirmed',
+        deliveryStep: 'accepted' as const,
+        deliveryStepUpdatedAt: now,
+        statusHistory: [
+          ...(orderData.statusHistory || [
+            { status: 'pending', timestamp: orderData.createdAt || now, note: 'Esperando confirmación', updatedBy: 'customer' }
+          ]),
+          historyItem
+        ]
+      };
+
+      transaction.update(orderRef, restaurantUpdates);
+
+      // Local storage backup sync
+      try {
+        const storeKey = `linnk_orders_${orderData.storeOwnerId}`;
+        const storeOrders = JSON.parse(localStorage.getItem(storeKey) || '[]');
+        const idx = storeOrders.findIndex((o: any) => o.id === orderId);
+        if (idx > -1) {
+          storeOrders[idx] = { ...storeOrders[idx], ...restaurantUpdates };
+          localStorage.setItem(storeKey, JSON.stringify(storeOrders));
+        }
+
+        const allKey = 'linnk_orders_all';
+        const allOrders = JSON.parse(localStorage.getItem(allKey) || '[]');
+        const idxAll = allOrders.findIndex((o: any) => o.id === orderId);
+        if (idxAll > -1) {
+          allOrders[idxAll] = { ...allOrders[idxAll], ...restaurantUpdates };
+          localStorage.setItem(allKey, JSON.stringify(allOrders));
+        }
+      } catch (e) {}
+
+      return {
+        success: true,
+        message: "¡Pedido confirmado exitosamente con domiciliario propio del restaurante!"
+      };
+    });
+
+    return result;
+  } catch (err: any) {
+    console.error("Error in confirmOrderRestaurantTransaction:", err);
+    return {
+      success: false,
+      message: err?.message || "Ocurrió un error al confirmar el pedido."
+    };
+  }
+}
+
+/**
+ * Atomic Firestore Transaction to cancel an order safely.
+ * Validates that delivered orders cannot be cancelled and registers audit log.
+ */
+export async function cancelOrderTransaction(
+  orderId: string,
+  cancelledBy: 'customer' | 'restaurant' | 'driver' | 'system',
+  reason?: string
+): Promise<{ success: boolean; message: string }> {
+  const orderRef = doc(db, 'orders', orderId);
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const orderDoc = await transaction.get(orderRef);
+      if (!orderDoc.exists()) {
+        throw new Error("El pedido ya no existe.");
+      }
+
+      const orderData = orderDoc.data() as OrderItem;
+
+      if (orderData.status === 'delivered') {
+        return {
+          success: false,
+          message: "Un pedido completado y entregado no puede ser cancelado."
+        };
+      }
+
+      if (orderData.status === 'cancelled') {
+        return {
+          success: true,
+          message: "El pedido ya se encuentra cancelado."
+        };
+      }
+
+      const now = new Date().toISOString();
+      const defaultReason = 
+        cancelledBy === 'customer' ? 'El cliente solicitó cancelar el pedido' :
+        cancelledBy === 'restaurant' ? 'El restaurante canceló el pedido' :
+        cancelledBy === 'driver' ? 'El domiciliario canceló por novedad' :
+        'Cancelado por el sistema';
+
+      const finalReason = reason || defaultReason;
+      const historyItem: OrderStatusHistoryItem = {
+        status: 'cancelled',
+        timestamp: now,
+        note: finalReason,
+        updatedBy: cancelledBy
+      };
+
+      const cancelUpdates: Partial<OrderItem> = {
+        status: 'cancelled',
+        cancelledBy,
+        cancellationReason: finalReason,
+        cancelledAt: now,
+        statusHistory: [
+          ...(orderData.statusHistory || [
+            { status: orderData.status, timestamp: orderData.createdAt || now, note: 'Inicio de pedido' }
+          ]),
+          historyItem
+        ]
+      };
+
+      transaction.update(orderRef, cancelUpdates);
+
+      // Local storage backup sync
+      try {
+        const storeKey = `linnk_orders_${orderData.storeOwnerId}`;
+        const storeOrders = JSON.parse(localStorage.getItem(storeKey) || '[]');
+        const idx = storeOrders.findIndex((o: any) => o.id === orderId);
+        if (idx > -1) {
+          storeOrders[idx] = { ...storeOrders[idx], ...cancelUpdates };
+          localStorage.setItem(storeKey, JSON.stringify(storeOrders));
+        }
+
+        const allKey = 'linnk_orders_all';
+        const allOrders = JSON.parse(localStorage.getItem(allKey) || '[]');
+        const idxAll = allOrders.findIndex((o: any) => o.id === orderId);
+        if (idxAll > -1) {
+          allOrders[idxAll] = { ...allOrders[idxAll], ...cancelUpdates };
+          localStorage.setItem(allKey, JSON.stringify(allOrders));
+        }
+      } catch (e) {}
+
+      return {
+        success: true,
+        message: "Pedido cancelado correctamente."
+      };
+    });
+
+    return result;
+  } catch (err: any) {
+    console.error("Error in cancelOrderTransaction:", err);
+    return {
+      success: false,
+      message: err?.message || "Ocurrió un error al intentar cancelar el pedido."
+    };
+  }
 }
 
 // DELETE CUSTOMER ORDER
@@ -3602,13 +3887,16 @@ export function listenToUnassignedOrders(onOrdersChanged: (orders: OrderItem[]) 
     snapshot.forEach(d => {
       const order = { id: d.id, ...d.data() } as OrderItem;
       // An order is available for driver pick-up ONLY if:
-      // 1. Order status is strictly 'pending' (pendiente)
-      // 2. Order does NOT have a driver assigned yet
-      // 3. Order is NOT a table order (pedido en mesa) or pickup order (recoger en restaurante)
+      // 1. Order status is strictly 'pending' (esperando confirmación)
+      // 2. Order is NOT confirmed by the restaurant with own delivery
+      // 3. Order does NOT have a driver assigned yet
+      // 4. Order is NOT a table order or pickup order
       const isTableOrPickup = order.orderType === 'table' || order.orderType === 'pickup' || order.isTableOrder || order.customerName?.toLowerCase().startsWith('mesa ') || order.customerAddress?.toLowerCase().includes('mesa') || order.customerAddress?.toLowerCase().includes('recoger');
       if (
         order.status === 'pending' && 
+        order.deliveryType !== 'restaurant' &&
         (!order.deliveryDriverId || order.deliveryDriverId.trim() === '') &&
+        (!order.driverId || order.driverId.trim() === '') &&
         !isTableOrPickup
       ) {
         unassigned.push(order);
@@ -3630,7 +3918,8 @@ export function listenToUnassignedOrders(onOrdersChanged: (orders: OrderItem[]) 
 
 /**
  * Atomic Firestore Transaction to accept an order.
- * Prevents race conditions where 2 drivers click 'Aceptar Pedido' at the same time.
+ * Prevents race conditions where 2 drivers click 'Aceptar Pedido' at the same time,
+ * or where a driver accepts after the restaurant already confirmed with its own courier.
  */
 export async function acceptDeliveryOrderTransaction(orderId: string, driver: DriverProfile, systemFee?: number): Promise<{ success: boolean; message: string }> {
   const orderRef = doc(db, 'orders', orderId);
@@ -3644,17 +3933,47 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
 
       const orderData = orderDoc.data() as OrderItem;
 
-      if (orderData.deliveryDriverId && orderData.deliveryDriverId.trim() !== '') {
+      if (orderData.status === 'cancelled') {
+        return {
+          success: false,
+          message: "El pedido fue cancelado y ya no está disponible."
+        };
+      }
+
+      if (orderData.deliveryType === 'restaurant') {
+        return {
+          success: false,
+          message: "El restaurante ya confirmó este pedido con su domiciliario propio."
+        };
+      }
+
+      if ((orderData.deliveryDriverId && orderData.deliveryDriverId.trim() !== '') || (orderData.driverId && orderData.driverId.trim() !== '')) {
         return {
           success: false,
           message: `El pedido ya fue aceptado por el domiciliario ${orderData.deliveryDriverName || 'otro usuario'}.`
         };
       }
 
+      if (orderData.status !== 'pending') {
+        return {
+          success: false,
+          message: "El pedido ya no se encuentra esperando asignación."
+        };
+      }
+
       const now = new Date().toISOString();
       const effectiveFee = systemFee || 7000;
-      const driverDataUpdates: any = {
+      const historyItem: OrderStatusHistoryItem = {
+        status: 'confirmed',
+        timestamp: now,
+        note: `Pedido aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName}`,
+        updatedBy: 'driver'
+      };
+
+      const driverDataUpdates: Partial<OrderItem> = {
         deliveryFee: effectiveFee,
+        deliveryType: 'ryyco',
+        driverId: driver.id,
         deliveryDriverId: driver.id,
         deliveryDriverName: `${driver.firstName} ${driver.lastName}`,
         deliveryDriverPhone: driver.phone,
@@ -3663,7 +3982,13 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         deliveryVehiclePlate: driver.vehiclePlate || '',
         deliveryStep: 'accepted' as const,
         deliveryStepUpdatedAt: now,
-        status: orderData.status === 'pending' ? 'processing' : orderData.status
+        status: 'confirmed',
+        statusHistory: [
+          ...(orderData.statusHistory || [
+            { status: 'pending', timestamp: orderData.createdAt || now, note: 'Esperando confirmación', updatedBy: 'customer' }
+          ]),
+          historyItem
+        ]
       };
 
       // Enrich with store reference and GPS if missing on the order
@@ -3733,16 +4058,57 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
   const orderRef = doc(db, 'orders', orderId);
   const now = new Date().toISOString();
 
-  const updates: Partial<OrderItem> = {
-    deliveryStep: step,
-    deliveryStepUpdatedAt: now
+  let currentOrder: OrderItem | null = null;
+  try {
+    const snap = await getDoc(orderRef);
+    if (snap.exists()) {
+      currentOrder = snap.data() as OrderItem;
+    }
+  } catch (e) {}
+
+  if (currentOrder?.status === 'delivered') {
+    throw new Error("Un pedido entregado no puede ser modificado.");
+  }
+  if (currentOrder?.status === 'cancelled') {
+    throw new Error("Un pedido cancelado no puede ser modificado.");
+  }
+
+  let nextStatus: OrderStatus = currentOrder?.status || 'confirmed';
+  let historyNote = '';
+
+  if (step === 'picked_up') {
+    nextStatus = 'picked_up';
+    historyNote = 'Tu pedido va en camino (recogido por domiciliario)';
+  } else if (step === 'to_client' || step === 'at_destination') {
+    nextStatus = 'delivering';
+    historyNote = 'Estamos llegando a tu dirección';
+  } else if (step === 'delivered') {
+    nextStatus = 'delivered';
+    historyNote = '¡Pedido entregado exitosamente!';
+  } else if (step === 'to_store') {
+    historyNote = 'Domiciliario en camino a la tienda';
+  } else if (step === 'at_store') {
+    historyNote = 'Domiciliario esperando en la tienda';
+  }
+
+  const historyItem: OrderStatusHistoryItem = {
+    status: nextStatus,
+    timestamp: now,
+    note: historyNote || `Paso: ${step}`,
+    updatedBy: 'driver'
   };
 
-  if (step === 'picked_up' || step === 'to_client') {
-    updates.status = 'shipped';
-  } else if (step === 'delivered') {
-    updates.status = 'delivered';
-  }
+  const updates: Partial<OrderItem> = {
+    deliveryStep: step,
+    deliveryStepUpdatedAt: now,
+    status: nextStatus,
+    statusHistory: [
+      ...(currentOrder?.statusHistory || [
+        { status: currentOrder?.status || 'pending', timestamp: currentOrder?.createdAt || now, note: 'Inicio de pedido' }
+      ]),
+      historyItem
+    ]
+  };
 
   await updateDoc(orderRef, updates);
 

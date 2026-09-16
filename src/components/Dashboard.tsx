@@ -85,6 +85,8 @@ import {
   deduplicateOrders,
   subscribeOrders,
   updateOrderStatus,
+  confirmOrderRestaurantTransaction,
+  cancelOrderTransaction,
   isUsernameAvailable,
   fetchMySubscriptionPayments,
   saveSubscriptionPayment,
@@ -1115,18 +1117,99 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
   };
 
-  // Modify Order Status
-  const handleUpdateStatus = async (orderId: string, status: OrderItem['status']) => {
+  // Modify Order Status with transition validation
+  const handleUpdateStatus = async (orderId: string, status: OrderItem['status'], note?: string) => {
     try {
-      await updateOrderStatus(orderId, profile.uid, status);
+      await updateOrderStatus(orderId, profile.uid, status, note);
       // Update local state
       setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
       if (viewingOrder && viewingOrder.id === orderId) {
         setViewingOrder(prev => prev ? { ...prev, status } : null);
       }
-    } catch(e) {
+    } catch(e: any) {
       console.error(e);
+      alert(e?.message || "Error al actualizar el estado del pedido.");
     }
+  };
+
+  // Restaurant confirms order with its own delivery courier
+  const handleConfirmOrderRestaurant = async (orderId: string) => {
+    try {
+      const res = await confirmOrderRestaurantTransaction(orderId, profile.uid);
+      if (res.success) {
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'confirmed', deliveryType: 'restaurant' } : o));
+        if (viewingOrder && viewingOrder.id === orderId) {
+          setViewingOrder(prev => prev ? { ...prev, status: 'confirmed', deliveryType: 'restaurant' } : null);
+        }
+      } else {
+        alert(res.message);
+      }
+    } catch (e: any) {
+      alert(e?.message || "Error al confirmar el pedido.");
+    }
+  };
+
+  // Cancel order safely with reason
+  const handleCancelOrder = async (orderId: string) => {
+    const reason = window.prompt("Ingresa el motivo de la cancelación del pedido:");
+    if (reason === null) return;
+    const finalReason = reason.trim() || 'Cancelado por el restaurante';
+    try {
+      const res = await cancelOrderTransaction(orderId, 'restaurant', finalReason);
+      if (res.success) {
+        const now = new Date().toISOString();
+        setOrders(prev => prev.map(o => o.id === orderId ? {
+          ...o,
+          status: 'cancelled',
+          cancelledBy: 'restaurant',
+          cancellationReason: finalReason,
+          cancelledAt: now
+        } : o));
+        if (viewingOrder && viewingOrder.id === orderId) {
+          setViewingOrder(prev => prev ? {
+            ...prev,
+            status: 'cancelled',
+            cancelledBy: 'restaurant',
+            cancellationReason: finalReason,
+            cancelledAt: now
+          } : null);
+        }
+      } else {
+        alert(res.message);
+      }
+    } catch (e: any) {
+      alert(e?.message || "Error al cancelar el pedido.");
+    }
+  };
+
+  // Helper for order status badge styling and display names
+  const getOrderBadgeInfo = (order: OrderItem) => {
+    if (order.status === 'cancelled') {
+      return { bg: 'bg-red-500/10 text-red-400 border-red-500/20', text: 'text-red-400', name: 'Cancelado' };
+    }
+    if (order.status === 'delivered') {
+      return { bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', text: 'text-emerald-400', name: 'Entregado' };
+    }
+    if (order.status === 'delivering') {
+      return { bg: 'bg-sky-500/10 text-sky-400 border-sky-500/20', text: 'text-sky-400', name: 'En Camino' };
+    }
+    if (order.status === 'picked_up' || order.status === 'shipped') {
+      return { bg: 'bg-purple-500/10 text-purple-400 border-purple-500/20', text: 'text-purple-400', name: 'Recogido' };
+    }
+    if (order.status === 'ready') {
+      return { bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', text: 'text-indigo-400', name: 'Listo para Recoger' };
+    }
+    if (order.status === 'preparing' || order.status === 'processing') {
+      return { bg: 'bg-orange-500/10 text-orange-400 border-orange-500/20', text: 'text-orange-400', name: 'En Preparación' };
+    }
+    if (order.status === 'confirmed') {
+      if (order.deliveryType === 'restaurant') {
+        return { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Confirmado (Propio)' };
+      }
+      return { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Domiciliario Asignado' };
+    }
+    // pending
+    return { bg: 'bg-amber-500/10 text-amber-400 border-amber-500/20', text: 'text-amber-400', name: 'Nuevo Pedido' };
   };
 
   // Format Price Values
@@ -1914,14 +1997,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </thead>
                             <tbody className="divide-y divide-gray-900">
                               {orders.slice(0, 5).map((order) => {
-                                const badges: Record<string, { bg: string, text: string, name: string }> = {
-                                  'pending': { bg: 'bg-amber-500/10 text-amber-400 border-amber-500/20', text: 'text-amber-400', name: 'Pendiente' },
-                                  'processing': { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Procesando' },
-                                  'shipped': { bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', text: 'text-indigo-400', name: 'Enviado' },
-                                  'delivered': { bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', text: 'text-emerald-400', name: 'Entregado' },
-                                  'cancelled': { bg: 'bg-red-500/10 text-red-400 border-red-500/20', text: 'text-red-400', name: 'Cancelado' },
-                                };
-                                const state = badges[order.status] || badges.pending;
+                                const state = getOrderBadgeInfo(order);
 
                                 return (
                                   <tr key={order.id} className="hover:bg-gray-900/40 text-gray-300 font-medium">
@@ -2972,14 +3048,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </tr>
                               ) : (
                                 filteredOrders.map((order) => {
-                                const badges: Record<string, { bg: string, text: string, name: string }> = {
-                                  'pending': { bg: 'bg-amber-500/10 text-amber-400 border-amber-500/20', text: 'text-amber-400', name: 'Pendiente' },
-                                  'processing': { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Procesando' },
-                                  'shipped': { bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', text: 'text-indigo-400', name: 'Enviado' },
-                                  'delivered': { bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', text: 'text-emerald-400', name: 'Entregado' },
-                                  'cancelled': { bg: 'bg-red-500/10 text-red-400 border-red-500/20', text: 'text-red-400', name: 'Cancelado' },
-                                };
-                                const state = badges[order.status] || badges.pending;
+                                const state = getOrderBadgeInfo(order);
 
                                 return (
                                   <tr key={order.id} className="hover:bg-gray-900/30 text-gray-300 font-medium">
@@ -3004,12 +3073,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         )}
                                       </div>
                                       <div className="text-[10px] text-gray-500 truncate">{order.customerAddress || 'Retiro local'}</div>
-                                      {order.deliveryDriverName && (
-                                        <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold" title={`Domiciliario: ${order.deliveryDriverName} (${order.deliveryDriverPhone})`}>
+                                      {order.deliveryDriverName ? (
+                                        <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold" title={`Domiciliario RYYCO: ${order.deliveryDriverName} (${order.deliveryDriverPhone})`}>
                                           <Bike className="w-3 h-3 text-emerald-400 shrink-0" />
                                           <span className="truncate max-w-[120px]">{order.deliveryDriverName}</span>
                                         </div>
-                                      )}
+                                      ) : order.deliveryType === 'restaurant' ? (
+                                        <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.2 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded text-[9px] font-bold">
+                                          <Bike className="w-3 h-3 text-blue-400 shrink-0" />
+                                          <span>Domicilio Propio</span>
+                                        </div>
+                                      ) : null}
                                     </td>
                                     <td className="py-3.5 px-2 text-gray-400 font-mono text-[10px]">
                                       <div>{new Date(order.createdAt).toLocaleDateString('es-CO')}</div>
@@ -3022,28 +3096,58 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     </td>
                                     <td className="py-3.5 px-2 font-bold text-white text-[11.5px]">{formatPrice(order.totalAmount)}</td>
                                     <td className="py-3.5 px-2 text-right">
-                                      <div className="flex justify-end gap-1.5">
-                                        
+                                      <div className="flex justify-end items-center gap-1.5">
+                                        {order.status === 'pending' && !checkIsTableOrder(order) && !checkIsPickupOrder(order) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleConfirmOrderRestaurant(order.id)}
+                                            className="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[9px] font-extrabold flex items-center gap-1 transition shadow-sm shrink-0"
+                                            title="Confirmar con domiciliario propio del restaurante"
+                                          >
+                                            <Bike className="w-3 h-3" />
+                                            <span className="hidden xl:inline">Tomar Propio</span>
+                                          </button>
+                                        )}
+
                                         {/* Status dropdown controller */}
                                         {checkIsTableOrder(order) ? (
                                           <select
-                                            value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status}
-                                            onChange={(e) => handleUpdateStatus(order.id, e.target.value as OrderItem['status'])}
-                                            className="text-[9px] bg-amber-950/80 hover:bg-amber-900 border border-amber-500/40 text-amber-300 font-extrabold px-1.5 py-1 rounded cursor-pointer"
+                                            value={order.status === 'shipped' || order.status === 'delivering' ? 'preparing' : order.status}
+                                            disabled={order.status === 'delivered' || order.status === 'cancelled'}
+                                            onChange={(e) => {
+                                              const val = e.target.value as OrderItem['status'];
+                                              if (val === 'cancelled') handleCancelOrder(order.id);
+                                              else handleUpdateStatus(order.id, val);
+                                            }}
+                                            className="text-[9px] bg-amber-950/80 hover:bg-amber-900 border border-amber-500/40 text-amber-300 font-extrabold px-1.5 py-1 rounded cursor-pointer disabled:opacity-50"
                                           >
-                                            <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
-                                            <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                                            <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Nuevo</option>
+                                            <option value="preparing" className="bg-gray-950 text-orange-400 font-bold">En Preparación</option>
                                             <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                                            <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelar</option>
                                           </select>
                                         ) : (
                                           <select
                                             value={order.status}
-                                            onChange={(e) => handleUpdateStatus(order.id, e.target.value as OrderItem['status'])}
-                                            className="text-[9px] bg-gray-900 hover:bg-gray-850 border border-gray-800 text-gray-300 px-1 py-1 rounded"
+                                            disabled={order.status === 'delivered' || order.status === 'cancelled'}
+                                            onChange={(e) => {
+                                              const val = e.target.value as OrderItem['status'];
+                                              if (val === 'confirmed' && order.status === 'pending') {
+                                                handleConfirmOrderRestaurant(order.id);
+                                              } else if (val === 'cancelled') {
+                                                handleCancelOrder(order.id);
+                                              } else {
+                                                handleUpdateStatus(order.id, val);
+                                              }
+                                            }}
+                                            className="text-[9px] bg-gray-900 hover:bg-gray-850 border border-gray-800 text-gray-300 px-1 py-1 rounded disabled:opacity-50 cursor-pointer"
                                           >
-                                            <option value="pending">Marcar Pendiente</option>
-                                            <option value="processing">En Proceso</option>
-                                            <option value="shipped">Despachado</option>
+                                            <option value="pending">Nuevo Pedido</option>
+                                            <option value="confirmed">Confirmar (Propio)</option>
+                                            <option value="preparing">En Preparación</option>
+                                            <option value="ready">Listo para Recoger</option>
+                                            <option value="picked_up">Recogido</option>
+                                            <option value="delivering">En Camino</option>
                                             <option value="delivered">Entregado</option>
                                             <option value="cancelled">Cancelar</option>
                                           </select>
@@ -3085,89 +3189,118 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
                           ) : (
                             filteredOrders.map((order) => {
-                              const badges: Record<string, { bg: string, text: string, name: string }> = {
-                              'pending': { bg: 'bg-amber-500/10 text-amber-400 border-amber-500/20', text: 'text-amber-400', name: 'Pendiente' },
-                              'processing': { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Procesando' },
-                              'shipped': { bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', text: 'text-indigo-400', name: 'Enviado' },
-                              'delivered': { bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', text: 'text-emerald-400', name: 'Entregado' },
-                              'cancelled': { bg: 'bg-red-500/10 text-red-400 border-red-500/20', text: 'text-red-400', name: 'Cancelado' },
-                            };
-                            const state = badges[order.status] || badges.pending;
+                              const state = getOrderBadgeInfo(order);
 
-                            return (
-                              <div key={order.id} className="bg-gray-900/30 border border-gray-900 rounded-2xl p-4 space-y-3 text-xs font-semibold text-gray-300">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="font-mono text-white font-extrabold text-[13px]">#{order.orderNumber}</span>
-                                  <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border ${state.bg}`}>
-                                    {state.name}
-                                  </span>
-                                </div>
+                              return (
+                                <div key={order.id} className="bg-gray-900/30 border border-gray-900 rounded-2xl p-4 space-y-3 text-xs font-semibold text-gray-300">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-mono text-white font-extrabold text-[13px]">#{order.orderNumber}</span>
+                                    <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border ${state.bg}`}>
+                                      {state.name}
+                                    </span>
+                                  </div>
 
-                                <div className="space-y-1 border-t border-gray-900/50 pt-3">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="text-white font-extrabold text-[12.5px]">{order.customerName}</span>
-                                    {checkIsPickupOrder(order) && (
-                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded text-[8px] font-black uppercase tracking-wider">
-                                        🛍️ Recoger
-                                      </span>
-                                    )}
-                                    {checkIsTableOrder(order) && (
-                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded text-[8px] font-black uppercase tracking-wider">
-                                        🍽️ Mesa
-                                      </span>
-                                    )}
-                                    {order.proofImage && (
-                                      <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[8px] font-black uppercase tracking-wider" title="Tiene comprobante">
-                                        📸 Recibo
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-[10.5px] text-gray-500 leading-normal">{order.customerAddress || 'Retiro local'}</div>
-                                  <div className="text-[10.5px] text-gray-400 font-medium flex items-center gap-1.5 flex-wrap">
-                                    <span>Fecha: {new Date(order.createdAt).toLocaleDateString('es-CO')}</span>
-                                    <span className="text-gray-600">•</span>
-                                    <span>Hora: <strong className="text-gray-200 font-semibold">{new Date(order.createdAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}</strong></span>
-                                  </div>
-                                  {order.deliveryDriverName && (
-                                    <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 rounded-lg text-[10px] font-semibold">
-                                      <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                      <span>Domiciliario: <strong>{order.deliveryDriverName}</strong> ({order.deliveryDriverPhone})</span>
+                                  <div className="space-y-1 border-t border-gray-900/50 pt-3">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-white font-extrabold text-[12.5px]">{order.customerName}</span>
+                                      {checkIsPickupOrder(order) && (
+                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded text-[8px] font-black uppercase tracking-wider">
+                                          🛍️ Recoger
+                                        </span>
+                                      )}
+                                      {checkIsTableOrder(order) && (
+                                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded text-[8px] font-black uppercase tracking-wider">
+                                          🍽️ Mesa
+                                        </span>
+                                      )}
+                                      {order.proofImage && (
+                                        <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[8px] font-black uppercase tracking-wider" title="Tiene comprobante">
+                                          📸 Recibo
+                                        </span>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center justify-between gap-2 pt-1">
-                                  <span className="text-gray-500 text-[10px] font-bold uppercase">Total del Pedido:</span>
-                                  <span className="text-sm font-extrabold text-emerald-400">{formatPrice(order.totalAmount)}</span>
-                                </div>
-
-                                <div className="flex flex-col gap-2 pt-2.5 border-t border-gray-900/50">
-                                  <div className="flex items-center gap-2 bg-gray-950 px-3 py-1.5 rounded-xl border border-gray-850">
-                                    <span className="text-[9px] font-black uppercase text-gray-500 whitespace-nowrap">Estado:</span>
-                                    {checkIsTableOrder(order) ? (
-                                      <select
-                                        value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status}
-                                        onChange={(e) => handleUpdateStatus(order.id, e.target.value as OrderItem['status'])}
-                                        className="text-xs bg-transparent text-amber-300 font-extrabold outline-none flex-grow cursor-pointer"
-                                      >
-                                        <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
-                                        <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
-                                        <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
-                                      </select>
-                                    ) : (
-                                      <select
-                                        value={order.status}
-                                        onChange={(e) => handleUpdateStatus(order.id, e.target.value as OrderItem['status'])}
-                                        className="text-xs bg-transparent text-white font-extrabold outline-none flex-grow cursor-pointer"
-                                      >
-                                        <option value="pending">Pendiente</option>
-                                        <option value="processing">Procesando</option>
-                                        <option value="shipped">Despachado</option>
-                                        <option value="delivered">Entregado</option>
-                                        <option value="cancelled">Cancelado</option>
-                                      </select>
-                                    )}
+                                    <div className="text-[10.5px] text-gray-500 leading-normal">{order.customerAddress || 'Retiro local'}</div>
+                                    <div className="text-[10.5px] text-gray-400 font-medium flex items-center gap-1.5 flex-wrap">
+                                      <span>Fecha: {new Date(order.createdAt).toLocaleDateString('es-CO')}</span>
+                                      <span className="text-gray-600">•</span>
+                                      <span>Hora: <strong className="text-gray-200 font-semibold">{new Date(order.createdAt).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}</strong></span>
+                                    </div>
+                                    {order.deliveryDriverName ? (
+                                      <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 rounded-lg text-[10px] font-semibold">
+                                        <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                        <span>Domiciliario RYYCO: <strong>{order.deliveryDriverName}</strong> ({order.deliveryDriverPhone})</span>
+                                      </div>
+                                    ) : order.deliveryType === 'restaurant' ? (
+                                      <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-blue-950/40 text-blue-300 border border-blue-800/40 rounded-lg text-[10px] font-semibold">
+                                        <Bike className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                        <span>Entrega: <strong>Domiciliario Propio</strong></span>
+                                      </div>
+                                    ) : null}
                                   </div>
+
+                                  <div className="flex items-center justify-between gap-2 pt-1">
+                                    <span className="text-gray-500 text-[10px] font-bold uppercase">Total del Pedido:</span>
+                                    <span className="text-sm font-extrabold text-emerald-400">{formatPrice(order.totalAmount)}</span>
+                                  </div>
+
+                                  {/* Quick confirm own driver button for mobile */}
+                                  {order.status === 'pending' && !checkIsTableOrder(order) && !checkIsPickupOrder(order) && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleConfirmOrderRestaurant(order.id)}
+                                      className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md"
+                                    >
+                                      <Bike className="w-4 h-4" />
+                                      <span>Confirmar con Domiciliario Propio</span>
+                                    </button>
+                                  )}
+
+                                  <div className="flex flex-col gap-2 pt-2.5 border-t border-gray-900/50">
+                                    <div className="flex items-center gap-2 bg-gray-950 px-3 py-1.5 rounded-xl border border-gray-850">
+                                      <span className="text-[9px] font-black uppercase text-gray-500 whitespace-nowrap">Estado:</span>
+                                      {checkIsTableOrder(order) ? (
+                                        <select
+                                          value={order.status === 'shipped' || order.status === 'delivering' ? 'preparing' : order.status}
+                                          disabled={order.status === 'delivered' || order.status === 'cancelled'}
+                                          onChange={(e) => {
+                                            const val = e.target.value as OrderItem['status'];
+                                            if (val === 'cancelled') handleCancelOrder(order.id);
+                                            else handleUpdateStatus(order.id, val);
+                                          }}
+                                          className="text-xs bg-transparent text-amber-300 font-extrabold outline-none flex-grow cursor-pointer disabled:opacity-50"
+                                        >
+                                          <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Nuevo</option>
+                                          <option value="preparing" className="bg-gray-950 text-orange-400 font-bold">En Preparación</option>
+                                          <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                                          <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelar</option>
+                                        </select>
+                                      ) : (
+                                        <select
+                                          value={order.status}
+                                          disabled={order.status === 'delivered' || order.status === 'cancelled'}
+                                          onChange={(e) => {
+                                            const val = e.target.value as OrderItem['status'];
+                                            if (val === 'confirmed' && order.status === 'pending') {
+                                              handleConfirmOrderRestaurant(order.id);
+                                            } else if (val === 'cancelled') {
+                                              handleCancelOrder(order.id);
+                                            } else {
+                                              handleUpdateStatus(order.id, val);
+                                            }
+                                          }}
+                                          className="text-xs bg-transparent text-white font-extrabold outline-none flex-grow cursor-pointer disabled:opacity-50"
+                                        >
+                                          <option value="pending" className="bg-gray-950 text-amber-400">Nuevo Pedido</option>
+                                          <option value="confirmed" className="bg-gray-950 text-blue-400">Confirmar (Propio)</option>
+                                          <option value="preparing" className="bg-gray-950 text-orange-400">En Preparación</option>
+                                          <option value="ready" className="bg-gray-950 text-indigo-400">Listo para Recoger</option>
+                                          <option value="picked_up" className="bg-gray-950 text-purple-400">Recogido</option>
+                                          <option value="delivering" className="bg-gray-950 text-sky-400">En Camino</option>
+                                          <option value="delivered" className="bg-gray-950 text-emerald-400">Entregado</option>
+                                          <option value="cancelled" className="bg-gray-950 text-red-400">Cancelar</option>
+                                        </select>
+                                      )}
+                                    </div>
 
                                   <div className="flex gap-2">
                                     <button
@@ -4708,18 +4841,43 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               )}
             </div>
 
-            {/* Delivery Driver specifics */}
-            {viewingOrder.deliveryDriverName ? (
+            {/* Delivery Driver / Responsibility specifics */}
+            {viewingOrder.status === 'cancelled' ? (
+              <div className="p-3.5 bg-red-950/30 rounded-xl border border-red-800/40 text-[11px] text-red-300 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-red-400 tracking-wider flex items-center gap-1.5">
+                    <X className="w-4 h-4 text-red-400" />
+                    Pedido Cancelado
+                  </span>
+                  {viewingOrder.cancelledBy && (
+                    <span className="text-[9px] px-2 py-0.5 rounded bg-red-500/20 text-red-300 font-bold uppercase border border-red-500/30">
+                      Por: {viewingOrder.cancelledBy === 'restaurant' ? 'Restaurante' : viewingOrder.cancelledBy === 'customer' ? 'Cliente' : 'Domiciliario'}
+                    </span>
+                  )}
+                </div>
+                {viewingOrder.cancellationReason && (
+                  <div className="text-[11px] text-gray-300">
+                    Motivo: <span className="text-red-200 italic font-semibold">{viewingOrder.cancellationReason}</span>
+                  </div>
+                )}
+                {viewingOrder.cancelledAt && (
+                  <div className="text-[10px] text-gray-500 font-mono">
+                    Fecha: {new Date(viewingOrder.cancelledAt).toLocaleString('es-CO')}
+                  </div>
+                )}
+              </div>
+            ) : viewingOrder.deliveryDriverName ? (
               <div className="space-y-2 text-xs text-emerald-300 bg-emerald-950/30 p-4 rounded-xl border border-emerald-800/40">
                 <div className="flex items-center justify-between border-b border-emerald-800/30 pb-2">
                   <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
                     <Bike className="w-4 h-4 text-emerald-400" />
-                    Domiciliario Asignado
+                    Domiciliario RYYCO Asignado
                   </span>
                   <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-extrabold uppercase border border-emerald-500/30">
-                    {viewingOrder.deliveryStep === 'delivered' ? '✓ Entregado' :
-                     viewingOrder.deliveryStep === 'picked_up' || viewingOrder.deliveryStep === 'to_client' ? '🛵 En camino' :
-                     '🛵 Aceptado'}
+                    {viewingOrder.status === 'delivered' ? '✓ Entregado' :
+                     viewingOrder.status === 'delivering' ? '🛵 En camino' :
+                     viewingOrder.status === 'picked_up' ? '🛵 Recogido' :
+                     '🛵 Asignado'}
                   </span>
                 </div>
                 <div className="flex justify-between items-center pt-1"><span className="text-gray-400">Nombre:</span> <strong className="text-white font-extrabold">{viewingOrder.deliveryDriverName}</strong></div>
@@ -4740,6 +4898,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   <div className="flex justify-between items-center"><span className="text-gray-400">Vehículo:</span> <span className="text-white font-semibold">{viewingOrder.deliveryVehicle} {viewingOrder.deliveryVehiclePlate ? `(Placa: ${viewingOrder.deliveryVehiclePlate})` : ''}</span></div>
                 )}
               </div>
+            ) : viewingOrder.deliveryType === 'restaurant' ? (
+              <div className="space-y-2 text-xs text-blue-300 bg-blue-950/30 p-4 rounded-xl border border-blue-800/40">
+                <div className="flex items-center justify-between border-b border-blue-800/30 pb-2">
+                  <span className="text-[10px] font-bold uppercase text-blue-400 tracking-wider flex items-center gap-1.5">
+                    <Bike className="w-4 h-4 text-blue-400" />
+                    Entrega con Domiciliario Propio
+                  </span>
+                  <span className="text-[9px] px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-extrabold uppercase border border-blue-500/30">
+                    ✓ Confirmado Tienda
+                  </span>
+                </div>
+                <div className="text-[11px] text-gray-300">
+                  Este pedido es gestionado directamente por tu personal de reparto interno.
+                </div>
+              </div>
             ) : checkIsPickupOrder(viewingOrder) ? (
               <div className="p-3 bg-emerald-950/30 rounded-xl border border-emerald-800/40 text-[11px] text-emerald-300 flex items-center gap-2">
                 <span className="text-base">🛍️</span>
@@ -4751,9 +4924,27 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 <span className="font-semibold">Pedido en Mesa (Atención en salón / restaurante)</span>
               </div>
             ) : (
-              <div className="p-3 bg-gray-900/40 rounded-xl border border-gray-900 text-[11px] text-gray-500 flex items-center gap-2">
-                <Bike className="w-4 h-4 text-gray-600 shrink-0" />
-                <span>Domiciliario: Sin asignar aún (Esperando aceptación de un repartidor)</span>
+              <div className="p-3.5 bg-amber-950/30 rounded-xl border border-amber-800/40 text-[11px] text-amber-300 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
+                    <Bike className="w-4 h-4 text-amber-400" />
+                    Esperando Asignación de Reparto
+                  </span>
+                  <span className="text-[9px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold uppercase border border-amber-500/30">
+                    Disponible RYYCO
+                  </span>
+                </div>
+                <p className="text-gray-400 text-[11px]">
+                  Visible para domiciliarios RYYCO. Si cuentas con repartidor propio disponible, puedes confirmar el pedido para tomar la entrega:
+                </p>
+                <button
+                  type="button"
+                  onClick={() => handleConfirmOrderRestaurant(viewingOrder.id)}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-lg transition flex items-center justify-center gap-1.5 shadow-md"
+                >
+                  <Bike className="w-4 h-4" />
+                  Confirmar Pedido (Domiciliario Propio)
+                </button>
               </div>
             )}
 
@@ -4816,34 +5007,84 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <span className="text-emerald-400 text-base">{formatPrice(viewingOrder.totalAmount)}</span>
             </div>
 
+            {/* Status history log if present */}
+            {viewingOrder.statusHistory && viewingOrder.statusHistory.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <span className="text-[9px] font-bold uppercase text-indigo-400 tracking-wider block">Historial de Eventos</span>
+                <div className="space-y-1 max-h-28 overflow-y-auto bg-gray-900/40 p-2.5 rounded-xl border border-gray-900 text-[10px]">
+                  {viewingOrder.statusHistory.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-2 border-b border-gray-900/60 pb-1 last:border-0 last:pb-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-extrabold text-white uppercase">{item.status}</span>
+                        {item.note && <span className="text-gray-400">({item.note})</span>}
+                      </div>
+                      <span className="text-gray-500 font-mono text-[9px] shrink-0">
+                        {new Date(item.timestamp).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Order state changer controls inside modal */}
-            <div className="pt-4 border-t border-gray-900 flex flex-col sm:flex-row gap-2">
+            <div className="pt-4 border-t border-gray-900 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="flex-grow flex items-center gap-1.5">
-                <span className="text-[10.5px] font-bold text-gray-500 uppercase">Cambiar estado:</span>
+                <span className="text-[10.5px] font-bold text-gray-500 uppercase shrink-0">Estado:</span>
                 {checkIsTableOrder(viewingOrder) ? (
                   <select
-                    value={viewingOrder.status === 'shipped' ? 'processing' : viewingOrder.status === 'cancelled' ? 'pending' : viewingOrder.status}
-                    onChange={(e) => handleUpdateStatus(viewingOrder.id, e.target.value as OrderItem['status'])}
-                    className="text-xs bg-amber-950/90 border border-amber-500/40 text-amber-300 rounded p-1.5 flex-grow font-extrabold focus:outline-none cursor-pointer"
+                    value={viewingOrder.status === 'shipped' || viewingOrder.status === 'delivering' ? 'preparing' : viewingOrder.status}
+                    disabled={viewingOrder.status === 'delivered' || viewingOrder.status === 'cancelled'}
+                    onChange={(e) => {
+                      const val = e.target.value as OrderItem['status'];
+                      if (val === 'cancelled') handleCancelOrder(viewingOrder.id);
+                      else handleUpdateStatus(viewingOrder.id, val);
+                    }}
+                    className="text-xs bg-amber-950/90 border border-amber-500/40 text-amber-300 rounded p-1.5 flex-grow font-extrabold focus:outline-none cursor-pointer disabled:opacity-50"
                   >
-                    <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
-                    <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                    <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Nuevo</option>
+                    <option value="preparing" className="bg-gray-950 text-orange-400 font-bold">En Preparación</option>
                     <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                    <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelar</option>
                   </select>
                 ) : (
                   <select
                     value={viewingOrder.status}
-                    onChange={(e) => handleUpdateStatus(viewingOrder.id, e.target.value as OrderItem['status'])}
-                    className="text-xs bg-gray-900 border border-gray-800 text-white rounded p-1.5 flex-grow font-semibold focus:outline-none"
+                    disabled={viewingOrder.status === 'delivered' || viewingOrder.status === 'cancelled'}
+                    onChange={(e) => {
+                      const val = e.target.value as OrderItem['status'];
+                      if (val === 'confirmed' && viewingOrder.status === 'pending') {
+                        handleConfirmOrderRestaurant(viewingOrder.id);
+                      } else if (val === 'cancelled') {
+                        handleCancelOrder(viewingOrder.id);
+                      } else {
+                        handleUpdateStatus(viewingOrder.id, val);
+                      }
+                    }}
+                    className="text-xs bg-gray-900 border border-gray-800 text-white rounded p-1.5 flex-grow font-semibold focus:outline-none cursor-pointer disabled:opacity-50"
                   >
-                    <option value="pending">Pendiente</option>
-                    <option value="processing">Procesando</option>
-                    <option value="shipped">Enviado</option>
+                    <option value="pending">Nuevo Pedido</option>
+                    <option value="confirmed">Confirmar (Propio)</option>
+                    <option value="preparing">En Preparación</option>
+                    <option value="ready">Listo para Recoger</option>
+                    <option value="picked_up">Recogido</option>
+                    <option value="delivering">En Camino</option>
                     <option value="delivered">Entregado</option>
-                    <option value="cancelled">Cancelado</option>
+                    <option value="cancelled">Cancelar</option>
                   </select>
                 )}
               </div>
+
+              {viewingOrder.status !== 'delivered' && viewingOrder.status !== 'cancelled' && (
+                <button
+                  type="button"
+                  onClick={() => handleCancelOrder(viewingOrder.id)}
+                  className="py-2 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold text-xs rounded-xl flex items-center justify-center gap-1 transition shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  Cancelar
+                </button>
+              )}
 
               <button
                 type="button"

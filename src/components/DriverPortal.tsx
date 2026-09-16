@@ -534,6 +534,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           storeReference: incomingStoreRef || orderToClaim.storeReference || (orderToClaim as any).restaurantReference,
           deliveryFee: systemDeliveryFee || orderToClaim.deliveryFee || 7000,
           deliveryDriverId: driver.id,
+          deliveryDriverName: driver.name,
+          deliveryDriverPhone: driver.phone,
+          deliveryType: 'ryyco_driver',
+          status: 'confirmed',
           deliveryStep: 'accepted'
         });
         setSelectedIncomingOrder(null);
@@ -560,7 +564,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       await updateOrderDeliveryStep(activeDelivery.id, nextStep, driver.id, systemDeliveryFee || activeDelivery.deliveryFee || 7000);
       const computedStatus: OrderItem['status'] = 
         nextStep === 'delivered' ? 'delivered' : 
-        (nextStep === 'picked_up' || nextStep === 'to_client') ? 'shipped' : 
+        (nextStep === 'to_client' || nextStep === 'at_destination') ? 'delivering' : 
+        nextStep === 'picked_up' ? 'picked_up' : 
         activeDelivery.status;
 
       const updated = {

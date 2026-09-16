@@ -577,17 +577,19 @@ export default function CustomerPortalModal({
     if (ord.status === 'cancelled') return 0;
     if (ord.status === 'delivered' || ord.deliveryStep === 'delivered') return 4;
     if (
+      ord.status === 'delivering' ||
+      ord.status === 'picked_up' || 
       ord.status === 'shipped' || 
       ord.deliveryStep === 'picked_up' || 
       ord.deliveryStep === 'to_client' || 
       ord.deliveryStep === 'at_destination'
     ) return 3;
     if (
+      ord.status === 'ready' ||
+      ord.status === 'preparing' || 
       ord.status === 'processing' || 
       ord.deliveryStep === 'to_store' || 
-      ord.deliveryStep === 'at_store' || 
-      ord.deliveryStep === 'accepted' || 
-      Boolean(ord.deliveryDriverName)
+      ord.deliveryStep === 'at_store'
     ) return 2;
     return 1;
   };
@@ -596,7 +598,7 @@ export default function CustomerPortalModal({
     if (ord.status === 'cancelled') {
       return (
         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-red-500/10 text-red-400 border border-red-500/20">
-          ❌ Cancelado
+          ❌ Cancelado {ord.cancelledBy ? `(${ord.cancelledBy === 'restaurant' ? 'por tienda' : ord.cancelledBy === 'customer' ? 'por cliente' : 'por repartidor'})` : ''}
         </span>
       );
     }
@@ -609,8 +611,8 @@ export default function CustomerPortalModal({
       );
     }
     if (
+      ord.status === 'delivering' || 
       ord.status === 'shipped' || 
-      ord.deliveryStep === 'picked_up' || 
       ord.deliveryStep === 'to_client' || 
       ord.deliveryStep === 'at_destination'
     ) {
@@ -618,6 +620,22 @@ export default function CustomerPortalModal({
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-500/15 text-purple-300 border border-purple-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping" />
           🛵 En Camino
+        </span>
+      );
+    }
+    if (ord.status === 'picked_up' || ord.deliveryStep === 'picked_up') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-500/15 text-purple-300 border border-purple-500/30">
+          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+          🛵 Pedido Recogido
+        </span>
+      );
+    }
+    if (ord.status === 'ready') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+          <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+          📦 Listo para Entrega
         </span>
       );
     }
@@ -629,6 +647,30 @@ export default function CustomerPortalModal({
         </span>
       );
     }
+    if (ord.status === 'preparing' || ord.status === 'processing') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+          👨‍🍳 En Cocina / Preparación
+        </span>
+      );
+    }
+    if (ord.status === 'confirmed') {
+      if (ord.deliveryType === 'restaurant') {
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            🛵 Domicilio Propio Confirmado
+          </span>
+        );
+      }
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          🛵 Domiciliario Asignado
+        </span>
+      );
+    }
     if (ord.deliveryStep === 'accepted' || (ord.deliveryDriverName && !ord.deliveryStep)) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30">
@@ -637,19 +679,11 @@ export default function CustomerPortalModal({
         </span>
       );
     }
-    if (ord.status === 'processing') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
-          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-          👨‍🍳 En Cocina
-        </span>
-      );
-    }
     // Default: pending
     return (
       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-500/15 text-amber-400 border border-amber-500/30">
         <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-        ⏳ Recibido / Pendiente
+        ⏳ Esperando Asignación
       </span>
     );
   };
@@ -1223,7 +1257,7 @@ export default function CustomerPortalModal({
                                     style={{ width: `${Math.min(100, Math.max(10, ((step - 1) / 3) * 100))}%` }}
                                   />
 
-                                  {/* Step 1: Received */}
+                                  {/* Step 1: Received / Confirmed */}
                                   <div className="relative z-10 flex flex-col items-center text-center">
                                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
                                       step >= 1 ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20' : 'bg-gray-800 text-gray-500'
@@ -1231,11 +1265,11 @@ export default function CustomerPortalModal({
                                       1
                                     </div>
                                     <span className={`text-[9px] font-bold mt-1 ${step >= 1 ? 'text-amber-400' : 'text-gray-500'}`}>
-                                      Recibido
+                                      {order.status === 'confirmed' ? 'Confirmado' : 'Recibido'}
                                     </span>
                                   </div>
 
-                                  {/* Step 2: Preparing */}
+                                  {/* Step 2: Preparing / Ready */}
                                   <div className="relative z-10 flex flex-col items-center text-center">
                                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
                                       step >= 2 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20' : 'bg-gray-800 text-gray-500'
@@ -1243,11 +1277,11 @@ export default function CustomerPortalModal({
                                       2
                                     </div>
                                     <span className={`text-[9px] font-bold mt-1 ${step >= 2 ? 'text-orange-400' : 'text-gray-500'}`}>
-                                      En Cocina
+                                      {order.status === 'ready' ? 'Listo' : (order.status === 'preparing' || order.status === 'processing') ? 'En Cocina' : 'Preparación'}
                                     </span>
                                   </div>
 
-                                  {/* Step 3: Shipped / Delivery */}
+                                  {/* Step 3: Picked up / En Camino */}
                                   <div className="relative z-10 flex flex-col items-center text-center">
                                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
                                       step >= 3 ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20' : 'bg-gray-800 text-gray-500'
@@ -1255,7 +1289,7 @@ export default function CustomerPortalModal({
                                       3
                                     </div>
                                     <span className={`text-[9px] font-bold mt-1 ${step >= 3 ? 'text-[#E63946]' : 'text-gray-500'}`}>
-                                      En Camino
+                                      {order.status === 'picked_up' ? 'Recogido' : 'En Camino'}
                                     </span>
                                   </div>
 
@@ -1274,6 +1308,34 @@ export default function CustomerPortalModal({
                               </div>
                             )}
 
+                            {/* Cancellation alert if cancelled */}
+                            {isCancelled && (
+                              <div className="p-3 bg-red-500/10 border border-red-500/25 rounded-xl text-xs space-y-1">
+                                <div className="flex items-center gap-1.5 text-red-400 font-bold">
+                                  <AlertCircle className="w-4 h-4 shrink-0" />
+                                  <span>Pedido cancelado {order.cancelledBy ? `por ${order.cancelledBy === 'restaurant' ? 'el restaurante' : order.cancelledBy === 'customer' ? 'el cliente' : 'el domiciliario'}` : ''}</span>
+                                </div>
+                                {order.cancellationReason && (
+                                  <p className="text-[11px] text-gray-300 pl-5.5">Motivo: "{order.cancellationReason}"</p>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Restaurant own delivery info if confirmed by store */}
+                            {order.deliveryType === 'restaurant' && (
+                              <div className="p-3 bg-blue-950/30 border border-blue-800/40 rounded-xl flex items-center justify-between gap-3 text-xs">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-full bg-blue-500/15 flex items-center justify-center text-blue-400">
+                                    <Truck className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-blue-400 font-black uppercase tracking-wider block">Entrega por el Restaurante</span>
+                                    <span className="font-bold text-white">Domiciliario propio de la tienda asignado</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Driver info if assigned */}
                             {order.deliveryDriverName && (
                               <div className="p-3 bg-[#161F30] border border-[#232E42] rounded-xl flex items-center justify-between gap-3 text-xs">
@@ -1282,7 +1344,7 @@ export default function CustomerPortalModal({
                                     <Truck className="w-4 h-4" />
                                   </div>
                                   <div>
-                                    <span className="text-[10px] text-[#E63946] font-black uppercase tracking-wider block">Domiciliario Asignado</span>
+                                    <span className="text-[10px] text-[#E63946] font-black uppercase tracking-wider block">Domiciliario RYYCO Asignado</span>
                                     <span className="font-bold text-white">{order.deliveryDriverName}</span>
                                     {order.deliveryVehiclePlate && (
                                       <span className="text-gray-400 ml-1 font-mono">({order.deliveryVehiclePlate})</span>
@@ -1300,6 +1362,33 @@ export default function CustomerPortalModal({
                                     WhatsApp
                                   </a>
                                 )}
+                              </div>
+                            )}
+
+                            {/* Real-time status history timeline */}
+                            {order.statusHistory && order.statusHistory.length > 0 && (
+                              <div className="bg-[#090D16] p-3 rounded-xl border border-gray-800/80 text-xs space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-gray-800/80 pb-1">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-400" /> Historial de Estado en Vivo
+                                  </span>
+                                  <span className="text-emerald-400 font-mono text-[9px] flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Tiempo Real
+                                  </span>
+                                </div>
+                                <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                                  {order.statusHistory.map((h, hIdx) => (
+                                    <div key={hIdx} className="flex items-start justify-between gap-2 text-[11px] text-gray-300">
+                                      <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#E63946] shrink-0" />
+                                        <span>{h.note || h.status}</span>
+                                      </span>
+                                      <span className="text-gray-500 font-mono text-[9px] shrink-0">
+                                        {new Date(h.timestamp).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
 
