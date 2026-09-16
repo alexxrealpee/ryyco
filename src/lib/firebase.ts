@@ -24,6 +24,7 @@ import {
   persistentMultipleTabManager,
   getDocFromCache,
   getDocsFromCache,
+  getDocFromServer,
   doc, 
   setDoc, 
   getDoc, 
@@ -63,21 +64,25 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 auth.languageCode = 'es';
 
-// Configure Firestore with resilient cache and auto-detecting transport for optimal reliability
+// Configure Firestore logging level to prevent noise from internal transport retries
+setLogLevel('silent');
+
+// Configure Firestore with resilient cache and forced long polling.
+// Using experimentalForceLongPolling eliminates GrpcConnection RPC 'Listen' stream RST_STREAM
+// errors caused by container reverse proxies, iframes, and Cloud Run idle HTTP/2 stream resets.
 if (typeof window !== 'undefined') {
   try {
-    setLogLevel('silent');
     initializeFirestore(app, {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
       }),
-      experimentalAutoDetectLongPolling: true,
+      experimentalForceLongPolling: true,
       ignoreUndefinedProperties: true
     }, firebaseConfig.firestoreDatabaseId);
   } catch (e) {
     try {
       initializeFirestore(app, {
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
         ignoreUndefinedProperties: true
       }, firebaseConfig.firestoreDatabaseId);
     } catch (err) {
@@ -87,6 +92,19 @@ if (typeof window !== 'undefined') {
 }
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const googleProvider = new GoogleAuthProvider();
+
+// Validate Connection to Firestore on startup
+if (typeof window !== 'undefined') {
+  (async () => {
+    try {
+      await getDocFromServer(doc(db, 'test', 'connection'));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('the client is offline')) {
+        console.warn("Firestore running in resilient offline cache mode.");
+      }
+    }
+  })();
+}
 
 // Available Predefined Themes
 export const PREDEFINED_THEMES: CustomTheme[] = [
@@ -2987,52 +3005,6 @@ export async function fetchProductsForStoreFromFirebase(
   }
 }
 
-/**
- * Fetches all active products for a specific store (by UserProfile or store uid),
- * ensuring the complete menu is loaded when a user clicks on a restaurant.
- */
-export async function fetchProductsAllForStore(
-  storeOrUid: UserProfile | string
-): Promise<{ products: ProductItem[]; storeProfile?: UserProfile }> {
-  try {
-    let store: UserProfile;
-    if (typeof storeOrUid === 'string') {
-      const snap = await getDoc(doc(db, 'profiles', storeOrUid)).catch(() => null);
-      if (snap && snap.exists()) {
-        store = { ...snap.data(), uid: snap.id } as UserProfile;
-      } else {
-        // Try searching profile by username if uid lookup was not found
-        const qUser = query(collection(db, 'profiles'), where('username', '==', storeOrUid), limit(1));
-        const userSnap = await getDocs(qUser).catch(() => null);
-        if (userSnap && !userSnap.empty) {
-          const docFirst = userSnap.docs[0];
-          store = { ...docFirst.data(), uid: docFirst.id } as UserProfile;
-        } else {
-          store = { 
-            uid: storeOrUid, 
-            email: `${storeOrUid}@ryyco.com`,
-            username: storeOrUid, 
-            displayName: storeOrUid,
-            bio: '',
-            role: 'user',
-            plan: 'pro',
-            isClosed: false,
-            suspended: false,
-            createdAt: new Date().toISOString()
-          };
-        }
-      }
-    } else {
-      store = storeOrUid;
-    }
-    const res = await fetchProductsForStoreFromFirebase(store, 100);
-    return { products: res.products, storeProfile: store };
-  } catch (err) {
-    console.warn("Error in fetchProductsAllForStore:", err);
-    return { products: [] };
-  }
-}
-
 // Fetch orders in progressive batches (Lazy loading / Pagination for Admin)
 // Fetch comprehensive map of all store profiles (Remote Firestore + Local cached profiles)
 export async function fetchAllStoresMap(): Promise<Record<string, UserProfile>> {
@@ -4747,36 +4719,139 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
 }
 
 /**
+ * Listen in real time to all orders placed by a specific customer phone/email.
+ * Supports multiple phone variants (local 10 digits, +57 Colombian prefix, etc.)
+ */
+export function listenToCustomerOrders(
+  rawPhone: string,
+  onOrdersChanged: (orders: OrderItem[]) => void,
+  customerEmail?: string
+): () => void {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone || phone.length < 7) {
+    onOrdersChanged([]);
+    return () => {};
+  }
+
+  const digits = rawPhone.replace(/\D/g, '');
+  const national = digits.startsWith('57') && digits.length === 12 ? digits.slice(2) : digits;
+  const international = digits.startsWith('57') ? digits : `57${digits}`;
+
+  const phoneVariants = Array.from(new Set([
+    phone,
+    digits,
+    national,
+    international,
+    `+${international}`,
+    rawPhone.trim()
+  ])).filter(p => p && p.length >= 7);
+
+  const ordersCol = collection(db, 'orders');
+
+  const processOrdersSnapshot = (docs: any[]) => {
+    const ordersMap = new Map<string, OrderItem>();
+
+    docs.forEach(docSnap => {
+      const data = { ...docSnap.data(), id: docSnap.id } as OrderItem;
+      ordersMap.set(data.id, data);
+    });
+
+    // Also include any offline/cached local orders
+    try {
+      const keys = Object.keys(localStorage);
+      keys.forEach(k => {
+        if (k.startsWith('linnk_orders_')) {
+          try {
+            const cachedOrders: OrderItem[] = JSON.parse(localStorage.getItem(k) || '[]');
+            cachedOrders.forEach(o => {
+              const oPhone = sanitizeCustomerPhone(o.customerPhone);
+              const oEmail = o.customerEmail?.toLowerCase().trim();
+              const matchPhone = oPhone && (phoneVariants.includes(oPhone) || oPhone === phone || oPhone.includes(national) || national.includes(oPhone));
+              const matchEmail = customerEmail && oEmail && oEmail === customerEmail.toLowerCase().trim();
+
+              if (matchPhone || matchEmail) {
+                if (!ordersMap.has(o.id)) {
+                  ordersMap.set(o.id, o);
+                }
+              }
+            });
+          } catch (e) {}
+        }
+      });
+    } catch (e) {}
+
+    const list = Array.from(ordersMap.values());
+    list.sort((a, b) => {
+      const timeA = new Date(a.createdAt || 0).getTime();
+      const timeB = new Date(b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
+
+    onOrdersChanged(list);
+  };
+
+  // Setup onSnapshot query with phone variants
+  try {
+    const q = query(ordersCol, where('customerPhone', 'in', phoneVariants.slice(0, 10)));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      processOrdersSnapshot(snapshot.docs);
+    }, (err) => {
+      console.warn("Real-time customer orders query failed, falling back to cached:", err);
+      fetchCustomerOrders(rawPhone, customerEmail).then(onOrdersChanged).catch(() => {});
+    });
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn("Could not initiate real-time customer orders listener:", err);
+    fetchCustomerOrders(rawPhone, customerEmail).then(onOrdersChanged).catch(() => {});
+    return () => {};
+  }
+}
+
+/**
  * Fetch all orders placed by a specific customer phone number
  */
-export async function fetchCustomerOrders(rawPhone: string): Promise<OrderItem[]> {
+export async function fetchCustomerOrders(rawPhone: string, customerEmail?: string): Promise<OrderItem[]> {
   const phone = sanitizeCustomerPhone(rawPhone);
   if (!phone || phone.length < 7) return [];
 
-  let ordersList: OrderItem[] = [];
+  const digits = rawPhone.replace(/\D/g, '');
+  const national = digits.startsWith('57') && digits.length === 12 ? digits.slice(2) : digits;
+  const international = digits.startsWith('57') ? digits : `57${digits}`;
+
+  const phoneVariants = Array.from(new Set([
+    phone,
+    digits,
+    national,
+    international,
+    `+${international}`,
+    rawPhone.trim()
+  ])).filter(p => p && p.length >= 7);
+
+  const ordersMap = new Map<string, OrderItem>();
 
   try {
-    // 1. Direct query on orders collection
     const ordersCol = collection(db, 'orders');
-    const q1 = query(ordersCol, where('customerPhone', '==', phone));
-    const snap1 = await getDocs(q1);
-    snap1.forEach(docSnap => {
-      ordersList.push({ ...docSnap.data(), id: docSnap.id } as OrderItem);
+    const q = query(ordersCol, where('customerPhone', 'in', phoneVariants.slice(0, 10)));
+    const snap = await getDocs(q);
+    snap.forEach(docSnap => {
+      ordersMap.set(docSnap.id, { ...docSnap.data(), id: docSnap.id } as OrderItem);
     });
-
-    // Also check for '57' + phone format
-    if (ordersList.length === 0 && phone.length === 10) {
-      const q2 = query(ordersCol, where('customerPhone', '==', `57${phone}`));
-      const snap2 = await getDocs(q2);
-      snap2.forEach(docSnap => {
-        ordersList.push({ ...docSnap.data(), id: docSnap.id } as OrderItem);
-      });
-    }
   } catch (err) {
-    console.warn("Firestore customer orders query failed, checking cached orders:", err);
+    console.warn("Firestore customer orders query failed, trying individual queries:", err);
+    try {
+      const ordersCol = collection(db, 'orders');
+      for (const p of phoneVariants.slice(0, 3)) {
+        const qSub = query(ordersCol, where('customerPhone', '==', p));
+        const sSub = await getDocs(qSub);
+        sSub.forEach(docSnap => {
+          ordersMap.set(docSnap.id, { ...docSnap.data(), id: docSnap.id } as OrderItem);
+        });
+      }
+    } catch (e) {}
   }
 
-  // 2. Also check all cached local orders
+  // Also check all cached local orders
   try {
     const keys = Object.keys(localStorage);
     keys.forEach(k => {
@@ -4785,9 +4860,13 @@ export async function fetchCustomerOrders(rawPhone: string): Promise<OrderItem[]
           const cachedOrders: OrderItem[] = JSON.parse(localStorage.getItem(k) || '[]');
           cachedOrders.forEach(o => {
             const oPhone = sanitizeCustomerPhone(o.customerPhone);
-            if (oPhone === phone || oPhone.includes(phone) || phone.includes(oPhone)) {
-              if (!ordersList.some(item => item.id === o.id)) {
-                ordersList.push(o);
+            const oEmail = o.customerEmail?.toLowerCase().trim();
+            const matchPhone = oPhone && (phoneVariants.includes(oPhone) || oPhone === phone || oPhone.includes(national) || national.includes(oPhone));
+            const matchEmail = customerEmail && oEmail && oEmail === customerEmail.toLowerCase().trim();
+
+            if (matchPhone || matchEmail) {
+              if (!ordersMap.has(o.id)) {
+                ordersMap.set(o.id, o);
               }
             }
           });
@@ -4796,7 +4875,7 @@ export async function fetchCustomerOrders(rawPhone: string): Promise<OrderItem[]
     });
   } catch (e) {}
 
-  // Sort descending by orderNumber or createdAt
+  const ordersList = Array.from(ordersMap.values());
   ordersList.sort((a, b) => {
     const timeA = new Date(a.createdAt || 0).getTime();
     const timeB = new Date(b.createdAt || 0).getTime();

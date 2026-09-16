@@ -4,9 +4,7 @@ import {
   MapPin, 
   Navigation, 
   Bike, 
-  Truck, 
   Phone, 
-  MessageCircle, 
   Clock, 
   ExternalLink, 
   CheckCircle2, 
@@ -21,7 +19,8 @@ import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { OrderItem, DeliveryTrackingData } from '../types';
-import { listenToDeliveryTracking } from '../lib/firebase';
+import { listenToDeliveryTracking, db } from '../lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { buildGoogleFullRouteUrl } from '../lib/coordinateUtils';
 
 interface DeliveryTrackingModalProps {
@@ -39,12 +38,35 @@ export default function DeliveryTrackingModal({
   driverLiveCoords,
   storeLocationCoords
 }: DeliveryTrackingModalProps) {
+  const [liveOrder, setLiveOrder] = useState<OrderItem | null>(order);
   const [tracking, setTracking] = useState<DeliveryTrackingData | null>(null);
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(
     import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
   );
   const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>('leaflet');
   const [secondsAgo, setSecondsAgo] = useState<number>(0);
+
+  // Synchronize base order when prop changes
+  useEffect(() => {
+    setLiveOrder(order);
+  }, [order]);
+
+  // Real-time Firestore order subscription to track status / driver assignment instantaneously
+  useEffect(() => {
+    if (!isOpen || !order?.id) return;
+    const docRef = doc(db, 'orders', order.id);
+    const unsubscribe = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setLiveOrder({ ...docSnap.data(), id: docSnap.id } as OrderItem);
+      }
+    }, (err) => {
+      console.warn("DeliveryTrackingModal live order subscription warning:", err);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, order?.id]);
 
   // Leaflet references
   const leafletContainerRef = useRef<HTMLDivElement | null>(null);
@@ -108,18 +130,27 @@ export default function DeliveryTrackingModal({
     return () => clearInterval(interval);
   }, [tracking?.updatedAt]);
 
-  // Delivery status step
-  const currentStep = tracking?.status || order?.deliveryStep || 'accepted';
+  // Current order authoritative instance
+  const activeOrder = liveOrder || order;
+
+  // Delivery status step resolution
+  const currentStep = tracking?.status || activeOrder?.deliveryStep || (
+    activeOrder?.status === 'delivered' ? 'delivered' :
+    activeOrder?.status === 'shipped' ? 'to_client' :
+    activeOrder?.status === 'processing' ? (activeOrder?.deliveryDriverName ? 'accepted' : 'kitchen') :
+    activeOrder?.status === 'cancelled' ? 'cancelled' : 'pending'
+  );
   const isPickedUp = currentStep === 'picked_up' || currentStep === 'to_client' || currentStep === 'at_destination' || currentStep === 'delivered';
+  const isPreparationStage = currentStep === 'pending' || currentStep === 'kitchen';
 
   // Determine positions
   // Destination: customer coordinates or fallback
-  const destLat = order?.customerLat || tracking?.customerLat || 0.83028;
-  const destLng = order?.customerLng || tracking?.customerLng || -77.64444;
+  const destLat = activeOrder?.customerLat || tracking?.customerLat || 0.83028;
+  const destLng = activeOrder?.customerLng || tracking?.customerLng || -77.64444;
 
   // Store coordinates
-  const storeLat = storeLocationCoords?.lat || order?.storeLat || tracking?.storeLat || (destLat - 0.004);
-  const storeLng = storeLocationCoords?.lng || order?.storeLng || tracking?.storeLng || (destLng + 0.003);
+  const storeLat = storeLocationCoords?.lat || activeOrder?.storeLat || tracking?.storeLat || (destLat - 0.004);
+  const storeLng = storeLocationCoords?.lng || activeOrder?.storeLng || tracking?.storeLng || (destLng + 0.003);
 
   // Courier live position (prefer instant device live coords from portal, then tracking telemetry, then default offset)
   const driverLat = driverLiveCoords?.latitude || tracking?.lat || (storeLat - 0.002);
@@ -127,7 +158,7 @@ export default function DeliveryTrackingModal({
   const hasLiveGps = (!!driverLiveCoords?.latitude && !!driverLiveCoords?.longitude) || (!!tracking?.lat && !!tracking?.lng);
 
   // Courier vehicle type
-  const vehicleType = tracking?.vehicleType || order?.deliveryVehicle || 'moto';
+  const vehicleType = tracking?.vehicleType || activeOrder?.deliveryVehicle || 'moto';
   const isBike = vehicleType.toLowerCase().includes('bici') || vehicleType.toLowerCase().includes('bicicleta');
 
   // Leaflet map setup and live marker animation
@@ -278,11 +309,29 @@ export default function DeliveryTrackingModal({
     }
   }, [isOpen]);
 
-  if (!isOpen || !order) return null;
+  if (!isOpen || !activeOrder) return null;
 
-  // Status mapping
+  // Status mapping with real-time restaurant & driver status
   const getStatusInfo = (step: string) => {
     switch (step) {
+      case 'pending':
+        return {
+          label: 'Pedido Recibido',
+          desc: 'Esperando confirmación del restaurante',
+          color: 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+        };
+      case 'kitchen':
+        return {
+          label: 'En Preparación / Cocina',
+          desc: 'El restaurante está preparando y empacando tu pedido',
+          color: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+        };
+      case 'cancelled':
+        return {
+          label: 'Pedido Cancelado',
+          desc: 'Este pedido ha sido cancelado',
+          color: 'bg-red-500/20 text-red-400 border-red-500/30'
+        };
       case 'to_store':
         return {
           label: 'Domiciliario hacia la tienda',
@@ -317,8 +366,8 @@ export default function DeliveryTrackingModal({
       case 'accepted':
       default:
         return {
-          label: 'Domiciliario Asignado',
-          desc: 'Preparando ruta para iniciar la entrega',
+          label: activeOrder.deliveryDriverName ? 'Domiciliario Asignado' : 'En Gestión',
+          desc: activeOrder.deliveryDriverName ? 'Preparando ruta para iniciar la entrega' : 'Tu pedido se está gestionando en tiempo real',
           color: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
         };
     }
@@ -326,19 +375,19 @@ export default function DeliveryTrackingModal({
 
   const statusInfo = getStatusInfo(currentStep);
 
-  const driverName = tracking?.driverName || order.deliveryDriverName || 'Domiciliario Ryyco';
-  const driverPhone = tracking?.driverPhone || order.deliveryDriverPhone;
-  const vehiclePlate = tracking?.vehiclePlate || order.deliveryVehiclePlate;
+  const driverName = tracking?.driverName || activeOrder.deliveryDriverName || 'Domiciliario Ryyco';
+  const driverPhone = tracking?.driverPhone || activeOrder.deliveryDriverPhone;
+  const vehiclePlate = tracking?.vehiclePlate || activeOrder.deliveryVehiclePlate;
 
   const googleMapsUrl = buildGoogleFullRouteUrl({
     driverLat,
     driverLng,
     storeLat,
     storeLng,
-    storeAddress: order.storeAddress,
+    storeAddress: activeOrder.storeAddress,
     destLat,
     destLng,
-    destAddress: order.customerAddress,
+    destAddress: activeOrder.customerAddress,
     isPickedUp
   });
 
@@ -355,14 +404,14 @@ export default function DeliveryTrackingModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-black text-white">
-                  Ruta en Tiempo Real (2 Etapas)
+                  Ruta en Tiempo Real
                 </h3>
                 <span className="font-mono text-xs font-black text-[#E63946] bg-[#E63946]/15 px-2 py-0.5 rounded-md border border-[#E63946]/30">
-                  #{order.orderNumber}
+                  #{activeOrder.orderNumber}
                 </span>
               </div>
               <p className="text-[11px] text-gray-400">
-                {order.storeName || 'Restaurante'} ➔ {order.customerAddress || 'Cliente'}
+                {activeOrder.storeName || 'Restaurante'} ➔ {activeOrder.customerAddress || 'Cliente'}
               </p>
             </div>
           </div>
@@ -425,48 +474,78 @@ export default function DeliveryTrackingModal({
           </div>
 
           {/* Two Stages Indicator Banner */}
-          <div className="bg-[#090D16] border border-[#232B3A] p-2.5 rounded-2xl">
-            <div className="flex items-center justify-between gap-2 text-xs">
+          <div className="bg-[#090D16] border border-[#232B3A] p-2 sm:p-2.5 rounded-2xl shadow-inner">
+            <div className="flex items-center justify-between gap-1.5 sm:gap-2 text-xs">
               {/* Etapa 1 */}
-              <div className={`flex items-center gap-2 p-2 rounded-xl flex-1 transition ${
-                !isPickedUp 
-                  ? 'bg-amber-500/15 border border-amber-500/35 text-amber-300 ring-1 ring-amber-500/30' 
-                  : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+              <div className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl flex-1 min-w-0 transition ${
+                isPreparationStage
+                  ? (currentStep === 'pending' ? 'bg-amber-500/15 border border-amber-500/35 text-amber-300 ring-1 ring-amber-500/30' : 'bg-orange-500/15 border border-orange-500/35 text-orange-300 ring-1 ring-orange-500/30')
+                  : (!isPickedUp 
+                      ? 'bg-amber-500/15 border border-amber-500/35 text-amber-300 ring-1 ring-amber-500/30' 
+                      : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400')
               }`}>
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
-                  !isPickedUp ? 'bg-amber-500 text-gray-950 font-black' : 'bg-emerald-500/30 text-emerald-300'
+                <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black shrink-0 ${
+                  isPreparationStage || !isPickedUp ? 'bg-amber-500 text-gray-950 font-black' : 'bg-emerald-500/30 text-emerald-300'
                 }`}>
-                  {!isPickedUp ? '1' : '✓'}
+                  {isPreparationStage || !isPickedUp ? '1' : '✓'}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="text-[9px] font-black uppercase tracking-wider block opacity-90">
-                    Etapa 1 {!isPickedUp ? '(En curso)' : '(Completada)'}
+                  <span className="text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider block opacity-90 truncate">
+                    {isPreparationStage ? (
+                      currentStep === 'pending' ? 'Etapa 1 • Recepción' : 'Etapa 1 • En Cocina'
+                    ) : (
+                      <>
+                        <span className="sm:hidden">Etapa 1 {!isPickedUp ? '• En curso' : '• Lista'}</span>
+                        <span className="hidden sm:inline">Etapa 1 {!isPickedUp ? '(En curso)' : '(Completada)'}</span>
+                      </>
+                    )}
                   </span>
-                  <span className="text-[11px] font-bold truncate block text-white">
-                    Domiciliario ➔ Restaurante
+                  <span className="text-[10px] sm:text-[11.5px] font-bold truncate block text-white mt-0.5">
+                    {isPreparationStage ? (
+                      currentStep === 'pending' ? 'Confirmando Pedido' : 'Preparando Alimentos'
+                    ) : (
+                      <>
+                        <span className="sm:hidden">Hacia Tienda</span>
+                        <span className="hidden sm:inline">Domiciliario ➔ Restaurante</span>
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
 
-              <div className="text-gray-500 text-xs font-bold px-1">➔</div>
+              <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500 shrink-0 mx-0.5" />
 
               {/* Etapa 2 */}
-              <div className={`flex items-center gap-2 p-2 rounded-xl flex-1 transition ${
+              <div className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl flex-1 min-w-0 transition ${
                 isPickedUp 
                   ? 'bg-[#E63946]/15 border border-[#E63946]/35 text-[#E63946] ring-1 ring-[#E63946]/30 animate-pulse' 
                   : 'bg-gray-900/60 border border-gray-800 text-gray-400'
               }`}>
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 ${
+                <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black shrink-0 ${
                   isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
                 }`}>
                   2
                 </span>
                 <div className="min-w-0 flex-1">
-                  <span className="text-[9px] font-black uppercase tracking-wider block opacity-90">
-                    Etapa 2 {isPickedUp ? '(En curso)' : '(Siguiente etapa)'}
+                  <span className="text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider block opacity-90 truncate">
+                    {isPreparationStage ? (
+                      'Etapa 2 • Despacho'
+                    ) : (
+                      <>
+                        <span className="sm:hidden">Etapa 2 {isPickedUp ? '• En curso' : '• Pendiente'}</span>
+                        <span className="hidden sm:inline">Etapa 2 {isPickedUp ? '(En curso)' : '(Siguiente etapa)'}</span>
+                      </>
+                    )}
                   </span>
-                  <span className="text-[11px] font-bold truncate block text-white">
-                    Restaurante ➔ Cliente
+                  <span className="text-[10px] sm:text-[11.5px] font-bold truncate block text-white mt-0.5">
+                    {isPreparationStage ? (
+                      'Entrega a Domicilio'
+                    ) : (
+                      <>
+                        <span className="sm:hidden">Hacia Cliente</span>
+                        <span className="hidden sm:inline">Restaurante ➔ Cliente</span>
+                      </>
+                    )}
                   </span>
                 </div>
               </div>
@@ -503,7 +582,7 @@ export default function DeliveryTrackingModal({
                   {/* Customer Destination Marker */}
                   <AdvancedMarker
                     position={{ lat: destLat, lng: destLng }}
-                    title={`Punto de entrega: ${order.customerAddress}`}
+                    title={`Punto de entrega: ${activeOrder.customerAddress}`}
                   >
                     <Pin
                       background="#10B981"
@@ -516,7 +595,7 @@ export default function DeliveryTrackingModal({
                   {/* Store Marker */}
                   <AdvancedMarker
                     position={{ lat: storeLat, lng: storeLng }}
-                    title={`Tienda: ${order.storeName}`}
+                    title={`Tienda: ${activeOrder.storeName}`}
                   >
                     <Pin
                       background="#F59E0B"
@@ -555,65 +634,6 @@ export default function DeliveryTrackingModal({
             </div>
           </div>
 
-          {/* Courier Card & Contact Details */}
-          <div className="bg-[#111827] border border-[#232B3A] p-4 rounded-2xl space-y-3 shadow-lg">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-black uppercase text-[#E63946] tracking-wider flex items-center gap-1.5">
-                <Truck className="w-3.5 h-3.5 text-[#E63946]" />
-                Datos del Domiciliario Asignado
-              </span>
-              <span className="text-[10px] text-gray-400 font-mono">
-                {vehiclePlate ? `Placa: ${vehiclePlate}` : vehicleType.toUpperCase()}
-              </span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-[#E63946]/30 to-[#F4B400]/30 border border-[#E63946]/40 flex items-center justify-center text-xl shrink-0">
-                  {tracking?.driverPhoto ? (
-                    <img 
-                      src={tracking.driverPhoto} 
-                      alt={driverName} 
-                      className="w-full h-full object-cover rounded-2xl" 
-                    />
-                  ) : (
-                    <span>{isBike ? '🚲' : '🛵'}</span>
-                  )}
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-white">{driverName}</h4>
-                  <p className="text-xs text-gray-400">
-                    {vehicleType.toUpperCase()} {vehiclePlate ? `• ${vehiclePlate}` : ''}
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons: WhatsApp & Call */}
-              <div className="flex items-center gap-2">
-                {driverPhone && (
-                  <>
-                    <a
-                      href={`https://wa.me/57${driverPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${driverName}, estoy siguiendo mi pedido #${order.orderNumber} en RYYCO. ¿Todo en orden?`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 sm:flex-none h-9 px-3 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5" />
-                      <span>WhatsApp</span>
-                    </a>
-
-                    <a
-                      href={`tel:${driverPhone}`}
-                      className="flex-1 sm:flex-none h-9 px-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-blue-300 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition active:scale-95"
-                    >
-                      <Phone className="w-3.5 h-3.5" />
-                      <span>Llamar</span>
-                    </a>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
 
           {/* Delivery Address Details */}
           <div className="bg-[#090D16] border border-gray-800 p-3.5 rounded-2xl flex items-start gap-3">
@@ -625,11 +645,11 @@ export default function DeliveryTrackingModal({
                 Dirección de Entrega
               </span>
               <p className="text-xs font-bold text-white truncate">
-                {order.customerAddress || 'Dirección registrada en el pedido'}
+                {activeOrder.customerAddress || 'Dirección registrada en el pedido'}
               </p>
-              {order.customerName && (
+              {activeOrder.customerName && (
                 <p className="text-[11px] text-gray-400">
-                  Cliente: <strong className="text-gray-300">{order.customerName}</strong>
+                  Cliente: <strong className="text-gray-300">{activeOrder.customerName}</strong>
                 </p>
               )}
             </div>

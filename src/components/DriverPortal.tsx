@@ -1060,36 +1060,85 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                     </div>
 
                     {/* Progressive Stepper Display */}
-                    <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-3">
-                      <span className="text-xs font-bold text-[#A9B2C3] uppercase tracking-wider block">
-                        Estado Actual de la Entrega:
-                      </span>
-                      <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
-                        {deliverySteps.map((s, idx) => {
-                          const currentIdx = getStepIndex(activeDelivery.deliveryStep);
-                          const isDone = idx <= currentIdx;
-                          const isCurrent = idx === currentIdx;
+                    <div className="bg-[#090B12] border border-[#232B3A] p-3 sm:p-4 rounded-2xl space-y-3.5 shadow-inner">
+                      {(() => {
+                        const currentIdx = getStepIndex(activeDelivery.deliveryStep);
+                        const currentStepObj = deliverySteps[currentIdx] || deliverySteps[0];
+                        const currentLabel = currentStepObj.label.split('.')[1]?.trim() || 'En Proceso';
 
-                          return (
-                            <div key={s.key} className="flex flex-col items-center flex-1 min-w-[75px]">
-                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition ${
-                                isCurrent 
-                                  ? 'bg-[#E63946] text-white ring-4 ring-[#E63946]/20 font-black' 
-                                  : isDone 
-                                  ? 'bg-[#E63946]/20 text-[#E63946] border border-[#E63946]/40 font-bold' 
-                                  : 'bg-[#090B12] text-gray-600 border border-[#232B3A]'
-                              }`}>
-                                {isDone ? '✓' : idx + 1}
-                              </div>
-                              <span className={`text-[11px] mt-1.5 text-center font-bold leading-tight ${
-                                isCurrent ? 'text-[#E63946]' : isDone ? 'text-gray-200' : 'text-gray-600'
-                              }`}>
-                                {s.label.split('.')[1]?.trim()}
+                        return (
+                          <>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[10px] sm:text-xs font-black text-[#A9B2C3] uppercase tracking-wider">
+                                Paso {currentIdx + 1} de {deliverySteps.length}
+                              </span>
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#E63946]/15 border border-[#E63946]/35 text-[#E63946] text-[10px] sm:text-xs font-black">
+                                <span className="w-1.5 h-1.5 rounded-full bg-[#E63946] animate-pulse" />
+                                <span>{currentLabel}</span>
                               </span>
                             </div>
-                          );
-                        })}
-                      </div>
+
+                            <div className="relative pt-1 px-1 sm:px-2">
+                              {/* Background track */}
+                              <div className="absolute top-4 sm:top-5 left-6 right-6 h-0.5 bg-[#1F2937] -translate-y-1/2 z-0" />
+                              
+                              {/* Active progress bar */}
+                              <div
+                                className={`absolute top-4 sm:top-5 left-6 h-0.5 bg-gradient-to-r from-[#E63946] to-[#ff5d6c] -translate-y-1/2 z-0 transition-all duration-300 ${
+                                  currentIdx === 0 ? 'w-0' :
+                                  currentIdx === 1 ? 'w-[33%]' :
+                                  currentIdx === 2 ? 'w-[66%]' :
+                                  'w-[calc(100%-3rem)]'
+                                }`}
+                              />
+
+                              <div className="relative z-10 flex items-start justify-between">
+                                {deliverySteps.map((s, idx) => {
+                                  const isDone = idx < currentIdx;
+                                  const isCurrent = idx === currentIdx;
+
+                                  const shortLabel = idx === 0 ? 'Aceptado' : idx === 1 ? 'En Tienda' : idx === 2 ? 'En Camino' : 'Entregado';
+                                  const fullLabel = s.label.split('.')[1]?.trim();
+
+                                  return (
+                                    <div key={s.key} className="flex flex-col items-center flex-1">
+                                      <div
+                                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-[11px] sm:text-xs font-black transition-all duration-200 shadow-md ${
+                                          isCurrent
+                                            ? 'bg-[#E63946] text-white ring-4 ring-[#E63946]/25 scale-110'
+                                            : isDone
+                                            ? 'bg-[#E63946] text-white'
+                                            : 'bg-[#111827] text-gray-500 border-2 border-[#232B3A]'
+                                        }`}
+                                      >
+                                        {isDone ? (
+                                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                        ) : (
+                                          <span>{idx + 1}</span>
+                                        )}
+                                      </div>
+                                      <div className="mt-1.5 text-center px-0.5">
+                                        <span
+                                          className={`block text-[10px] sm:text-xs leading-tight font-extrabold transition-colors ${
+                                            isCurrent
+                                              ? 'text-[#E63946]'
+                                              : isDone
+                                              ? 'text-gray-200'
+                                              : 'text-gray-500'
+                                          }`}
+                                        >
+                                          <span className="sm:hidden">{shortLabel}</span>
+                                          <span className="hidden sm:inline">{fullLabel}</span>
+                                        </span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
 
                     {/* Panel de Ruta Completa en 2 Etapas: Domiciliario -> Restaurante -> Cliente */}
@@ -1529,12 +1578,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           <span className="text-[10px] font-extrabold uppercase text-[#F4B400] block">
                             1. Punto de Recogida (Tienda)
                           </span>
-                          {((activeStoreLocation?.lat && activeStoreLocation?.lng) || (activeStoreLocation?.mapUrl && extractCoordinates(activeStoreLocation.mapUrl))) && (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                              GPS Satelital Exacto
-                            </span>
-                          )}
                         </div>
 
                         <div>
@@ -1562,23 +1605,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           )}
                         </div>
 
-                        {/* Exact Coordinates info badge */}
-                        {activeStoreLocation?.lat && activeStoreLocation?.lng && (
-                          <div className="text-[11px] text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-lg flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 font-mono font-medium truncate">
-                              <Navigation className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                              <span>GPS: {activeStoreLocation.lat.toFixed(6)}, {activeStoreLocation.lng.toFixed(6)}</span>
-                            </div>
-                            <a
-                              href={`https://www.google.com/maps?q=${activeStoreLocation.lat},${activeStoreLocation.lng}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[10px] text-emerald-200 underline hover:text-white font-bold shrink-0 ml-2"
-                            >
-                              Ver punto
-                            </a>
-                          </div>
-                        )}
+
 
                         {/* Nota para comunicarse por WhatsApp con el restaurante */}
                         <div className="bg-emerald-950/40 border border-emerald-500/35 p-3 rounded-xl flex items-start gap-2.5 shadow-sm">
@@ -1608,8 +1635,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           </div>
                         </div>
 
-                        {/* Navigation Buttons to Store */}
-                        <div className="pt-1 flex flex-col sm:flex-row gap-2">
+                        {/* Navigation Button to Store */}
+                        <div className="pt-1">
                           <a
                             href={buildGoogleNavigationUrl({
                               lat: activeStoreLocation?.lat || activeDelivery.storeLat,
@@ -1620,26 +1647,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                             })}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95"
+                            className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95"
                           >
                             <Navigation className="w-4 h-4 fill-current" />
                             <span>¿Cómo llegar al Restaurante?</span>
-                          </a>
-
-                          <a
-                            href={buildWazeNavigationUrl({
-                              lat: activeStoreLocation?.lat || activeDelivery.storeLat,
-                              lng: activeStoreLocation?.lng || activeDelivery.storeLng,
-                              mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
-                              address: activeDelivery.storeAddress
-                            })}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="py-2.5 px-3 bg-[#1C2433] hover:bg-[#2A364A] text-sky-400 border border-sky-500/30 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
-                            title="Navegar usando Waze"
-                          >
-                            <Compass className="w-4 h-4" />
-                            <span>Waze</span>
                           </a>
                         </div>
 
@@ -1812,36 +1823,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                         </div>
                       )}
 
-                      {/* Map Location Helper with exact coordinates */}
-                      <a
-                        href={
-                          activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store'
-                            ? buildGoogleNavigationUrl({
-                                lat: activeStoreLocation?.lat || activeDelivery.storeLat,
-                                lng: activeStoreLocation?.lng || activeDelivery.storeLng,
-                                mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
-                                address: activeDelivery.storeAddress,
-                                storeName: activeDelivery.storeName
-                              })
-                            : buildGoogleNavigationUrl({
-                                lat: activeDelivery.customerLat,
-                                lng: activeDelivery.customerLng,
-                                mapUrl: activeDelivery.customerMapUrl,
-                                address: activeDelivery.customerAddress
-                              })
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-4 py-3 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer shadow-md"
-                        title="Abrir indicaciones de ruta en Google Maps"
-                      >
-                        <Navigation className="w-4 h-4 text-emerald-400" />
-                        <span>
-                          {activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store'
-                            ? 'Cómo Llegar a la Tienda (GPS)'
-                            : 'Cómo Llegar al Cliente (GPS)'}
-                        </span>
-                      </a>
                     </div>
                   </div>
                 ) : (
