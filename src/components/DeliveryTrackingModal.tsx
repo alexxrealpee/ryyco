@@ -144,8 +144,8 @@ export default function DeliveryTrackingModal({
     activeOrder?.status === 'confirmed' ? (activeOrder?.deliveryType === 'restaurant' ? 'restaurant_confirmed' : 'accepted') :
     activeOrder?.status === 'cancelled' ? 'cancelled' : 'pending'
   );
-  const isPickedUp = currentStep === 'picked_up' || currentStep === 'to_client' || currentStep === 'at_destination' || currentStep === 'delivered';
-  const isPreparationStage = currentStep === 'pending' || currentStep === 'kitchen' || currentStep === 'restaurant_confirmed' || currentStep === 'ready' || currentStep === 'accepted';
+  const isPickedUp = currentStep === 'to_client' || currentStep === 'at_destination' || currentStep === 'delivered';
+  const isPreparationStage = currentStep === 'pending' || currentStep === 'kitchen' || currentStep === 'restaurant_confirmed' || currentStep === 'ready' || currentStep === 'accepted' || currentStep === 'picked_up';
 
   // Determine positions
   // Destination: customer coordinates or fallback
@@ -361,6 +361,11 @@ export default function DeliveryTrackingModal({
           color: 'bg-amber-500/20 text-amber-400 border-amber-500/30'
         };
       case 'picked_up':
+        return {
+          label: 'En Cocina / Recogiendo en Tienda',
+          desc: 'El repartidor está en la tienda alistando y recogiendo tu pedido',
+          color: 'bg-orange-500/20 text-orange-400 border-orange-500/30'
+        };
       case 'to_client':
         return {
           label: '¡En camino a tu dirección!',

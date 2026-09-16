@@ -4077,11 +4077,11 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
   let historyNote = '';
 
   if (step === 'picked_up') {
-    nextStatus = 'picked_up';
-    historyNote = 'Tu pedido va en camino (recogido por domiciliario)';
+    nextStatus = 'preparing';
+    historyNote = 'En cocina: pedido en preparación y recogido en tienda';
   } else if (step === 'to_client' || step === 'at_destination') {
     nextStatus = 'delivering';
-    historyNote = 'Estamos llegando a tu dirección';
+    historyNote = 'Tu pedido va en camino a tu dirección (recogido por domiciliario)';
   } else if (step === 'delivered') {
     nextStatus = 'delivered';
     historyNote = '¡Pedido entregado exitosamente!';

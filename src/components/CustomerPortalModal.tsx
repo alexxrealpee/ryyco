@@ -578,9 +578,7 @@ export default function CustomerPortalModal({
     if (ord.status === 'delivered' || ord.deliveryStep === 'delivered') return 5;
     if (
       ord.status === 'delivering' ||
-      ord.status === 'picked_up' || 
       ord.status === 'shipped' || 
-      ord.deliveryStep === 'picked_up' || 
       ord.deliveryStep === 'to_client' || 
       ord.deliveryStep === 'at_destination'
     ) return 4;
@@ -588,6 +586,8 @@ export default function CustomerPortalModal({
       ord.status === 'ready' ||
       ord.status === 'preparing' || 
       ord.status === 'processing' || 
+      ord.status === 'picked_up' || 
+      ord.deliveryStep === 'picked_up' || 
       ord.deliveryStep === 'to_store' || 
       ord.deliveryStep === 'at_store'
     ) return 3;
@@ -633,13 +633,22 @@ export default function CustomerPortalModal({
         };
       case 3:
         const isReady = ord.status === 'ready';
+        const isPickedUpAtStore = ord.deliveryStep === 'picked_up' || ord.status === 'picked_up';
         return {
-          stageTitle: isReady ? 'Paso 3 de 5 • Empacado y Listo' : 'Paso 3 de 5 • En Cocina',
-          headline: isReady ? '¡Pedido Listo y Empacado!' : 'En Preparación / Cocina',
+          stageTitle: isReady 
+            ? 'Paso 3 de 5 • Empacado y Listo' 
+            : (isPickedUpAtStore ? 'Paso 3 de 5 • En Cocina (Recogido en Tienda)' : 'Paso 3 de 5 • En Cocina'),
+          headline: isReady 
+            ? '¡Pedido Listo y Empacado!' 
+            : (isPickedUpAtStore 
+                ? (ord.deliveryDriverName ? `${ord.deliveryDriverName} en tienda alistando pedido` : 'En Cocina / Recogido en Tienda') 
+                : 'En Preparación / Cocina'),
           description: isReady 
             ? 'Tu pedido está listo y empacado, esperando salida para entrega.'
-            : 'El restaurante está cocinando tus platos con los mejores ingredientes.',
-          percentageLabel: isReady ? '65%' : '50%',
+            : (isPickedUpAtStore 
+                ? (ord.deliveryDriverName ? `${ord.deliveryDriverName} está en el restaurante esperando la entrega de tus platos recién cocinados.` : 'Tu pedido se encuentra en cocina y siendo alistado por el domiciliario en la tienda.')
+                : 'El restaurante está cocinando tus platos con los mejores ingredientes.'),
+          percentageLabel: isReady ? '65%' : (isPickedUpAtStore ? '60%' : '50%'),
           icon: <Utensils className="w-4 h-4 text-orange-400" />,
           iconBadge: 'bg-orange-400/20 text-orange-400 border border-orange-400/30',
           bannerBg: 'bg-orange-500/10 border-orange-500/25',
@@ -714,9 +723,9 @@ export default function CustomerPortalModal({
     }
     if (ord.status === 'picked_up' || ord.deliveryStep === 'picked_up') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-500/15 text-purple-300 border border-purple-500/30">
-          <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-          🛵 Pedido Recogido
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
+          <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+          👨‍🍳 En Cocina
         </span>
       );
     }
