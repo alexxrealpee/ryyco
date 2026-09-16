@@ -572,10 +572,10 @@ export default function CustomerPortalModal({
     setTimeout(() => setCopiedCodeId(null), 2500);
   };
 
-  // Status mapping for order tracking (considers store status, driver steps, and active deliveries)
+  // Status mapping for order tracking (5 distinct stages: 1. Recibido, 2. Confirmado, 3. En Cocina/Listo, 4. En Camino, 5. Entregado)
   const getOrderStatusStep = (ord: OrderItem) => {
     if (ord.status === 'cancelled') return 0;
-    if (ord.status === 'delivered' || ord.deliveryStep === 'delivered') return 4;
+    if (ord.status === 'delivered' || ord.deliveryStep === 'delivered') return 5;
     if (
       ord.status === 'delivering' ||
       ord.status === 'picked_up' || 
@@ -583,15 +583,104 @@ export default function CustomerPortalModal({
       ord.deliveryStep === 'picked_up' || 
       ord.deliveryStep === 'to_client' || 
       ord.deliveryStep === 'at_destination'
-    ) return 3;
+    ) return 4;
     if (
       ord.status === 'ready' ||
       ord.status === 'preparing' || 
       ord.status === 'processing' || 
       ord.deliveryStep === 'to_store' || 
       ord.deliveryStep === 'at_store'
+    ) return 3;
+    if (
+      ord.status === 'confirmed' ||
+      ord.deliveryType === 'restaurant' ||
+      Boolean(ord.deliveryDriverId) ||
+      Boolean(ord.deliveryDriverName)
     ) return 2;
     return 1;
+  };
+
+  // Detailed status descriptor for Customer Stepper Tracker
+  const getOrderStepperInfo = (ord: OrderItem, step: number) => {
+    switch (step) {
+      case 1:
+        return {
+          stageTitle: 'Paso 1 de 5 • Recepción',
+          headline: 'Pedido Recibido en Ryyco',
+          description: 'Tu pedido ha sido recibido y se encuentra en espera de confirmación por la tienda o domiciliario.',
+          percentageLabel: '15%',
+          icon: <Clock className="w-4 h-4 text-amber-400" />,
+          iconBadge: 'bg-amber-400/20 text-amber-400 border border-amber-400/30',
+          bannerBg: 'bg-amber-500/10 border-amber-500/25',
+          tagBadge: 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+        };
+      case 2:
+        const isStoreOwn = ord.deliveryType === 'restaurant';
+        const driverName = ord.deliveryDriverName;
+        return {
+          stageTitle: 'Paso 2 de 5 • Confirmación',
+          headline: isStoreOwn 
+            ? 'Confirmado por Restaurante (Entrega Propia)' 
+            : (driverName ? `Domiciliario Asignado: ${driverName}` : 'Pedido Confirmado'),
+          description: isStoreOwn 
+            ? 'El restaurante confirmó tu orden y realizará la entrega con su propio domiciliario.'
+            : (driverName ? `${driverName} aceptó la entrega y se prepara para recoger en el restaurante.` : 'El pedido ya tiene responsable de despacho asignado.'),
+          percentageLabel: '35%',
+          icon: <CheckCircle2 className="w-4 h-4 text-blue-400" />,
+          iconBadge: 'bg-blue-400/20 text-blue-400 border border-blue-400/30',
+          bannerBg: 'bg-blue-500/10 border-blue-500/25',
+          tagBadge: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+        };
+      case 3:
+        const isReady = ord.status === 'ready';
+        return {
+          stageTitle: isReady ? 'Paso 3 de 5 • Empacado y Listo' : 'Paso 3 de 5 • En Cocina',
+          headline: isReady ? '¡Pedido Listo y Empacado!' : 'En Preparación / Cocina',
+          description: isReady 
+            ? 'Tu pedido está listo y empacado, esperando salida para entrega.'
+            : 'El restaurante está cocinando tus platos con los mejores ingredientes.',
+          percentageLabel: isReady ? '65%' : '50%',
+          icon: <Utensils className="w-4 h-4 text-orange-400" />,
+          iconBadge: 'bg-orange-400/20 text-orange-400 border border-orange-400/30',
+          bannerBg: 'bg-orange-500/10 border-orange-500/25',
+          tagBadge: 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+        };
+      case 4:
+        return {
+          stageTitle: 'Paso 4 de 5 • En Ruta',
+          headline: '¡En camino a tu ubicación!',
+          description: ord.deliveryDriverName 
+            ? `${ord.deliveryDriverName} lleva tu pedido caliente directamente a tu dirección.`
+            : 'Tu pedido ya salió de la tienda y va en camino hacia tu puerta.',
+          percentageLabel: '85%',
+          icon: <Truck className="w-4 h-4 text-[#E63946] animate-pulse" />,
+          iconBadge: 'bg-[#E63946]/20 text-[#E63946] border border-[#E63946]/30',
+          bannerBg: 'bg-[#E63946]/10 border-[#E63946]/25',
+          tagBadge: 'bg-[#E63946]/20 text-[#E63946] border-[#E63946]/30'
+        };
+      case 5:
+        return {
+          stageTitle: 'Paso 5 de 5 • Entregado',
+          headline: '¡Pedido Entregado con Éxito!',
+          description: 'Tu pedido fue completado satisfactoriamente. ¡Esperamos que disfrutes tu comida!',
+          percentageLabel: '100%',
+          icon: <Check className="w-4 h-4 text-emerald-400" />,
+          iconBadge: 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/30',
+          bannerBg: 'bg-emerald-500/10 border-emerald-500/25',
+          tagBadge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+        };
+      default:
+        return {
+          stageTitle: 'Cancelado',
+          headline: 'Pedido Cancelado',
+          description: ord.cancellationReason || 'Este pedido fue cancelado.',
+          percentageLabel: '0%',
+          icon: <AlertCircle className="w-4 h-4 text-red-400" />,
+          iconBadge: 'bg-red-400/20 text-red-400 border border-red-400/30',
+          bannerBg: 'bg-red-500/10 border-red-500/25',
+          tagBadge: 'bg-red-500/20 text-red-300 border-red-500/30'
+        };
+    }
   };
 
   const getStatusBadge = (ord: OrderItem) => {
@@ -1246,67 +1335,146 @@ export default function CustomerPortalModal({
                               </div>
                             </div>
 
-                            {/* STEPPER PROGRESS BAR */}
-                            {!isCancelled && (
-                              <div className="space-y-2 py-1">
-                                <div className="grid grid-cols-4 gap-1 relative">
-                                  {/* Connective background track */}
-                                  <div className="absolute top-1/2 left-0 right-0 h-1 bg-gray-800 -translate-y-1/2 z-0" />
-                                  <div 
-                                    className="absolute top-1/2 left-0 h-1 bg-gradient-to-r from-amber-400 via-[#E63946] to-emerald-400 -translate-y-1/2 z-0 transition-all duration-500" 
-                                    style={{ width: `${Math.min(100, Math.max(10, ((step - 1) / 3) * 100))}%` }}
-                                  />
-
-                                  {/* Step 1: Received / Confirmed */}
-                                  <div className="relative z-10 flex flex-col items-center text-center">
-                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
-                                      step >= 1 ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20' : 'bg-gray-800 text-gray-500'
-                                    }`}>
-                                      1
+                            {/* STEPPER PROGRESS BAR / ORDER STATUS TRACKER (5 PHASES) */}
+                            {!isCancelled && (() => {
+                              const stepperInfo = getOrderStepperInfo(order, step);
+                              return (
+                                <div className="space-y-3 py-1 bg-[#05070D] p-3 sm:p-4 rounded-2xl border border-[#1E2638] shadow-inner">
+                                  {/* Dynamic Status Callout Banner */}
+                                  <div className={`p-2.5 sm:p-3 rounded-xl border flex items-center justify-between gap-2.5 transition ${stepperInfo.bannerBg}`}>
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${stepperInfo.iconBadge}`}>
+                                        {stepperInfo.icon}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-gray-300 truncate">
+                                            {stepperInfo.stageTitle}
+                                          </span>
+                                          {step < 5 && (
+                                            <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping shrink-0" />
+                                          )}
+                                        </div>
+                                        <p className="text-[11.5px] sm:text-xs font-bold text-white truncate mt-0.5">
+                                          {stepperInfo.headline}
+                                        </p>
+                                      </div>
                                     </div>
-                                    <span className={`text-[9px] font-bold mt-1 ${step >= 1 ? 'text-amber-400' : 'text-gray-500'}`}>
-                                      {order.status === 'confirmed' ? 'Confirmado' : 'Recibido'}
-                                    </span>
+                                    <div className="text-right shrink-0">
+                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${stepperInfo.tagBadge}`}>
+                                        {stepperInfo.percentageLabel}
+                                      </span>
+                                    </div>
                                   </div>
 
-                                  {/* Step 2: Preparing / Ready */}
-                                  <div className="relative z-10 flex flex-col items-center text-center">
-                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
-                                      step >= 2 ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20' : 'bg-gray-800 text-gray-500'
-                                    }`}>
-                                      2
+                                  {/* 5-Node Stepper Track */}
+                                  <div className="relative pt-2 pb-1">
+                                    {/* Connective background track */}
+                                    <div className="absolute top-[17px] sm:top-[20px] left-[10%] right-[10%] h-1 bg-gray-800 -translate-y-1/2 z-0 rounded-full" />
+                                    {/* Active colored gradient fill */}
+                                    <div 
+                                      className="absolute top-[17px] sm:top-[20px] left-[10%] h-1 bg-gradient-to-r from-amber-400 via-blue-500 via-orange-500 via-[#E63946] to-emerald-400 -translate-y-1/2 z-0 rounded-full transition-all duration-500" 
+                                      style={{ width: `${Math.min(80, Math.max(0, ((step - 1) / 4) * 80))}%` }}
+                                    />
+
+                                    <div className="grid grid-cols-5 gap-0.5 relative z-10">
+                                      {/* Node 1: Recibido */}
+                                      <div className="flex flex-col items-center text-center">
+                                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                                          step > 1 
+                                            ? 'bg-amber-400 text-black shadow-sm' 
+                                            : step === 1 
+                                              ? 'bg-amber-400 text-black ring-4 ring-amber-400/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              : 'bg-gray-800 text-gray-500'
+                                        }`}>
+                                          {step > 1 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '1'}
+                                        </div>
+                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                          step >= 1 ? 'text-amber-400' : 'text-gray-500'
+                                        }`}>
+                                          Recibido
+                                        </span>
+                                      </div>
+
+                                      {/* Node 2: Confirmado */}
+                                      <div className="flex flex-col items-center text-center">
+                                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                                          step > 2 
+                                            ? 'bg-blue-500 text-white shadow-sm' 
+                                            : step === 2 
+                                              ? 'bg-blue-500 text-white ring-4 ring-blue-500/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              : 'bg-gray-800 text-gray-500'
+                                        }`}>
+                                          {step > 2 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '2'}
+                                        </div>
+                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                          step >= 2 ? 'text-blue-400' : 'text-gray-500'
+                                        }`}>
+                                          Confirmado
+                                        </span>
+                                      </div>
+
+                                      {/* Node 3: En Cocina / Listo */}
+                                      <div className="flex flex-col items-center text-center">
+                                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                                          step > 3 
+                                            ? 'bg-orange-500 text-white shadow-sm' 
+                                            : step === 3 
+                                              ? 'bg-orange-500 text-white ring-4 ring-orange-500/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              : 'bg-gray-800 text-gray-500'
+                                        }`}>
+                                          {step > 3 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '3'}
+                                        </div>
+                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                          step >= 3 ? 'text-orange-400' : 'text-gray-500'
+                                        }`}>
+                                          {order.status === 'ready' ? 'Listo' : 'En Cocina'}
+                                        </span>
+                                      </div>
+
+                                      {/* Node 4: En Camino */}
+                                      <div className="flex flex-col items-center text-center">
+                                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                                          step > 4 
+                                            ? 'bg-[#E63946] text-white shadow-sm' 
+                                            : step === 4 
+                                              ? 'bg-[#E63946] text-white ring-4 ring-[#E63946]/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              : 'bg-gray-800 text-gray-500'
+                                        }`}>
+                                          {step > 4 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '4'}
+                                        </div>
+                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                          step >= 4 ? 'text-[#E63946]' : 'text-gray-500'
+                                        }`}>
+                                          En Camino
+                                        </span>
+                                      </div>
+
+                                      {/* Node 5: Entregado */}
+                                      <div className="flex flex-col items-center text-center">
+                                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                                          step >= 5 
+                                            ? 'bg-emerald-400 text-black ring-4 ring-emerald-400/25 ring-offset-2 ring-offset-[#090D16] shadow-sm font-black' 
+                                            : 'bg-gray-800 text-gray-500'
+                                        }`}>
+                                          {step >= 5 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '5'}
+                                        </div>
+                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                          step >= 5 ? 'text-emerald-400' : 'text-gray-500'
+                                        }`}>
+                                          Entregado
+                                        </span>
+                                      </div>
                                     </div>
-                                    <span className={`text-[9px] font-bold mt-1 ${step >= 2 ? 'text-orange-400' : 'text-gray-500'}`}>
-                                      {order.status === 'ready' ? 'Listo' : (order.status === 'preparing' || order.status === 'processing') ? 'En Cocina' : 'Preparación'}
-                                    </span>
                                   </div>
 
-                                  {/* Step 3: Picked up / En Camino */}
-                                  <div className="relative z-10 flex flex-col items-center text-center">
-                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
-                                      step >= 3 ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20' : 'bg-gray-800 text-gray-500'
-                                    }`}>
-                                      3
-                                    </div>
-                                    <span className={`text-[9px] font-bold mt-1 ${step >= 3 ? 'text-[#E63946]' : 'text-gray-500'}`}>
-                                      {order.status === 'picked_up' ? 'Recogido' : 'En Camino'}
-                                    </span>
-                                  </div>
-
-                                  {/* Step 4: Delivered */}
-                                  <div className="relative z-10 flex flex-col items-center text-center">
-                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black transition ${
-                                      step >= 4 ? 'bg-emerald-400 text-black shadow-md shadow-emerald-400/20' : 'bg-gray-800 text-gray-500'
-                                    }`}>
-                                      ✓
-                                    </div>
-                                    <span className={`text-[9px] font-bold mt-1 ${step >= 4 ? 'text-emerald-400' : 'text-gray-500'}`}>
-                                      Entregado
-                                    </span>
-                                  </div>
+                                  {/* Helpful stage description note */}
+                                  <p className="text-[10.5px] sm:text-[11px] text-gray-400 px-1 pt-0.5">
+                                    {stepperInfo.description}
+                                  </p>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {/* Cancellation alert if cancelled */}
                             {isCancelled && (
