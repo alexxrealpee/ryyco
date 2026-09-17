@@ -47,6 +47,7 @@ import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, Clic
 import { safeSetItem } from './safeStorage';
 import { extractCoordinates } from './coordinateUtils';
 import { generateRyycoImageName } from './seoImageRenamer';
+import { orderProductBatch } from './productUtils';
 
 // Concrete public config from firebase-applet-config.json
 const firebaseConfig = {
@@ -3324,6 +3325,135 @@ export async function fetchProductsForStoreFromFirebase(
   } catch (err) {
     console.warn(`Error in fetchProductsForStoreFromFirebase for ${store.displayName || store.uid}:`, err);
     return { products: [], lastDoc: null, hasMore: false };
+  }
+}
+
+/**
+ * Lazy loads products directly from Firebase ONLY when a user selects/clicks a restaurant.
+ * Resiliently queries Firestore by store userId, username variations, displayName, and local storage.
+ */
+export async function fetchProductsForStoreOnDemand(
+  store: UserProfile,
+  limitCount: number = 30
+): Promise<ProductItem[]> {
+  try {
+    const products: ProductItem[] = [];
+
+    // 1. Primary Query: query collection 'products' by store.uid
+    if (store.uid) {
+      try {
+        const q = query(
+          collection(db, 'products'),
+          where('userId', '==', store.uid),
+          limit(limitCount)
+        );
+        const snap = await getDocs(q);
+        snap.forEach(docSnap => {
+          const data = docSnap.data() as ProductItem;
+          if (data && data.active !== false) {
+            products.push({
+              ...data,
+              id: docSnap.id,
+              userId: data.userId || store.uid,
+              storeName: data.storeName || store.displayName || store.username,
+              storeUsername: data.storeUsername || store.username,
+              name: data.name || 'Producto sin nombre',
+              price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+              stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+              active: true
+            });
+          }
+        });
+      } catch (err) {
+        console.warn("Error querying products by store uid:", err);
+      }
+    }
+
+    // 2. Secondary Query by storeUsername if products was empty
+    if (products.length === 0 && store.username) {
+      const cleanU = sanitizeUsername(store.username);
+      const cleanNoDash = cleanU.replace(/[-_]/g, '');
+      const candidates = Array.from(new Set([store.username, cleanU, cleanNoDash, store.username.toLowerCase()]));
+
+      for (const cand of candidates) {
+        if (products.length > 0) break;
+        try {
+          const qUser = query(
+            collection(db, 'products'),
+            where('storeUsername', '==', cand),
+            limit(limitCount)
+          );
+          const snapUser = await getDocs(qUser);
+          snapUser.forEach(docSnap => {
+            const data = docSnap.data() as ProductItem;
+            if (data && data.active !== false) {
+              products.push({
+                ...data,
+                id: docSnap.id,
+                userId: data.userId || store.uid,
+                storeName: data.storeName || store.displayName || store.username,
+                storeUsername: data.storeUsername || store.username,
+                name: data.name || 'Producto sin nombre',
+                price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+                stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+                active: true
+              });
+            }
+          });
+        } catch (e) {}
+      }
+    }
+
+    // 3. Fallback: check localStorage
+    if (products.length === 0) {
+      try {
+        const localUid = localStorage.getItem(`linnk_products_${store.uid}`);
+        if (localUid) {
+          const parsed = JSON.parse(localUid);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((lp: any) => {
+              if (lp && lp.active !== false && !products.some(p => p.id === lp.id)) {
+                products.push(lp);
+              }
+            });
+          }
+        }
+      } catch (e) {}
+    }
+
+    // 4. Also check matching by storeName
+    if (products.length === 0 && store.displayName) {
+      try {
+        const qName = query(
+          collection(db, 'products'),
+          where('storeName', '==', store.displayName),
+          limit(limitCount)
+        );
+        const snapName = await getDocs(qName);
+        snapName.forEach(docSnap => {
+          const data = docSnap.data() as ProductItem;
+          if (data && data.active !== false && !products.some(p => p.id === docSnap.id)) {
+            products.push({
+              ...data,
+              id: docSnap.id,
+              userId: data.userId || store.uid,
+              storeName: data.storeName || store.displayName,
+              storeUsername: data.storeUsername || store.username,
+              name: data.name || 'Producto sin nombre',
+              price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+              stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+              active: true
+            });
+          }
+        });
+      } catch (e) {}
+    }
+
+    const deduped = deduplicateProducts(products);
+    return orderProductBatch(deduped);
+  } catch (err) {
+    console.warn("fetchProductsForStoreOnDemand error:", err);
+    return [];
   }
 }
 

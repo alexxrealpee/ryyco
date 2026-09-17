@@ -172,15 +172,9 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         setFirstStore(first);
         setLoadedLogos(openStores);
 
-        // PASO 3: Consultar y renderizar los primeros productos sin esperas artificiales
-        setStage('fetching_first_products');
-        const firstBatch = await fetchBatch(4);
-
-        if (firstBatch.length > 0) {
-          setLoadedProducts(firstBatch);
-        }
-
-        // PASO 4: Listo para interacción y carga progresiva con scroll
+        // PASO 3: Carga diferida (Lazy Load) estricta:
+        // NO leer productos de Firebase en la carga inicial de la página.
+        // Los productos solo se leen de Firebase cuando el usuario hace clic en el restaurante.
         setStage('idle');
       } catch (error) {
         console.error('Error in progressive loading pipeline:', error);

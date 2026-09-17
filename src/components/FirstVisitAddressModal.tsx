@@ -161,48 +161,50 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/65 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
       role="dialog"
       aria-modal="true"
       aria-labelledby="first-visit-address-title"
     >
       <div 
-        className="bg-white text-slate-800 rounded-[32px] sm:rounded-[36px] shadow-2xl p-6 sm:p-9 max-w-[440px] w-full relative text-center border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-[#111827] text-white rounded-[32px] sm:rounded-[36px] shadow-2xl p-6 sm:p-8 max-w-[440px] w-full relative text-center border border-[#232B3A] overflow-hidden animate-in zoom-in-95 duration-200 shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
         <button
           type="button"
           onClick={handleSkip}
-          className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-full text-[#A9B2C3] hover:text-white hover:bg-[#232B3A] transition cursor-pointer"
           title="Omitir por ahora"
           aria-label="Cerrar"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* 3D Isometric House with Orange Map Pin Illustration */}
+        {/* 3D Isometric House with Red Map Pin Illustration */}
         <div className="flex justify-center mb-1 pt-1">
           <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
+            {/* Subtle glow behind house */}
+            <div className="absolute inset-0 bg-[#E63946]/15 rounded-full blur-2xl pointer-events-none" />
             <svg 
               viewBox="0 0 200 200" 
-              className="w-full h-full drop-shadow-md select-none"
+              className="w-full h-full drop-shadow-md select-none relative z-10"
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* Floating Orange Pin with Glow & Beacon */}
+              {/* Floating Red Pin with Glow & Beacon */}
               <g className="animate-bounce" style={{ animationDuration: '2.5s' }}>
                 {/* Pin drop shadow on roof */}
-                <ellipse cx="108" cy="74" rx="9" ry="3" fill="#000000" opacity="0.2" />
+                <ellipse cx="108" cy="74" rx="9" ry="3" fill="#000000" opacity="0.35" />
 
-                {/* Orange Map Pin Base Dot */}
-                <circle cx="108" cy="62" r="3.5" fill="#FF5722" />
+                {/* Map Pin Base Dot */}
+                <circle cx="108" cy="62" r="3.5" fill="#E63946" />
 
-                {/* Main Orange Location Pin Body */}
+                {/* Main Red Location Pin Body */}
                 <path 
                   d="M108 18 C94 18 84 28 84 41 C84 56 104 70 108 72 C112 70 132 56 132 41 C132 28 122 18 108 18 Z" 
-                  fill="url(#orangePinGradient)" 
-                  stroke="#E64A19" 
+                  fill="url(#redPinGradient)" 
+                  stroke="#B71C1C" 
                   strokeWidth="1.5"
                 />
 
@@ -210,7 +212,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
                 <circle cx="108" cy="39" r="8" fill="#FFFFFF" />
 
                 {/* Subtle highlight sheen on pin */}
-                <ellipse cx="102" cy="30" rx="3.5" ry="6" fill="#FFA726" opacity="0.6" transform="rotate(-25 102 30)" />
+                <ellipse cx="102" cy="30" rx="3.5" ry="6" fill="#FF8A80" opacity="0.65" transform="rotate(-25 102 30)" />
               </g>
 
               {/* Isometric Green Grass Lawn Tile */}
@@ -277,10 +279,10 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
 
               {/* Gradients */}
               <defs>
-                <linearGradient id="orangePinGradient" x1="84" y1="18" x2="132" y2="72" gradientUnits="userSpaceOnUse">
-                  <stop stopColor="#FF6E40" />
-                  <stop offset="0.5" stopColor="#FF5722" />
-                  <stop offset="1" stopColor="#E64A19" />
+                <linearGradient id="redPinGradient" x1="84" y1="18" x2="132" y2="72" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#FF4D5E" />
+                  <stop offset="0.5" stopColor="#E63946" />
+                  <stop offset="1" stopColor="#B71C1C" />
                 </linearGradient>
               </defs>
             </svg>
@@ -290,21 +292,21 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         {/* Title */}
         <h2 
           id="first-visit-address-title"
-          className="text-[22px] sm:text-[26px] font-black text-[#1E293B] tracking-tight leading-tight mt-2 mb-2"
+          className="text-[22px] sm:text-[25px] font-black text-white tracking-tight leading-tight mt-3 mb-2"
         >
           Ingresa tu dirección en Ipiales:
         </h2>
 
         {/* Subtitle */}
-        <p className="text-[#334155] text-sm sm:text-base font-normal leading-relaxed mb-5 max-w-xs sm:max-w-sm mx-auto">
+        <p className="text-[#A9B2C3] text-sm sm:text-base font-normal leading-relaxed mb-5 max-w-xs sm:max-w-sm mx-auto">
           Mejor servicio, entregas más rápidas y los precios más convenientes!
         </p>
 
         {/* Input Box with MapPin Icon */}
         <div className="relative mb-3 text-left">
           <div className="relative flex items-center">
-            <div className="absolute left-4 pointer-events-none text-[#5F6368]">
-              <MapPin className="w-5 h-5 fill-[#5F6368]/20" />
+            <div className="absolute left-4 pointer-events-none text-[#E63946]">
+              <MapPin className="w-5 h-5 fill-[#E63946]/20" />
             </div>
             <input
               ref={inputRef}
@@ -321,7 +323,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
                 }
               }}
               placeholder="Escribe la dirección de entrega"
-              className="w-full bg-[#F8F9FA] hover:bg-[#F1F3F5] focus:bg-white text-[#1E293B] font-medium text-sm sm:text-base rounded-2xl pl-12 pr-10 py-3.5 sm:py-4 border border-slate-200/80 focus:border-[#00B074] focus:ring-4 focus:ring-[#00B074]/15 outline-none transition-all placeholder:text-[#80868B] shadow-sm"
+              className="w-full bg-[#090B12] hover:bg-[#0d101a] focus:bg-[#090B12] text-white font-semibold text-sm sm:text-base rounded-2xl pl-12 pr-10 py-3.5 sm:py-4 border border-[#232B3A] focus:border-[#E63946] focus:ring-4 focus:ring-[#E63946]/20 outline-none transition-all placeholder:text-[#6B7280] shadow-inner"
             />
             {address && (
               <button
@@ -331,7 +333,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
                   setCoordinates(null);
                   inputRef.current?.focus();
                 }}
-                className="absolute right-3.5 p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition cursor-pointer"
+                className="absolute right-3.5 p-1 rounded-full text-[#A9B2C3] hover:text-white hover:bg-[#232B3A] transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -341,7 +343,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
 
         {/* Location Error Display */}
         {locationError && (
-          <p className="text-xs text-rose-500 font-medium mb-3 text-center">
+          <p className="text-xs text-[#E63946] font-semibold mb-3 text-center bg-[#E63946]/10 border border-[#E63946]/20 rounded-xl py-2 px-3">
             {locationError}
           </p>
         )}
@@ -352,12 +354,12 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
             type="button"
             onClick={handleUseCurrentLocation}
             disabled={isLocating}
-            className="inline-flex items-center justify-center gap-2 text-[#00B074] hover:text-[#009663] font-bold text-sm sm:text-base py-2 px-3 rounded-xl hover:bg-emerald-50 active:scale-95 transition cursor-pointer disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 text-[#E63946] hover:text-[#ff5c6b] font-bold text-sm sm:text-base py-2.5 px-4 rounded-xl hover:bg-[#E63946]/10 active:scale-95 transition cursor-pointer disabled:opacity-50"
           >
             {isLocating ? (
-              <Loader2 className="w-4 h-4 text-[#00B074] animate-spin" />
+              <Loader2 className="w-4 h-4 text-[#E63946] animate-spin" />
             ) : (
-              <Navigation className="w-4 h-4 fill-[#00B074] rotate-45" />
+              <Navigation className="w-4 h-4 fill-[#E63946] rotate-45" />
             )}
             <span>{isLocating ? 'Detectando ubicación en Ipiales...' : 'Usar mi ubicación actual'}</span>
           </button>
@@ -369,7 +371,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
             type="button"
             onClick={handleConfirm}
             disabled={isSaving}
-            className="w-full bg-[#00B074] hover:bg-[#009663] text-white font-extrabold text-sm sm:text-base py-3.5 px-6 rounded-2xl shadow-lg shadow-[#00B074]/30 active:scale-[0.98] transition cursor-pointer flex items-center justify-center gap-2 mb-2 disabled:opacity-50"
+            className="w-full bg-[#E63946] hover:bg-[#d62839] active:bg-[#b71c1c] text-white font-extrabold text-sm sm:text-base py-3.5 px-6 rounded-2xl shadow-lg shadow-[#E63946]/30 active:scale-[0.98] transition cursor-pointer flex items-center justify-center gap-2 mb-2 disabled:opacity-50"
           >
             {isSaving ? (
               <>
@@ -389,7 +391,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         <button
           type="button"
           onClick={handleSkip}
-          className="text-xs text-slate-400 hover:text-slate-600 font-medium transition cursor-pointer py-1"
+          className="text-xs text-[#A9B2C3] hover:text-white font-medium transition cursor-pointer py-1.5 hover:underline"
         >
           Explorar restaurantes sin dirección por ahora
         </button>
