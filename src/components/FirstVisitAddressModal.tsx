@@ -182,21 +182,48 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         </button>
 
         {/* 3D Isometric House with Red Map Pin Illustration */}
-        <div className="flex justify-center mb-1 pt-1">
+        <div className="flex justify-center mb-1 pt-3">
+          <style>{`
+            @keyframes ryycoPinFloat {
+              0%, 100% {
+                transform: translateY(0px);
+              }
+              50% {
+                transform: translateY(-12px);
+              }
+            }
+            @keyframes ryycoShadowPulse {
+              0%, 100% {
+                transform: scale(1);
+                opacity: 0.35;
+              }
+              50% {
+                transform: scale(0.82);
+                opacity: 0.2;
+              }
+            }
+            .animate-ryyco-pin {
+              animation: ryycoPinFloat 2.4s ease-in-out infinite;
+            }
+            .animate-ryyco-shadow {
+              transform-origin: 108px 74px;
+              animation: ryycoShadowPulse 2.4s ease-in-out infinite;
+            }
+          `}</style>
           <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
             {/* Subtle glow behind house */}
             <div className="absolute inset-0 bg-[#E63946]/15 rounded-full blur-2xl pointer-events-none" />
             <svg 
-              viewBox="0 0 200 200" 
-              className="w-full h-full drop-shadow-md select-none relative z-10"
+              viewBox="0 -35 200 235" 
+              className="w-full h-full drop-shadow-md select-none relative z-10 overflow-visible" 
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"
             >
-              {/* Floating Red Pin with Glow & Beacon */}
-              <g className="animate-bounce" style={{ animationDuration: '2.5s' }}>
-                {/* Pin drop shadow on roof */}
-                <ellipse cx="108" cy="74" rx="9" ry="3" fill="#000000" opacity="0.35" />
+              {/* Pin drop shadow on roof - stays grounded on roof with subtle pulse */}
+              <ellipse cx="108" cy="74" rx="9" ry="3" fill="#000000" className="animate-ryyco-shadow" />
 
+              {/* Floating Red Pin with Smooth Safe Motion (no clipping) */}
+              <g className="animate-ryyco-pin">
                 {/* Map Pin Base Dot */}
                 <circle cx="108" cy="62" r="3.5" fill="#E63946" />
 
