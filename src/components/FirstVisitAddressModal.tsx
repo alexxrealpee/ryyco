@@ -182,24 +182,18 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         </button>
 
         {/* 3D Isometric House with Red Map Pin Illustration */}
-        <div className="flex justify-center mb-1 pt-4 sm:pt-5">
-          <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center overflow-visible">
+        <div className="flex justify-center mb-1 pt-1">
+          <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
             {/* Subtle glow behind house */}
             <div className="absolute inset-0 bg-[#E63946]/15 rounded-full blur-2xl pointer-events-none" />
-            <style>{`
-              @keyframes gentlePinBob {
-                0%, 100% { transform: translateY(0px); }
-                50% { transform: translateY(-7px); }
-              }
-            `}</style>
             <svg 
-              viewBox="0 -32 200 195" 
-              className="w-full h-full drop-shadow-md select-none relative z-10 overflow-visible"
+              viewBox="0 0 200 200" 
+              className="w-full h-full drop-shadow-md select-none relative z-10"
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"
             >
               {/* Floating Red Pin with Glow & Beacon */}
-              <g style={{ animation: 'gentlePinBob 2.5s ease-in-out infinite' }}>
+              <g className="animate-bounce" style={{ animationDuration: '2.5s' }}>
                 {/* Pin drop shadow on roof */}
                 <ellipse cx="108" cy="74" rx="9" ry="3" fill="#000000" opacity="0.35" />
 
