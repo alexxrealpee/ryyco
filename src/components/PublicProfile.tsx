@@ -203,9 +203,22 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [custPhone, setCustPhone] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [custEmail, setCustEmail] = useState('');
-  const [custAddress, setCustAddress] = useState('');
+  const [custAddress, setCustAddress] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('ryyco_customer_delivery_address') || '';
+    }
+    return '';
+  });
   const [pickupNotes, setPickupNotes] = useState('');
-  const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(null);
+  const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('ryyco_customer_coordinates');
+        if (raw) return JSON.parse(raw);
+      } catch (e) {}
+    }
+    return null;
+  });
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup' | 'table'>('delivery');
@@ -216,6 +229,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
   const [acceptedBuyerTermsInCheckout, setAcceptedBuyerTermsInCheckout] = useState(true);
   const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
+
+  // Synchronize delivery address across views
+  useEffect(() => {
+    const handleAddressUpdate = (e: any) => {
+      if (e.detail?.address) {
+        setCustAddress(e.detail.address);
+        if (e.detail.coordinates) {
+          setCustCoordinates(e.detail.coordinates);
+        }
+      }
+    };
+    window.addEventListener('ryyco:address-updated', handleAddressUpdate);
+    return () => window.removeEventListener('ryyco:address-updated', handleAddressUpdate);
+  }, []);
 
   // Customer Portal & Rewards State
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);

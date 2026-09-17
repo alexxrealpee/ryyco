@@ -20,6 +20,7 @@ import DriverPortal, { getStoredDriverSession } from './components/DriverPortal'
 import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
 import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
+import FirstVisitAddressModal from './components/FirstVisitAddressModal';
 import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
@@ -214,6 +215,39 @@ export default function App() {
       window.removeEventListener('popstate', handleUrlRouteCheck);
       window.removeEventListener('hashchange', handleUrlRouteCheck);
     };
+  }, []);
+
+  // First-visit customer delivery address prompt
+  const [isFirstVisitAddressOpen, setIsFirstVisitAddressOpen] = useState(false);
+
+  useEffect(() => {
+    // Check if user has already configured their address or completed the initial modal
+    const savedAddress = localStorage.getItem('ryyco_customer_delivery_address');
+    const hasCompletedPrompt = localStorage.getItem('ryyco_first_address_completed');
+    const authMode = localStorage.getItem('ryyco_auth_mode');
+
+    // Skip prompt if user is navigating directly to driver or administrative portals
+    const pathnameLower = window.location.pathname.toLowerCase();
+    const isSpecialPath = pathnameLower.includes('admin') ||
+                          pathnameLower.includes('domiciliario') ||
+                          pathnameLower.includes('driver-register') ||
+                          pathnameLower.includes('dashboard');
+
+    if (!savedAddress && !hasCompletedPrompt && !isSpecialPath && authMode !== 'driver' && authMode !== 'seller') {
+      const timer = setTimeout(() => {
+        setIsFirstVisitAddressOpen(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  // Listen for global address modal requests (e.g. from navbar address bar or store header)
+  useEffect(() => {
+    const handleOpenAddressModal = () => {
+      setIsFirstVisitAddressOpen(true);
+    };
+    window.addEventListener('ryyco:open-address-modal', handleOpenAddressModal);
+    return () => window.removeEventListener('ryyco:open-address-modal', handleOpenAddressModal);
   }, []);
 
   // Update browser document tab title dynamically
@@ -574,6 +608,12 @@ export default function App() {
           }}
         />
       )}
+
+      {/* First-Visit / Customer Delivery Address Modal in Ipiales */}
+      <FirstVisitAddressModal
+        isOpen={isFirstVisitAddressOpen}
+        onClose={() => setIsFirstVisitAddressOpen(false)}
+      />
     </div>
   );
 }

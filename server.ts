@@ -446,11 +446,74 @@ Formatos válidos para:
     }
   });
 
+  // Connected SSE push clients for real-time order notifications
+  interface PushClient {
+    id: string;
+    role: 'admin' | 'seller' | 'all';
+    sellerUid?: string;
+    res: express.Response;
+  }
+  const pushClients: PushClient[] = [];
+
+  // Real-time Push Stream (SSE) for Admin & Seller Dashboards
+  app.get('/api/fcm/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    if (typeof (res as any).flushHeaders === 'function') {
+      (res as any).flushHeaders();
+    }
+
+    const clientId = Math.random().toString(36).substring(2, 12);
+    const role = ((req.query.role as string) || 'all') as 'admin' | 'seller' | 'all';
+    const sellerUid = (req.query.sellerUid as string) || undefined;
+
+    const client: PushClient = { id: clientId, role, sellerUid, res };
+    pushClients.push(client);
+
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, timestamp: new Date().toISOString() })}\n\n`);
+
+    const heartbeat = setInterval(() => {
+      try {
+        res.write(': heartbeat\n\n');
+      } catch (e) {
+        clearInterval(heartbeat);
+      }
+    }, 25000);
+
+    req.on('close', () => {
+      clearInterval(heartbeat);
+      const idx = pushClients.findIndex(c => c.id === clientId);
+      if (idx !== -1) pushClients.splice(idx, 1);
+    });
+  });
+
   // Firebase Cloud Messaging (FCM) Order Notification Broadcast Endpoint
   app.post('/api/fcm/broadcast-order', (req, res) => {
     try {
       const { orderId, orderNumber, storeName, customerName, totalAmount, itemsCount } = req.body || {};
-      console.log(`[FCM-SERVER] 🚨 Nuevo pedido recibido para notificación general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
+      console.log(`[FCM-SERVER] 🚨 Nuevo pedido para notificación general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
+      
+      // Relay to connected Admin clients
+      const payload = {
+        type: 'ADMIN_ORDER_PUSH',
+        orderId,
+        orderNumber,
+        storeName,
+        customerName,
+        totalAmount,
+        itemsCount,
+        timestamp: new Date().toISOString()
+      };
+
+      pushClients.forEach(c => {
+        if (c.role === 'admin' || c.role === 'all') {
+          try {
+            c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+          } catch (e) {}
+        }
+      });
+
       res.json({
         status: 'ok',
         delivered: true,
@@ -469,6 +532,28 @@ Formatos válidos para:
     try {
       const { storeOwnerId, orderId, orderNumber, storeName, customerName, totalAmount, itemsCount } = req.body || {};
       console.log(`[FCM-SERVER] 📦 Nuevo pedido para Vendedor (Tienda: "${storeName || 'Tienda'}" - UID: ${storeOwnerId}): #${orderNumber || 'S/N'} por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
+
+      // Relay to connected Seller clients
+      const payload = {
+        type: 'SELLER_ORDER_PUSH',
+        storeOwnerId,
+        orderId,
+        orderNumber,
+        storeName,
+        customerName,
+        totalAmount,
+        itemsCount,
+        timestamp: new Date().toISOString()
+      };
+
+      pushClients.forEach(c => {
+        if (c.role === 'admin' || (c.role === 'seller' && (!c.sellerUid || c.sellerUid === storeOwnerId)) || c.role === 'all') {
+          try {
+            c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+          } catch (e) {}
+        }
+      });
+
       res.json({
         status: 'ok',
         delivered: true,
@@ -479,6 +564,42 @@ Formatos válidos para:
       });
     } catch (err: any) {
       console.error('[FCM-SERVER] Error in broadcast-seller-order:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  // Broadcast custom push alert from Admin to a specific seller or all sellers
+  app.post('/api/fcm/broadcast-to-seller', (req, res) => {
+    try {
+      const { storeOwnerId, storeName, title, message } = req.body || {};
+      console.log(`[FCM-SERVER] 📢 Emisión de alerta Push a Vendedor (${storeOwnerId === 'all' ? 'TODOS LOS VENDEDORES' : storeOwnerId}): "${title}" - "${message}"`);
+
+      const payload = {
+        type: 'CUSTOM_SELLER_ALERT',
+        storeOwnerId: storeOwnerId || 'all',
+        storeName: storeName || 'Tienda',
+        title: title || 'Aviso de Administración RYYCO',
+        message: message || 'Tienes un nuevo mensaje importante de la administración.',
+        timestamp: new Date().toISOString()
+      };
+
+      let deliveredCount = 0;
+      pushClients.forEach(c => {
+        if (c.role === 'seller' && (storeOwnerId === 'all' || !c.sellerUid || c.sellerUid === storeOwnerId)) {
+          try {
+            c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+            deliveredCount++;
+          } catch (e) {}
+        }
+      });
+
+      res.json({
+        status: 'ok',
+        deliveredCount,
+        message: `Alerta transmitida a ${deliveredCount} dispositivos conectados`
+      });
+    } catch (err: any) {
+      console.error('[FCM-SERVER] Error in broadcast-to-seller:', err);
       res.status(500).json({ error: err.message || 'Internal server error' });
     }
   });

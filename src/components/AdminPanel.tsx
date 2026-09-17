@@ -90,7 +90,12 @@ import {
   triggerAdminOrderPush,
   getFCMStatus,
   playOrderAlertChime,
-  speakOrderVoiceAlert
+  speakOrderVoiceAlert,
+  fetchSellerFCMTokens,
+  deleteSellerFCMToken,
+  sendAdminPushToSeller,
+  connectFCMStream,
+  SellerFCMTokenRecord
 } from '../lib/fcmNotifications';
 import { 
   collection, 
@@ -279,6 +284,78 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
   const [isRequestingFCM, setIsRequestingFCM] = useState<boolean>(false);
   const [showFCMDetails, setShowFCMDetails] = useState<boolean>(false);
+  const [sellerTokens, setSellerTokens] = useState<SellerFCMTokenRecord[]>([]);
+  const [isLoadingSellerTokens, setIsLoadingSellerTokens] = useState(false);
+  const [fcmActiveTab, setFcmActiveTab] = useState<'admin' | 'sellers'>('admin');
+  const [selectedSellerForPush, setSelectedSellerForPush] = useState<string>('all');
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [isSendingBroadcast, setIsSendingBroadcast] = useState(false);
+
+  // Fetch registered seller FCM devices from Firestore
+  const loadSellerTokens = async () => {
+    setIsLoadingSellerTokens(true);
+    try {
+      const tokens = await fetchSellerFCMTokens();
+      setSellerTokens(tokens);
+    } catch (e) {
+      console.warn("Error cargando tokens de vendedores:", e);
+    } finally {
+      setIsLoadingSellerTokens(false);
+    }
+  };
+
+  const handleSendPushToSeller = async (sellerUid: string, storeName?: string) => {
+    const defaultMsg = `Hola ${storeName || 'Vendedor'}, tienes una nueva actualización de pedidos en RYYCO.`;
+    const res = await sendAdminPushToSeller({
+      storeOwnerId: sellerUid,
+      storeName: storeName || 'Tienda',
+      title: `🔔 RYYCO - Notificación a ${storeName || 'Vendedor'}`,
+      message: defaultMsg
+    });
+    if (res.success) {
+      setNotif(`✅ Alerta Push transmitida exitosamente a "${storeName || 'Vendedor'}"`);
+    } else {
+      setNotif(`⚠️ ${res.error || 'No se pudo enviar la alerta'}`);
+    }
+    setTimeout(() => setNotif(''), 5000);
+  };
+
+  const handleBroadcastToSellers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastMessage.trim()) return;
+    setIsSendingBroadcast(true);
+    try {
+      const res = await sendAdminPushToSeller({
+        storeOwnerId: selectedSellerForPush,
+        storeName: selectedSellerForPush === 'all' ? 'Todos los Vendedores' : (sellerTokens.find(s => s.sellerUid === selectedSellerForPush)?.storeName || 'Vendedor'),
+        title: broadcastTitle.trim() || '📢 Comunicado RYYCO a Vendedores',
+        message: broadcastMessage.trim()
+      });
+      if (res.success) {
+        setNotif(`✅ Notificación transmitida a vendedores (${selectedSellerForPush === 'all' ? 'Todos' : 'Seleccionado'})`);
+        setBroadcastTitle('');
+        setBroadcastMessage('');
+      } else {
+        setNotif(`⚠️ ${res.error || 'Error al transmitir la notificación'}`);
+      }
+    } catch (err: any) {
+      setNotif("❌ Error al enviar transmisión.");
+    } finally {
+      setIsSendingBroadcast(false);
+      setTimeout(() => setNotif(''), 5000);
+    }
+  };
+
+  const handleDeleteSellerToken = async (tokenId: string) => {
+    if (!confirm('¿Eliminar el registro de este token de vendedor?')) return;
+    const ok = await deleteSellerFCMToken(tokenId);
+    if (ok) {
+      setSellerTokens(prev => prev.filter(t => t.id !== tokenId));
+      setNotif("🗑️ Registro de token eliminado");
+      setTimeout(() => setNotif(''), 3000);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -298,6 +375,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       }
     })();
 
+    loadSellerTokens();
+
     // Listen to custom event for foreground FCM orders
     const handleFgOrder = (e: any) => {
       const { payload } = e.detail || {};
@@ -308,9 +387,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     };
     window.addEventListener('ryyco:new-admin-order', handleFgOrder);
 
+    // Connect to real-time SSE stream for Admin
+    const cleanupSSE = connectFCMStream('admin', undefined, (data) => {
+      if (data.type === 'ADMIN_ORDER_PUSH') {
+        setNotif(`🚨 ¡Nuevo Pedido #${data.orderNumber || ''} en "${data.storeName || 'Tienda'}"!`);
+        setTimeout(() => setNotif(''), 6000);
+      }
+    });
+
     return () => {
       isMounted = false;
       window.removeEventListener('ryyco:new-admin-order', handleFgOrder);
+      cleanupSSE();
     };
   }, []);
 
@@ -2886,63 +2974,242 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
             {/* FCM Connection Details Drawer */}
             {showFCMDetails && (
-              <div className="bg-gray-950/80 border border-cyan-500/30 rounded-2xl p-4 text-xs space-y-2 text-gray-300 shadow-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs">
+              <div className="bg-gray-950/95 border border-cyan-500/30 rounded-2xl p-4 text-xs space-y-3 text-gray-300 shadow-2xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800 pb-2.5">
+                  <div className="flex items-center gap-2">
                     <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
-                    <span>Configuración Firebase Cloud Messaging (FCM) - Admin General</span>
+                    <span className="font-bold text-white text-sm">Firebase Cloud Messaging (FCM) & Push</span>
                   </div>
-                  <button 
-                    type="button" 
-                    onClick={() => setShowFCMDetails(false)}
-                    className="text-gray-500 hover:text-white p-1"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
-                    <p className="text-[10px] text-gray-500 font-mono uppercase">Service Worker</p>
-                    <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>/firebase-messaging-sw.js</span>
-                    </p>
-                  </div>
-                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
-                    <p className="text-[10px] text-gray-500 font-mono uppercase">Permiso Notificaciones</p>
-                    <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
-                      <span className={`w-2 h-2 rounded-full ${pushPermission === 'granted' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-                      <span className="capitalize">{pushPermission}</span>
-                    </p>
-                  </div>
-                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
-                    <p className="text-[10px] text-gray-500 font-mono uppercase">Almacenamiento Tokens</p>
-                    <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Colección Firestore admin_fcm_tokens</span>
-                    </p>
-                  </div>
-                </div>
-                {fcmToken && (
-                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[10px] text-gray-500 font-mono">TOKEN FCM REGISTRADO DEL DISPOSITIVO:</p>
-                      <p className="text-[10px] text-cyan-300 font-mono truncate">{fcmToken}</p>
+
+                  <div className="flex items-center gap-2">
+                    {/* Switch tabs: Admin vs Sellers */}
+                    <div className="flex bg-gray-900 rounded-xl p-0.5 border border-gray-800">
+                      <button
+                        type="button"
+                        onClick={() => setFcmActiveTab('admin')}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          fcmActiveTab === 'admin'
+                            ? 'bg-cyan-500 text-black shadow'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        Admin General
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFcmActiveTab('sellers');
+                          loadSellerTokens();
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                          fcmActiveTab === 'sellers'
+                            ? 'bg-emerald-500 text-black shadow'
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        <span>Vendedores</span>
+                        <span className="bg-black/30 text-current px-1.5 py-0.2 rounded-full text-[10px]">
+                          {sellerTokens.length}
+                        </span>
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (navigator.clipboard) {
-                          navigator.clipboard.writeText(fcmToken);
-                          setNotif("📋 Token FCM copiado al portapapeles");
-                          setTimeout(() => setNotif(''), 3000);
-                        }
-                      }}
-                      className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-[10px] font-mono shrink-0 flex items-center gap-1"
+
+                    <button 
+                      type="button" 
+                      onClick={() => setShowFCMDetails(false)}
+                      className="text-gray-500 hover:text-white p-1 ml-1 cursor-pointer"
                     >
-                      <Copy className="w-3 h-3" />
-                      <span>Copiar</span>
+                      <X className="w-4 h-4" />
                     </button>
+                  </div>
+                </div>
+
+                {fcmActiveTab === 'admin' ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                      <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
+                        <p className="text-[10px] text-gray-500 font-mono uppercase">Service Worker</p>
+                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>/firebase-messaging-sw.js</span>
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
+                        <p className="text-[10px] text-gray-500 font-mono uppercase">Permiso Notificaciones</p>
+                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                          <span className={`w-2 h-2 rounded-full ${pushPermission === 'granted' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                          <span className="capitalize">{pushPermission}</span>
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
+                        <p className="text-[10px] text-gray-500 font-mono uppercase">Almacenamiento Tokens</p>
+                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Colección Firestore admin_fcm_tokens</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    {fcmToken && (
+                      <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800 flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] text-gray-500 font-mono">TOKEN FCM REGISTRADO DEL DISPOSITIVO ADMIN:</p>
+                          <p className="text-[10px] text-cyan-300 font-mono truncate">{fcmToken}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (navigator.clipboard) {
+                              navigator.clipboard.writeText(fcmToken);
+                              setNotif("📋 Token FCM copiado al portapapeles");
+                              setTimeout(() => setNotif(''), 3000);
+                            }
+                          }}
+                          className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-[10px] font-mono shrink-0 flex items-center gap-1 cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Copiar</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* SELLERS FCM MANAGEMENT TAB */
+                  <div className="space-y-3">
+                    {/* Top summary banner */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-emerald-950/20 border border-emerald-500/20 p-3 rounded-xl">
+                      <div>
+                        <p className="text-white font-bold flex items-center gap-1.5">
+                          <Smartphone className="w-4 h-4 text-emerald-400" />
+                          <span>Dispositivos de Vendedores Registrados en FCM ({sellerTokens.length})</span>
+                        </p>
+                        <p className="text-[11px] text-emerald-300/80 mt-0.5">
+                          Alertas push nativas directas con sonido de campana y voz sintetizada cuando llega un pedido a cada tienda.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={loadSellerTokens}
+                        disabled={isLoadingSellerTokens}
+                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded-lg border border-gray-700 flex items-center gap-1 text-xs cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isLoadingSellerTokens ? 'animate-spin' : ''}`} />
+                        <span>Actualizar</span>
+                      </button>
+                    </div>
+
+                    {/* Broadcast custom push notification to sellers */}
+                    <form onSubmit={handleBroadcastToSellers} className="p-3 bg-gray-900/80 rounded-xl border border-gray-800 space-y-2">
+                      <p className="text-xs font-bold text-white flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Transmitir Notificación Push a Vendedores</span>
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-mono">Destinatario:</label>
+                          <select
+                            value={selectedSellerForPush}
+                            onChange={(e) => setSelectedSellerForPush(e.target.value)}
+                            className="w-full mt-0.5 bg-black/60 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white"
+                          >
+                            <option value="all">📢 Todos los Vendedores ({sellerTokens.length})</option>
+                            {sellerTokens.map((t) => (
+                              <option key={t.id} value={t.sellerUid}>
+                                🏪 {t.storeName || 'Tienda'} ({t.sellerEmail || t.sellerUid.slice(0, 6)})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-mono">Título:</label>
+                          <input
+                            type="text"
+                            placeholder="Ej: Alta demanda de pedidos"
+                            value={broadcastTitle}
+                            onChange={(e) => setBroadcastTitle(e.target.value)}
+                            className="w-full mt-0.5 bg-black/60 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-mono">Mensaje:</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ej: Revisa tus pedidos pendientes"
+                            value={broadcastMessage}
+                            onChange={(e) => setBroadcastMessage(e.target.value)}
+                            className="w-full mt-0.5 bg-black/60 border border-gray-700 rounded-lg px-2 py-1.5 text-xs text-white"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="submit"
+                          disabled={isSendingBroadcast || !broadcastMessage.trim()}
+                          className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-lg text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40"
+                        >
+                          <Zap className="w-3.5 h-3.5 fill-black" />
+                          <span>{isSendingBroadcast ? 'Transmitiendo...' : 'Transmitir Alerta Push'}</span>
+                        </button>
+                      </div>
+                    </form>
+
+                    {/* Table / List of Registered Sellers */}
+                    <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                      {sellerTokens.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500 bg-gray-900/40 rounded-xl border border-gray-800">
+                          <p>No hay dispositivos de vendedores registrados aún en <span className="font-mono text-cyan-400">seller_fcm_tokens</span>.</p>
+                          <p className="text-[11px] mt-1 text-gray-600">
+                            Cuando un vendedor entra a su panel y presiona "Activar Notificaciones Push", su token aparecerá aquí automáticamente.
+                          </p>
+                        </div>
+                      ) : (
+                        sellerTokens.map((st) => (
+                          <div
+                            key={st.id}
+                            className="p-2.5 bg-gray-900/90 hover:bg-gray-850 rounded-xl border border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 transition"
+                          >
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                <p className="font-bold text-white text-xs truncate">
+                                  {st.storeName || 'Tienda Sin Nombre'}
+                                </p>
+                                <span className="text-[10px] text-gray-400 font-mono">
+                                  {st.sellerEmail || st.sellerUid.slice(0, 8)}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-gray-400 font-mono truncate mt-0.5">
+                                Dispositivo: {st.device || 'Navegador Web'} • Actualizado: {st.updatedAt ? new Date(st.updatedAt).toLocaleDateString('es-CO') : 'Reciente'}
+                              </p>
+                              <p className="text-[9px] text-cyan-400/80 font-mono truncate">
+                                Token: {st.token ? (st.token.length > 30 ? `${st.token.slice(0, 20)}...${st.token.slice(-10)}` : st.token) : 'Token local'}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleSendPushToSeller(st.sellerUid, st.storeName)}
+                                className="px-2.5 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                title="Enviar alerta push de prueba a esta tienda"
+                              >
+                                <Zap className="w-3 h-3 text-emerald-400" />
+                                <span>Enviar Prueba</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSellerToken(st.id)}
+                                className="p-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg cursor-pointer"
+                                title="Eliminar registro"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

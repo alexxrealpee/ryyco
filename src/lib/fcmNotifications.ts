@@ -597,3 +597,177 @@ export function getSellerFCMStatus(storeOwnerId?: string): {
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
 }
+
+export interface SellerFCMTokenRecord {
+  id: string;
+  token: string;
+  storeOwnerId: string;
+  sellerUid: string;
+  sellerEmail?: string;
+  storeName?: string;
+  device?: string;
+  userAgent?: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AdminFCMTokenRecord {
+  id: string;
+  token: string;
+  adminUid: string;
+  adminEmail?: string;
+  adminName?: string;
+  device?: string;
+  userAgent?: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Fetch all registered seller FCM device tokens from Firestore
+ */
+export async function fetchSellerFCMTokens(): Promise<SellerFCMTokenRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, 'seller_fcm_tokens'));
+    const tokens: SellerFCMTokenRecord[] = [];
+    snap.forEach((d) => {
+      tokens.push({ id: d.id, ...(d.data() as any) });
+    });
+    // Sort newest first
+    return tokens.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  } catch (err) {
+    console.warn('[FCM] Error fetching seller tokens from Firestore:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch all registered admin FCM device tokens from Firestore
+ */
+export async function fetchAdminFCMTokens(): Promise<AdminFCMTokenRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, 'admin_fcm_tokens'));
+    const tokens: AdminFCMTokenRecord[] = [];
+    snap.forEach((d) => {
+      tokens.push({ id: d.id, ...(d.data() as any) });
+    });
+    return tokens.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  } catch (err) {
+    console.warn('[FCM] Error fetching admin tokens from Firestore:', err);
+    return [];
+  }
+}
+
+/**
+ * Delete a seller FCM token
+ */
+export async function deleteSellerFCMToken(tokenId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'seller_fcm_tokens', tokenId));
+    return true;
+  } catch (err) {
+    console.warn('[FCM] Error deleting seller token:', err);
+    return false;
+  }
+}
+
+/**
+ * Send an Admin broadcast push notification to a specific seller or to all sellers
+ */
+export async function sendAdminPushToSeller(params: {
+  storeOwnerId: string;
+  storeName?: string;
+  title: string;
+  message: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/fcm/broadcast-to-seller', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    const data = await res.json();
+    return { success: data.status === 'ok' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error al emitir notificación al vendedor' };
+  }
+}
+
+/**
+ * Connect to real-time Server-Sent Events (SSE) push stream for instant delivery across tabs
+ */
+export function connectFCMStream(
+  role: 'admin' | 'seller',
+  sellerUid?: string,
+  onEvent?: (data: any) => void
+): () => void {
+  if (typeof window === 'undefined' || !('EventSource' in window)) {
+    return () => {};
+  }
+
+  let eventSource: EventSource | null = null;
+  try {
+    const params = new URLSearchParams({ role });
+    if (sellerUid) params.set('sellerUid', sellerUid);
+
+    eventSource = new EventSource(`/api/fcm/stream?${params.toString()}`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'CONNECTED') {
+          console.log('[FCM-SSE] Connected to push stream:', data.clientId);
+          return;
+        }
+
+        if (onEvent) {
+          onEvent(data);
+        }
+
+        // Auto-handle seller order push if matching
+        if (data.type === 'SELLER_ORDER_PUSH' && role === 'seller') {
+          if (!sellerUid || data.storeOwnerId === sellerUid) {
+            playOrderAlertChime();
+            speakOrderVoiceAlert(`¡Nuevo pedido número ${data.orderNumber || ''} en tu tienda!`);
+            window.dispatchEvent(new CustomEvent('ryyco:new-seller-order', {
+              detail: data
+            }));
+          }
+        } else if (data.type === 'ADMIN_ORDER_PUSH' && role === 'admin') {
+          playOrderAlertChime();
+          speakOrderVoiceAlert(`¡Nuevo pedido número ${data.orderNumber || ''} en RYYCO!`);
+          window.dispatchEvent(new CustomEvent('ryyco:new-admin-order', {
+            detail: data
+          }));
+        } else if (data.type === 'CUSTOM_SELLER_ALERT' && role === 'seller') {
+          if (!sellerUid || data.storeOwnerId === 'all' || data.storeOwnerId === sellerUid) {
+            playOrderAlertChime();
+            speakOrderVoiceAlert(data.title || 'Mensaje de administración RYYCO');
+            if (Notification.permission === 'granted') {
+              new Notification(data.title || '🔔 RYYCO Tiendas', {
+                body: data.message,
+                icon: '/logoryyco.png'
+              });
+            }
+          }
+        }
+      } catch (err) {
+        // Heartbeat or comment
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.warn('[FCM-SSE] Stream connection error, will auto-reconnect:', err);
+    };
+  } catch (e) {
+    console.warn('[FCM-SSE] Failed to initialize EventSource:', e);
+  }
+
+  return () => {
+    if (eventSource) {
+      eventSource.close();
+    }
+  };
+}

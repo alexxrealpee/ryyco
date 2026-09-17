@@ -79,7 +79,8 @@ import {
   triggerSellerOrderPush, 
   getSellerFCMStatus, 
   playOrderAlertChime, 
-  speakOrderVoiceAlert 
+  speakOrderVoiceAlert,
+  connectFCMStream 
 } from '../lib/fcmNotifications';
 import { 
   saveProfile, 
@@ -311,6 +312,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   );
   const [showFCMDetails, setShowFCMDetails] = useState(false);
   const [copiedFCMToken, setCopiedFCMToken] = useState(false);
+  const [isFcmModalOpen, setIsFcmModalOpen] = useState(false);
+  const [customVapidKey, setCustomVapidKey] = useState(() => 
+    typeof window !== 'undefined' ? (localStorage.getItem('ryyco_fcm_vapid_key') || '') : ''
+  );
+  const [savedVapidMsg, setSavedVapidMsg] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -327,6 +333,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         setSellerFCMToken(status.token);
       }
     }
+  }, [profile.uid]);
+
+  // Real-time Push Stream (SSE) for instant orders across tabs and background
+  useEffect(() => {
+    if (!profile.uid) return;
+    const cleanupSSE = connectFCMStream('seller', profile.uid, (data) => {
+      if (data.type === 'SELLER_ORDER_PUSH' && (!data.storeOwnerId || data.storeOwnerId === profile.uid)) {
+        handleSyncOrders();
+      }
+    });
+    return () => cleanupSSE();
   }, [profile.uid]);
 
   // Listen for navigation clicks from Push Notifications
@@ -1579,6 +1596,34 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             Ver Mi Tienda
             <ExternalLink className="w-3.5 h-3.5 opacity-60" />
           </a>
+
+          {/* FCM Push Notification status & trigger button for seller */}
+          <button
+            type="button"
+            onClick={() => setIsFcmModalOpen(true)}
+            className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+              pushPermission === 'granted'
+                ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-sm'
+                : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border-amber-500/40 animate-pulse'
+            }`}
+            title={pushPermission === 'granted' ? 'Notificaciones PUSH FCM Activas - Clic para ver detalles o probar' : 'Activar Notificaciones PUSH (FCM) para recibir pedidos en tiempo real'}
+          >
+            {pushPermission === 'granted' ? (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <Bell className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">PUSH Activo</span>
+              </>
+            ) : (
+              <>
+                <BellRing className="w-3.5 h-3.5 text-amber-300" />
+                <span>Activar PUSH</span>
+              </>
+            )}
+          </button>
 
           {/* QR Code Modal Trigger */}
           <button
@@ -6184,6 +6229,240 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         storeName={profile.displayName || profile.storeName}
         storeLogo={profile.photoURL}
       />
+
+      {/* Seller FCM Push Notifications Management Modal */}
+      <AnimatePresence>
+        {isFcmModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-lg bg-gray-950 border border-emerald-500/40 rounded-3xl p-6 shadow-2xl shadow-emerald-950/60 overflow-hidden max-h-[90vh] overflow-y-auto"
+            >
+              {/* Background gradient decorative element */}
+              <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="flex items-center justify-between border-b border-gray-900 pb-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                    <BellRing className="w-5 h-5 text-emerald-400 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-white text-sm uppercase tracking-tight">
+                      Notificaciones PUSH (FCM)
+                    </h3>
+                    <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">
+                      Firebase Cloud Messaging para Vendedores
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsFcmModalOpen(false)}
+                  className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-900 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4 text-xs">
+                {/* Status card */}
+                <div className={`p-4 rounded-2xl border ${
+                  pushPermission === 'granted'
+                    ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
+                    : pushPermission === 'denied'
+                    ? 'bg-red-950/30 border-red-500/40 text-red-200'
+                    : 'bg-amber-950/30 border-amber-500/40 text-amber-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase font-bold tracking-wider opacity-80">
+                      Estado en este Navegador / Celular
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      pushPermission === 'granted'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : pushPermission === 'denied'
+                        ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    }`}>
+                      {pushPermission === 'granted' ? 'Activo y Conectado' : pushPermission === 'denied' ? 'Bloqueado' : 'Por Activar'}
+                    </span>
+                  </div>
+
+                  <p className="font-bold text-sm text-white mt-1.5 flex items-center gap-1.5">
+                    {pushPermission === 'granted' ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>¡Tu tienda recibirá alertas de pedidos en segundo plano!</span>
+                      </>
+                    ) : pushPermission === 'denied' ? (
+                      <>
+                        <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                        <span>Las notificaciones están bloqueadas en tu navegador</span>
+                      </>
+                    ) : (
+                      <>
+                        <Bell className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Activa las notificaciones para no perder ninguna venta</span>
+                      </>
+                    )}
+                  </p>
+
+                  <p className="text-xs text-gray-300 mt-1">
+                    {pushPermission === 'granted'
+                      ? 'Cuando un cliente confirme un pedido, tu dispositivo emitirá un timbre armónico, voz sintetizada y una notificación nativa en la pantalla.'
+                      : pushPermission === 'denied'
+                      ? 'Debes dar clic en el ícono del candado 🔒 en la barra de direcciones de tu navegador y habilitar los permisos de notificaciones para ryyco.com.'
+                      : 'Presiona el botón de abajo para autorizar las alertas y vincular tu dispositivo con Firebase Cloud Messaging.'}
+                  </p>
+                </div>
+
+                {/* Main Action Buttons */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {pushPermission !== 'granted' ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await requestPushPermission();
+                      }}
+                      disabled={isRequestingFCM}
+                      className="w-full sm:col-span-2 py-3 px-4 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs uppercase tracking-wider rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg hover:shadow-emerald-500/25 disabled:opacity-50"
+                    >
+                      <BellRing className={`w-4 h-4 ${isRequestingFCM ? 'animate-spin' : ''}`} />
+                      <span>{isRequestingFCM ? 'Activando Notificaciones...' : 'Activar Notificaciones Push'}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleTestSellerFCMPush}
+                        className="py-2.5 px-3 bg-indigo-600/30 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/40 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                        title="Simula la llegada de un pedido con timbre, voz y notificación de sistema"
+                      >
+                        <Zap className="w-4 h-4 text-indigo-400" />
+                        <span>Probar Push (Simular Pedido)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playOrderAlertChime();
+                          speakOrderVoiceAlert(`¡Nuevo pedido en tu tienda ${profile.displayName || profile.storeName || ''}!`);
+                        }}
+                        className="py-2.5 px-3 bg-gray-900 hover:bg-gray-850 text-emerald-300 border border-emerald-500/30 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
+                        title="Prueba el timbre armónico y el sintetizador de voz"
+                      >
+                        <Volume2 className="w-4 h-4 text-emerald-400" />
+                        <span>Probar Sonido & Voz</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Technical / Sync Information */}
+                <div className="p-3.5 bg-gray-900/60 rounded-2xl border border-gray-800 space-y-2.5">
+                  <p className="text-[11px] font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Detalles de Conexión FCM de tu Tienda</span>
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-gray-400">
+                    <div className="bg-black/40 p-2 rounded-lg border border-gray-850">
+                      <p className="text-gray-500 uppercase">Service Worker</p>
+                      <p className="text-white font-semibold truncate">/firebase-messaging-sw.js</p>
+                    </div>
+                    <div className="bg-black/40 p-2 rounded-lg border border-gray-850">
+                      <p className="text-gray-500 uppercase">Colección Nube</p>
+                      <p className="text-cyan-300 font-semibold truncate">seller_fcm_tokens</p>
+                    </div>
+                  </div>
+
+                  {sellerFCMToken && (
+                    <div className="bg-black/40 p-2.5 rounded-lg border border-gray-850 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[9px] text-gray-500 font-mono">TOKEN FCM REGISTRADO EN ESTE DISPOSITIVO:</p>
+                        <p className="text-[10px] text-cyan-300 font-mono truncate">{sellerFCMToken}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(sellerFCMToken);
+                            setCopiedFCMToken(true);
+                            setTimeout(() => setCopiedFCMToken(false), 2500);
+                          }
+                        }}
+                        className="px-2.5 py-1 bg-gray-800 hover:bg-gray-750 text-gray-300 rounded-lg text-[10px] font-mono shrink-0 flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedFCMToken ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-400" />
+                            <span className="text-emerald-400">¡Copiado!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copiar</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Advanced VAPID Key Section */}
+                <details className="bg-gray-900/40 rounded-2xl border border-gray-850 p-3 text-[11px]">
+                  <summary className="font-bold text-gray-400 hover:text-gray-200 cursor-pointer flex items-center justify-between">
+                    <span>Configuración Avanzada de Clave Web Push (VAPID)</span>
+                    <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                  </summary>
+                  <div className="mt-3 space-y-2 text-gray-300">
+                    <p className="text-[10px] text-gray-400">
+                      Por defecto, RYYCO utiliza el par de claves generado en Firebase Console para Ipiales. Si tienes una clave VAPID pública personalizada de tu proyecto Firebase, puedes guardarla aquí:
+                    </p>
+                    <input
+                      type="text"
+                      placeholder="Ej: BEl62iEHg-V2Oz0vBff..."
+                      value={customVapidKey}
+                      onChange={(e) => setCustomVapidKey(e.target.value)}
+                      className="w-full bg-black/60 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                    />
+                    <div className="flex justify-between items-center pt-1">
+                      {savedVapidMsg && (
+                        <span className="text-emerald-400 text-[10px] font-bold">✓ Clave VAPID guardada</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof window !== 'undefined') {
+                            localStorage.setItem('ryyco_fcm_vapid_key', customVapidKey.trim());
+                            setSavedVapidMsg(true);
+                            setTimeout(() => setSavedVapidMsg(false), 3000);
+                          }
+                        }}
+                        className="ml-auto px-3 py-1 bg-gray-800 hover:bg-gray-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Guardar Clave
+                      </button>
+                    </div>
+                  </div>
+                </details>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsFcmModalOpen(false)}
+                    className="px-5 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 font-bold rounded-xl transition cursor-pointer text-xs"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* WhatsApp Required Modal (Mandatory condition before creating products) */}
       <AnimatePresence>
