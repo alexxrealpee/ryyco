@@ -182,14 +182,14 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         </button>
 
         {/* 3D Isometric House with Red Map Pin Illustration */}
-        <div className="flex justify-center mb-1 pt-4">
+        <div className="flex justify-center mb-1 pt-4 sm:pt-5">
           <style>{`
             @keyframes ryycoPinFloat {
               0%, 100% {
-                transform: translateY(-2px);
+                transform: translateY(-14px);
               }
               50% {
-                transform: translateY(-26px);
+                transform: translateY(-38px);
               }
             }
             @keyframes ryycoShadowPulse {
@@ -198,8 +198,8 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
                 opacity: 0.35;
               }
               50% {
-                transform: scale(0.68);
-                opacity: 0.16;
+                transform: scale(0.65);
+                opacity: 0.14;
               }
             }
             .animate-ryyco-pin {
@@ -214,7 +214,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
             {/* Subtle glow behind house */}
             <div className="absolute inset-0 bg-[#E63946]/15 rounded-full blur-2xl pointer-events-none" />
             <svg 
-              viewBox="0 -50 200 250" 
+              viewBox="0 -60 200 260" 
               className="w-full h-full drop-shadow-md select-none relative z-10 overflow-visible" 
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"

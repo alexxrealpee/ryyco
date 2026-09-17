@@ -216,9 +216,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, []);
 
   const [cachedInitial] = useState(() => getInitialGeneralData());
-  // Lazy Loading: Iniciar sin productos hasta que el usuario haga clic en un restaurante
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [profiles, setProfiles] = useState<Record<string, UserProfile>>(cachedInitial.profiles);
+  // Inicializar inmediatamente con productos cacheados si existen para renderizado instantáneo
+  const [products, setProducts] = useState<ProductItem[]>(() => cachedInitial.products);
+  const [profiles, setProfiles] = useState<Record<string, UserProfile>>(() => cachedInitial.profiles);
   const [loading, setLoading] = useState(false);
   const [loadingStoreProducts, setLoadingStoreProducts] = useState(false);
   const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
@@ -734,14 +734,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return matched;
   }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy]);
 
-  // Smart 4-by-4 progressive loading
-  const [visibleLimit, setVisibleLimit] = useState(4);
+  // Smart progressive loading visibleLimit (12 productos iniciales para cubrir la cuadrícula en móviles y PC)
+  const [visibleLimit, setVisibleLimit] = useState(12);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
 
   // Reset limit when filter/search/sort changes (show full store products when store is selected)
   useEffect(() => {
-    setVisibleLimit(selectedStore !== 'all' ? 30 : 4);
+    setVisibleLimit(selectedStore !== 'all' ? 30 : 12);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
   // Unified function to load the next batch of 4 products in order

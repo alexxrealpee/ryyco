@@ -172,9 +172,45 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         setFirstStore(first);
         setLoadedLogos(openStores);
 
-        // PASO 3: Carga diferida (Lazy Load) estricta:
-        // NO leer productos de Firebase en la carga inicial de la página.
-        // Los productos solo se leen de Firebase cuando el usuario hace clic en el restaurante.
+        // =========================================================================
+        // PASO 3: Carga de productos iniciales desde Firebase para la primera visita
+        // =========================================================================
+        setStage('fetching_first_products');
+
+        try {
+          // Obtener todos los productos activos y asociarlos con los restaurantes abiertos
+          const activeData = await fetchAllActiveProductsAndStores();
+          if (activeData.products && activeData.products.length > 0) {
+            const openStoreUids = new Set(openStores.map(s => s.uid));
+            const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
+            const openStoreProducts = activeData.products.filter(p => {
+              const matchedUid = p.userId && openStoreUids.has(p.userId);
+              const matchedUsername = p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase());
+              return matchedUid || matchedUsername;
+            });
+
+            const finalInitialProducts = orderProductBatch(
+              openStoreProducts.length > 0 ? openStoreProducts : activeData.products
+            );
+
+            setLoadedProducts(finalInitialProducts);
+            setProfilesMap(prev => ({ ...prev, ...activeData.profiles }));
+          } else {
+            // Fallback por lotes si activeData no contiene productos
+            const initialBatch = await fetchBatch(8);
+            if (initialBatch.length > 0) {
+              setLoadedProducts(initialBatch);
+            }
+          }
+        } catch (prodErr) {
+          console.warn('Error loading initial products, trying batch fallback:', prodErr);
+          const initialBatch = await fetchBatch(8);
+          if (initialBatch.length > 0) {
+            setLoadedProducts(initialBatch);
+          }
+        }
+
         setStage('idle');
       } catch (error) {
         console.error('Error in progressive loading pipeline:', error);
