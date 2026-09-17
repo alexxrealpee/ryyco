@@ -265,7 +265,7 @@ self.addEventListener('notificationclick', function(event) {
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // If a tab is already open, focus it and broadcast event
+      // If a tab is already open, focus it, navigate if needed, and broadcast event
       for (let i = 0; i < clientList.length; i++) {
         const client = clientList[i];
         if ('focus' in client) {
@@ -279,6 +279,10 @@ self.addEventListener('notificationclick', function(event) {
             orderNumber: event.notification.data?.orderNumber,
             url: targetUrl
           });
+
+          if ('navigate' in client && client.url && isDriver && !client.url.includes('view=driver') && !client.url.includes('domiciliario')) {
+            client.navigate(targetUrl);
+          }
           return client.focus();
         }
       }

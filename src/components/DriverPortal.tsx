@@ -387,6 +387,24 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       setEditVehiclePlate(driver.vehiclePlate || '');
       loadHistoryAndRatings(driver.id);
       setFcmStatus(getDriverFCMStatus(driver.id));
+
+      // Auto-register device FCM token with backend server so push notifications reach driver with browser closed
+      try {
+        const storedToken = localStorage.getItem(`ryyco_fcm_driver_token_${driver.id}`) || localStorage.getItem('ryyco_fcm_token');
+        if (storedToken) {
+          fetch('/api/fcm/register-driver-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              token: storedToken,
+              driverId: driver.id,
+              driverName: (driver.firstName ? `${driver.firstName} ${driver.lastName || ''}` : driver.name || 'Domiciliario').trim(),
+              phone: driver.phone || '',
+              vehicleType: driver.vehicleType || 'moto'
+            })
+          }).catch(() => {});
+        }
+      } catch (err) {}
     }
   }, [driver?.id]);
 

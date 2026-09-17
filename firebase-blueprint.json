@@ -274,9 +274,31 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["token", "storeOwnerId", "active", "updatedAt"]
+    },
+    "DriverFCMToken": {
+      "title": "DriverFCMToken",
+      "description": "Stores web push tokens and devices for delivery driver push notifications",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "driverId": { "type": "string" },
+        "driverName": { "type": "string" },
+        "phone": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "device": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["token", "driverId", "active", "updatedAt"]
     }
   },
   "firestore": {
+    "/driver_fcm_tokens/{tokenId}": {
+      "schema": "DriverFCMToken",
+      "description": "Registered devices and tokens for delivery driver push notifications"
+    },
     "/seller_fcm_tokens/{tokenId}": {
       "schema": "SellerFCMToken",
       "description": "Registered devices and tokens for merchant/seller push notifications"

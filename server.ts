@@ -456,6 +456,104 @@ Formatos válidos para:
   }
   const pushClients: PushClient[] = [];
 
+  // In-memory registry for Driver FCM tokens (enables push when browser is in background or closed)
+  interface RegisteredDriverFCMToken {
+    token: string;
+    driverId: string;
+    driverName?: string;
+    phone?: string;
+    vehicleType?: string;
+    userAgent?: string;
+    updatedAt: string;
+  }
+  const driverFCMTokensMap = new Map<string, RegisteredDriverFCMToken>();
+
+  // Helper to send FCM Web Push via Google Firebase Cloud Messaging HTTP API
+  // This is what delivers notifications even when Chrome is completely closed!
+  async function sendFCMWebPush(
+    tokens: string[],
+    notification: { title: string; body: string; icon?: string; badge?: string; sound?: string; click_action?: string },
+    data: Record<string, string>
+  ) {
+    const fcmServerKey = process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY;
+    if (!fcmServerKey) {
+      console.log('[FCM-SERVER] ℹ️ Aviso: FCM_SERVER_KEY no está definido en variables de entorno. Para enviar alertas con Chrome cerrado en segundo plano a través de los servidores de Google, agregue FCM_SERVER_KEY en .env');
+      return { sent: false, reason: 'NO_FCM_SERVER_KEY' };
+    }
+
+    if (!tokens || tokens.length === 0) {
+      return { sent: false, reason: 'NO_TOKENS' };
+    }
+
+    try {
+      const response = await fetch('https://fcm.googleapis.com/fcm/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `key=${fcmServerKey}`
+        },
+        body: JSON.stringify({
+          registration_ids: tokens,
+          priority: 'high',
+          notification: {
+            title: notification.title,
+            body: notification.body,
+            icon: notification.icon || '/logoryyco.png',
+            badge: notification.badge || '/favicon.svg',
+            sound: notification.sound || 'default',
+            click_action: notification.click_action || '/?view=driver'
+          },
+          data: {
+            ...data,
+            title: notification.title,
+            body: notification.body
+          }
+        })
+      });
+
+      const resJson = await response.json();
+      console.log('[FCM-SERVER] 🚀 Notificación PUSH transmitida a Google FCM para dispositivos en segundo plano/cerrados:', resJson);
+      return { sent: true, response: resJson };
+    } catch (err: any) {
+      console.error('[FCM-SERVER] ❌ Error enviando a Google FCM HTTP API:', err);
+      return { sent: false, error: err.message };
+    }
+  }
+
+  // Register active driver FCM device token with the server
+  app.post('/api/fcm/register-driver-token', (req, res) => {
+    try {
+      const { token, driverId, driverName, phone, vehicleType } = req.body || {};
+      if (!token || !driverId) {
+        return res.status(400).json({ error: 'Token and driverId are required' });
+      }
+
+      driverFCMTokensMap.set(token, {
+        token,
+        driverId,
+        driverName,
+        phone,
+        vehicleType,
+        userAgent: req.headers['user-agent'] as string,
+        updatedAt: new Date().toISOString()
+      });
+
+      console.log(`[FCM-SERVER] 📲 Token de domiciliario registrado (${driverName || driverId}). Total activos en servidor: ${driverFCMTokensMap.size}`);
+      res.json({ status: 'ok', registeredCount: driverFCMTokensMap.size });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Query active driver tokens registered with the server
+  app.get('/api/fcm/driver-tokens', (req, res) => {
+    res.json({
+      status: 'ok',
+      count: driverFCMTokensMap.size,
+      tokens: Array.from(driverFCMTokensMap.values())
+    });
+  });
+
   // Real-time Push Stream (SSE) for Admin, Seller & Driver Dashboards
   app.get('/api/fcm/stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -607,9 +705,9 @@ Formatos válidos para:
   });
 
   // Broadcast new delivery request to connected Delivery Drivers (Domiciliarios)
-  app.post('/api/fcm/broadcast-driver-request', (req, res) => {
+  app.post('/api/fcm/broadcast-driver-request', async (req, res) => {
     try {
-      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, customerName, totalAmount, itemsCount } = req.body || {};
+      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, customerName, totalAmount, itemsCount, tokens: incomingTokens } = req.body || {};
       console.log(`[FCM-SERVER] 🛵 Nueva solicitud de entrega para Domiciliarios: Pedido #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" -> Destino: "${customerAddress || 'Ipiales'}" (Tarifa: $${deliveryCost || 0})`);
 
       const payload = {
@@ -625,6 +723,7 @@ Formatos válidos para:
         timestamp: new Date().toISOString()
       };
 
+      // 1. Send via Server-Sent Events to currently connected tabs
       let deliveredCount = 0;
       pushClients.forEach(c => {
         if (c.role === 'driver' || c.role === 'all') {
@@ -635,10 +734,41 @@ Formatos válidos para:
         }
       });
 
+      // 2. Dispatch to Google FCM for devices with Chrome in background or closed
+      const registeredTokens = Array.from(driverFCMTokensMap.values()).map(t => t.token);
+      const passedTokens = Array.isArray(incomingTokens) ? incomingTokens : [];
+      const allTokens = Array.from(new Set([...registeredTokens, ...passedTokens]));
+
+      const feeFormatted = deliveryCost ? `$${Number(deliveryCost).toLocaleString('es-CO')}` : '$3.000';
+      const fcmResult = await sendFCMWebPush(
+        allTokens,
+        {
+          title: `🛵 ¡Nueva Solicitud de Domicilio #${orderNumber || 'S/N'}!`,
+          body: `De: ${storeName || 'Restaurante'}\nPara: ${customerAddress || 'Ipiales'} • Ganancia: ${feeFormatted}`,
+          icon: '/logoryyco.png',
+          badge: '/favicon.svg',
+          sound: 'default',
+          click_action: '/?view=driver'
+        },
+        {
+          type: 'DRIVER_REQUEST',
+          isDriver: 'true',
+          orderId: String(orderId || ''),
+          orderNumber: String(orderNumber || ''),
+          storeName: String(storeName || 'Restaurante'),
+          customerAddress: String(customerAddress || 'Ipiales'),
+          deliveryCost: String(deliveryCost || 3000),
+          customerName: String(customerName || ''),
+          url: '/?view=driver'
+        }
+      );
+
       res.json({
         status: 'ok',
         delivered: true,
         deliveredCount,
+        fcmPushTargetTokens: allTokens.length,
+        fcmResult,
         orderId,
         orderNumber,
         timestamp: new Date().toISOString()
@@ -650,7 +780,7 @@ Formatos válidos para:
   });
 
   // Broadcast custom push alert from Admin to a specific driver or all drivers
-  app.post('/api/fcm/broadcast-to-driver', (req, res) => {
+  app.post('/api/fcm/broadcast-to-driver', async (req, res) => {
     try {
       const { driverId, driverName, title, message } = req.body || {};
       console.log(`[FCM-SERVER] 🛵 Emisión de alerta Push a Domiciliario (${driverId === 'all' ? 'TODOS LOS DOMICILIARIOS' : driverId}): "${title}" - "${message}"`);
@@ -674,10 +804,34 @@ Formatos válidos para:
         }
       });
 
+      // Dispatch to Google FCM for background/closed browsers
+      const targetTokens = Array.from(driverFCMTokensMap.values())
+        .filter(t => driverId === 'all' || t.driverId === driverId)
+        .map(t => t.token);
+
+      const fcmResult = await sendFCMWebPush(
+        targetTokens,
+        {
+          title: title || 'Aviso para Domiciliarios RYYCO',
+          body: message || 'Tienes un nuevo mensaje importante de la administración.',
+          icon: '/logoryyco.png',
+          badge: '/favicon.svg',
+          click_action: '/?view=driver'
+        },
+        {
+          type: 'CUSTOM_DRIVER_ALERT',
+          isDriver: 'true',
+          driverId: driverId || 'all',
+          url: '/?view=driver'
+        }
+      );
+
       res.json({
         status: 'ok',
         deliveredCount,
-        message: `Alerta transmitida a ${deliveredCount} domiciliarios conectados`
+        fcmPushTargetTokens: targetTokens.length,
+        fcmResult,
+        message: `Alerta transmitida a ${deliveredCount} domiciliarios conectados y ${targetTokens.length} dispositivos en segundo plano`
       });
     } catch (err: any) {
       console.error('[FCM-SERVER] Error in broadcast-to-driver:', err);

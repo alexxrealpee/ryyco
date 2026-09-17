@@ -75,9 +75,23 @@ const detectInitialRouteFromUrl = (): {
   const pathLower = pathUser.toLowerCase();
   const hashLower = hashUser.toLowerCase();
   const searchTab = searchParams.get('tab')?.toLowerCase();
+  const searchView = searchParams.get('view')?.toLowerCase();
 
-  // 1. Explicit admin routes (e.g. /admin, /admin?tab=general, #/admin, #admin)
+  // 1. Explicit driver routes (e.g. /?view=driver, /domiciliario, /driver-portal, #driver-portal)
   if (
+    searchView === 'driver' ||
+    searchView === 'driver-portal' ||
+    searchView === 'domiciliario' ||
+    searchView === 'domiciliarios' ||
+    ['domiciliario', 'domiciliarios', 'driver-portal', 'driver'].includes(pathLower) ||
+    ['domiciliario', 'domiciliarios', 'driver-portal', 'driver'].includes(hashLower)
+  ) {
+    return { view: 'driver-portal', username: null, reelId: null };
+  }
+
+  // 2. Explicit admin routes (e.g. /admin, /?view=admin, /admin?tab=general, #/admin, #admin)
+  if (
+    searchView === 'admin' ||
     pathLower === 'admin' || 
     pathLower.startsWith('admin/') || 
     hashLower === 'admin' || 
@@ -88,8 +102,8 @@ const detectInitialRouteFromUrl = (): {
     return { view: 'admin', username: null, reelId: null };
   }
 
-  // 2. Dashboard and Authentication routes
-  if (['dashboard'].includes(pathLower) || ['dashboard'].includes(hashLower)) {
+  // 3. Dashboard and Authentication routes
+  if (searchView === 'dashboard' || ['dashboard'].includes(pathLower) || ['dashboard'].includes(hashLower)) {
     return { view: 'dashboard', username: null, reelId: null };
   }
   if (['login', 'ingresar'].includes(pathLower) || ['login', 'ingresar'].includes(hashLower)) {

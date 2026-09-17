@@ -758,6 +758,21 @@ export async function requestDriverFCMPermission(driver: {
       console.warn('[FCM-DRIVER] Error al guardar token de domiciliario en Firestore:', saveErr);
     }
 
+    // Also register token with server for direct Google FCM dispatch when Chrome is closed
+    try {
+      fetch('/api/fcm/register-driver-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: fcmToken,
+          driverId: driver.id,
+          driverName: driver.name || 'Domiciliario RYYCO',
+          phone: driver.phone || '',
+          vehicleType: driver.vehicleType || 'moto'
+        })
+      }).catch(() => {});
+    } catch (regServerErr) {}
+
     // Play confirmation chime & speech
     playDriverOrderAlertChime();
     speakDriverVoiceAlert('Notificaciones push activadas para domiciliarios');
@@ -850,8 +865,21 @@ export async function triggerDriverDeliveryPush(
     console.warn('[FCM-DRIVER] Error displaying local driver notification:', err);
   }
 
-  // 4. Send to backend FCM broadcast route for drivers
+  // 4. Send to backend FCM broadcast route for drivers (includes stored device tokens for closed-browser delivery)
   try {
+    let activeTokens: string[] = [];
+    try {
+      const snap = await getDocs(collection(db, 'driver_fcm_tokens'));
+      snap.forEach(d => {
+        const data = d.data();
+        if (data?.token && data?.active !== false) {
+          activeTokens.push(data.token);
+        }
+      });
+    } catch (tokenErr) {
+      console.warn('[FCM-DRIVER] Error al consultar tokens activos de Firestore:', tokenErr);
+    }
+
     fetch('/api/fcm/broadcast-driver-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -863,7 +891,8 @@ export async function triggerDriverDeliveryPush(
         customerName: order.customerName,
         deliveryCost: order.deliveryCost || 3000,
         totalAmount: order.totalAmount,
-        itemsCount: order.items?.length || 1
+        itemsCount: order.items?.length || 1,
+        tokens: activeTokens
       })
     }).catch(() => {});
   } catch (backendErr) {
