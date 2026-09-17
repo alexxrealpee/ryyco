@@ -449,13 +449,14 @@ Formatos válidos para:
   // Connected SSE push clients for real-time order notifications
   interface PushClient {
     id: string;
-    role: 'admin' | 'seller' | 'all';
+    role: 'admin' | 'seller' | 'driver' | 'all';
     sellerUid?: string;
+    driverId?: string;
     res: express.Response;
   }
   const pushClients: PushClient[] = [];
 
-  // Real-time Push Stream (SSE) for Admin & Seller Dashboards
+  // Real-time Push Stream (SSE) for Admin, Seller & Driver Dashboards
   app.get('/api/fcm/stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -465,13 +466,14 @@ Formatos válidos para:
     }
 
     const clientId = Math.random().toString(36).substring(2, 12);
-    const role = ((req.query.role as string) || 'all') as 'admin' | 'seller' | 'all';
+    const role = ((req.query.role as string) || 'all') as 'admin' | 'seller' | 'driver' | 'all';
     const sellerUid = (req.query.sellerUid as string) || undefined;
+    const driverId = (req.query.driverId as string) || undefined;
 
-    const client: PushClient = { id: clientId, role, sellerUid, res };
+    const client: PushClient = { id: clientId, role, sellerUid, driverId, res };
     pushClients.push(client);
 
-    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, timestamp: new Date().toISOString() })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clientId, role, timestamp: new Date().toISOString() })}\n\n`);
 
     const heartbeat = setInterval(() => {
       try {
@@ -604,6 +606,85 @@ Formatos válidos para:
     }
   });
 
+  // Broadcast new delivery request to connected Delivery Drivers (Domiciliarios)
+  app.post('/api/fcm/broadcast-driver-request', (req, res) => {
+    try {
+      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, customerName, totalAmount, itemsCount } = req.body || {};
+      console.log(`[FCM-SERVER] 🛵 Nueva solicitud de entrega para Domiciliarios: Pedido #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" -> Destino: "${customerAddress || 'Ipiales'}" (Tarifa: $${deliveryCost || 0})`);
+
+      const payload = {
+        type: 'DRIVER_REQUEST_PUSH',
+        orderId,
+        orderNumber,
+        storeName,
+        customerAddress,
+        deliveryCost,
+        customerName,
+        totalAmount,
+        itemsCount,
+        timestamp: new Date().toISOString()
+      };
+
+      let deliveredCount = 0;
+      pushClients.forEach(c => {
+        if (c.role === 'driver' || c.role === 'all') {
+          try {
+            c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+            deliveredCount++;
+          } catch (e) {}
+        }
+      });
+
+      res.json({
+        status: 'ok',
+        delivered: true,
+        deliveredCount,
+        orderId,
+        orderNumber,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error('[FCM-SERVER] Error in broadcast-driver-request:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  // Broadcast custom push alert from Admin to a specific driver or all drivers
+  app.post('/api/fcm/broadcast-to-driver', (req, res) => {
+    try {
+      const { driverId, driverName, title, message } = req.body || {};
+      console.log(`[FCM-SERVER] 🛵 Emisión de alerta Push a Domiciliario (${driverId === 'all' ? 'TODOS LOS DOMICILIARIOS' : driverId}): "${title}" - "${message}"`);
+
+      const payload = {
+        type: 'CUSTOM_DRIVER_ALERT',
+        driverId: driverId || 'all',
+        driverName: driverName || 'Domiciliario',
+        title: title || 'Aviso para Domiciliarios RYYCO',
+        message: message || 'Tienes un nuevo mensaje importante de la administración.',
+        timestamp: new Date().toISOString()
+      };
+
+      let deliveredCount = 0;
+      pushClients.forEach(c => {
+        if (c.role === 'driver' && (driverId === 'all' || !c.driverId || c.driverId === driverId)) {
+          try {
+            c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+            deliveredCount++;
+          } catch (e) {}
+        }
+      });
+
+      res.json({
+        status: 'ok',
+        deliveredCount,
+        message: `Alerta transmitida a ${deliveredCount} domiciliarios conectados`
+      });
+    } catch (err: any) {
+      console.error('[FCM-SERVER] Error in broadcast-to-driver:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
   app.post('/api/fcm/test', (req, res) => {
     console.log('[FCM-SERVER] Test push notification triggered from client');
     res.json({
@@ -619,6 +700,16 @@ Formatos válidos para:
     res.json({
       status: 'ok',
       message: `Notificación de prueba FCM recibida para vendedor (${storeName || 'Tienda'})`,
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  app.post('/api/fcm/driver-test', (req, res) => {
+    const { driverId, driverName } = req.body || {};
+    console.log(`[FCM-SERVER] Test push notification triggered for Driver: "${driverName || 'Domiciliario'}" (${driverId || 'Desconocido'})`);
+    res.json({
+      status: 'ok',
+      message: `Notificación de prueba FCM recibida para domiciliario (${driverName || 'Domiciliario'})`,
       timestamp: new Date().toISOString()
     });
   });

@@ -1499,6 +1499,27 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
     }
   } catch (e) {}
 
+  // Broadcast FCM push notification for Delivery Drivers (Domiciliarios)
+  try {
+    const isTableOrPickup = result.orderType === 'table' || result.orderType === 'pickup' || result.isTableOrder || result.customerName?.toLowerCase().startsWith('mesa ') || result.customerAddress?.toLowerCase().includes('mesa') || result.customerAddress?.toLowerCase().includes('recoger');
+    if (typeof window !== 'undefined' && !isTableOrPickup && (!result.status || result.status === 'pending')) {
+      fetch('/api/fcm/broadcast-driver-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: result.id,
+          orderNumber: result.orderNumber,
+          storeName: result.storeName,
+          customerAddress: result.customerAddress,
+          customerName: result.customerName,
+          deliveryCost: result.deliveryCost || 3000,
+          totalAmount: result.totalAmount,
+          itemsCount: result.items?.length || 1
+        })
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
   return result;
 }
 

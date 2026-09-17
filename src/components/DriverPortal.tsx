@@ -42,7 +42,10 @@ import {
   CreditCard,
   Banknote,
   Receipt,
-  HelpCircle
+  HelpCircle,
+  Volume2,
+  VolumeX,
+  Radio
 } from 'lucide-react';
 import { 
   fetchDriverProfileByUid, 
@@ -70,6 +73,14 @@ import {
   buildGoogleMapSearchUrl,
   buildGoogleFullRouteUrl
 } from '../lib/coordinateUtils';
+import {
+  playDriverOrderAlertChime,
+  speakDriverVoiceAlert,
+  requestDriverFCMPermission,
+  getDriverFCMStatus,
+  connectFCMStream,
+  triggerDriverDeliveryPush
+} from '../lib/fcmNotifications';
 
 export const DRIVER_SESSION_STORAGE_KEY = 'ryyco_driver_session';
 
@@ -282,27 +293,46 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
   const playNotificationChime = () => {
     try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') {
-        ctx.resume().catch(() => {});
-      }
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.4);
+      playDriverOrderAlertChime();
     } catch (e) {
-      // Audio autoplay restrictions silent fallback
+      // Audio autoplay restrictions fallback
     }
+  };
+
+  // Push Notifications (FCM) State for Domiciliario
+  const [fcmStatus, setFcmStatus] = useState(() => getDriverFCMStatus(driver?.id));
+  const [activatingPush, setActivatingPush] = useState(false);
+  const [pushNotificationFeedback, setPushNotificationFeedback] = useState<string>('');
+
+  // Request & register FCM Push Notification token for this driver
+  const handleEnablePushNotifications = async () => {
+    if (!driver) return;
+    setActivatingPush(true);
+    setPushNotificationFeedback('');
+    try {
+      const res = await requestDriverFCMPermission(driver);
+      if (res.success) {
+        setFcmStatus(getDriverFCMStatus(driver.id));
+        setPushNotificationFeedback('¡Notificaciones PUSH activadas con éxito en este dispositivo!');
+        playDriverOrderAlertChime();
+        speakDriverVoiceAlert('¡Notificaciones PUSH activadas para domiciliarios RYYCO!');
+      } else {
+        setPushNotificationFeedback(res.error || 'No se pudieron activar las notificaciones push.');
+      }
+    } catch (e: any) {
+      setPushNotificationFeedback(e?.message || 'Error al solicitar permisos de notificación.');
+    } finally {
+      setActivatingPush(false);
+      setTimeout(() => setPushNotificationFeedback(''), 5000);
+    }
+  };
+
+  // Test push notification sound & voice alert
+  const handleTestDriverAudioAlert = () => {
+    playDriverOrderAlertChime();
+    speakDriverVoiceAlert('¡Prueba de alerta sonora y de voz para domiciliarios RYYCO! Notificaciones activas.');
+    setPushNotificationFeedback('Sonando alerta de domiciliario RYYCO...');
+    setTimeout(() => setPushNotificationFeedback(''), 4000);
   };
 
   // Sync global system settings (default delivery fee) in real-time
@@ -356,8 +386,52 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       setEditVehicleBrand(driver.vehicleBrand || '');
       setEditVehiclePlate(driver.vehiclePlate || '');
       loadHistoryAndRatings(driver.id);
+      setFcmStatus(getDriverFCMStatus(driver.id));
     }
   }, [driver?.id]);
+
+  // Real-time Push Stream (FCM / SSE) and custom events listener
+  useEffect(() => {
+    if (!driver?.id || driver.status !== 'approved') return;
+
+    // Disconnect handler
+    const disconnectStream = connectFCMStream('driver', driver.id, (data) => {
+      if (data.type === 'DRIVER_REQUEST_PUSH' && isAvailable && !activeDelivery) {
+        playDriverOrderAlertChime();
+        const sName = data.storeName || 'Restaurante';
+        speakDriverVoiceAlert(`¡Nueva solicitud de domicilio en ${sName}!`);
+      }
+    });
+
+    // Custom browser event when foreground push arrives
+    const handleNewDriverRequest = (e: any) => {
+      if (isAvailable && !activeDelivery) {
+        playDriverOrderAlertChime();
+        const store = e.detail?.storeName || 'Restaurante';
+        speakDriverVoiceAlert(`¡Nueva solicitud de entrega en ${store}!`);
+      }
+    };
+
+    // Service Worker message event when driver clicks push notification
+    const handleSwMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'RYYCO_DRIVER_NOTIFICATION_CLICK') {
+        playDriverOrderAlertChime();
+      }
+    };
+
+    window.addEventListener('ryyco:new-driver-request', handleNewDriverRequest);
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    }
+
+    return () => {
+      disconnectStream();
+      window.removeEventListener('ryyco:new-driver-request', handleNewDriverRequest);
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      }
+    };
+  }, [driver?.id, driver?.status, isAvailable, activeDelivery]);
 
   // Real-time unassigned orders listener when available
   useEffect(() => {
@@ -388,7 +462,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         // If it's a new order id we haven't popped yet
         if (!selectedIncomingOrderRef.current || selectedIncomingOrderRef.current.id !== newest.id) {
           setSelectedIncomingOrder(newest);
-          playNotificationChime();
+          playDriverOrderAlertChime();
+          const sName = newest.storeName || 'Restaurante';
+          speakDriverVoiceAlert(`¡Nueva solicitud de entrega en ${sName}!`);
         }
       }
     });
@@ -507,6 +583,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
     const nextState = !isAvailable;
     setIsAvailable(nextState);
+
+    // If driver is turning on availability, request / refresh FCM push notification token if not granted
+    if (nextState && typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default' || !fcmStatus.hasToken) {
+        handleEnablePushNotifications();
+      }
+    }
+
     try {
       await updateDriverAvailability(driver.id, nextState);
       const updated: DriverProfile = { ...driver, isAvailable: nextState, isOnline: nextState };
@@ -880,7 +964,33 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           </div>
 
           {/* Right Action Controls */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {/* FCM Push Notification Control */}
+            {driver.status === 'approved' && (
+              <>
+                {fcmStatus.hasToken ? (
+                  <button
+                    onClick={handleTestDriverAudioAlert}
+                    title="Probar sonido y voz de alerta de pedido (Notificaciones PUSH Activas)"
+                    className="px-2.5 py-2 bg-[#090B12] hover:bg-emerald-500/15 text-emerald-400 hover:text-emerald-300 rounded-2xl border border-emerald-500/30 transition cursor-pointer flex items-center gap-1.5 text-xs font-bold shadow-sm active:scale-95"
+                  >
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                    <span className="hidden md:inline">Alerta PUSH OK</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEnablePushNotifications}
+                    disabled={activatingPush}
+                    title="Activar notificaciones PUSH con Firebase para recibir pedidos en tiempo real"
+                    className="px-3 py-2 bg-gradient-to-r from-amber-500 via-[#E63946] to-[#D62839] hover:brightness-110 text-white rounded-2xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95 animate-pulse"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span className="hidden sm:inline">{activatingPush ? 'Activando...' : 'Activar PUSH'}</span>
+                  </button>
+                )}
+              </>
+            )}
+
             {/* Availability Switch */}
             {driver.status === 'approved' && (
               <button
@@ -1015,6 +1125,59 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
            ------------------------------------------------------------------ */}
         {driver.status === 'approved' && (
           <div className="space-y-6">
+
+            {/* FCM Feedback Toast Message */}
+            {pushNotificationFeedback && (
+              <div className="bg-emerald-500/15 border border-emerald-500/40 text-emerald-200 text-xs font-bold rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-lg animate-fade-in">
+                <div className="flex items-center gap-2.5">
+                  <Bell className="w-4 h-4 text-emerald-400 shrink-0 animate-bounce" />
+                  <span>{pushNotificationFeedback}</span>
+                </div>
+                <button
+                  onClick={() => setPushNotificationFeedback('')}
+                  className="text-emerald-400 hover:text-emerald-200 text-xs font-extrabold cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Push Notifications Activation Card (If not yet enabled) */}
+            {!fcmStatus.hasToken && (
+              <div className="bg-gradient-to-r from-amber-500/10 via-[#E63946]/10 to-[#111827] border border-[#E63946]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-2xl bg-[#E63946]/20 border border-[#E63946]/30 text-[#E63946] flex items-center justify-center shrink-0 mt-0.5">
+                    <Bell className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white flex items-center gap-2">
+                      <span>Notificaciones PUSH con Firebase Cloud Messaging (FCM)</span>
+                      <span className="text-[10px] bg-[#E63946]/20 text-[#E63946] px-2 py-0.5 rounded-full font-bold">Recomendado</span>
+                    </h3>
+                    <p className="text-xs text-[#A9B2C3] mt-1 max-w-xl leading-relaxed">
+                      Activa las alertas PUSH para recibir solicitudes de entrega al instante con timbre sonoro y voz en segundo plano, incluso si tu teléfono está bloqueado o tienes otra app abierta.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                  <button
+                    onClick={handleTestDriverAudioAlert}
+                    className="flex-1 sm:flex-none px-3.5 py-2.5 bg-[#090B12] hover:bg-[#232B3A] text-gray-200 border border-[#232B3A] rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                  >
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                    <span>Probar Alerta</span>
+                  </button>
+                  <button
+                    onClick={handleEnablePushNotifications}
+                    disabled={activatingPush}
+                    className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:brightness-110 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/25 cursor-pointer active:scale-95"
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span>{activatingPush ? 'Activando...' : 'Activar PUSH Ahora'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Availability Alert Header */}
             {!isAvailable && !activeDelivery && (

@@ -27,10 +27,20 @@ import {
   Share2,
   MessageSquare,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Bell,
+  Volume2,
+  Send,
+  Radio
 } from 'lucide-react';
 import { fetchAllDrivers, updateDriverStatus, deleteDriverAccount } from '../lib/firebase';
 import { DriverProfile, DriverStatus } from '../types';
+import {
+  fetchDriverFCMTokens,
+  deleteDriverFCMToken,
+  sendAdminPushToDriver,
+  DriverFCMTokenRecord
+} from '../lib/fcmNotifications';
 
 export default function AdminDriversManager() {
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
@@ -38,6 +48,16 @@ export default function AdminDriversManager() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
+
+  // FCM Driver Push Tokens State
+  const [showFcmModal, setShowFcmModal] = useState<boolean>(false);
+  const [driverTokens, setDriverTokens] = useState<DriverFCMTokenRecord[]>([]);
+  const [loadingTokens, setLoadingTokens] = useState<boolean>(false);
+  const [fcmFeedback, setFcmFeedback] = useState<string>('');
+  const [broadcastTitle, setBroadcastTitle] = useState<string>('');
+  const [broadcastMessage, setBroadcastMessage] = useState<string>('');
+  const [selectedDriverForPush, setSelectedDriverForPush] = useState<string>('all');
+  const [sendingPush, setSendingPush] = useState<boolean>(false);
 
   // Registration link state
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
@@ -57,6 +77,7 @@ export default function AdminDriversManager() {
 
   useEffect(() => {
     loadDrivers();
+    loadDriverTokens();
   }, []);
 
   const loadDrivers = async () => {
@@ -68,6 +89,72 @@ export default function AdminDriversManager() {
       console.error("Error loading drivers:", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadDriverTokens = async () => {
+    setLoadingTokens(true);
+    try {
+      const tokens = await fetchDriverFCMTokens();
+      setDriverTokens(tokens);
+    } catch (e) {
+      console.warn("Error cargando tokens de domiciliarios:", e);
+    } finally {
+      setLoadingTokens(false);
+    }
+  };
+
+  const handleSendPushToSingleDriver = async (driverId: string, driverName?: string) => {
+    const defaultMsg = `Hola ${driverName || 'Domiciliario'}, tienes un nuevo aviso en el portal RYYCO.`;
+    const res = await sendAdminPushToDriver({
+      driverId,
+      driverName: driverName || 'Domiciliario',
+      title: `🔔 RYYCO - Notificación Domiciliario`,
+      message: defaultMsg
+    });
+    if (res.success) {
+      setFcmFeedback(`✅ Alerta transmitida exitosamente a "${driverName || 'Domiciliario'}"`);
+    } else {
+      setFcmFeedback(`⚠️ ${res.error || 'No se pudo emitir la alerta'}`);
+    }
+    setTimeout(() => setFcmFeedback(''), 4500);
+  };
+
+  const handleBroadcastToDrivers = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastMessage.trim()) return;
+    setSendingPush(true);
+    try {
+      const res = await sendAdminPushToDriver({
+        driverId: selectedDriverForPush,
+        driverName: selectedDriverForPush === 'all' ? 'Todos los Domiciliarios' : (driverTokens.find(d => d.driverId === selectedDriverForPush)?.driverName || 'Domiciliario'),
+        title: broadcastTitle.trim() || '📢 Comunicado RYYCO a Domiciliarios',
+        message: broadcastMessage.trim()
+      });
+      if (res.success) {
+        setFcmFeedback(`✅ Notificación transmitida a domiciliarios (${selectedDriverForPush === 'all' ? 'Todos' : 'Seleccionado'})`);
+        setBroadcastTitle('');
+        setBroadcastMessage('');
+      } else {
+        setFcmFeedback(`⚠️ ${res.error || 'Error al transmitir la notificación'}`);
+      }
+    } catch (err: any) {
+      setFcmFeedback("❌ Error al enviar transmisión.");
+    } finally {
+      setSendingPush(false);
+      setTimeout(() => setFcmFeedback(''), 5000);
+    }
+  };
+
+  const handleDeleteDriverToken = async (tokenId: string) => {
+    if (!window.confirm("¿Seguro de eliminar este dispositivo de notificaciones?")) return;
+    try {
+      await deleteDriverFCMToken(tokenId);
+      await loadDriverTokens();
+      setFcmFeedback("Dispositivo eliminado de la lista de notificaciones.");
+      setTimeout(() => setFcmFeedback(''), 3000);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -185,13 +272,30 @@ export default function AdminDriversManager() {
           </p>
         </div>
 
-        <button
-          onClick={loadDrivers}
-          className="px-4 py-2 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Actualizar Lista</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => {
+              loadDriverTokens();
+              setShowFcmModal(true);
+            }}
+            className="px-4 py-2 bg-gradient-to-r from-amber-500/20 via-[#E63946]/20 to-emerald-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 text-white font-bold text-xs rounded-xl border border-[#E63946]/40 transition flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
+            title="Administrar notificaciones Push con Firebase para domiciliarios"
+          >
+            <Bell className="w-3.5 h-3.5 text-[#E63946] animate-bounce" />
+            <span>Alertas PUSH ({driverTokens.length})</span>
+          </button>
+
+          <button
+            onClick={() => {
+              loadDrivers();
+              loadDriverTokens();
+            }}
+            className="px-4 py-2 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Actualizar</span>
+          </button>
+        </div>
       </div>
 
       {/* Driver Registration Link Box */}
@@ -447,6 +551,31 @@ export default function AdminDriversManager() {
                 </div>
               )}
 
+              {/* FCM Push Token Status for this driver */}
+              <div className="pt-2 border-t border-gray-800/80 flex items-center justify-between text-[11px]">
+                {driverTokens.some(t => t.driverId === dr.id) ? (
+                  <div className="flex items-center justify-between w-full">
+                    <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>FCM PUSH Activo</span>
+                    </span>
+                    <button
+                      onClick={() => handleSendPushToSingleDriver(dr.id, dr.firstName)}
+                      className="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-0.5 rounded-lg border border-emerald-500/30 transition active:scale-95"
+                      title="Enviar notificación Push de prueba al celular de este domiciliario"
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      <span>Probar Alerta</span>
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-gray-500 flex items-center gap-1 text-[10px]">
+                    <Bell className="w-3 h-3 opacity-40" />
+                    <span>Sin dispositivo Push registrado</span>
+                  </span>
+                )}
+              </div>
+
               {/* Actions Footer */}
               <div className="pt-2 border-t border-gray-850 flex items-center justify-between gap-2">
                 {dr.status === 'pending' && (
@@ -583,6 +712,196 @@ export default function AdminDriversManager() {
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>Ver en pantalla completa</span>
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* FCM Push Management Modal */}
+      {showFcmModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[#0d1322] border border-gray-800 rounded-2xl max-w-3xl w-full p-6 space-y-6 shadow-2xl my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-gray-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[#E63946]/20 border border-[#E63946]/40 text-[#E63946] flex items-center justify-center">
+                  <Bell className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <span>Notificaciones PUSH Firebase (FCM) - Domiciliarios</span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                      {driverTokens.length} Dispositivos Activos
+                    </span>
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Envía avisos directos con sonido y voz a los domiciliarios, o gestiona los tokens de sus dispositivos.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowFcmModal(false)}
+                className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition cursor-pointer"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Feedback Alert */}
+            {fcmFeedback && (
+              <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 p-3 rounded-xl text-xs font-bold flex items-center justify-between">
+                <span>{fcmFeedback}</span>
+                <button onClick={() => setFcmFeedback('')} className="text-emerald-400 hover:text-white text-xs">✕</button>
+              </div>
+            )}
+
+            {/* Broadcast Form to Drivers */}
+            <form onSubmit={handleBroadcastToDrivers} className="bg-gray-950/70 border border-gray-850 p-4 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-gray-300 tracking-wider flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-[#E63946]" />
+                  <span>Transmitir Notificación PUSH a Domiciliarios</span>
+                </h4>
+                <span className="text-[11px] text-gray-500">Llega en segundo plano con timbre y voz</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] font-bold text-gray-400 block mb-1">Destinatario:</label>
+                  <select
+                    value={selectedDriverForPush}
+                    onChange={(e) => setSelectedDriverForPush(e.target.value)}
+                    className="w-full bg-[#0d1322] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#E63946]"
+                  >
+                    <option value="all">📢 Todos los domiciliarios ({driverTokens.length} dispositivos)</option>
+                    {drivers.map(dr => (
+                      <option key={dr.id} value={dr.id}>
+                        🛵 {dr.firstName} {dr.lastName} ({dr.vehicleType}) {dr.isAvailable ? '• Online' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-gray-400 block mb-1">Título de la Notificación:</label>
+                  <input
+                    type="text"
+                    value={broadcastTitle}
+                    onChange={(e) => setBroadcastTitle(e.target.value)}
+                    placeholder="Ej. 📢 ¡Alta demanda de pedidos en tu zona!"
+                    className="w-full bg-[#0d1322] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#E63946]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-gray-400 block mb-1">Mensaje de la Alerta:</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    value={broadcastMessage}
+                    onChange={(e) => setBroadcastMessage(e.target.value)}
+                    placeholder="Escribe el mensaje para los repartidores..."
+                    className="flex-1 bg-[#0d1322] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#E63946]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={sendingPush || !broadcastMessage.trim()}
+                    className="px-4 py-2 bg-[#E63946] hover:bg-[#D62839] disabled:opacity-50 text-white font-black text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-md shrink-0"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>{sendingPush ? 'Transmitiendo...' : 'Enviar Alerta'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* Registered Driver Tokens List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black uppercase text-gray-300 tracking-wider flex items-center gap-1.5">
+                  <Bike className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Dispositivos de Domiciliarios Registrados ({driverTokens.length})</span>
+                </h4>
+                <button
+                  type="button"
+                  onClick={loadDriverTokens}
+                  className="text-xs text-gray-400 hover:text-white flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loadingTokens ? 'animate-spin' : ''}`} />
+                  <span>Refrescar</span>
+                </button>
+              </div>
+
+              {loadingTokens ? (
+                <div className="text-center py-6 text-gray-500 text-xs">Cargando dispositivos...</div>
+              ) : driverTokens.length === 0 ? (
+                <div className="bg-gray-950 border border-gray-850 rounded-xl p-6 text-center text-gray-400 space-y-1">
+                  <Bell className="w-6 h-6 text-gray-600 mx-auto" />
+                  <p className="text-xs font-bold text-gray-300">No hay dispositivos de domiciliarios registrados aún</p>
+                  <p className="text-[11px] text-gray-500">
+                    Los domiciliarios se registrarán automáticamente cuando activen "Activar PUSH" o activen su disponibilidad en su portal.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {driverTokens.map((tok) => (
+                    <div
+                      key={tok.id}
+                      className="bg-gray-950 border border-gray-850 hover:border-gray-750 rounded-xl p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white">{tok.driverName || 'Domiciliario'}</span>
+                          <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-mono">
+                            {tok.vehicleType || 'Moto'}
+                          </span>
+                          <span className="text-[10px] text-gray-500 font-mono">
+                            {tok.token ? `${tok.token.slice(0, 10)}...${tok.token.slice(-6)}` : 'Token Web'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-400 flex items-center gap-3">
+                          {tok.phone && <span>Tel: {tok.phone}</span>}
+                          <span>Dispositivo: {tok.device || 'Navegador'}</span>
+                          {tok.createdAt && (
+                            <span>{new Date(tok.createdAt).toLocaleDateString('es-CO', { hour: '2-digit', minute: '2-digit' })}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleSendPushToSingleDriver(tok.driverId, tok.driverName)}
+                          className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 hover:text-emerald-300 font-bold rounded-lg border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer text-xs active:scale-95"
+                          title="Enviar sonido y alerta de prueba"
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                          <span>Probar Alerta</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteDriverToken(tok.id)}
+                          className="p-1.5 bg-gray-900 hover:bg-rose-950 text-gray-500 hover:text-rose-400 rounded-lg border border-gray-800 transition cursor-pointer"
+                          title="Eliminar token"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-gray-800">
+              <button
+                type="button"
+                onClick={() => setShowFcmModal(false)}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                Cerrar
+              </button>
             </div>
           </div>
         </div>

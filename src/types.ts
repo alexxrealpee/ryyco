@@ -254,6 +254,7 @@ export interface OrderItem {
   items: CartItem[];
   totalAmount: number;
   deliveryFee?: number; // Valor del domicilio
+  deliveryCost?: number; // Alias alternativo del valor del domicilio
   notes?: string;
   createdAt: string;
   proofImage?: string; // Base64 data URL representing uploaded payment receipt or purchase transaction photo

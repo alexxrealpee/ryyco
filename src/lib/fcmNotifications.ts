@@ -65,6 +65,56 @@ export function speakOrderVoiceAlert(text: string) {
   }
 }
 
+// Audio Chime Synthesizer specifically designed for delivery drivers (high-volume attention chime)
+export function playDriverOrderAlertChime() {
+  try {
+    if (typeof window === 'undefined') return;
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+
+    const ctx = new AudioContextClass();
+    const playBeep = (freq: number, startTime: number, duration: number, volume = 0.5) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, startTime);
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(volume, startTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(startTime);
+      osc.stop(startTime + duration);
+    };
+
+    const now = ctx.currentTime;
+    // Rapid energetic alert chime sequence (E5 -> A5 -> C#6 -> E6 -> ping)
+    playBeep(659.25, now + 0.0, 0.15, 0.5);   // E5
+    playBeep(880.00, now + 0.12, 0.15, 0.55); // A5
+    playBeep(1108.73, now + 0.24, 0.18, 0.6); // C#6
+    playBeep(1318.51, now + 0.38, 0.35, 0.7); // E6
+    playBeep(1318.51, now + 0.52, 0.45, 0.7); // E6 accent ping
+  } catch (err) {
+    console.warn('[FCM] Error playing driver alert chime:', err);
+  }
+}
+
+// Spoken voice announcement for delivery drivers
+export function speakDriverVoiceAlert(text: string) {
+  try {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'es-CO';
+      utterance.rate = 1.08;
+      utterance.pitch = 1.05;
+      window.speechSynthesis.speak(utterance);
+    }
+  } catch (e) {
+    console.warn('[FCM] Driver speech synthesis error:', e);
+  }
+}
+
 /**
  * Initialize Firebase Cloud Messaging & Service Worker
  */
@@ -98,56 +148,87 @@ export async function initializeFCM(): Promise<boolean> {
     onMessage(messagingInstance, (payload) => {
       console.log('[FCM] Foreground push message received:', payload);
       
-      const isSeller = payload.data?.isSeller === 'true' || Boolean(payload.data?.storeOwnerId);
-      const defaultTitle = isSeller ? '🔔 ¡Nuevo Pedido en Tu Tienda!' : '🚨 ¡Nuevo Pedido en RYYCO!';
-      const defaultBody = isSeller 
-        ? 'Tienes un nuevo pedido pendiente para despachar en tu tienda.'
-        : 'Ha llegado un nuevo pedido a la administración general.';
+      const isDriver = payload.data?.isDriver === 'true' || payload.data?.role === 'driver' || payload.data?.type === 'DRIVER_REQUEST';
+      const isSeller = !isDriver && (payload.data?.isSeller === 'true' || Boolean(payload.data?.storeOwnerId));
+      
+      let defaultTitle = '🚨 ¡Nuevo Pedido en RYYCO!';
+      let defaultBody = 'Ha llegado un nuevo pedido a la administración general.';
+      let clickUrl = '/?view=admin&tab=orders';
+
+      if (isDriver) {
+        defaultTitle = '🛵 ¡Nueva Solicitud de Domicilio!';
+        defaultBody = 'Hay un nuevo pedido disponible para entregar de inmediato.';
+        clickUrl = '/?view=driver';
+      } else if (isSeller) {
+        defaultTitle = '🔔 ¡Nuevo Pedido en Tu Tienda!';
+        defaultBody = 'Tienes un nuevo pedido pendiente para despachar en tu tienda.';
+        clickUrl = '/?view=dashboard&tab=orders';
+      }
+
       const title = payload.notification?.title || payload.data?.title || defaultTitle;
       const body = payload.notification?.body || payload.data?.body || defaultBody;
-      const clickUrl = payload.data?.url || (isSeller ? '/?view=dashboard&tab=orders' : '/?view=admin&tab=orders');
+      clickUrl = payload.data?.url || clickUrl;
       
       // 1. Play alert chime
-      playOrderAlertChime();
+      if (isDriver) {
+        playDriverOrderAlertChime();
+      } else {
+        playOrderAlertChime();
+      }
 
       // 2. Speak voice alert
-      speakOrderVoiceAlert(isSeller 
-        ? '¡Atención! Nuevo pedido recibido en tu tienda'
-        : '¡Atención! Nuevo pedido recibido en administración general'
-      );
+      if (isDriver) {
+        speakDriverVoiceAlert('¡Atención! Nueva solicitud de domicilio disponible en RYYCO');
+      } else if (isSeller) {
+        speakOrderVoiceAlert('¡Atención! Nuevo pedido recibido en tu tienda');
+      } else {
+        speakOrderVoiceAlert('¡Atención! Nuevo pedido recibido en administración general');
+      }
 
       // 3. Dispatch global browser event for React views
-      const eventName = isSeller ? 'ryyco:new-seller-order' : 'ryyco:new-admin-order';
+      const eventName = isDriver ? 'ryyco:new-driver-request' : (isSeller ? 'ryyco:new-seller-order' : 'ryyco:new-admin-order');
       const customEvent = new CustomEvent(eventName, {
         detail: {
           payload,
           orderId: payload.data?.orderId,
           orderNumber: payload.data?.orderNumber,
-          storeOwnerId: payload.data?.storeOwnerId
+          storeOwnerId: payload.data?.storeOwnerId,
+          storeName: payload.data?.storeName,
+          address: payload.data?.address || payload.data?.customerAddress
         }
       });
       window.dispatchEvent(customEvent);
 
       // 4. Show notification if allowed
       if (Notification.permission === 'granted') {
-        const tag = isSeller
-          ? (payload.data?.orderId ? `seller-fg-${payload.data.orderId}` : `seller-fg-${Date.now()}`)
-          : (payload.data?.orderId ? `ryyco-fg-${payload.data.orderId}` : `ryyco-fg-${Date.now()}`);
+        const tag = isDriver
+          ? (payload.data?.orderId ? `driver-fg-${payload.data.orderId}` : `driver-fg-${Date.now()}`)
+          : (isSeller
+            ? (payload.data?.orderId ? `seller-fg-${payload.data.orderId}` : `seller-fg-${Date.now()}`)
+            : (payload.data?.orderId ? `ryyco-fg-${payload.data.orderId}` : `ryyco-fg-${Date.now()}`));
 
         if (serviceWorkerReg) {
           serviceWorkerReg.showNotification(title, {
             body,
             icon: '/logoryyco.png',
             badge: '/favicon.svg',
-            vibrate: [350, 150, 350, 150, 500],
+            vibrate: isDriver ? [400, 200, 400, 200, 600] : [350, 150, 350, 150, 500],
             tag,
             renotify: true,
             data: { 
               url: clickUrl,
+              isDriver,
               isSeller,
               orderId: payload.data?.orderId,
               orderNumber: payload.data?.orderNumber
-            }
+            },
+            actions: isDriver ? [
+              { action: 'open_driver_order', title: '🛵 Ver Solicitud' }
+            ] : (isSeller ? [
+              { action: 'open_seller_orders', title: '📦 Atender Pedido' }
+            ] : [
+              { action: 'open_admin', title: '📋 Ver en Administración' }
+            ])
           } as any);
         } else {
           new Notification(title, {
@@ -598,6 +679,242 @@ export function getSellerFCMStatus(storeOwnerId?: string): {
   };
 }
 
+/**
+ * Request Push Permission and Obtain / Store FCM Registration Token for Delivery Drivers (Domiciliarios)
+ */
+export async function requestDriverFCMPermission(driver: {
+  id: string;
+  name?: string;
+  phone?: string;
+  vehicleType?: string;
+}): Promise<{ success: boolean; token?: string; error?: string }> {
+  if (typeof window === 'undefined') {
+    return { success: false, error: 'No se puede ejecutar en el servidor' };
+  }
+
+  if (!('Notification' in window)) {
+    return { success: false, error: 'Este dispositivo no soporta notificaciones push nativas.' };
+  }
+
+  try {
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      return { success: false, error: 'Permiso de notificaciones denegado en el navegador.' };
+    }
+
+    if (!messagingInstance) {
+      await initializeFCM();
+    }
+
+    if (!serviceWorkerReg && 'serviceWorker' in navigator) {
+      serviceWorkerReg = await navigator.serviceWorker.ready;
+    }
+
+    const configuredVapidKey = localStorage.getItem('ryyco_fcm_vapid_key') || undefined;
+
+    let fcmToken = '';
+    if (messagingInstance) {
+      try {
+        fcmToken = await getToken(messagingInstance, {
+          serviceWorkerRegistration: serviceWorkerReg || undefined,
+          vapidKey: configuredVapidKey
+        });
+      } catch (tokenErr: any) {
+        console.warn('[FCM-DRIVER] getToken with vapidKey failed, trying default:', tokenErr);
+        try {
+          fcmToken = await getToken(messagingInstance, {
+            serviceWorkerRegistration: serviceWorkerReg || undefined
+          });
+        } catch (defaultErr: any) {
+          console.warn('[FCM-DRIVER] Default getToken fallback error:', defaultErr);
+          fcmToken = 'driver_web_push_' + driver.id + '_' + Date.now();
+        }
+      }
+    } else {
+      fcmToken = 'driver_native_push_' + driver.id + '_' + Date.now();
+    }
+
+    // Save locally
+    localStorage.setItem('ryyco_driver_fcm_token', fcmToken);
+    localStorage.setItem('ryyco_driver_fcm_driver_id', driver.id);
+
+    // Save in Firestore collection `driver_fcm_tokens`
+    try {
+      const sanitizedTokenId = fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-100) || `driver_token_${driver.id}_${Date.now()}`;
+      await setDoc(doc(db, 'driver_fcm_tokens', sanitizedTokenId), {
+        token: fcmToken,
+        driverId: driver.id,
+        driverName: driver.name || 'Domiciliario RYYCO',
+        phone: driver.phone || '',
+        vehicleType: driver.vehicleType || 'moto',
+        device: 'web_browser',
+        userAgent: navigator.userAgent,
+        active: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      console.log('[FCM-DRIVER] Token de domiciliario guardado en Firestore con éxito.');
+    } catch (saveErr) {
+      console.warn('[FCM-DRIVER] Error al guardar token de domiciliario en Firestore:', saveErr);
+    }
+
+    // Play confirmation chime & speech
+    playDriverOrderAlertChime();
+    speakDriverVoiceAlert('Notificaciones push activadas para domiciliarios');
+
+    return {
+      success: true,
+      token: fcmToken
+    };
+  } catch (error: any) {
+    console.error('[FCM-DRIVER] Error solicitando permisos FCM:', error);
+    return {
+      success: false,
+      error: error?.message || 'Error desconocido al activar notificaciones push para domiciliarios.'
+    };
+  }
+}
+
+/**
+ * Dispatch Push Notification for a new delivery order request to the Driver's device and Service Worker
+ */
+export async function triggerDriverDeliveryPush(
+  order: OrderItem,
+  storeNameFallback?: string
+) {
+  if (typeof window === 'undefined') return;
+
+  const orderNum = order.orderNumber ? `#${order.orderNumber}` : 'S/N';
+  const storeName = order.storeName || storeNameFallback || 'Restaurante RYYCO';
+  const address = order.customerAddress || 'Ipiales';
+  const deliveryFee = order.deliveryCost ? `$${order.deliveryCost.toLocaleString('es-CO')}` : '$3.000';
+
+  const title = `🛵 ¡Nueva Solicitud de Domicilio ${orderNum}!`;
+  const body = `De: ${storeName}\nPara: ${address} • Ganancia: ${deliveryFee}`;
+  const clickUrl = '/?view=driver';
+
+  // 1. Play driver alert chime sound
+  playDriverOrderAlertChime();
+
+  // 2. Announce with speech synthesis
+  speakDriverVoiceAlert(`¡Nueva entrega disponible en ${storeName}!`);
+
+  // 3. Post message to active Service Worker to show background notification
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && reg.showNotification) {
+        reg.showNotification(title, {
+          body,
+          icon: '/logoryyco.png',
+          badge: '/favicon.svg',
+          vibrate: [400, 200, 400, 200, 600],
+          tag: 'driver-order-' + order.id,
+          renotify: true,
+          requireInteraction: true,
+          data: {
+            url: clickUrl,
+            isDriver: true,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            storeName,
+            address,
+            deliveryCost: order.deliveryCost
+          },
+          actions: [
+            { action: 'open_driver_order', title: '🛵 Ver Solicitud de Entrega' }
+          ]
+        } as any);
+      }
+
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'TRIGGER_DRIVER_REQUEST_NOTIFICATION',
+          title,
+          body,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          storeName,
+          address,
+          deliveryCost: order.deliveryCost,
+          url: clickUrl
+        });
+      }
+    } else if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification(title, {
+        body,
+        icon: '/logoryyco.png'
+      });
+    }
+  } catch (err) {
+    console.warn('[FCM-DRIVER] Error displaying local driver notification:', err);
+  }
+
+  // 4. Send to backend FCM broadcast route for drivers
+  try {
+    fetch('/api/fcm/broadcast-driver-request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        storeName,
+        customerAddress: address,
+        customerName: order.customerName,
+        deliveryCost: order.deliveryCost || 3000,
+        totalAmount: order.totalAmount,
+        itemsCount: order.items?.length || 1
+      })
+    }).catch(() => {});
+  } catch (backendErr) {
+    // Non-blocking
+  }
+}
+
+/**
+ * Get current FCM / Push Notification Status for Drivers (Domiciliarios)
+ */
+export function getDriverFCMStatus(driverId?: string): {
+  supported: boolean;
+  permission: NotificationPermission | 'unsupported';
+  hasToken: boolean;
+  token: string | null;
+  tokenPreview: string | null;
+} {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return {
+      supported: false,
+      permission: 'unsupported',
+      hasToken: false,
+      token: null,
+      tokenPreview: null
+    };
+  }
+
+  const token = localStorage.getItem('ryyco_driver_fcm_token');
+  return {
+    supported: true,
+    permission: Notification.permission,
+    hasToken: Boolean(token),
+    token,
+    tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
+  };
+}
+
+export interface DriverFCMTokenRecord {
+  id: string;
+  token: string;
+  driverId: string;
+  driverName?: string;
+  phone?: string;
+  vehicleType?: string;
+  device?: string;
+  userAgent?: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface SellerFCMTokenRecord {
   id: string;
   token: string;
@@ -623,6 +940,58 @@ export interface AdminFCMTokenRecord {
   active: boolean;
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Fetch all registered driver FCM device tokens from Firestore
+ */
+export async function fetchDriverFCMTokens(): Promise<DriverFCMTokenRecord[]> {
+  try {
+    const snap = await getDocs(collection(db, 'driver_fcm_tokens'));
+    const tokens: DriverFCMTokenRecord[] = [];
+    snap.forEach((d) => {
+      tokens.push({ id: d.id, ...(d.data() as any) });
+    });
+    return tokens.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  } catch (err) {
+    console.warn('[FCM] Error fetching driver tokens from Firestore:', err);
+    return [];
+  }
+}
+
+/**
+ * Delete a driver FCM token
+ */
+export async function deleteDriverFCMToken(tokenId: string): Promise<boolean> {
+  try {
+    await deleteDoc(doc(db, 'driver_fcm_tokens', tokenId));
+    return true;
+  } catch (err) {
+    console.warn('[FCM] Error deleting driver token:', err);
+    return false;
+  }
+}
+
+/**
+ * Send an Admin broadcast push notification to a specific driver or to all drivers
+ */
+export async function sendAdminPushToDriver(params: {
+  driverId: string;
+  driverName?: string;
+  title: string;
+  message: string;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch('/api/fcm/broadcast-to-driver', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params)
+    });
+    const data = await res.json();
+    return { success: data.status === 'ok' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error al emitir notificación al domiciliario' };
+  }
 }
 
 /**
@@ -699,8 +1068,8 @@ export async function sendAdminPushToSeller(params: {
  * Connect to real-time Server-Sent Events (SSE) push stream for instant delivery across tabs
  */
 export function connectFCMStream(
-  role: 'admin' | 'seller',
-  sellerUid?: string,
+  role: 'admin' | 'seller' | 'driver',
+  entityUid?: string, // sellerUid or driverId
   onEvent?: (data: any) => void
 ): () => void {
   if (typeof window === 'undefined' || !('EventSource' in window)) {
@@ -710,7 +1079,8 @@ export function connectFCMStream(
   let eventSource: EventSource | null = null;
   try {
     const params = new URLSearchParams({ role });
-    if (sellerUid) params.set('sellerUid', sellerUid);
+    if (role === 'seller' && entityUid) params.set('sellerUid', entityUid);
+    if (role === 'driver' && entityUid) params.set('driverId', entityUid);
 
     eventSource = new EventSource(`/api/fcm/stream?${params.toString()}`);
 
@@ -718,7 +1088,7 @@ export function connectFCMStream(
       try {
         const data = JSON.parse(event.data);
         if (data.type === 'CONNECTED') {
-          console.log('[FCM-SSE] Connected to push stream:', data.clientId);
+          console.log('[FCM-SSE] Connected to push stream:', data.clientId, 'role:', role);
           return;
         }
 
@@ -726,9 +1096,34 @@ export function connectFCMStream(
           onEvent(data);
         }
 
-        // Auto-handle seller order push if matching
-        if (data.type === 'SELLER_ORDER_PUSH' && role === 'seller') {
-          if (!sellerUid || data.storeOwnerId === sellerUid) {
+        // Auto-handle driver order request push
+        if (data.type === 'DRIVER_REQUEST_PUSH' && role === 'driver') {
+          playDriverOrderAlertChime();
+          speakDriverVoiceAlert(`¡Nueva solicitud de domicilio en ${data.storeName || 'RYYCO'}!`);
+          window.dispatchEvent(new CustomEvent('ryyco:new-driver-request', {
+            detail: data
+          }));
+          if (Notification.permission === 'granted') {
+            const orderNum = data.orderNumber ? `#${data.orderNumber}` : '';
+            const fee = data.deliveryCost ? `$${Number(data.deliveryCost).toLocaleString('es-CO')}` : '$3.000';
+            new Notification(`🛵 ¡Nueva Solicitud de Domicilio ${orderNum}!`, {
+              body: `Restaurante: ${data.storeName || 'Tienda'}\nEntrega: ${data.customerAddress || 'Ipiales'} • Ganancia: ${fee}`,
+              icon: '/logoryyco.png'
+            });
+          }
+        } else if (data.type === 'CUSTOM_DRIVER_ALERT' && role === 'driver') {
+          if (!entityUid || data.driverId === 'all' || data.driverId === entityUid) {
+            playDriverOrderAlertChime();
+            speakDriverVoiceAlert(data.title || 'Aviso para domiciliarios RYYCO');
+            if (Notification.permission === 'granted') {
+              new Notification(data.title || '🛵 RYYCO Domicilios', {
+                body: data.message,
+                icon: '/logoryyco.png'
+              });
+            }
+          }
+        } else if (data.type === 'SELLER_ORDER_PUSH' && role === 'seller') {
+          if (!entityUid || data.storeOwnerId === entityUid) {
             playOrderAlertChime();
             speakOrderVoiceAlert(`¡Nuevo pedido número ${data.orderNumber || ''} en tu tienda!`);
             window.dispatchEvent(new CustomEvent('ryyco:new-seller-order', {
@@ -742,7 +1137,7 @@ export function connectFCMStream(
             detail: data
           }));
         } else if (data.type === 'CUSTOM_SELLER_ALERT' && role === 'seller') {
-          if (!sellerUid || data.storeOwnerId === 'all' || data.storeOwnerId === sellerUid) {
+          if (!entityUid || data.storeOwnerId === 'all' || data.storeOwnerId === entityUid) {
             playOrderAlertChime();
             speakOrderVoiceAlert(data.title || 'Mensaje de administración RYYCO');
             if (Notification.permission === 'granted') {
