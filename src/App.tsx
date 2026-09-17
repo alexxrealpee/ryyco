@@ -252,6 +252,26 @@ export default function App() {
     }
   }, [view, targetUsername]);
 
+  // Handle push notification click navigation to admin or seller orders tab
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'RYYCO_ORDER_NOTIFICATION_CLICK') {
+          window.history.pushState({}, '', '/admin?tab=orders');
+          setView('admin');
+        } else if (event.data?.type === 'RYYCO_SELLER_ORDER_NOTIFICATION_CLICK') {
+          window.history.pushState({}, '', '/?view=dashboard&tab=orders');
+          setView('dashboard');
+          window.dispatchEvent(new CustomEvent('ryyco:seller-navigate-tab', { detail: { tab: 'orders' } }));
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      };
+    }
+  }, []);
+
   // 3. Keep Auth listener continuously running so session is never lost or orphaned
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {

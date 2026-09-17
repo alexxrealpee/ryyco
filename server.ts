@@ -446,6 +446,62 @@ Formatos válidos para:
     }
   });
 
+  // Firebase Cloud Messaging (FCM) Order Notification Broadcast Endpoint
+  app.post('/api/fcm/broadcast-order', (req, res) => {
+    try {
+      const { orderId, orderNumber, storeName, customerName, totalAmount, itemsCount } = req.body || {};
+      console.log(`[FCM-SERVER] 🚨 Nuevo pedido recibido para notificación general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
+      res.json({
+        status: 'ok',
+        delivered: true,
+        orderId,
+        orderNumber,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error('[FCM-SERVER] Error in broadcast-order:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  // Firebase Cloud Messaging (FCM) Seller Order Notification Broadcast Endpoint
+  app.post('/api/fcm/broadcast-seller-order', (req, res) => {
+    try {
+      const { storeOwnerId, orderId, orderNumber, storeName, customerName, totalAmount, itemsCount } = req.body || {};
+      console.log(`[FCM-SERVER] 📦 Nuevo pedido para Vendedor (Tienda: "${storeName || 'Tienda'}" - UID: ${storeOwnerId}): #${orderNumber || 'S/N'} por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
+      res.json({
+        status: 'ok',
+        delivered: true,
+        storeOwnerId,
+        orderId,
+        orderNumber,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error('[FCM-SERVER] Error in broadcast-seller-order:', err);
+      res.status(500).json({ error: err.message || 'Internal server error' });
+    }
+  });
+
+  app.post('/api/fcm/test', (req, res) => {
+    console.log('[FCM-SERVER] Test push notification triggered from client');
+    res.json({
+      status: 'ok',
+      message: 'Notificación de prueba FCM recibida en servidor',
+      timestamp: new Date().toISOString()
+    });
+  });
+
+  app.post('/api/fcm/seller-test', (req, res) => {
+    const { storeOwnerId, storeName } = req.body || {};
+    console.log(`[FCM-SERVER] Test push notification triggered for Seller: "${storeName || 'Tienda'}" (${storeOwnerId || 'Desconocido'})`);
+    res.json({
+      status: 'ok',
+      message: `Notificación de prueba FCM recibida para vendedor (${storeName || 'Tienda'})`,
+      timestamp: new Date().toISOString()
+    });
+  });
+
   // Google Maps Platform Configuration endpoint (provides client config and API key for interactive maps)
   app.get(['/api/maps/config', '/api/maps-config.php'], (req, res) => {
     const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';

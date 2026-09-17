@@ -65,11 +65,22 @@ import {
   ShieldCheck,
   Headphones,
   Phone,
-  Zap
+  Zap,
+  Radio,
+  Smartphone,
+  CheckCircle2
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { RestaurantDataTab } from './RestaurantDataTab';
+import { 
+  initializeFCM, 
+  requestSellerFCMPermission, 
+  triggerSellerOrderPush, 
+  getSellerFCMStatus, 
+  playOrderAlertChime, 
+  speakOrderVoiceAlert 
+} from '../lib/fcmNotifications';
 import { 
   saveProfile, 
   PREDEFINED_THEMES, 
@@ -292,8 +303,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [analyticsViews, setAnalyticsViews] = useState<PageViewAnalytic[]>([]);
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
 
-  // Browser Push Notification Permission state
+  // Browser Push & Firebase Cloud Messaging (FCM) Notification Permission state
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [isRequestingFCM, setIsRequestingFCM] = useState(false);
+  const [sellerFCMToken, setSellerFCMToken] = useState<string | null>(() => 
+    typeof window !== 'undefined' ? localStorage.getItem('ryyco_seller_fcm_token') : null
+  );
+  const [showFCMDetails, setShowFCMDetails] = useState(false);
+  const [copiedFCMToken, setCopiedFCMToken] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -301,20 +318,86 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     } else {
       setPushPermission('unsupported');
     }
-  }, []);
 
-  const requestPushPermission = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      try {
-        const permission = await Notification.requestPermission();
-        setPushPermission(permission);
-        if (permission === 'granted') {
-          playNewOrderNotification();
-        }
-      } catch (e) {
-        console.warn("Could not request notification permission:", e);
+    // Auto-initialize FCM and check seller registration
+    initializeFCM().catch(() => {});
+    if (profile.uid) {
+      const status = getSellerFCMStatus(profile.uid);
+      if (status.token) {
+        setSellerFCMToken(status.token);
       }
     }
+  }, [profile.uid]);
+
+  // Listen for navigation clicks from Push Notifications
+  useEffect(() => {
+    const handleTabNav = (e: any) => {
+      if (e.detail?.tab) setActiveTab(e.detail.tab);
+    };
+    window.addEventListener('ryyco:seller-navigate-tab', handleTabNav);
+    return () => window.removeEventListener('ryyco:seller-navigate-tab', handleTabNav);
+  }, []);
+
+  // Listen for foreground FCM Push orders targeted to this seller
+  useEffect(() => {
+    const handleSellerPush = (e: any) => {
+      if (e.detail?.storeOwnerId && e.detail.storeOwnerId !== profile.uid) return;
+      const num = e.detail?.orderNumber ? `#${e.detail.orderNumber}` : '';
+      setNewOrderAlert(`¡Llegó un nuevo pedido ${num} a tu tienda!`);
+      setTimeout(() => setNewOrderAlert(null), 7000);
+      handleSyncOrders();
+    };
+    window.addEventListener('ryyco:new-seller-order', handleSellerPush);
+    return () => window.removeEventListener('ryyco:new-seller-order', handleSellerPush);
+  }, [profile.uid]);
+
+  const requestPushPermission = async () => {
+    setIsRequestingFCM(true);
+    try {
+      const res = await requestSellerFCMPermission({
+        uid: profile.uid,
+        email: profile.email,
+        storeName: profile.name || profile.username
+      });
+      if (res.success) {
+        setPushPermission('granted');
+        if (res.token) setSellerFCMToken(res.token);
+        setNewOrderAlert('🔔 ¡Notificaciones PUSH (FCM) activadas para tu tienda!');
+        setTimeout(() => setNewOrderAlert(null), 5000);
+      } else if (res.error) {
+        setNewOrderAlert(`⚠️ ${res.error}`);
+        setTimeout(() => setNewOrderAlert(null), 6000);
+      }
+    } catch (e: any) {
+      console.warn("Could not request seller FCM notification permission:", e);
+    } finally {
+      setIsRequestingFCM(false);
+    }
+  };
+
+  const handleTestSellerFCMPush = async () => {
+    const dummyOrder: OrderItem = {
+      id: `test_seller_${Date.now()}`,
+      orderNumber: (orders.length > 0 ? Math.max(...orders.map(o => o.orderNumber || 0)) : 100) + 1,
+      storeOwnerId: profile.uid,
+      storeName: profile.name || 'Mi Tienda',
+      customerName: 'Cliente Ejemplo FCM',
+      customerPhone: '3129876543',
+      customerAddress: 'Carrera 7 # 32-15, Local 2',
+      paymentMethod: 'delivery_cash',
+      totalAmount: 34500,
+      status: 'pending',
+      items: [
+        { productId: 'test_1', name: 'Combo Especial de la Casa', price: 28000, quantity: 1 },
+        { productId: 'test_2', name: 'Bebida 400ml', price: 6500, quantity: 1 }
+      ],
+      createdAt: new Date().toISOString()
+    };
+
+    setNewOrderAlert(`¡Prueba FCM: Pedido #${dummyOrder.orderNumber} de ${dummyOrder.customerName}!`);
+    setTimeout(() => setNewOrderAlert(null), 6000);
+
+    await triggerSellerOrderPush(dummyOrder, profile.name);
   };
 
   // Ref to track known order IDs for real-time notification
@@ -451,6 +534,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         if (newOrders.length > 0) {
           const newestOrder = newOrders[0];
           playNewOrderNotification(newestOrder);
+          triggerSellerOrderPush(newestOrder, profile.name);
           setNewOrderAlert(newestOrder.customerName ? `¡Llegó un pedido de ${newestOrder.customerName}!` : "¡Llegó un pedido!");
           setTimeout(() => setNewOrderAlert(null), 6000);
         }
@@ -651,6 +735,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         if (newOrders.length > 0) {
           const newestOrder = newOrders[0];
           playNewOrderNotification(newestOrder);
+          triggerSellerOrderPush(newestOrder, profile.name);
           setNewOrderAlert(newestOrder.customerName ? `¡Llegó un pedido de ${newestOrder.customerName}!` : "¡Llegó un pedido!");
           setTimeout(() => setNewOrderAlert(null), 6000);
         }
@@ -2914,11 +2999,23 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <p className="text-xs text-gray-500 font-medium">Administra compras completas, despacha mercaderías y asiste a tus compradores.</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-center">
-                        {/* Push Notification Toggle Button */}
+                        {/* FCM Push Notification Toggle Button */}
                         {pushPermission === 'granted' ? (
-                          <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            <Bell className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Push & Voz Activos</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowFCMDetails(!showFCMDetails)}
+                              className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 transition cursor-pointer"
+                              title="Ver configuración y token FCM de tu tienda"
+                            >
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                              </span>
+                              <Bell className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>FCM Push Activo</span>
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showFCMDetails ? 'rotate-180' : ''}`} />
+                            </button>
                           </div>
                         ) : pushPermission === 'denied' ? (
                           <div className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-gray-500 bg-gray-900/50 rounded-xl border border-gray-800" title="Las notificaciones están bloqueadas en la configuración de tu navegador">
@@ -2929,13 +3026,25 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           <button
                             type="button"
                             onClick={requestPushPermission}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 active:scale-95 transition cursor-pointer"
-                            title="Haz clic para permitir notificaciones push cuando llegue un nuevo pedido"
+                            disabled={isRequestingFCM}
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 active:scale-95 transition cursor-pointer disabled:opacity-50"
+                            title="Haz clic para activar notificaciones push FCM y recibir pedidos en tiempo real"
                           >
-                            <BellRing className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                            <span>Activar Push</span>
+                            <BellRing className={`w-3.5 h-3.5 text-amber-300 ${isRequestingFCM ? 'animate-spin' : 'animate-pulse'}`} />
+                            <span>{isRequestingFCM ? 'Activando FCM...' : 'Activar PUSH (FCM)'}</span>
                           </button>
                         )}
+
+                        {/* Test Push FCM Button */}
+                        <button
+                          type="button"
+                          onClick={handleTestSellerFCMPush}
+                          title="Probar notificación PUSH FCM con sonido, voz y vibración en segundo plano"
+                          className="flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 active:scale-95 transition text-indigo-300 border border-indigo-500/30 cursor-pointer"
+                        >
+                          <Zap className="w-3.5 h-3.5 text-indigo-400" />
+                          <span className="hidden sm:inline">Probar Push FCM</span>
+                        </button>
 
                         <button
                           type="button"
@@ -2956,6 +3065,114 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </button>
                       </div>
                     </div>
+
+                    {/* Collapsible FCM Push Details Drawer for Seller */}
+                    {showFCMDetails && (
+                      <div className="bg-gradient-to-r from-gray-950 via-gray-900 to-gray-950 border border-emerald-500/30 rounded-2xl p-4 sm:p-5 shadow-xl text-xs space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="flex items-center justify-between border-b border-gray-800/80 pb-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <Radio className="w-4 h-4 text-emerald-400" />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                                <span>Firebase Cloud Messaging (FCM) para Tu Tienda</span>
+                                <span className="px-2 py-0.5 text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">Enlazado</span>
+                              </h4>
+                              <p className="text-[11px] text-gray-400">Recibirás alertas inmediatas de nuevos pedidos incluso con la pantalla apagada o en segundo plano.</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowFCMDetails(false)}
+                            className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                          <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                              <Smartphone className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Service Worker</span>
+                            </div>
+                            <div className="font-mono text-emerald-400 text-xs truncate">/firebase-messaging-sw.js</div>
+                            <div className="text-[10px] text-gray-500 mt-1">Registrado y activo</div>
+                          </div>
+
+                          <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Colección Firestore</span>
+                            </div>
+                            <div className="font-mono text-amber-300 text-xs truncate">seller_fcm_tokens</div>
+                            <div className="text-[10px] text-gray-500 mt-1">Token asociado a UID de tu tienda</div>
+                          </div>
+
+                          <div className="bg-black/40 border border-gray-800 rounded-xl p-3">
+                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                              <Zap className="w-3.5 h-3.5 text-purple-400" />
+                              <span>Notificaciones Web Push</span>
+                            </div>
+                            <div className="font-semibold text-white text-xs">Voz, Chime & Vibración</div>
+                            <div className="text-[10px] text-gray-500 mt-1">Sintetizador de voz activado</div>
+                          </div>
+                        </div>
+
+                        {sellerFCMToken && (
+                          <div className="bg-black/60 border border-gray-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                            <div className="min-w-0">
+                              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Token FCM de Dispositivo Asignado:</span>
+                              <span className="font-mono text-[11px] text-gray-300 truncate block max-w-xl">{sellerFCMToken}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(sellerFCMToken);
+                                setCopiedFCMToken(true);
+                                setTimeout(() => setCopiedFCMToken(false), 2500);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold shrink-0 transition flex items-center gap-1.5 cursor-pointer self-start sm:self-center"
+                            >
+                              {copiedFCMToken ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>Copiado</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>Copiar Token</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Notice to activate FCM if not granted yet */}
+                    {pushPermission !== 'granted' && (
+                      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-300 shrink-0">
+                            <BellRing className="w-5 h-5 animate-pulse" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-amber-200">¡No te pierdas ningún pedido de tus clientes!</h4>
+                            <p className="text-xs text-amber-300/80">Activa las notificaciones Push FCM para recibir avisos instantáneos con timbre sonoro y voz en tu teléfono o computador cuando entre una nueva compra.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={requestPushPermission}
+                          disabled={isRequestingFCM}
+                          className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider shrink-0 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                        >
+                          {isRequestingFCM ? 'Activando...' : 'Activar Notificaciones Ahora'}
+                        </button>
+                      </div>
+                    )}
 
                     {orders.length === 0 ? (
                       <div className="bg-gray-950 border border-gray-900 rounded-3xl p-12 text-center text-gray-550 flex flex-col items-center justify-center">

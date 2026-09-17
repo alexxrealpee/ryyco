@@ -60,7 +60,7 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 auth.languageCode = 'es';
 
@@ -1458,6 +1458,43 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   try {
     if (result.customerPhone) {
       awardCustomerPointsAndSpin(result).catch(err => console.warn("Failed background customer points awarding:", err));
+    }
+  } catch (e) {}
+
+  // Broadcast FCM push notification for General Administration
+  try {
+    if (typeof window !== 'undefined') {
+      fetch('/api/fcm/broadcast-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: result.id,
+          orderNumber: result.orderNumber,
+          storeName: result.storeName,
+          customerName: result.customerName,
+          totalAmount: result.totalAmount,
+          itemsCount: result.items?.length || 1
+        })
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  // Broadcast FCM push notification for Store Seller / Merchant Administration
+  try {
+    if (typeof window !== 'undefined' && result.storeOwnerId) {
+      fetch('/api/fcm/broadcast-seller-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeOwnerId: result.storeOwnerId,
+          orderId: result.id,
+          orderNumber: result.orderNumber,
+          storeName: result.storeName,
+          customerName: result.customerName,
+          totalAmount: result.totalAmount,
+          itemsCount: result.items?.length || 1
+        })
+      }).catch(() => {});
     }
   } catch (e) {}
 

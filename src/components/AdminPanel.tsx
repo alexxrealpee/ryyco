@@ -8,6 +8,7 @@ import {
   fetchAdminStats, 
   fetchAllSubscriptionPayments,
   db,
+  auth,
   fetchAllOrders,
   subscribeToAllOrders,
   fetchAdminOrdersBatch,
@@ -77,8 +78,20 @@ import {
   Volume2, 
   VolumeX,
   Copy,
-  BarChart3
+  BarChart3,
+  Radio,
+  Smartphone,
+  Zap,
+  CheckCircle2
 } from 'lucide-react';
+import {
+  initializeFCM,
+  requestAdminFCMPermission,
+  triggerAdminOrderPush,
+  getFCMStatus,
+  playOrderAlertChime,
+  speakOrderVoiceAlert
+} from '../lib/fcmNotifications';
 import { 
   collection, 
   getDocs, 
@@ -253,7 +266,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return allOrders.filter(o => o.status === 'pending').length;
   }, [allOrders]);
 
-  // Push Notification & Sound Alert States
+  // Push Notification & Sound Alert States (FCM Powered)
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [newIncomingOrderAlert, setNewIncomingOrderAlert] = useState<{
     id: string;
@@ -262,13 +275,43 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     storeName: string;
     totalAmount: number;
   } | null>(null);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+  const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
+  const [isRequestingFCM, setIsRequestingFCM] = useState<boolean>(false);
+  const [showFCMDetails, setShowFCMDetails] = useState<boolean>(false);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      setPushPermission(Notification.permission);
-    } else {
-      setPushPermission('unsupported');
-    }
+    let isMounted = true;
+    (async () => {
+      try {
+        const supported = await initializeFCM();
+        if (isMounted) {
+          setIsFCMReady(supported);
+          const status = getFCMStatus();
+          setPushPermission(status.permission);
+          if (status.hasToken) {
+            setFcmToken(localStorage.getItem('ryyco_admin_fcm_token'));
+          }
+        }
+      } catch (err) {
+        console.warn("FCM init error in AdminPanel:", err);
+      }
+    })();
+
+    // Listen to custom event for foreground FCM orders
+    const handleFgOrder = (e: any) => {
+      const { payload } = e.detail || {};
+      if (payload) {
+        setNotif(`🚨 ¡Nuevo Pedido FCM detectado! #${payload.data?.orderNumber || ''}`);
+        setTimeout(() => setNotif(''), 6000);
+      }
+    };
+    window.addEventListener('ryyco:new-admin-order', handleFgOrder);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('ryyco:new-admin-order', handleFgOrder);
+    };
   }, []);
 
   // Sound, voice synthesis, and vibration player for new incoming order
@@ -281,131 +324,80 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     } catch (e) {}
 
     // 2. High-clarity Web Audio 3-tone chime (E5 -> A5 -> C#6 bell sequence)
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        const ctx = new AudioCtx();
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-        const now = ctx.currentTime;
-
-        // Note 1: E5 (659.25 Hz)
-        const osc1 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        osc1.type = 'triangle';
-        osc1.frequency.setValueAtTime(659.25, now);
-        gain1.gain.setValueAtTime(0.5, now);
-        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.start(now);
-        osc1.stop(now + 0.35);
-
-        // Note 2: A5 (880 Hz)
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(880, now + 0.15);
-        gain2.gain.setValueAtTime(0.6, now + 0.15);
-        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start(now + 0.15);
-        osc2.stop(now + 0.55);
-
-        // Note 3: C#6 (1108.73 Hz) - Crisp high finish
-        const osc3 = ctx.createOscillator();
-        const gain3 = ctx.createGain();
-        osc3.type = 'sine';
-        osc3.frequency.setValueAtTime(1108.73, now + 0.35);
-        gain3.gain.setValueAtTime(0.7, now + 0.35);
-        gain3.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
-        osc3.connect(gain3);
-        gain3.connect(ctx.destination);
-        osc3.start(now + 0.35);
-        osc3.stop(now + 0.95);
-      }
-    } catch (err) {
-      console.warn("Web Audio API alert sound error:", err);
-    }
+    playOrderAlertChime();
 
     // 3. Spoken voice announcement
-    try {
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance('¡Nuevo pedido recibido en la plataforma!');
-        utterance.lang = 'es-CO';
-        utterance.rate = 1.0;
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
-      }
-    } catch (speechErr) {}
+    speakOrderVoiceAlert('¡Atención! Nuevo pedido recibido en administración general');
   };
 
-  // Request push notification permission
+  // Request push notification permission and register device FCM token
   const requestPushPermission = async () => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      try {
-        const perm = await Notification.requestPermission();
-        setPushPermission(perm);
-        if (perm === 'granted') {
-          playOrderAlertSound();
-          setNotif("🔔 ¡Notificaciones Push y Sonido activadas con éxito!");
-        } else {
-          setNotif("⚠️ Permiso de notificaciones push rechazado.");
-        }
-      } catch (err) {
-        console.warn("Error requesting notification permission:", err);
+    setIsRequestingFCM(true);
+    try {
+      const currentAdmin = auth.currentUser;
+      const res = await requestAdminFCMPermission({
+        uid: currentAdmin?.uid || 'admin_user',
+        email: currentAdmin?.email || PRIMARY_ADMIN_EMAIL,
+        name: currentAdmin?.displayName || 'Administración General RYYCO'
+      });
+
+      if (res.success) {
+        setPushPermission('granted');
+        setFcmToken(res.token || 'fcm_registered');
+        setNotif("🔔 ¡Notificaciones PUSH FCM activadas y registradas para Administración General!");
+        setTimeout(() => setNotif(''), 6000);
+      } else {
+        setNotif(`⚠️ ${res.error || 'No se pudo activar el servicio FCM'}`);
+        setTimeout(() => setNotif(''), 5000);
       }
-    } else {
-      setNotif("ℹ️ Tu navegador no soporta notificaciones push nativas.");
+    } catch (err: any) {
+      console.error("Error activando FCM:", err);
+      setNotif("❌ Error al solicitar notificaciones FCM.");
+      setTimeout(() => setNotif(''), 5000);
+    } finally {
+      setIsRequestingFCM(false);
     }
   };
 
-  // Fire sound, vibration and push notification when a new order arrives
+  // Fire sound, vibration and FCM push notification when a new order arrives from ANY restaurant
   const triggerNewOrderAlert = (order: OrderItem) => {
-    playOrderAlertSound();
-
     const store = storesMap[order.storeOwnerId || ''] || allStoresList.find(s => s.uid === order.storeOwnerId);
-    const storeName = store?.name || order.storeName || 'Tienda';
-    const orderNum = order.orderNumber ? `#${order.orderNumber}` : '';
-    const customer = order.customerName || 'Cliente';
-    const total = (order.totalAmount || 0).toLocaleString('es-CO');
+    const storeName = store?.name || order.storeName || 'Tienda en RYYCO';
 
-    const title = `🚨 ¡Nuevo Pedido ${orderNum} en ${storeName}!`;
-    const body = `${customer} - $${total} COP (${order.items?.length || 1} productos)`;
-
-    try {
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-          navigator.serviceWorker.ready.then(reg => {
-            reg.showNotification(title, {
-              body,
-              icon: '/favicon.svg',
-              badge: '/favicon.svg',
-              vibrate: [350, 150, 350, 150, 500],
-              tag: 'admin-order-' + order.id,
-              renotify: true
-            } as any);
-          }).catch(() => {
-            new Notification(title, { body, icon: '/favicon.svg' });
-          });
-        } else {
-          new Notification(title, { body, icon: '/favicon.svg' });
-        }
-      }
-    } catch (pushErr) {
-      console.warn("Push notification error:", pushErr);
-    }
+    // Dispatch full FCM & Web Push notification with ServiceWorker, vibration, audio chime & backend broadcast
+    triggerAdminOrderPush(order, storeName);
 
     setNewIncomingOrderAlert({
       id: order.id,
       orderNumber: order.orderNumber,
-      customerName: customer,
+      customerName: order.customerName || 'Cliente',
       storeName,
       totalAmount: order.totalAmount || 0
     });
+  };
+
+  // Test push notification simulation with sound and vibration
+  const handleTestFCMPush = () => {
+    const testOrder: OrderItem = {
+      id: 'test_order_' + Date.now(),
+      orderNumber: 777,
+      storeOwnerId: 'store_prueba',
+      storeName: 'Restaurante Ejemplo RYYCO',
+      customerName: 'Cliente Notificaciones Push',
+      customerPhone: '3151234567',
+      customerAddress: 'Calle 10 # 5-20, Centro',
+      paymentMethod: 'delivery_cash',
+      totalAmount: 36000,
+      status: 'pending',
+      items: [
+        { productId: '1', name: 'Hamburguesa Especial Artesanal', price: 26000, quantity: 1 },
+        { productId: '2', name: 'Papas Rústicas & Gaseosa', price: 10000, quantity: 1 }
+      ],
+      createdAt: new Date().toISOString()
+    };
+    triggerNewOrderAlert(testOrder);
+    setNotif("📲 Notificación Push FCM de prueba emitida con sonido y vibración");
+    setTimeout(() => setNotif(''), 5000);
   };
 
   // Real-time listener across all store orders
@@ -2835,36 +2827,126 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 </p>
               </div>
 
-              {/* Notification, Sound and Vibration Controls */}
+              {/* Notification, Sound and FCM Vibration Controls */}
               <div className="flex flex-wrap items-center gap-2">
                 {pushPermission !== 'granted' ? (
                   <button
                     type="button"
                     onClick={requestPushPermission}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
-                    title="Permitir notificaciones push en el navegador y celular"
+                    disabled={isRequestingFCM}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                    title="Activar notificaciones PUSH con Firebase Cloud Messaging (FCM) para pedidos generales"
                   >
-                    <Bell className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                    <span>Activar Notificaciones Push</span>
+                    <Bell className={`w-3.5 h-3.5 text-amber-400 ${isRequestingFCM ? 'animate-spin' : 'animate-pulse'}`} />
+                    <span>{isRequestingFCM ? 'Activando FCM...' : 'Activar PUSH (FCM)'}</span>
                   </button>
                 ) : (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold font-mono">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    <span>Push & Sonido Activo</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-xl text-xs font-bold font-mono">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      <span>FCM Push Activo</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowFCMDetails(!showFCMDetails)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-900/90 hover:bg-gray-800 text-gray-300 border border-gray-700/60 rounded-xl text-[11px] font-medium transition cursor-pointer"
+                      title="Ver estado de la conexión FCM y token registrado"
+                    >
+                      <Smartphone className="w-3 h-3 text-cyan-400" />
+                      <span>{fcmToken ? 'Token OK' : 'FCM Config'}</span>
+                    </button>
                   </div>
                 )}
 
                 <button
                   type="button"
+                  onClick={handleTestFCMPush}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+                  title="Simular un pedido entrante con notificación PUSH de Firebase, sonido y vibración"
+                >
+                  <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Probar Push FCM</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={playOrderAlertSound}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 hover:bg-gray-800 text-indigo-300 border border-indigo-500/30 rounded-xl text-xs font-bold transition cursor-pointer"
-                  title="Probar sonido de campana y vibración al celular"
+                  title="Probar sonido de campana y voz sintetizada"
                 >
                   <Volume2 className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>Probar Sonido</span>
+                  <span>Sonido</span>
                 </button>
               </div>
             </div>
+
+            {/* FCM Connection Details Drawer */}
+            {showFCMDetails && (
+              <div className="bg-gray-950/80 border border-cyan-500/30 rounded-2xl p-4 text-xs space-y-2 text-gray-300 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-cyan-300 font-bold text-xs">
+                    <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+                    <span>Configuración Firebase Cloud Messaging (FCM) - Admin General</span>
+                  </div>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowFCMDetails(false)}
+                    className="text-gray-500 hover:text-white p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
+                    <p className="text-[10px] text-gray-500 font-mono uppercase">Service Worker</p>
+                    <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>/firebase-messaging-sw.js</span>
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
+                    <p className="text-[10px] text-gray-500 font-mono uppercase">Permiso Notificaciones</p>
+                    <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                      <span className={`w-2 h-2 rounded-full ${pushPermission === 'granted' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
+                      <span className="capitalize">{pushPermission}</span>
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
+                    <p className="text-[10px] text-gray-500 font-mono uppercase">Almacenamiento Tokens</p>
+                    <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Colección Firestore admin_fcm_tokens</span>
+                    </p>
+                  </div>
+                </div>
+                {fcmToken && (
+                  <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-gray-500 font-mono">TOKEN FCM REGISTRADO DEL DISPOSITIVO:</p>
+                      <p className="text-[10px] text-cyan-300 font-mono truncate">{fcmToken}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.clipboard) {
+                          navigator.clipboard.writeText(fcmToken);
+                          setNotif("📋 Token FCM copiado al portapapeles");
+                          setTimeout(() => setNotif(''), 3000);
+                        }
+                      }}
+                      className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-[10px] font-mono shrink-0 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" />
+                      <span>Copiar</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* New Incoming Order Floating Banner */}
             {newIncomingOrderAlert && (

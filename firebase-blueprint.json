@@ -239,9 +239,52 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["orderId", "driverId", "lat", "lng", "status", "updatedAt"]
+    },
+    "AdminFCMToken": {
+      "title": "AdminFCMToken",
+      "description": "Stores web push tokens and devices for administrative push notifications",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "adminName": { "type": "string" },
+        "device": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["token", "adminUid", "active", "updatedAt"]
+    },
+    "SellerFCMToken": {
+      "title": "SellerFCMToken",
+      "description": "Stores web push tokens and devices for merchant / seller store push notifications",
+      "type": "object",
+      "properties": {
+        "token": { "type": "string" },
+        "storeOwnerId": { "type": "string" },
+        "sellerUid": { "type": "string" },
+        "sellerEmail": { "type": "string" },
+        "storeName": { "type": "string" },
+        "device": { "type": "string" },
+        "userAgent": { "type": "string" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["token", "storeOwnerId", "active", "updatedAt"]
     }
   },
   "firestore": {
+    "/seller_fcm_tokens/{tokenId}": {
+      "schema": "SellerFCMToken",
+      "description": "Registered devices and tokens for merchant/seller push notifications"
+    },
+    "/admin_fcm_tokens/{tokenId}": {
+      "schema": "AdminFCMToken",
+      "description": "Registered devices and tokens for admin push notifications"
+    },
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "Private auth metadata details"
