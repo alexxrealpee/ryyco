@@ -182,14 +182,14 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         </button>
 
         {/* 3D Isometric House with Red Map Pin Illustration */}
-        <div className="flex justify-center mb-1 pt-3">
+        <div className="flex justify-center mb-1 pt-4">
           <style>{`
             @keyframes ryycoPinFloat {
               0%, 100% {
-                transform: translateY(0px);
+                transform: translateY(-2px);
               }
               50% {
-                transform: translateY(-12px);
+                transform: translateY(-26px);
               }
             }
             @keyframes ryycoShadowPulse {
@@ -198,23 +198,23 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
                 opacity: 0.35;
               }
               50% {
-                transform: scale(0.82);
-                opacity: 0.2;
+                transform: scale(0.68);
+                opacity: 0.16;
               }
             }
             .animate-ryyco-pin {
-              animation: ryycoPinFloat 2.4s ease-in-out infinite;
+              animation: ryycoPinFloat 2.6s ease-in-out infinite;
             }
             .animate-ryyco-shadow {
               transform-origin: 108px 74px;
-              animation: ryycoShadowPulse 2.4s ease-in-out infinite;
+              animation: ryycoShadowPulse 2.6s ease-in-out infinite;
             }
           `}</style>
           <div className="relative w-28 h-28 sm:w-32 sm:h-32 flex items-center justify-center">
             {/* Subtle glow behind house */}
             <div className="absolute inset-0 bg-[#E63946]/15 rounded-full blur-2xl pointer-events-none" />
             <svg 
-              viewBox="0 -35 200 235" 
+              viewBox="0 -50 200 250" 
               className="w-full h-full drop-shadow-md select-none relative z-10 overflow-visible" 
               fill="none" 
               xmlns="http://www.w3.org/2000/svg"
@@ -329,12 +329,23 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
           Mejor servicio, entregas más rápidas y los precios más convenientes!
         </p>
 
-        {/* Input Box with MapPin Icon */}
+        {/* Input Box with Clickable MapPin Icon */}
         <div className="relative mb-3 text-left">
           <div className="relative flex items-center">
-            <div className="absolute left-4 pointer-events-none text-[#E63946]">
-              <MapPin className="w-5 h-5 fill-[#E63946]/20" />
-            </div>
+            <button
+              type="button"
+              onClick={handleUseCurrentLocation}
+              disabled={isLocating}
+              className="absolute left-3 p-1.5 rounded-xl text-[#E63946] hover:text-[#ff4d5e] hover:bg-[#E63946]/15 active:scale-90 transition cursor-pointer z-10 flex items-center justify-center disabled:opacity-50"
+              title="Obtener mi ubicación actual"
+              aria-label="Usar mi ubicación actual"
+            >
+              {isLocating ? (
+                <Loader2 className="w-5 h-5 animate-spin text-[#E63946]" />
+              ) : (
+                <MapPin className="w-5 h-5 fill-[#E63946]/20 hover:fill-[#E63946]/40 transition" />
+              )}
+            </button>
             <input
               ref={inputRef}
               type="text"
