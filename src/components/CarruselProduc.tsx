@@ -182,9 +182,11 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
         });
 
         // Filter, enrich and sort products (Food / Restaurant products first for maximum engagement)
+        const seenActiveIds = new Set<string>();
         const activeList = fetchedProducts
           .filter(p => {
-            if (p.active === false) return false;
+            if (p.active === false || !p.id || seenActiveIds.has(p.id)) return false;
+            seenActiveIds.add(p.id);
             const prof = findStoreForProduct(p, normalizedProfiles);
             return prof && !prof.suspended && !checkIsStoreClosed(prof);
           })
@@ -698,7 +700,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
 
             return (
               <div
-                key={product.id}
+                key={product.id || `reel-prod-${idx}`}
                 className="w-full h-[100dvh] snap-start snap-always relative flex items-center justify-center bg-black overflow-hidden"
               >
                 {/* 1. Immersive Blurred Ambient Colorful Glow Background */}

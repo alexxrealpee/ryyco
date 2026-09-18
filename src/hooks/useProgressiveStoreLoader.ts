@@ -73,8 +73,8 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       try {
         const result = await fetchProductsForStoreFromFirebase(currentStore, needed, lastDoc);
         
-        // Filter out any product already loaded
-        const fresh = result.products.filter(p => !loadedProductIdsRef.current.has(p.id));
+        // Filter out any product already loaded or without valid id
+        const fresh = result.products.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
         
         fresh.forEach(p => {
           loadedProductIdsRef.current.add(p.id);
@@ -115,7 +115,11 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       const newBatch = await fetchBatch(4);
 
       if (newBatch.length > 0) {
-        setLoadedProducts(prev => [...prev, ...newBatch]);
+        setLoadedProducts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const uniqueNew = newBatch.filter(p => p && p.id && !existingIds.has(p.id));
+          return uniqueNew.length > 0 ? [...prev, ...uniqueNew] : prev;
+        });
       } else {
         setHasMore(false);
       }
@@ -190,16 +194,34 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
               return matchedUid || matchedUsername;
             });
 
-            const finalInitialProducts = orderProductBatch(
-              openStoreProducts.length > 0 ? openStoreProducts : activeData.products
-            );
+            const candidateProducts = openStoreProducts.length > 0 ? openStoreProducts : activeData.products;
+            
+            // Strictly deduplicate by ID to guarantee unique keys in React
+            const seen = new Set<string>();
+            const uniqueInitial = candidateProducts.filter(p => {
+              if (!p || !p.id || seen.has(p.id)) return false;
+              seen.add(p.id);
+              return true;
+            });
+
+            const finalInitialProducts = orderProductBatch(uniqueInitial);
+
+            // Register all initial product IDs into loadedProductIdsRef so future batches never duplicate them
+            finalInitialProducts.forEach(p => {
+              if (p.id) loadedProductIdsRef.current.add(p.id);
+            });
 
             setLoadedProducts(finalInitialProducts);
             setProfilesMap(prev => ({ ...prev, ...activeData.profiles }));
+            // Since all active products for the stores are loaded in memory, no more unvisited products exist
+            setHasMore(false);
           } else {
             // Fallback por lotes si activeData no contiene productos
             const initialBatch = await fetchBatch(8);
             if (initialBatch.length > 0) {
+              initialBatch.forEach(p => {
+                if (p.id) loadedProductIdsRef.current.add(p.id);
+              });
               setLoadedProducts(initialBatch);
             }
           }
@@ -207,6 +229,9 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           console.warn('Error loading initial products, trying batch fallback:', prodErr);
           const initialBatch = await fetchBatch(8);
           if (initialBatch.length > 0) {
+            initialBatch.forEach(p => {
+              if (p.id) loadedProductIdsRef.current.add(p.id);
+            });
             setLoadedProducts(initialBatch);
           }
         }

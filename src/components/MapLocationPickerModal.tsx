@@ -122,34 +122,82 @@ export const formatDistanceLabel = (lat?: number, lng?: number, fallback?: strin
   return `${rounded.toFixed(1).replace('.', ',')} km`;
 };
 
-// Curated prominent neighborhoods, avenues, and landmarks in Ipiales, Nariño (matching inDrive order)
-const LOCAL_IPIALES_PLACES: Array<{ 
-  name: string; 
-  secondary: string; 
-  lat: number; 
-  lng: number; 
-  distanceLabel: string;
-  keywords: string[] 
-}> = [
-  { name: "Barrio Obrero", secondary: "Carrera 1 # 10-24, Ipiales, Nariño", lat: 0.8260, lng: -77.6410, distanceLabel: "2,5 km", keywords: ["barrio", "obrero", "carrera 1"] },
-  { name: "Barrio El Centro", secondary: "Carrera 6 # 14-30, Ipiales, Nariño", lat: 0.8298, lng: -77.6444, distanceLabel: "1,2 km", keywords: ["barrio", "centro", "el centro", "carrera 6"] },
-  { name: "Barrio Puenes", secondary: "Calle 15 # 2-45, Ipiales, Nariño", lat: 0.8285, lng: -77.6354, distanceLabel: "1,7 km", keywords: ["barrio", "puenes", "calle 15"] },
-  { name: "Barrio San Vicente", secondary: "Carrera 4 # 21-35, Ipiales, Nariño", lat: 0.8335, lng: -77.6460, distanceLabel: "2 km", keywords: ["barrio", "san", "vicente", "carrera 4"] },
-  { name: "Barrio San José", secondary: "Calle 25 # 7-18, Ipiales, Nariño", lat: 0.8372, lng: -77.6415, distanceLabel: "1,7 km", keywords: ["barrio", "san", "jose", "calle 25"] },
-  { name: "Barrio El Manzano", secondary: "Calle 24 # 5-42, Ipiales, Nariño", lat: 0.8345, lng: -77.6432, distanceLabel: "1,4 km", keywords: ["barrio", "manzano", "calle 24", "carrera 5"] },
-  { name: "Barrio Champagnat", secondary: "Carrera 11 # 24-50, Ipiales, Nariño", lat: 0.8358, lng: -77.6489, distanceLabel: "1,9 km", keywords: ["barrio", "champagnat", "carrera 11", "colegio"] },
-  { name: "Barrio Centenario", secondary: "Calle 12 # 11-30, Ipiales, Nariño", lat: 0.8315, lng: -77.6521, distanceLabel: "1,8 km", keywords: ["barrio", "centenario", "calle 12"] },
-  { name: "Barrio El Charco", secondary: "Carrera 3 # 6-15, Ipiales, Nariño", lat: 0.8242, lng: -77.6398, distanceLabel: "1,6 km", keywords: ["barrio", "charco", "carrera 3"] },
-  { name: "Barrio Bellavista", secondary: "Calle 8 # 14-22, Ipiales, Nariño", lat: 0.8291, lng: -77.6562, distanceLabel: "2,2 km", keywords: ["barrio", "bellavista", "calle 8"] },
-  { name: "Barrio La Laguna", secondary: "Carrera 2 # 17-36, Ipiales, Nariño", lat: 0.8331, lng: -77.6385, distanceLabel: "1,5 km", keywords: ["barrio", "laguna", "carrera 2"] },
-  { name: "Barrio Míralores", secondary: "Calle 16 # 9-40, Ipiales, Nariño", lat: 0.8270, lng: -77.6490, distanceLabel: "1,6 km", keywords: ["barrio", "miralores", "miraflores", "calle 16"] },
-  { name: "Barrio Alfonso López", secondary: "Carrera 7 # 19-12, Ipiales, Nariño", lat: 0.8320, lng: -77.6400, distanceLabel: "1,3 km", keywords: ["barrio", "alfonso", "lopez", "carrera 7"] },
-  { name: "Barrio Totoral", secondary: "Carrera 1 Este # 4-20, Ipiales, Nariño", lat: 0.8225, lng: -77.6421, distanceLabel: "2,1 km", keywords: ["barrio", "totoral", "carrera 1"] },
-  { name: "Parque Santander", secondary: "Carrera 6 # 13-40, Centro, Ipiales", lat: 0.8289, lng: -77.6450, distanceLabel: "0,9 km", keywords: ["parque", "santander", "centro", "carrera 6"] },
-  { name: "Plaza 20 de Julio", secondary: "Carrera 5 # 14-20, Centro, Ipiales", lat: 0.8308, lng: -77.6438, distanceLabel: "0,8 km", keywords: ["plaza", "20", "julio", "catedral", "carrera 5"] },
-  { name: "Hospital Civil de Ipiales", secondary: "Avenida Panamericana # 1-85, Ipiales", lat: 0.8361, lng: -77.6380, distanceLabel: "2,1 km", keywords: ["hospital", "civil", "salud", "panamericana"] },
-  { name: "Terminal de Transportes Ipiales", secondary: "Avenida Panamericana # 15-40, Ipiales", lat: 0.8395, lng: -77.6312, distanceLabel: "2,8 km", keywords: ["terminal", "transportes", "buses", "panamericana"] }
-];
+// Key for locally storing searched/selected address history
+export const HISTORY_STORAGE_KEY = 'ryyco_address_history';
+
+export interface AddressHistoryItem {
+  id: string;
+  name: string; // nombre o dirección buscada
+  secondary?: string; // dirección completa si está disponible
+  fullAddress: string;
+  lat?: number;
+  lng?: number;
+  timestamp: number;
+}
+
+// Retrieve stored address history ordered from newest to oldest
+export const getStoredAddressHistory = (): AddressHistoryItem[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item: any) => item && typeof item === 'object' && (item.name || item.fullAddress))
+      .sort((a: AddressHistoryItem, b: AddressHistoryItem) => (b.timestamp || 0) - (a.timestamp || 0));
+  } catch {
+    return [];
+  }
+};
+
+// Save a searched or selected address to local storage
+export const saveAddressToHistory = (item: {
+  name: string;
+  secondary?: string;
+  fullAddress: string;
+  lat?: number;
+  lng?: number;
+}): AddressHistoryItem[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const name = item.name.trim();
+    const fullAddress = (item.fullAddress || name).trim();
+    if (!name && !fullAddress) return getStoredAddressHistory();
+
+    const currentHistory = getStoredAddressHistory();
+    const existingIndex = currentHistory.findIndex(
+      h => h.fullAddress.trim().toLowerCase() === fullAddress.toLowerCase() ||
+           h.name.trim().toLowerCase() === name.toLowerCase()
+    );
+
+    const newItem: AddressHistoryItem = {
+      id: existingIndex >= 0 ? currentHistory[existingIndex].id : `hist-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: name,
+      secondary: item.secondary?.trim() || (fullAddress !== name ? fullAddress : undefined),
+      fullAddress: fullAddress,
+      lat: item.lat ?? (existingIndex >= 0 ? currentHistory[existingIndex].lat : undefined),
+      lng: item.lng ?? (existingIndex >= 0 ? currentHistory[existingIndex].lng : undefined),
+      timestamp: Date.now()
+    };
+
+    let updatedHistory: AddressHistoryItem[];
+    if (existingIndex >= 0) {
+      currentHistory.splice(existingIndex, 1);
+      updatedHistory = [newItem, ...currentHistory];
+    } else {
+      updatedHistory = [newItem, ...currentHistory];
+    }
+
+    // Keep up to 30 history records
+    updatedHistory = updatedHistory.slice(0, 30);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+    return updatedHistory;
+  } catch (err) {
+    console.warn('Error saving address history:', err);
+    return getStoredAddressHistory();
+  }
+};
 
 // inDrive-style dark map styles for Google Maps
 const DARK_MAP_STYLES: google.maps.MapTypeStyle[] = [
@@ -245,79 +293,18 @@ const normalizeSearchQuery = (raw: string): string => {
     .trim();
 };
 
-// Smooth map panning helper and instance capture for Google Maps with offset projection for fixed center-up pin
+// Map controller that keeps map center and central pin 100% in sync without offset errors
 const GoogleMapController: React.FC<{ 
   targetLat: number; 
   targetLng: number;
   onMapReady?: (map: google.maps.Map | null) => void;
   onLocationChange: (lat: number, lng: number) => void;
   onRealtimeMove?: (lat: number, lng: number) => void;
-  onMovementChange: (moving: boolean) => void;
-}> = ({ targetLat, targetLng, onMapReady, onLocationChange, onRealtimeMove, onMovementChange }) => {
+  onMovementStart: () => void;
+}> = ({ targetLat, targetLng, onMapReady, onLocationChange, onRealtimeMove, onMovementStart }) => {
   const map = useMap();
   const isDraggingRef = useRef<boolean>(false);
-  const lastTargetRef = useRef<{ lat: number; lng: number } | null>(null);
-
-  // Helper to convert fixed screen pin (top: 45%, left: 50%) to LatLng
-  const getPointUnderFixedPin = useCallback((googleMap: google.maps.Map): { lat: number; lng: number } | null => {
-    const center = googleMap.getCenter();
-    if (!center) return null;
-    const div = googleMap.getDiv();
-    if (!div) return { lat: center.lat(), lng: center.lng() };
-
-    const height = div.clientHeight || 500;
-    // The pin is located 5% of the viewport height above the geometric center (y = 45% vs y = 50%)
-    const dy = -Math.round(height * 0.05);
-
-    const projection = googleMap.getProjection();
-    if (!projection) return { lat: center.lat(), lng: center.lng() };
-
-    const zoom = googleMap.getZoom() ?? 15;
-    const scale = Math.pow(2, zoom);
-    const centerWorld = projection.fromLatLngToPoint(center);
-    if (!centerWorld) return { lat: center.lat(), lng: center.lng() };
-
-    const targetWorld = new google.maps.Point(
-      centerWorld.x,
-      centerWorld.y + dy / scale
-    );
-    const targetLatLng = projection.fromPointToLatLng(targetWorld);
-    if (!targetLatLng) return { lat: center.lat(), lng: center.lng() };
-
-    return { lat: targetLatLng.lat(), lng: targetLatLng.lng() };
-  }, []);
-
-  // Helper to pan Google Map so that (targetLat, targetLng) lands directly under the fixed pin at top: 45%
-  const panToFixedPin = useCallback((googleMap: google.maps.Map, tLat: number, tLng: number) => {
-    const div = googleMap.getDiv();
-    const projection = googleMap.getProjection();
-    if (!div || !projection) {
-      googleMap.panTo({ lat: tLat, lng: tLng });
-      return;
-    }
-    const height = div.clientHeight || 500;
-    const dy = -Math.round(height * 0.05);
-    const zoom = googleMap.getZoom() ?? 15;
-    const scale = Math.pow(2, zoom);
-
-    const targetLatLng = new google.maps.LatLng(tLat, tLng);
-    const targetWorld = projection.fromLatLngToPoint(targetLatLng);
-    if (!targetWorld) {
-      googleMap.panTo({ lat: tLat, lng: tLng });
-      return;
-    }
-
-    const centerWorld = new google.maps.Point(
-      targetWorld.x,
-      targetWorld.y - dy / scale
-    );
-    const centerLatLng = projection.fromPointToLatLng(centerWorld);
-    if (centerLatLng) {
-      googleMap.panTo(centerLatLng);
-    } else {
-      googleMap.panTo(targetLatLng);
-    }
-  }, []);
+  const lastReportedCenterRef = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     if (!map) return;
@@ -328,19 +315,23 @@ const GoogleMapController: React.FC<{
     // Always ensure initial Google Map view is centered in Ipiales, Nariño
     const initialCenter = map.getCenter();
     if (!initialCenter || !isWithinIpiales(initialCenter.lat(), initialCenter.lng())) {
-      panToFixedPin(map, DEFAULT_LAT, DEFAULT_LNG);
+      map.panTo({ lat: DEFAULT_LAT, lng: DEFAULT_LNG });
     }
 
     const dragStartL = map.addListener('dragstart', () => {
       isDraggingRef.current = true;
-      onMovementChange(true);
+      onMovementStart();
     });
 
     const centerChangedL = map.addListener('center_changed', () => {
-      onMovementChange(true);
-      const point = getPointUnderFixedPin(map);
-      if (point && !isNaN(point.lat) && !isNaN(point.lng)) {
-        onRealtimeMove?.(point.lat, point.lng);
+      onMovementStart();
+      const center = map.getCenter();
+      if (center) {
+        const cLat = center.lat();
+        const cLng = center.lng();
+        if (!isNaN(cLat) && !isNaN(cLng)) {
+          onRealtimeMove?.(cLat, cLng);
+        }
       }
     });
 
@@ -350,11 +341,14 @@ const GoogleMapController: React.FC<{
 
     const idleL = map.addListener('idle', () => {
       isDraggingRef.current = false;
-      onMovementChange(false);
-      const point = getPointUnderFixedPin(map);
-      if (point && !isNaN(point.lat) && !isNaN(point.lng)) {
-        lastTargetRef.current = { lat: point.lat, lng: point.lng };
-        onLocationChange(point.lat, point.lng);
+      const center = map.getCenter();
+      if (center) {
+        const cLat = center.lat();
+        const cLng = center.lng();
+        if (!isNaN(cLat) && !isNaN(cLng)) {
+          lastReportedCenterRef.current = { lat: cLat, lng: cLng };
+          onLocationChange(cLat, cLng);
+        }
       }
     });
 
@@ -364,19 +358,28 @@ const GoogleMapController: React.FC<{
       google.maps.event.removeListener(dragEndL);
       google.maps.event.removeListener(idleL);
     };
-  }, [map, onMapReady, onLocationChange, onRealtimeMove, onMovementChange, getPointUnderFixedPin, panToFixedPin]);
+  }, [map, onMapReady, onLocationChange, onRealtimeMove, onMovementStart]);
 
   useEffect(() => {
     if (!map || isNaN(targetLat) || isNaN(targetLng) || isDraggingRef.current) return;
     const safeLat = isWithinIpiales(targetLat, targetLng) ? targetLat : DEFAULT_LAT;
     const safeLng = isWithinIpiales(targetLat, targetLng) ? targetLng : DEFAULT_LNG;
-    const last = lastTargetRef.current;
-    if (last && Math.abs(last.lat - safeLat) < 0.000002 && Math.abs(last.lng - safeLng) < 0.000002) {
+
+    const center = map.getCenter();
+    if (center) {
+      const dLat = Math.abs(center.lat() - safeLat);
+      const dLng = Math.abs(center.lng() - safeLng);
+      if (dLat < 0.000005 && dLng < 0.000005) {
+        return;
+      }
+    }
+    const last = lastReportedCenterRef.current;
+    if (last && Math.abs(last.lat - safeLat) < 0.000005 && Math.abs(last.lng - safeLng) < 0.000005) {
       return;
     }
-    lastTargetRef.current = { lat: safeLat, lng: safeLng };
-    panToFixedPin(map, safeLat, safeLng);
-  }, [map, targetLat, targetLng, panToFixedPin]);
+    lastReportedCenterRef.current = { lat: safeLat, lng: safeLng };
+    map.panTo({ lat: safeLat, lng: safeLng });
+  }, [map, targetLat, targetLng]);
 
   return null;
 };
@@ -443,13 +446,9 @@ export const formatColombianStreetWithHouseNumber = (
 
 export const formatBalloonAddress = (addr: string, latitude: number, longitude: number): string => {
   if (!addr || !addr.trim()) {
-    return 'Cl. 24 C # 13-90';
+    return formatColombianStreetWithHouseNumber('Calle', undefined, latitude, longitude);
   }
-  const firstPart = addr.split(',')[0].trim();
-  if (/#\s*\d+/.test(firstPart)) {
-    return firstPart;
-  }
-  return formatColombianStreetWithHouseNumber(firstPart, undefined, latitude, longitude);
+  return addr.trim();
 };
 
 // Helper to ensure any address suggestion or secondary line displays both the street and house number
@@ -656,16 +655,33 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     }
     return DEFAULT_LNG.toFixed(6);
   });
-  const [address, setAddress] = useState<string>(() => {
-    if (initialLat && initialLng && isWithinIpiales(initialLat, initialLng)) {
-      return initialAddress;
+  const [selectedAddress, setSelectedAddress] = useState<string>(() => {
+    if (initialAddress && initialAddress.trim() && !isPickupOrInvalidAddress(initialAddress)) {
+      return initialAddress.trim();
     }
-    return initialAddress && initialAddress.toLowerCase().includes('ipiales') ? initialAddress : '';
+    return '';
   });
+  const selectedAddressRef = useRef<string>(selectedAddress);
+
+  const updateSelectedAddress = useCallback((newAddr: string) => {
+    const clean = (newAddr || '').trim();
+    setSelectedAddress(clean);
+    selectedAddressRef.current = clean;
+  }, []);
+
+  const address = selectedAddress;
+  const setAddress = updateSelectedAddress;
+  const selectedExactAddress = selectedAddress;
+  const setSelectedExactAddress = updateSelectedAddress;
+  const selectedExactAddressRef = selectedAddressRef;
+
+  const activeGeocodePromiseRef = useRef<Promise<string> | null>(null);
+
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState<boolean>(false);
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false);
+  const [addressHistory, setAddressHistory] = useState<AddressHistoryItem[]>(() => getStoredAddressHistory());
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isGeocoding, setIsGeocoding] = useState<boolean>(false);
@@ -674,9 +690,9 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const [isConfirming, setIsConfirming] = useState<boolean>(false);
   const [showMapModal, setShowMapModal] = useState<boolean>(false);
   const [isMapMoving, setIsMapMoving] = useState<boolean>(false);
+  const [isUpdatingLocation, setIsUpdatingLocation] = useState<boolean>(false);
+  const isUpdatingLocationRef = useRef<boolean>(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<AddressSuggestion | null>(null);
-  const [selectedExactAddress, setSelectedExactAddress] = useState<string>(() => (initialAddress || '').trim());
-  const selectedExactAddressRef = useRef<string>((initialAddress || '').trim());
 
   // Google Maps API key state (reads from env, localStorage or fetches from /api/maps/config on Hostinger)
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(() => {
@@ -783,9 +799,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       setLng(validLng);
       setLatInput(String(validLat.toFixed(6)));
       setLngInput(String(validLng.toFixed(6)));
-      setAddress(initialCleanAddr || defaultAddrObj.address);
-      setSelectedExactAddress(initialCleanAddr);
-      selectedExactAddressRef.current = initialCleanAddr;
+      updateSelectedAddress(initialCleanAddr);
       setSearchQuery('');
       setSuggestions([]);
       setShowSuggestions(false);
@@ -793,8 +807,9 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       setIsGeocoding(false);
       setIsConfirming(false);
       setShowMapModal(false);
+      setAddressHistory(getStoredAddressHistory());
     }
-  }, [isOpen, initialLat, initialLng, initialAddress]);
+  }, [isOpen, initialLat, initialLng, initialAddress, updateSelectedAddress]);
 
   // Multi-tier reverse geocoding with instant server and open fallbacks (bypasses unactivated client Geocoder API errors)
   const fetchReverseGeocode = useCallback(async (latitude: number, longitude: number): Promise<string> => {
@@ -893,44 +908,90 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     return `${fallbackStreet}, Ipiales, Nariño`;
   }, []);
 
-  // Reverse geocode wrapper with request sequencing
-  const reverseGeocode = useCallback(async (latitude: number, longitude: number) => {
+  // Reverse geocode wrapper with request sequencing and active promise tracking
+  const reverseGeocode = useCallback(async (latitude: number, longitude: number): Promise<string> => {
     const requestId = ++latestGeocodeIdRef.current;
     setIsGeocoding(true);
-    try {
-      const formatted = await fetchReverseGeocode(latitude, longitude);
-      if (requestId === latestGeocodeIdRef.current && formatted) {
-        setAddress(formatted);
-      }
-    } catch (err) {
-      console.warn("Reverse geocode failed:", err);
-    } finally {
-      if (requestId === latestGeocodeIdRef.current) {
-        setIsGeocoding(false);
-      }
-    }
-  }, [fetchReverseGeocode]);
+    setIsUpdatingLocation(true);
+    isUpdatingLocationRef.current = true;
 
-  // Real-time map movement handler: updates coordinates and speech bubble address in real-time as user drags/moves map
+    const promise = (async () => {
+      try {
+        const formatted = await fetchReverseGeocode(latitude, longitude);
+
+        // RACE CONDITION CHECK: Ignore response if another movement started in the meantime
+        if (requestId === latestGeocodeIdRef.current) {
+          const finalClean = (formatted && formatted.trim())
+            ? formatted.trim()
+            : `${formatColombianStreetWithHouseNumber('Calle', undefined, latitude, longitude)}, Ipiales, Nariño`;
+
+          updateSelectedAddress(finalClean);
+          setIsUpdatingLocation(false);
+          isUpdatingLocationRef.current = false;
+          return finalClean;
+        }
+        return '';
+      } catch (err) {
+        console.warn("Reverse geocode failed:", err);
+        if (requestId === latestGeocodeIdRef.current) {
+          const fallback = `${formatColombianStreetWithHouseNumber('Calle', undefined, latitude, longitude)}, Ipiales, Nariño`;
+          updateSelectedAddress(fallback);
+          setIsUpdatingLocation(false);
+          isUpdatingLocationRef.current = false;
+          return fallback;
+        }
+        return '';
+      } finally {
+        if (requestId === latestGeocodeIdRef.current) {
+          setIsGeocoding(false);
+          activeGeocodePromiseRef.current = null;
+        }
+      }
+    })();
+
+    activeGeocodePromiseRef.current = promise;
+    return promise;
+  }, [fetchReverseGeocode, updateSelectedAddress]);
+
+  // Movement start handler: immediately marks isUpdatingLocation = true and cancels previous requests
+  const handleMapMovementStart = useCallback(() => {
+    setIsUpdatingLocation(true);
+    isUpdatingLocationRef.current = true;
+    setIsMapMoving(true);
+
+    // Cancel older in-flight geocode requests
+    latestGeocodeIdRef.current++;
+
+    if (lastRealtimeGeocodeTimerRef.current) {
+      clearTimeout(lastRealtimeGeocodeTimerRef.current);
+      lastRealtimeGeocodeTimerRef.current = null;
+    }
+  }, []);
+
+  // Real-time map movement handler: keeps coordinates live as user moves the map
   const handleRealtimeMapMove = useCallback((newLat: number, newLng: number) => {
     setLat(newLat);
     setLng(newLng);
     setLatInput(newLat.toFixed(6));
     setLngInput(newLng.toFixed(6));
 
-    // Instant local Colombian street & house number calculation for immediate HUD response (<1ms)
-    const baseStreet = lastKnownStreetRef.current || (address ? address.split(',')[0].split('#')[0].trim() : 'Calle 24');
-    const instantWithHouseNum = formatColombianStreetWithHouseNumber(baseStreet, undefined, newLat, newLng);
-    setAddress(instantWithHouseNum + ', Ipiales, Nariño');
-
-    // Debounced reverse geocode call (180ms) to verify street against server/APIs
-    if (lastRealtimeGeocodeTimerRef.current) {
-      clearTimeout(lastRealtimeGeocodeTimerRef.current);
+    if (!isUpdatingLocationRef.current) {
+      setIsUpdatingLocation(true);
+      isUpdatingLocationRef.current = true;
     }
-    lastRealtimeGeocodeTimerRef.current = setTimeout(() => {
-      reverseGeocode(newLat, newLng);
-    }, 180);
-  }, [address, reverseGeocode]);
+    setIsMapMoving(true);
+  }, []);
+
+  // Map movement end handler (idle): immediately obtains center coordinates and reverse-geocodes
+  const handleMapMovementEnd = useCallback((newLat: number, newLng: number) => {
+    setIsMapMoving(false);
+    setLat(newLat);
+    setLng(newLng);
+    setLatInput(newLat.toFixed(6));
+    setLngInput(newLng.toFixed(6));
+
+    reverseGeocode(newLat, newLng);
+  }, [reverseGeocode]);
 
   // Fetch address predictions / suggestions from local places, Google Places, Photon, and Nominatim
   const fetchSuggestions = useCallback(async (rawQuery: string) => {
@@ -961,24 +1022,24 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       });
     }
 
-    // 1. Check local Ipiales places & landmarks (instant, handles typos & combined queries like "bariio manzano calle 24")
-    for (const item of LOCAL_IPIALES_PLACES) {
-      const nameLower = item.name.toLowerCase();
-      const directMatch = nameLower.includes(normalized);
-      const wordMatches = normalizedWords.filter(w => 
-        w.length >= 2 && (nameLower.includes(w) || item.keywords.some(k => k.includes(w)))
-      );
-      if (directMatch || wordMatches.length >= Math.min(2, normalizedWords.length)) {
-        results.push({
-          id: `local-${item.name}`,
-          mainText: item.name,
-          secondaryText: item.secondary,
-          fullAddress: `${item.name}, ${item.secondary}`,
-          lat: item.lat,
-          lng: item.lng,
-          distanceLabel: item.distanceLabel,
-          source: 'local'
-        });
+    // 1. Check user's stored address history
+    const historyList = getStoredAddressHistory();
+    for (const h of historyList) {
+      const nameLower = h.name.toLowerCase();
+      const fullLower = h.fullAddress.toLowerCase();
+      if (nameLower.includes(normalized) || fullLower.includes(normalized)) {
+        if (!results.some(r => r.fullAddress.toLowerCase() === h.fullAddress.toLowerCase() || r.mainText.toLowerCase() === h.name.toLowerCase())) {
+          results.push({
+            id: `hist-${h.id}`,
+            mainText: h.name,
+            secondaryText: h.secondary || h.fullAddress,
+            fullAddress: h.fullAddress,
+            lat: h.lat,
+            lng: h.lng,
+            distanceLabel: h.lat !== undefined && h.lng !== undefined && isWithinIpiales(h.lat, h.lng) ? formatDistanceLabel(h.lat, h.lng) : undefined,
+            source: 'local'
+          });
+        }
       }
     }
 
@@ -1166,19 +1227,47 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     setLngInput(String(effectiveLng.toFixed(6)));
     latestGeocodeIdRef.current++;
     setIsGeocoding(false);
+    setIsUpdatingLocation(false);
+    isUpdatingLocationRef.current = false;
 
     if (googleMapRef.current) {
       googleMapRef.current.panTo({ lat: effectiveLat, lng: effectiveLng });
     }
 
-    if (leafletMapRef.current && leafletContainerRef.current) {
-      const H = leafletContainerRef.current.clientHeight || 500;
-      const zoom = leafletMapRef.current.getZoom() || 16;
-      const targetWorld = leafletMapRef.current.project([effectiveLat, effectiveLng], zoom);
-      const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.08));
-      leafletMapRef.current.panTo(leafletMapRef.current.unproject(centerWorld, zoom));
+    if (leafletMapRef.current) {
+      leafletMapRef.current.panTo([effectiveLat, effectiveLng]);
     }
   }, []);
+
+  // When the user taps a previous address from their local history
+  const handleSelectHistoryItem = (item: AddressHistoryItem) => {
+    latestGeocodeIdRef.current++;
+    setIsGeocoding(false);
+    if (lastRealtimeGeocodeTimerRef.current) {
+      clearTimeout(lastRealtimeGeocodeTimerRef.current);
+      lastRealtimeGeocodeTimerRef.current = null;
+    }
+
+    const completeAddress = item.fullAddress || item.name;
+    selectedExactAddressRef.current = completeAddress;
+    setSelectedExactAddress(completeAddress);
+    setAddress(completeAddress);
+    setSearchQuery(item.name || completeAddress);
+    setShowSuggestions(false);
+
+    if (item.lat !== undefined && item.lng !== undefined && !isNaN(item.lat) && !isNaN(item.lng)) {
+      applyCoordsWithoutReverseGeocode(item.lat, item.lng);
+    }
+
+    const updated = saveAddressToHistory({
+      name: item.name,
+      secondary: item.secondary,
+      fullAddress: completeAddress,
+      lat: item.lat,
+      lng: item.lng
+    });
+    setAddressHistory(updated);
+  };
 
   // When the client selects a suggested address from the dropdown
   const handleSelectSuggestion = async (suggestion: AddressSuggestion) => {
@@ -1259,6 +1348,16 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     if (targetLat !== undefined && targetLng !== undefined && !isNaN(targetLat) && !isNaN(targetLng)) {
       applyCoordsWithoutReverseGeocode(targetLat, targetLng);
     }
+
+    // Save to user address history in localStorage
+    const updated = saveAddressToHistory({
+      name: suggestion.mainText,
+      secondary: formattedSecondary,
+      fullAddress: completeAddress,
+      lat: targetLat !== undefined && !isNaN(targetLat) ? targetLat : undefined,
+      lng: targetLng !== undefined && !isNaN(targetLng) ? targetLng : undefined
+    });
+    setAddressHistory(updated);
   };
 
   // Close suggestions when clicking outside
@@ -1369,12 +1468,8 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
       googleMapRef.current.panTo({ lat: effectiveLat, lng: effectiveLng });
     }
 
-    if (leafletMapRef.current && leafletContainerRef.current) {
-      const H = leafletContainerRef.current.clientHeight || 500;
-      const zoom = leafletMapRef.current.getZoom() || 16;
-      const targetWorld = leafletMapRef.current.project([effectiveLat, effectiveLng], zoom);
-      const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.08));
-      leafletMapRef.current.panTo(leafletMapRef.current.unproject(centerWorld, zoom));
+    if (leafletMapRef.current) {
+      leafletMapRef.current.panTo([effectiveLat, effectiveLng]);
     }
   }, [reverseGeocode]);
 
@@ -1387,18 +1482,16 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     setAddress(item.address);
     latestGeocodeIdRef.current++;
     setIsGeocoding(false);
+    setIsUpdatingLocation(false);
+    isUpdatingLocationRef.current = false;
 
     if (googleMapRef.current) {
       googleMapRef.current.panTo({ lat: item.lat, lng: item.lng });
       googleMapRef.current.setZoom(16);
     }
 
-    if (leafletMapRef.current && leafletContainerRef.current) {
-      const H = leafletContainerRef.current.clientHeight || 500;
-      const zoom = 16;
-      const targetWorld = leafletMapRef.current.project([item.lat, item.lng], zoom);
-      const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.08));
-      leafletMapRef.current.setView(leafletMapRef.current.unproject(centerWorld, zoom), zoom);
+    if (leafletMapRef.current) {
+      leafletMapRef.current.setView([item.lat, item.lng], 16);
     }
   }, []);
 
@@ -1412,16 +1505,14 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     setAddress(defaultCenter.address);
     latestGeocodeIdRef.current++;
     setIsGeocoding(false);
+    setIsUpdatingLocation(false);
+    isUpdatingLocationRef.current = false;
     
     if (googleMapRef.current) {
       googleMapRef.current.panTo({ lat: defaultCenter.lat, lng: defaultCenter.lng });
       googleMapRef.current.setZoom(16);
-    } else if (leafletMapRef.current && leafletContainerRef.current) {
-      const H = leafletContainerRef.current.clientHeight || 500;
-      const zoom = 16;
-      const targetWorld = leafletMapRef.current.project([defaultCenter.lat, defaultCenter.lng], zoom);
-      const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.08));
-      leafletMapRef.current.setView(leafletMapRef.current.unproject(centerWorld, zoom), zoom);
+    } else if (leafletMapRef.current) {
+      leafletMapRef.current.setView([defaultCenter.lat, defaultCenter.lng], 16);
     }
   }, []);
 
@@ -1446,63 +1537,40 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           subdomains: 'abcd'
         }).addTo(map);
 
-        const H = leafletContainerRef.current.clientHeight || 500;
         const zoom = 16;
         const safeLat = isWithinIpiales(lat, lng) ? lat : DEFAULT_LAT;
         const safeLng = isWithinIpiales(lat, lng) ? lng : DEFAULT_LNG;
-        const targetWorld = map.project([safeLat, safeLng], zoom);
-        const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.05));
-        map.setView(map.unproject(centerWorld, zoom), zoom);
+        map.setView([safeLat, safeLng], zoom);
 
         map.on('movestart', () => {
-          setIsMapMoving(true);
+          handleMapMovementStart();
         });
 
         map.on('move', () => {
-          setIsMapMoving(true);
-          if (!leafletContainerRef.current) return;
-          const currW = leafletContainerRef.current.clientWidth;
-          const currH = leafletContainerRef.current.clientHeight;
-          const pinPoint = L.point(currW / 2, currH * 0.45);
-          const latlng = map.containerPointToLatLng(pinPoint);
-          if (latlng && !isNaN(latlng.lat) && !isNaN(latlng.lng)) {
-            handleRealtimeMapMove(latlng.lat, latlng.lng);
+          const center = map.getCenter();
+          if (center && !isNaN(center.lat) && !isNaN(center.lng)) {
+            handleRealtimeMapMove(center.lat, center.lng);
           }
         });
 
         map.on('moveend', () => {
-          setIsMapMoving(false);
-          if (!leafletContainerRef.current) return;
-          const currW = leafletContainerRef.current.clientWidth;
-          const currH = leafletContainerRef.current.clientHeight;
-          const pinPoint = L.point(currW / 2, currH * 0.45);
-          const latlng = map.containerPointToLatLng(pinPoint);
-          if (latlng && !isNaN(latlng.lat) && !isNaN(latlng.lng)) {
-            setLat(latlng.lat);
-            setLng(latlng.lng);
-            setLatInput(latlng.lat.toFixed(6));
-            setLngInput(latlng.lng.toFixed(6));
-            reverseGeocode(latlng.lat, latlng.lng);
+          const center = map.getCenter();
+          if (center && !isNaN(center.lat) && !isNaN(center.lng)) {
+            handleMapMovementEnd(center.lat, center.lng);
           }
         });
 
         map.on('click', (e: L.LeafletMouseEvent) => {
-          if (!leafletContainerRef.current) return;
-          const currH = leafletContainerRef.current.clientHeight;
-          const currZoom = map.getZoom();
-          const clickedWorld = map.project(e.latlng, currZoom);
-          const centerWorld = L.point(clickedWorld.x, clickedWorld.y + (currH * 0.05));
-          map.panTo(map.unproject(centerWorld, currZoom));
+          handleMapMovementStart();
+          map.panTo(e.latlng);
         });
 
         leafletMapRef.current = map;
       } else {
         leafletMapRef.current.invalidateSize();
-        const H = leafletContainerRef.current.clientHeight || 500;
-        const zoom = leafletMapRef.current.getZoom() || 16;
-        const targetWorld = leafletMapRef.current.project([lat, lng], zoom);
-        const centerWorld = L.point(targetWorld.x, targetWorld.y + (H * 0.05));
-        leafletMapRef.current.setView(leafletMapRef.current.unproject(centerWorld, zoom), zoom);
+        const safeLat = isWithinIpiales(lat, lng) ? lat : DEFAULT_LAT;
+        const safeLng = isWithinIpiales(lat, lng) ? lng : DEFAULT_LNG;
+        leafletMapRef.current.setView([safeLat, safeLng], 16);
       }
     }, 150);
 
@@ -1560,57 +1628,92 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const handleConfirm = async () => {
     setIsConfirming(true);
 
-    // 1. If user explicitly selected an address or has an address set, use it unconditionally
-    let finalAddress = (selectedExactAddressRef.current || selectedExactAddress || address || '').trim();
     let finalLat = lat;
     let finalLng = lng;
 
-    const trimmedQuery = searchQuery.trim();
-
-    // 2. If no address was selected, but user typed something in search box, parse or use it
-    if (!finalAddress || finalAddress === IPIALES_DEFAULT_ADDRESSES[0].address) {
-      if (trimmedQuery.length >= 2) {
-        const parsed = parseColombianAddressToCoords(trimmedQuery);
-        if (parsed) {
-          finalAddress = parsed.fullAddress;
-          finalLat = parsed.lat;
-          finalLng = parsed.lng;
-          setAddress(finalAddress);
-          setLat(finalLat);
-          setLng(finalLng);
-        } else {
-          finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
-            ? trimmedQuery 
-            : `${trimmedQuery}, Ipiales, Nariño`;
+    // Read real-time center from map instance to ensure 100% exact alignment with the center pin
+    if (googleMapRef.current) {
+      const center = googleMapRef.current.getCenter();
+      if (center) {
+        const cLat = center.lat();
+        const cLng = center.lng();
+        if (!isNaN(cLat) && !isNaN(cLng)) {
+          finalLat = cLat;
+          finalLng = cLng;
         }
+      }
+    } else if (leafletMapRef.current) {
+      const center = leafletMapRef.current.getCenter();
+      if (center && !isNaN(center.lat) && !isNaN(center.lng)) {
+        finalLat = center.lat;
+        finalLng = center.lng;
       }
     }
 
-    // 3. Fallback only if address is still completely empty
-    if (!finalAddress) {
+    if (lastRealtimeGeocodeTimerRef.current) {
+      clearTimeout(lastRealtimeGeocodeTimerRef.current);
+      lastRealtimeGeocodeTimerRef.current = null;
+    }
+
+    // Wait for any active reverse geocoding request to complete
+    if (activeGeocodePromiseRef.current) {
+      try {
+        await activeGeocodePromiseRef.current;
+      } catch {}
+    }
+
+    // Single source of truth: selectedAddress / selectedAddressRef
+    let finalAddress = (selectedAddressRef.current || selectedAddress || '').trim();
+
+    // If still marked as updating or address is empty, resolve reverse geocode directly
+    if (isUpdatingLocationRef.current || !finalAddress) {
       try {
         const resolved = await fetchReverseGeocode(finalLat, finalLng);
         if (resolved && resolved.trim()) {
           finalAddress = resolved.trim();
+          updateSelectedAddress(finalAddress);
         }
-      } catch {
-        // Fall through
-      }
+      } catch {}
     }
 
+    // 5. Guaranteed fallback: calculate Colombian street address from coordinates
     if (!finalAddress) {
-      if (trimmedQuery) {
-        finalAddress = trimmedQuery.toLowerCase().includes('ipiales') 
-          ? trimmedQuery 
-          : `${trimmedQuery}, Ipiales, Nariño`;
-      } else {
-        finalAddress = `Ubicación GPS (${finalLat.toFixed(5)}, ${finalLng.toFixed(5)})`;
-      }
+      const fallbackStreet = formatColombianStreetWithHouseNumber('Calle', undefined, finalLat, finalLng);
+      finalAddress = `${fallbackStreet}, Ipiales, Nariño`;
+      updateSelectedAddress(finalAddress);
+    }
+
+    if (finalAddress) {
+      const updated = saveAddressToHistory({
+        name: finalAddress.split(',')[0].trim() || finalAddress,
+        secondary: finalAddress.includes(',') ? finalAddress : `${finalAddress}, Ipiales, Nariño`,
+        fullAddress: finalAddress,
+        lat: finalLat,
+        lng: finalLng
+      });
+      setAddressHistory(updated);
     }
 
     setIsConfirming(false);
 
     const mapUrl = `https://www.google.com/maps?q=${finalLat.toFixed(6)},${finalLng.toFixed(6)}`;
+
+    // Sync across localStorage and window event
+    try {
+      localStorage.setItem('ryyco_customer_delivery_address', finalAddress);
+      localStorage.setItem('ryyco_customer_coordinates', JSON.stringify({
+        lat: finalLat,
+        lng: finalLng,
+        mapUrl
+      }));
+      window.dispatchEvent(new CustomEvent('ryyco:address-updated', {
+        detail: {
+          address: finalAddress,
+          coordinates: { lat: finalLat, lng: finalLng, mapUrl }
+        }
+      }));
+    } catch (_) {}
+
     onConfirm({
       address: finalAddress,
       lat: finalLat,
@@ -1668,28 +1771,27 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     }
   } else if (trimmedSearch.length >= 2) {
     const normalized = normalizeSearchQuery(trimmedSearch);
-    const matchedPlaces = LOCAL_IPIALES_PLACES.filter(item => {
+    const matchedHistory = addressHistory.filter(item => {
       return item.name.toLowerCase().includes(normalized) || 
-             item.keywords.some(k => k.includes(normalized));
+             item.fullAddress.toLowerCase().includes(normalized);
     });
 
-    for (const item of matchedPlaces) {
-      const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
-      if (!rawDisplayList.some(r => r.mainText.toLowerCase() === item.name.toLowerCase())) {
+    for (const item of matchedHistory) {
+      if (!rawDisplayList.some(r => r.mainText.toLowerCase() === item.name.toLowerCase() || r.fullAddress.toLowerCase() === item.fullAddress.toLowerCase())) {
         rawDisplayList.push({
-          id: `local-${item.name}`,
+          id: `hist-${item.id}`,
           mainText: item.name,
-          secondaryText: sec,
-          fullAddress: `${item.name}, ${sec}`,
+          secondaryText: item.secondary || item.fullAddress,
+          fullAddress: item.fullAddress,
           lat: item.lat,
           lng: item.lng,
-          distanceLabel: item.distanceLabel,
+          distanceLabel: item.lat !== undefined && item.lng !== undefined && isWithinIpiales(item.lat, item.lng) ? formatDistanceLabel(item.lat, item.lng) : undefined,
           source: 'local'
         });
       }
     }
 
-    // 3. Fallback: if still empty, NEVER leave the user at a dead end; offer to use the entered text
+    // Fallback: if still empty, allow using the entered text directly
     if (rawDisplayList.length === 0) {
       const formattedInput = trimmedSearch.charAt(0).toUpperCase() + trimmedSearch.slice(1);
       rawDisplayList.push({
@@ -1700,21 +1802,6 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
         lat: lat,
         lng: lng,
         distanceLabel: formatDistanceLabel(lat, lng),
-        source: 'local'
-      });
-    }
-  } else {
-    // Default list when no search query
-    for (const item of LOCAL_IPIALES_PLACES) {
-      const sec = ensureSecondaryHasHouseNumber(item.secondary, item.lat, item.lng);
-      rawDisplayList.push({
-        id: `default-${item.name}`,
-        mainText: item.name,
-        secondaryText: sec,
-        fullAddress: `${item.name}, ${sec}`,
-        lat: item.lat,
-        lng: item.lng,
-        distanceLabel: item.distanceLabel,
         source: 'local'
       });
     }
@@ -1773,7 +1860,32 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                       if (parsed) {
                         setSearchQuery(parsed.formattedTitle);
                         setAddress(parsed.fullAddress);
+                        setSelectedExactAddress(parsed.fullAddress);
+                        selectedExactAddressRef.current = parsed.fullAddress;
                         handleLocationUpdate(parsed.lat, parsed.lng);
+                        const updated = saveAddressToHistory({
+                          name: parsed.formattedTitle,
+                          secondary: parsed.secondary,
+                          fullAddress: parsed.fullAddress,
+                          lat: parsed.lat,
+                          lng: parsed.lng
+                        });
+                        setAddressHistory(updated);
+                      } else {
+                        const raw = searchQuery.trim();
+                        const formatted = raw.toLowerCase().includes('ipiales') ? raw : `${raw}, Ipiales, Nariño`;
+                        setSearchQuery(raw);
+                        setAddress(formatted);
+                        setSelectedExactAddress(formatted);
+                        selectedExactAddressRef.current = formatted;
+                        const updated = saveAddressToHistory({
+                          name: raw,
+                          secondary: formatted,
+                          fullAddress: formatted,
+                          lat,
+                          lng
+                        });
+                        setAddressHistory(updated);
                       }
                     }
                   }
@@ -1840,62 +1952,122 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
             <span>{isLocating ? 'Obteniendo mi GPS...' : 'Usar mi ubicación actual (GPS)'}</span>
           </button>
 
-          {isLoadingSuggestions ? (
-            <div className="py-8 flex items-center justify-center gap-2 text-xs text-gray-400">
-              <Loader2 className="w-4 h-4 animate-spin text-[#E63946]" />
-              <span>Buscando sugerencias...</span>
-            </div>
-          ) : displayList.length > 0 ? (
-            displayList.map((item) => {
-              const isSelected = 
-                (selectedExactAddress && (
-                  selectedExactAddress.trim().toLowerCase() === item.fullAddress?.trim().toLowerCase() ||
-                  selectedExactAddress.trim().toLowerCase() === item.mainText.trim().toLowerCase() ||
-                  selectedExactAddress.toLowerCase().includes(item.mainText.toLowerCase())
-                )) ||
-                (address && (
-                  address.trim().toLowerCase() === item.fullAddress?.trim().toLowerCase() ||
-                  address.toLowerCase().includes(item.mainText.toLowerCase())
-                ));
+          {trimmedSearch ? (
+            isLoadingSuggestions ? (
+              <div className="py-8 flex items-center justify-center gap-2 text-xs text-gray-400">
+                <Loader2 className="w-4 h-4 animate-spin text-[#E63946]" />
+                <span>Buscando sugerencias...</span>
+              </div>
+            ) : displayList.length > 0 ? (
+              displayList.map((item) => {
+                const isSelected = 
+                  (selectedExactAddress && (
+                    selectedExactAddress.trim().toLowerCase() === item.fullAddress?.trim().toLowerCase() ||
+                    selectedExactAddress.trim().toLowerCase() === item.mainText.trim().toLowerCase() ||
+                    selectedExactAddress.toLowerCase().includes(item.mainText.toLowerCase())
+                  )) ||
+                  (address && (
+                    address.trim().toLowerCase() === item.fullAddress?.trim().toLowerCase() ||
+                    address.toLowerCase().includes(item.mainText.toLowerCase())
+                  ));
 
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleSelectSuggestion(item)}
-                  className={`w-full py-3.5 px-3 rounded-xl flex items-center justify-between gap-3 text-left transition cursor-pointer ${
-                    isSelected 
-                      ? 'bg-neutral-800/95 border border-[#E63946]/60 text-white shadow-lg' 
-                      : 'hover:bg-neutral-800/40 active:bg-neutral-800/60 text-gray-300 border border-transparent'
-                  }`}
-                >
-                  <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'bg-[#E63946] text-white' : 'bg-neutral-800 text-gray-400'}`}>
-                      {isSelected ? (
-                        <Check className="w-4 h-4 stroke-[3]" />
-                      ) : (
-                        <MapPin className="w-4 h-4" />
-                      )}
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(item)}
+                    className={`w-full py-3.5 px-3 rounded-xl flex items-center justify-between gap-3 text-left transition cursor-pointer ${
+                      isSelected 
+                        ? 'bg-neutral-800/95 border border-[#E63946]/60 text-white shadow-lg' 
+                        : 'hover:bg-neutral-800/40 active:bg-neutral-800/60 text-gray-300 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'bg-[#E63946] text-white' : 'bg-neutral-800 text-gray-400'}`}>
+                        {isSelected ? (
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        ) : (
+                          <MapPin className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm leading-snug truncate ${isSelected ? 'font-black text-white' : 'font-semibold text-gray-200'}`}>
+                          {renderHighlightedText(item.mainText, searchQuery)}
+                        </p>
+                        {item.secondaryText && (
+                          <p className="text-xs text-gray-400 truncate mt-0.5">
+                            {item.secondaryText}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm leading-snug truncate ${isSelected ? 'font-black text-white' : 'font-semibold text-gray-200'}`}>
-                        {renderHighlightedText(item.mainText, searchQuery)}
-                      </p>
-                      <p className="text-xs text-gray-400 truncate mt-0.5">
-                        {item.secondaryText}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs sm:text-sm text-gray-400 font-normal shrink-0 ml-2">
-                    {item.distanceLabel || '1,5 km'}
-                  </span>
-                </button>
-              );
-            })
+                    {item.distanceLabel && (
+                      <span className="text-xs sm:text-sm text-gray-400 font-normal shrink-0 ml-2">
+                        {item.distanceLabel}
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="py-8 text-center text-xs text-gray-400">
+                No se encontraron lugares para esa búsqueda.
+              </div>
+            )
           ) : (
-            <div className="py-8 text-center text-xs text-gray-400">
-              No se encontraron lugares para esa búsqueda.
-            </div>
+            // Exclusively real user address history (ordered from newest to oldest)
+            // If the user has no history, the section remains completely empty
+            addressHistory.length > 0 ? (
+              addressHistory.map((item) => {
+                const isSelected = 
+                  (selectedExactAddress && (
+                    selectedExactAddress.trim().toLowerCase() === item.fullAddress.trim().toLowerCase() ||
+                    selectedExactAddress.trim().toLowerCase() === item.name.trim().toLowerCase()
+                  )) ||
+                  (address && (
+                    address.trim().toLowerCase() === item.fullAddress.trim().toLowerCase() ||
+                    address.trim().toLowerCase() === item.name.trim().toLowerCase()
+                  ));
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectHistoryItem(item)}
+                    className={`w-full py-3.5 px-3 rounded-xl flex items-center justify-between gap-3 text-left transition cursor-pointer ${
+                      isSelected 
+                        ? 'bg-neutral-800/95 border border-[#E63946]/60 text-white shadow-lg' 
+                        : 'hover:bg-neutral-800/40 active:bg-neutral-800/60 text-gray-300 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${isSelected ? 'bg-[#E63946] text-white' : 'bg-neutral-800 text-gray-400'}`}>
+                        {isSelected ? (
+                          <Check className="w-4 h-4 stroke-[3]" />
+                        ) : (
+                          <MapPin className="w-4 h-4" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={`text-sm leading-snug truncate ${isSelected ? 'font-black text-white' : 'font-semibold text-gray-200'}`}>
+                          {item.name}
+                        </p>
+                        {item.secondary ? (
+                          <p className="text-xs text-gray-400 truncate mt-0.5">
+                            {item.secondary}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                    {item.lat !== undefined && item.lng !== undefined && isWithinIpiales(item.lat, item.lng) ? (
+                      <span className="text-xs sm:text-sm text-gray-400 font-normal shrink-0 ml-2">
+                        {formatDistanceLabel(item.lat, item.lng)}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })
+            ) : null
           )}
 
         </div>
@@ -1980,15 +2152,9 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                       targetLat={lat} 
                       targetLng={lng} 
                       onMapReady={handleMapReady} 
-                      onLocationChange={(newLat, newLng) => {
-                        setLat(newLat);
-                        setLng(newLng);
-                        setLatInput(newLat.toFixed(6));
-                        setLngInput(newLng.toFixed(6));
-                        reverseGeocode(newLat, newLng);
-                      }}
+                      onLocationChange={handleMapMovementEnd}
                       onRealtimeMove={handleRealtimeMapMove}
-                      onMovementChange={setIsMapMoving}
+                      onMovementStart={handleMapMovementStart}
                     />
                   </Map>
                 </APIProvider>
@@ -1999,7 +2165,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
               {/* FIXED CENTER-UP PIN & CALLOUT BUBBLE */}
               <div 
                 className="absolute left-1/2 -translate-x-1/2 pointer-events-none z-[450] select-none"
-                style={{ top: '45%' }}
+                style={{ top: '50%' }}
               >
                 {/* Ground target shadow dot at center */}
                 <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center pointer-events-none">
@@ -2020,7 +2186,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                   {/* White Address Tooltip Pill from inDrive screenshot with street and house number in real time */}
                   <div className="mb-2 px-4 py-2 rounded-2xl bg-white text-black font-extrabold text-sm sm:text-base shadow-2xl border border-black/10 flex items-center justify-center max-w-[320px] whitespace-nowrap">
                     <span className="truncate text-black font-black">
-                      {formatBalloonAddress(address, lat, lng)}
+                      {isUpdatingLocation ? 'Ubicando...' : formatBalloonAddress(address, lat, lng)}
                     </span>
                   </div>
 

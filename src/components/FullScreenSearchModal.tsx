@@ -120,7 +120,7 @@ export default function FullScreenSearchModal({
         .slice(0, 15);
     }
 
-    return validProducts.filter(product => {
+    const sorted = validProducts.filter(product => {
       const profile = findStoreForProduct(product, profiles);
       const name = (product.name || '').toLowerCase();
       const desc = (product.description || '').toLowerCase();
@@ -151,6 +151,13 @@ export default function FullScreenSearchModal({
       if (!foodA && foodB) return 1;
 
       return (b.createdAt ? new Date(b.createdAt).getTime() : 0) - (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+    });
+
+    const seen = new Set<string>();
+    return sorted.filter(p => {
+      if (!p || !p.id || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
     });
   }, [products, profiles, searchTerm]);
 
@@ -313,7 +320,7 @@ export default function FullScreenSearchModal({
             </div>
           ) : (
             <div className="space-y-3">
-              {searchResults.map((product) => {
+              {searchResults.map((product, pIdx) => {
                 const profile = findStoreForProduct(product, profiles);
                 const storeName = profile?.displayName || profile?.username || 'Restaurante';
                 const rating = getProductRating(product.id);
@@ -321,7 +328,7 @@ export default function FullScreenSearchModal({
 
                 return (
                   <motion.div
-                    key={product.id}
+                    key={product.id || `search-prod-${pIdx}`}
                     layout
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}

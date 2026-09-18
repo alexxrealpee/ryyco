@@ -414,7 +414,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   }, [filteredProducts.length]);
 
   const displayedProducts = useMemo(() => {
-    return filteredProducts.slice(0, visibleLimit);
+    const sliced = filteredProducts.slice(0, visibleLimit);
+    const seen = new Set<string>();
+    return sliced.filter(p => {
+      if (!p || !p.id || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
   }, [filteredProducts, visibleLimit]);
 
   const totalCartCost = useMemo(() => {
@@ -3744,14 +3750,22 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         initialLng={custCoordinates?.lng}
         initialAddress={custAddress}
         onConfirm={(data) => {
-          if (data.address && data.address.trim()) {
-            setCustAddress(data.address.trim());
+          const newAddress = (data.address || '').trim();
+          if (newAddress) {
+            setCustAddress(newAddress);
+            try {
+              localStorage.setItem('ryyco_customer_delivery_address', newAddress);
+            } catch (_) {}
           }
-          setCustCoordinates({
+          const coords = {
             lat: data.lat,
             lng: data.lng,
             mapUrl: data.mapUrl
-          });
+          };
+          setCustCoordinates(coords);
+          try {
+            localStorage.setItem('ryyco_customer_coordinates', JSON.stringify(coords));
+          } catch (_) {}
         }}
       />
 

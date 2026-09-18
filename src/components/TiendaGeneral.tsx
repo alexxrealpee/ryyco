@@ -226,8 +226,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Sync progressive products and store profiles as they arrive sequentially
   useEffect(() => {
     if (loadedProducts.length > 0) {
-      setProducts(loadedProducts);
-      registerProductImages(loadedProducts);
+      const seen = new Set<string>();
+      const deduped = loadedProducts.filter(p => {
+        if (!p || !p.id || seen.has(p.id)) return false;
+        seen.add(p.id);
+        return true;
+      });
+      setProducts(deduped);
+      registerProductImages(deduped);
     }
   }, [loadedProducts]);
 
@@ -574,7 +580,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const uniqueStores = useMemo(() => {
     // When progressive loader has loaded logos, render them in their exact progressive sequence
     if (loadedLogos.length > 0) {
-      return loadedLogos;
+      const seen = new Set<string>();
+      return loadedLogos.filter(s => {
+        const id = s?.uid || s?.username;
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
     }
     const storeMap = new Map<string, UserProfile>();
     (Object.values(profiles) as UserProfile[]).forEach(profile => {
@@ -807,7 +819,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   };
 
   const displayedProducts = useMemo(() => {
-    return filteredProducts.slice(0, visibleLimit);
+    const sliced = filteredProducts.slice(0, visibleLimit);
+    const seen = new Set<string>();
+    return sliced.filter(p => {
+      if (!p || !p.id || seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    });
   }, [filteredProducts, visibleLimit]);
 
   const handleAddToCart = () => {
@@ -1830,7 +1848,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             aria-label="Cargando los 5 primeros productos del restaurante"
           >
             {[0, 1, 2, 3, 4].map((idx) => (
-              <ProductCardSkeleton key={idx} index={idx} />
+              <ProductCardSkeleton key={`store-skeleton-${idx}`} index={idx} />
             ))}
           </div>
         ) : isProductsLoading ? (
@@ -1840,7 +1858,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             aria-label="Cargando productos"
           >
             {[0, 1, 2, 3, 4].map((idx) => (
-              <ProductCardSkeleton key={idx} index={idx} />
+              <ProductCardSkeleton key={`general-skeleton-${idx}`} index={idx} />
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
@@ -1893,7 +1911,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               return (
                 <motion.div
-                  key={product.id}
+                  key={product.id || `prod-${productIndex}`}
                   layout
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -2967,14 +2985,22 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         initialLng={custCoordinates?.lng}
         initialAddress={custAddress}
         onConfirm={(data) => {
-          if (data.address && data.address.trim()) {
-            setCustAddress(data.address.trim());
+          const newAddress = (data.address || '').trim();
+          if (newAddress) {
+            setCustAddress(newAddress);
+            try {
+              localStorage.setItem('ryyco_customer_delivery_address', newAddress);
+            } catch (_) {}
           }
-          setCustCoordinates({
+          const coords = {
             lat: data.lat,
             lng: data.lng,
             mapUrl: data.mapUrl
-          });
+          };
+          setCustCoordinates(coords);
+          try {
+            localStorage.setItem('ryyco_customer_coordinates', JSON.stringify(coords));
+          } catch (_) {}
         }}
       />
 
