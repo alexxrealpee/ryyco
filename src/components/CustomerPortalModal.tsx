@@ -36,6 +36,7 @@ import {
   sanitizeCustomerPhone,
   searchCustomerByPhone,
   transferRyycosByPhone,
+  listenToCustomerProfile,
   RyycoTransferReceipt,
   auth,
   googleProvider
@@ -69,6 +70,7 @@ interface CustomerPortalModalProps {
   initialTab?: 'orders' | 'wheel' | 'rewards' | 'profile';
   storeCurrency?: string;
   onSelectRewardCode?: (code: string, discount?: number) => void;
+  onCustomerUpdate?: (customer: CustomerProfile | null) => void;
 }
 
 // Roulette Wheel items definition
@@ -100,7 +102,8 @@ export default function CustomerPortalModal({
   initialPhone = '',
   initialTab = 'orders',
   storeCurrency = '$',
-  onSelectRewardCode
+  onSelectRewardCode,
+  onCustomerUpdate
 }: CustomerPortalModalProps) {
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
@@ -224,6 +227,37 @@ export default function CustomerPortalModal({
       unsubscribe();
     };
   }, [isOpen, customer?.phone, customer?.email]);
+
+  // Real-time live customer profile & RYYCOS balance listener
+  // Automatically synchronizes when transfers are received, without reloading the page
+  useEffect(() => {
+    const targetPhone = customer?.phone || phoneInput || localStorage.getItem('ryyco_active_customer_phone') || initialPhone;
+    if (!isOpen || !targetPhone) return;
+
+    const cleaned = sanitizeCustomerPhone(targetPhone);
+    if (!cleaned || cleaned.length < 7) return;
+
+    const unsubscribe = listenToCustomerProfile(cleaned, (updatedProfile) => {
+      if (updatedProfile) {
+        setCustomer(prev => {
+          // If we received new RYYCOS in real-time
+          if (prev && prev.phone === updatedProfile.phone && (updatedProfile.points || 0) > (prev.points || 0)) {
+            const diff = (updatedProfile.points || 0) - (prev.points || 0);
+            const latestMov = updatedProfile.movements?.[0];
+            const senderInfo = latestMov?.senderName ? ` de ${latestMov.senderName}` : '';
+            setActionSuccessMsg(`🎉 ¡Recibiste +${diff.toLocaleString('es-CO')} RYYCOS${senderInfo}! Tu saldo se ha actualizado automáticamente en tiempo real.`);
+            setTimeout(() => setActionSuccessMsg(null), 6000);
+          }
+          return updatedProfile;
+        });
+        onCustomerUpdate?.(updatedProfile);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [isOpen, customer?.phone, phoneInput, initialPhone, onCustomerUpdate]);
 
   // Keep trackingOrder synchronized in real time whenever orders list updates
   useEffect(() => {

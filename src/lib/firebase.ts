@@ -5187,7 +5187,10 @@ export async function fetchCustomerProfileByPhone(rawPhone: string): Promise<Cus
 
   // 2. Fetch from Firestore
   try {
-    const custDoc = await getDoc(doc(db, 'customers', phone));
+    let custDoc = await getDoc(doc(db, 'customers', phone));
+    if (!custDoc.exists() && phone.length === 10) {
+      custDoc = await getDoc(doc(db, 'customers', '57' + phone));
+    }
     if (custDoc.exists()) {
       const data = custDoc.data() as CustomerProfile;
       const rawAddr = data.address || '';
@@ -5196,11 +5199,15 @@ export async function fetchCustomerProfileByPhone(rawPhone: string): Promise<Cus
         rawAddr.toLowerCase().includes('para llevar') || 
         rawAddr.toLowerCase().includes('en mesa') || 
         rawAddr.toLowerCase().startsWith('mesa ');
+      const pointsVal = data.points !== undefined ? data.points : (data.ryycos !== undefined ? data.ryycos : 0);
       const fullCust: CustomerProfile = {
         ...data,
-        id: phone,
+        id: custDoc.id,
         phone,
         address: isPickupAddress ? '' : rawAddr,
+        points: pointsVal,
+        ryycos: pointsVal,
+        movements: Array.isArray(data.movements) ? data.movements : [],
         wonPrizes: Array.isArray(data.wonPrizes) ? data.wonPrizes : []
       };
       try {
@@ -5219,6 +5226,85 @@ export async function fetchCustomerProfileByPhone(rawPhone: string): Promise<Cus
   } catch (e) {}
 
   return null;
+}
+
+/**
+ * Real-time listener for customer profile & RYYCOS balance.
+ * Automatically receives real-time updates when transfers, points, spins or orders occur,
+ * without requiring page reload.
+ */
+export function listenToCustomerProfile(
+  rawPhone: string,
+  onUpdate: (customer: CustomerProfile) => void
+): () => void {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone) return () => {};
+
+  let unsubSecondary: (() => void) | null = null;
+  let isCleanedUp = false;
+
+  const handleDocSnap = (docSnap: any) => {
+    if (!docSnap || !docSnap.exists()) return;
+    const data = docSnap.data() as CustomerProfile;
+    const rawAddr = data.address || '';
+    const isPickupAddress = rawAddr.toLowerCase().includes('recoger en') || 
+      rawAddr.toLowerCase().includes('restaurante / local') || 
+      rawAddr.toLowerCase().includes('para llevar') || 
+      rawAddr.toLowerCase().includes('en mesa') || 
+      rawAddr.toLowerCase().startsWith('mesa ');
+    
+    const pointsVal = data.points !== undefined ? data.points : (data.ryycos !== undefined ? data.ryycos : 0);
+    const fullCust: CustomerProfile = {
+      ...data,
+      id: docSnap.id,
+      phone: phone,
+      address: isPickupAddress ? '' : rawAddr,
+      points: pointsVal,
+      ryycos: pointsVal,
+      movements: Array.isArray(data.movements) ? data.movements : [],
+      wonPrizes: Array.isArray(data.wonPrizes) ? data.wonPrizes : []
+    };
+
+    // Cache locally
+    try {
+      localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(fullCust));
+    } catch (e) {}
+
+    // Dispatch global custom event for instant same-window component synchronization
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: fullCust }));
+    }
+
+    onUpdate(fullCust);
+  };
+
+  // Primary listener on doc(db, 'customers', phone)
+  const unsubPrimary = onSnapshot(
+    doc(db, 'customers', phone),
+    (docSnap) => {
+      if (docSnap.exists()) {
+        handleDocSnap(docSnap);
+      } else if (phone.length === 10 && !unsubSecondary && !isCleanedUp) {
+        // Fallback listener on '57' + phone if primary doesn't exist
+        unsubSecondary = onSnapshot(
+          doc(db, 'customers', '57' + phone),
+          (altSnap) => {
+            if (altSnap.exists()) {
+              handleDocSnap(altSnap);
+            }
+          },
+          (err) => console.warn("Notice: alt customer listener warning:", err)
+        );
+      }
+    },
+    (err) => console.warn("Notice: customer listener warning:", err)
+  );
+
+  return () => {
+    isCleanedUp = true;
+    unsubPrimary();
+    if (unsubSecondary) unsubSecondary();
+  };
 }
 
 /**
@@ -5317,6 +5403,9 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   // Save to Firestore
   try {
     await setDoc(doc(db, 'customers', phone), cleanUndefined(customerData), { merge: true });
+    if (cust.id && cust.id !== phone) {
+      await setDoc(doc(db, 'customers', cust.id), cleanUndefined(customerData), { merge: true }).catch(() => {});
+    }
   } catch (err) {
     console.warn("Failed saving customer to Firestore, caching locally:", err);
   }
@@ -5324,8 +5413,15 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   // Cache in localStorage
   try {
     localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(customerData));
-    localStorage.setItem('ryyco_active_customer_phone', phone);
+    const currentActivePhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (!currentActivePhone || currentActivePhone === phone) {
+      localStorage.setItem('ryyco_active_customer_phone', phone);
+    }
   } catch (e) {}
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: customerData }));
+  }
 
   return customerData;
 }

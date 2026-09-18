@@ -16,6 +16,7 @@ import {
   getStoreOperatingScheduleInfo,
   saveCustomerProfile,
   fetchCustomerProfileByPhone,
+  listenToCustomerProfile,
   subscribeStoreTheme,
   subscribeStoreProfile,
   PREDEFINED_THEMES
@@ -251,11 +252,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [appliedRewardCode, setAppliedRewardCode] = useState('');
   const [rewardDiscountAmount, setRewardDiscountAmount] = useState(0);
 
-  // Auto-load customer profile from local storage if previously logged in
+  // Auto-load customer profile from local storage and keep synchronized in real time
   useEffect(() => {
-    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
-    if (savedPhone) {
-      fetchCustomerProfileByPhone(savedPhone).then(cust => {
+    let unsubProfile: (() => void) | null = null;
+    const initCustomer = (phone: string) => {
+      if (unsubProfile) unsubProfile();
+      unsubProfile = listenToCustomerProfile(phone, (cust) => {
         if (cust) {
           setActiveCustomer(cust);
           if (!custPhone) setCustPhone(cust.phone);
@@ -266,8 +268,28 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           if (!custEmail && cust.email) setCustEmail(cust.email);
           if (!custNotes && cust.notes) setCustNotes(cust.notes);
         }
-      }).catch(() => {});
+      });
+    };
+
+    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (savedPhone) {
+      initCustomer(savedPhone);
     }
+
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setActiveCustomer(e.detail);
+        if (e.detail.phone && (!savedPhone || savedPhone !== e.detail.phone)) {
+          initCustomer(e.detail.phone);
+        }
+      }
+    };
+    window.addEventListener('ryyco:customer-profile-updated', handleProfileUpdated);
+
+    return () => {
+      if (unsubProfile) unsubProfile();
+      window.removeEventListener('ryyco:customer-profile-updated', handleProfileUpdated);
+    };
   }, []);
 
   // Bank details state
@@ -3590,6 +3612,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         initialPhone={custPhone}
         initialTab={customerPortalTab}
         storeCurrency={getStoreCurrency()}
+        onCustomerUpdate={setActiveCustomer}
         onSelectRewardCode={(code, discount) => {
           setAppliedRewardCode(code);
           if (discount) setRewardDiscountAmount(discount);

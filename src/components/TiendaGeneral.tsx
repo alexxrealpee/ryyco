@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
-import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone, fetchProductsForStoreOnDemand } from '../lib/firebase';
+import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone, listenToCustomerProfile, fetchProductsForStoreOnDemand } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
@@ -414,10 +414,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return () => window.removeEventListener('ryyco:address-updated', handleAddressUpdate);
   }, []);
 
+  // Auto-load customer profile from local storage and keep synchronized in real time
   useEffect(() => {
-    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
-    if (savedPhone) {
-      fetchCustomerProfileByPhone(savedPhone).then(cust => {
+    let unsubProfile: (() => void) | null = null;
+    const initCustomer = (phone: string) => {
+      if (unsubProfile) unsubProfile();
+      unsubProfile = listenToCustomerProfile(phone, (cust) => {
         if (cust) {
           setActiveCustomer(cust);
           if (!custPhone) setCustPhone(cust.phone);
@@ -426,8 +428,28 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             setCustAddress(cust.address);
           }
         }
-      }).catch(() => {});
+      });
+    };
+
+    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (savedPhone) {
+      initCustomer(savedPhone);
     }
+
+    const handleProfileUpdated = (e: any) => {
+      if (e.detail) {
+        setActiveCustomer(e.detail);
+        if (e.detail.phone && (!savedPhone || savedPhone !== e.detail.phone)) {
+          initCustomer(e.detail.phone);
+        }
+      }
+    };
+    window.addEventListener('ryyco:customer-profile-updated', handleProfileUpdated);
+
+    return () => {
+      if (unsubProfile) unsubProfile();
+      window.removeEventListener('ryyco:customer-profile-updated', handleProfileUpdated);
+    };
   }, []);
   
   // Mobile 3-Dots Menu state
@@ -2951,6 +2973,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         onClose={() => setIsCustomerPortalOpen(false)}
         initialPhone={custPhone}
         initialTab={customerPortalTab}
+        onCustomerUpdate={setActiveCustomer}
       />
 
       {/* FULL SCREEN SEARCH MODAL VIEW */}
