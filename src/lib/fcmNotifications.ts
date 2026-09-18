@@ -16,6 +16,50 @@ let messagingInstance: Messaging | null = null;
 let serviceWorkerReg: ServiceWorkerRegistration | null = null;
 let isFCMSupported = false;
 
+/**
+ * Official Firebase Cloud Messaging Web Push Certificate (VAPID Key)
+ * From Firebase Project Console: studio-9002217802-13e05
+ */
+export const DEFAULT_FCM_VAPID_KEY = 'BHxp46AT5NMBfuRVQJpU5KpSl-ktnNumkur002jGAEwqeaJHi_jJayQM_uIze1QPuA9o42INMAT5S6i8ZmIit80';
+
+/**
+ * Retrieves the active Web Push VAPID key (custom or project default)
+ */
+export function getFCMVapidKey(): string {
+  if (typeof window !== 'undefined') {
+    const custom = localStorage.getItem('ryyco_fcm_vapid_key');
+    if (custom && custom.trim().length > 10) return custom.trim();
+  }
+  return DEFAULT_FCM_VAPID_KEY;
+}
+
+/**
+ * Register Admin FCM token with the backend server memory
+ */
+export async function registerAdminFCMTokenWithServer(
+  token: string,
+  adminUser?: { uid?: string; email?: string; name?: string }
+): Promise<boolean> {
+  if (!token || typeof window === 'undefined') return false;
+  try {
+    const res = await fetch('/api/fcm/register-admin-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        token,
+        adminUid: adminUser?.uid || 'admin',
+        adminEmail: adminUser?.email || 'admin@ryyco.com',
+        adminName: adminUser?.name || 'Administrador General RYYCO'
+      })
+    });
+    const data = await res.json();
+    return data.status === 'ok';
+  } catch (err) {
+    console.warn('[FCM] Server token registration error:', err);
+    return false;
+  }
+}
+
 // Audio Chime Synthesizer using Web Audio API for high-reliability order alerts
 export function playOrderAlertChime() {
   try {
@@ -286,8 +330,8 @@ export async function requestAdminFCMPermission(adminUser?: {
       serviceWorkerReg = await navigator.serviceWorker.ready;
     }
 
-    // Check if custom VAPID key is configured
-    const configuredVapidKey = localStorage.getItem('ryyco_fcm_vapid_key') || undefined;
+    // Use configured or project default VAPID key
+    const configuredVapidKey = getFCMVapidKey();
 
     let fcmToken = '';
     try {
@@ -296,14 +340,14 @@ export async function requestAdminFCMPermission(adminUser?: {
         vapidKey: configuredVapidKey
       });
     } catch (tokenErr: any) {
-      console.warn('[FCM] getToken with custom vapidKey failed, retrying default:', tokenErr);
+      console.warn('[FCM] getToken with VAPID key failed, retrying default:', tokenErr);
       try {
         fcmToken = await getToken(messagingInstance, {
           serviceWorkerRegistration: serviceWorkerReg || undefined
         });
       } catch (defaultTokenErr: any) {
         console.warn('[FCM] getToken default also returned error:', defaultTokenErr);
-        // If getToken fails due to missing VAPID key in this environment, fallback to registered web push
+        // Fallback to web push token identifier
         fcmToken = 'web_push_' + (adminUser?.uid || 'admin') + '_' + Date.now();
       }
     }
@@ -329,6 +373,11 @@ export async function requestAdminFCMPermission(adminUser?: {
     } catch (saveErr) {
       console.warn('[FCM] Warning saving token to Firestore:', saveErr);
     }
+
+    // Also register with server memory registry
+    try {
+      await registerAdminFCMTokenWithServer(fcmToken, adminUser);
+    } catch (srvErr) {}
 
     // Play confirmation chime
     playOrderAlertChime();
@@ -416,8 +465,24 @@ export async function triggerAdminOrderPush(
     console.warn('[FCM] Error displaying local push notification:', err);
   }
 
-  // 4. Send to backend FCM broadcast route
+  // 4. Send to backend FCM broadcast route with active admin tokens
   try {
+    let adminTokens: string[] = [];
+    const localToken = localStorage.getItem('ryyco_admin_fcm_token');
+    if (localToken) adminTokens.push(localToken);
+
+    try {
+      const snap = await getDocs(collection(db, 'admin_fcm_tokens'));
+      snap.forEach(d => {
+        const data = d.data();
+        if (data?.token && data?.active !== false) {
+          adminTokens.push(data.token);
+        }
+      });
+    } catch (e) {}
+
+    adminTokens = Array.from(new Set(adminTokens));
+
     fetch('/api/fcm/broadcast-order', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -427,7 +492,8 @@ export async function triggerAdminOrderPush(
         storeName,
         customerName: customer,
         totalAmount: order.totalAmount,
-        itemsCount
+        itemsCount,
+        tokens: adminTokens
       })
     }).catch(() => {});
   } catch (backendErr) {
@@ -494,7 +560,7 @@ export async function requestSellerFCMPermission(seller: {
       serviceWorkerReg = await navigator.serviceWorker.ready;
     }
 
-    const configuredVapidKey = localStorage.getItem('ryyco_fcm_vapid_key') || undefined;
+    const configuredVapidKey = getFCMVapidKey();
 
     let fcmToken = '';
     if (messagingInstance) {
@@ -710,7 +776,7 @@ export async function requestDriverFCMPermission(driver: {
       serviceWorkerReg = await navigator.serviceWorker.ready;
     }
 
-    const configuredVapidKey = localStorage.getItem('ryyco_fcm_vapid_key') || undefined;
+    const configuredVapidKey = getFCMVapidKey();
 
     let fcmToken = '';
     if (messagingInstance) {
@@ -1165,6 +1231,38 @@ export function connectFCMStream(
           window.dispatchEvent(new CustomEvent('ryyco:new-admin-order', {
             detail: data
           }));
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+            const orderNum = data.orderNumber ? `#${data.orderNumber}` : '';
+            const store = data.storeName || 'Restaurante en RYYCO';
+            const total = data.totalAmount ? `$${Number(data.totalAmount).toLocaleString('es-CO')} COP` : '';
+            const cust = data.customerName ? `${data.customerName} • ` : '';
+            const title = `🚨 ¡Nuevo Pedido ${orderNum} en ${store}!`;
+            const body = `${cust}Total: ${total} (${data.itemsCount || 1} items)`;
+
+            if (serviceWorkerReg && serviceWorkerReg.showNotification) {
+              serviceWorkerReg.showNotification(title, {
+                body,
+                icon: '/logoryyco.png',
+                badge: '/favicon.svg',
+                vibrate: [350, 150, 350, 150, 500],
+                tag: 'admin-order-' + (data.orderId || Date.now()),
+                renotify: true,
+                requireInteraction: true,
+                data: {
+                  url: '/?view=admin&tab=orders',
+                  orderId: data.orderId,
+                  orderNumber: data.orderNumber
+                },
+                actions: [
+                  { action: 'open_admin', title: '📋 Ver en Administración' }
+                ]
+              } as any).catch(() => {
+                new Notification(title, { body, icon: '/logoryyco.png' });
+              });
+            } else {
+              new Notification(title, { body, icon: '/logoryyco.png' });
+            }
+          }
         } else if (data.type === 'CUSTOM_SELLER_ALERT' && role === 'seller') {
           if (!entityUid || data.storeOwnerId === 'all' || data.storeOwnerId === entityUid) {
             playOrderAlertChime();

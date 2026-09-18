@@ -468,6 +468,17 @@ Formatos válidos para:
   }
   const driverFCMTokensMap = new Map<string, RegisteredDriverFCMToken>();
 
+  // In-memory registry for Admin FCM tokens (enables push to general admin devices)
+  interface RegisteredAdminFCMToken {
+    token: string;
+    adminUid: string;
+    adminEmail?: string;
+    adminName?: string;
+    userAgent?: string;
+    updatedAt: string;
+  }
+  const adminFCMTokensMap = new Map<string, RegisteredAdminFCMToken>();
+
   // Helper to send FCM Web Push via Google Firebase Cloud Messaging HTTP API
   // This is what delivers notifications even when Chrome is completely closed!
   async function sendFCMWebPush(
@@ -554,6 +565,39 @@ Formatos válidos para:
     });
   });
 
+  // Register active admin FCM device token with the server
+  app.post('/api/fcm/register-admin-token', (req, res) => {
+    try {
+      const { token, adminUid, adminEmail, adminName } = req.body || {};
+      if (!token) {
+        return res.status(400).json({ error: 'Token is required' });
+      }
+
+      adminFCMTokensMap.set(token, {
+        token,
+        adminUid: adminUid || 'admin',
+        adminEmail: adminEmail || 'admin@ryyco.com',
+        adminName: adminName || 'Administrador General RYYCO',
+        userAgent: req.headers['user-agent'] as string,
+        updatedAt: new Date().toISOString()
+      });
+
+      console.log(`[FCM-SERVER] 📲 Token de administrador registrado (${adminName || adminUid}). Total activos en servidor: ${adminFCMTokensMap.size}`);
+      res.json({ status: 'ok', registeredCount: adminFCMTokensMap.size });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Query active admin tokens registered with the server
+  app.get('/api/fcm/admin-tokens', (req, res) => {
+    res.json({
+      status: 'ok',
+      count: adminFCMTokensMap.size,
+      tokens: Array.from(adminFCMTokensMap.values())
+    });
+  });
+
   // Real-time Push Stream (SSE) for Admin, Seller & Driver Dashboards
   app.get('/api/fcm/stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -589,12 +633,12 @@ Formatos válidos para:
   });
 
   // Firebase Cloud Messaging (FCM) Order Notification Broadcast Endpoint
-  app.post('/api/fcm/broadcast-order', (req, res) => {
+  app.post('/api/fcm/broadcast-order', async (req, res) => {
     try {
-      const { orderId, orderNumber, storeName, customerName, totalAmount, itemsCount } = req.body || {};
-      console.log(`[FCM-SERVER] 🚨 Nuevo pedido para notificación general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
+      const { orderId, orderNumber, storeName, customerName, totalAmount, itemsCount, tokens: incomingTokens } = req.body || {};
+      console.log(`[FCM-SERVER] 🚨 Nuevo pedido para administración general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
       
-      // Relay to connected Admin clients
+      // Relay to connected Admin clients (SSE)
       const payload = {
         type: 'ADMIN_ORDER_PUSH',
         orderId,
@@ -606,17 +650,55 @@ Formatos válidos para:
         timestamp: new Date().toISOString()
       };
 
+      let deliveredSSE = 0;
       pushClients.forEach(c => {
         if (c.role === 'admin' || c.role === 'all') {
           try {
             c.res.write(`data: ${JSON.stringify(payload)}\n\n`);
+            deliveredSSE++;
           } catch (e) {}
         }
       });
 
+      // Dispatch to Google FCM for Admin devices in background or with browser closed
+      const registeredTokens = Array.from(adminFCMTokensMap.values()).map(t => t.token);
+      const passedTokens = Array.isArray(incomingTokens) ? incomingTokens : [];
+      const allTokens = Array.from(new Set([...registeredTokens, ...passedTokens]));
+
+      const totalFormatted = totalAmount ? `$${Number(totalAmount).toLocaleString('es-CO')}` : '$0';
+      const orderNum = orderNumber ? `#${orderNumber}` : 'S/N';
+      const store = storeName || 'Restaurante en RYYCO';
+      const customer = customerName || 'Cliente';
+
+      const fcmResult = await sendFCMWebPush(
+        allTokens,
+        {
+          title: `🚨 ¡Nuevo Pedido ${orderNum} en ${store}!`,
+          body: `${customer} • Total: ${totalFormatted} COP (${itemsCount || 1} items)`,
+          icon: '/logoryyco.png',
+          badge: '/favicon.svg',
+          sound: 'default',
+          click_action: '/?view=admin&tab=orders'
+        },
+        {
+          type: 'ADMIN_ORDER',
+          isAdmin: 'true',
+          orderId: String(orderId || ''),
+          orderNumber: String(orderNumber || ''),
+          storeName: String(store),
+          customerName: String(customer),
+          totalAmount: String(totalAmount || 0),
+          itemsCount: String(itemsCount || 1),
+          url: '/?view=admin&tab=orders'
+        }
+      );
+
       res.json({
         status: 'ok',
         delivered: true,
+        deliveredSSE,
+        fcmPushTargetTokens: allTokens.length,
+        fcmResult,
         orderId,
         orderNumber,
         timestamp: new Date().toISOString()
@@ -839,11 +921,58 @@ Formatos válidos para:
     }
   });
 
-  app.post('/api/fcm/test', (req, res) => {
-    console.log('[FCM-SERVER] Test push notification triggered from client');
+  app.post('/api/fcm/test', async (req, res) => {
+    console.log('[FCM-SERVER] 🧪 Test push notification triggered for Admin Panel');
+    const testPayload = {
+      type: 'ADMIN_ORDER_PUSH',
+      orderId: 'test_order_' + Date.now(),
+      orderNumber: 777,
+      storeName: 'Restaurante Ejemplo RYYCO',
+      customerName: 'Prueba FCM Admin',
+      totalAmount: 36000,
+      itemsCount: 2,
+      timestamp: new Date().toISOString()
+    };
+
+    let deliveredSSE = 0;
+    pushClients.forEach(c => {
+      if (c.role === 'admin' || c.role === 'all') {
+        try {
+          c.res.write(`data: ${JSON.stringify(testPayload)}\n\n`);
+          deliveredSSE++;
+        } catch (e) {}
+      }
+    });
+
+    const adminTokens = Array.from(adminFCMTokensMap.values()).map(t => t.token);
+    const fcmResult = await sendFCMWebPush(
+      adminTokens,
+      {
+        title: '🚨 ¡Nuevo Pedido #777 en Restaurante Ejemplo RYYCO!',
+        body: 'Prueba FCM Admin • Total: $36.000 COP (2 items)',
+        icon: '/logoryyco.png',
+        badge: '/favicon.svg',
+        click_action: '/?view=admin&tab=orders'
+      },
+      {
+        type: 'ADMIN_ORDER',
+        isAdmin: 'true',
+        orderId: testPayload.orderId,
+        orderNumber: '777',
+        storeName: 'Restaurante Ejemplo RYYCO',
+        customerName: 'Prueba FCM Admin',
+        totalAmount: '36000',
+        itemsCount: '2',
+        url: '/?view=admin&tab=orders'
+      }
+    );
+
     res.json({
       status: 'ok',
-      message: 'Notificación de prueba FCM recibida en servidor',
+      message: 'Notificación de prueba FCM transmitida a administradores',
+      deliveredSSE,
+      fcmPushTargetTokens: adminTokens.length,
+      fcmResult,
       timestamp: new Date().toISOString()
     });
   });

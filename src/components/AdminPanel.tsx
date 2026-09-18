@@ -95,7 +95,9 @@ import {
   deleteSellerFCMToken,
   sendAdminPushToSeller,
   connectFCMStream,
-  SellerFCMTokenRecord
+  SellerFCMTokenRecord,
+  registerAdminFCMTokenWithServer,
+  DEFAULT_FCM_VAPID_KEY
 } from '../lib/fcmNotifications';
 import { 
   collection, 
@@ -367,7 +369,16 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           const status = getFCMStatus();
           setPushPermission(status.permission);
           if (status.hasToken) {
-            setFcmToken(localStorage.getItem('ryyco_admin_fcm_token'));
+            const token = localStorage.getItem('ryyco_admin_fcm_token');
+            setFcmToken(token);
+            if (token) {
+              const currentAdmin = auth.currentUser;
+              registerAdminFCMTokenWithServer(token, {
+                uid: currentAdmin?.uid || 'admin_user',
+                email: currentAdmin?.email || PRIMARY_ADMIN_EMAIL,
+                name: currentAdmin?.displayName || 'Administración General RYYCO'
+              }).catch(() => {});
+            }
           }
         }
       } catch (err) {
@@ -484,7 +495,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       createdAt: new Date().toISOString()
     };
     triggerNewOrderAlert(testOrder);
-    setNotif("📲 Notificación Push FCM de prueba emitida con sonido y vibración");
+    
+    // Also trigger server broadcast endpoint to test backend SSE and FCM dispatch
+    fetch('/api/fcm/test', { method: 'POST' }).catch(() => {});
+
+    setNotif("📲 Notificación Push FCM de prueba emitida con sonido, voz y vibración");
     setTimeout(() => setNotif(''), 5000);
   };
 
@@ -3028,24 +3043,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
                       <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
-                        <p className="text-[10px] text-gray-500 font-mono uppercase">Service Worker</p>
-                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>/firebase-messaging-sw.js</span>
+                        <p className="text-[10px] text-gray-500 font-mono uppercase">Recepción de Pedidos</p>
+                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>Todas las tiendas en vivo (Firestore + SSE)</span>
                         </p>
                       </div>
                       <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
                         <p className="text-[10px] text-gray-500 font-mono uppercase">Permiso Notificaciones</p>
-                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
+                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5 text-xs">
                           <span className={`w-2 h-2 rounded-full ${pushPermission === 'granted' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
                           <span className="capitalize">{pushPermission}</span>
                         </p>
                       </div>
                       <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800">
-                        <p className="text-[10px] text-gray-500 font-mono uppercase">Almacenamiento Tokens</p>
-                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Colección Firestore admin_fcm_tokens</span>
+                        <p className="text-[10px] text-gray-500 font-mono uppercase">Clave VAPID Web Push</p>
+                        <p className="text-white font-semibold flex items-center gap-1 mt-0.5 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <span className="font-mono text-[11px] truncate" title={DEFAULT_FCM_VAPID_KEY}>Configurada ({DEFAULT_FCM_VAPID_KEY.slice(0, 10)}...{DEFAULT_FCM_VAPID_KEY.slice(-6)})</span>
                         </p>
                       </div>
                     </div>
@@ -3056,20 +3071,40 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           <p className="text-[10px] text-gray-500 font-mono">TOKEN FCM REGISTRADO DEL DISPOSITIVO ADMIN:</p>
                           <p className="text-[10px] text-cyan-300 font-mono truncate">{fcmToken}</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (navigator.clipboard) {
-                              navigator.clipboard.writeText(fcmToken);
-                              setNotif("📋 Token FCM copiado al portapapeles");
-                              setTimeout(() => setNotif(''), 3000);
-                            }
-                          }}
-                          className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-[10px] font-mono shrink-0 flex items-center gap-1 cursor-pointer"
-                        >
-                          <Copy className="w-3 h-3" />
-                          <span>Copiar</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const currentAdmin = auth.currentUser;
+                              const ok = await registerAdminFCMTokenWithServer(fcmToken, {
+                                uid: currentAdmin?.uid || 'admin_user',
+                                email: currentAdmin?.email || PRIMARY_ADMIN_EMAIL,
+                                name: currentAdmin?.displayName || 'Administración General RYYCO'
+                              });
+                              setNotif(ok ? "✅ Token sincronizado exitosamente con el servidor FCM" : "⚠️ Error sincronizando token con servidor");
+                              setTimeout(() => setNotif(''), 3500);
+                            }}
+                            className="px-2.5 py-1 bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-800/60 rounded-lg text-[10px] font-mono flex items-center gap-1 cursor-pointer"
+                            title="Re-sincronizar token en la memoria del servidor Node.js"
+                          >
+                            <RefreshCw className="w-3 h-3 text-cyan-400" />
+                            <span>Sincronizar</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (navigator.clipboard) {
+                                navigator.clipboard.writeText(fcmToken);
+                                setNotif("📋 Token FCM copiado al portapapeles");
+                                setTimeout(() => setNotif(''), 3000);
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-[10px] font-mono flex items-center gap-1 cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>Copiar</span>
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

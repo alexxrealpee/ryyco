@@ -1465,18 +1465,33 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   // Broadcast FCM push notification for General Administration
   try {
     if (typeof window !== 'undefined') {
-      fetch('/api/fcm/broadcast-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          orderId: result.id,
-          orderNumber: result.orderNumber,
-          storeName: result.storeName,
-          customerName: result.customerName,
-          totalAmount: result.totalAmount,
-          itemsCount: result.items?.length || 1
-        })
-      }).catch(() => {});
+      (async () => {
+        let adminTokens: string[] = [];
+        const localAdminToken = localStorage.getItem('ryyco_admin_fcm_token');
+        if (localAdminToken) adminTokens.push(localAdminToken);
+        try {
+          const snap = await getDocs(collection(db, 'admin_fcm_tokens'));
+          snap.forEach(d => {
+            const dt = d.data();
+            if (dt?.token && dt?.active !== false) adminTokens.push(dt.token);
+          });
+        } catch (e) {}
+        adminTokens = Array.from(new Set(adminTokens));
+
+        fetch('/api/fcm/broadcast-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: result.id,
+            orderNumber: result.orderNumber,
+            storeName: result.storeName,
+            customerName: result.customerName,
+            totalAmount: result.totalAmount,
+            itemsCount: result.items?.length || 1,
+            tokens: adminTokens
+          })
+        }).catch(() => {});
+      })().catch(() => {});
     }
   } catch (e) {}
 
