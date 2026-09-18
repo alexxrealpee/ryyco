@@ -215,7 +215,11 @@ export default function CustomerPortalModal({
     if (trackingOrder) {
       const live = orders.find(o => o.id === trackingOrder.id);
       if (live) {
-        setTrackingOrder(live);
+        if (live.status === 'delivered' || live.deliveryStep === 'delivered') {
+          setTrackingOrder(null);
+        } else {
+          setTrackingOrder(live);
+        }
       }
     }
   }, [orders]);
@@ -1320,6 +1324,7 @@ export default function CustomerPortalModal({
                       {orders.map((order) => {
                         const step = getOrderStatusStep(order);
                         const isCancelled = order.status === 'cancelled';
+                        const isDelivered = order.status === 'delivered' || order.deliveryStep === 'delivered' || step >= 5;
 
                         return (
                           <div
@@ -1499,7 +1504,7 @@ export default function CustomerPortalModal({
                             )}
 
                             {/* Restaurant own delivery info if confirmed by store */}
-                            {order.deliveryType === 'restaurant' && (
+                            {!isDelivered && order.deliveryType === 'restaurant' && (
                               <div className="p-3 bg-blue-950/30 border border-blue-800/40 rounded-xl flex items-center justify-between gap-3 text-xs">
                                 <div className="flex items-center gap-2.5">
                                   <div className="w-8 h-8 rounded-full bg-blue-500/15 flex items-center justify-center text-blue-400">
@@ -1513,8 +1518,8 @@ export default function CustomerPortalModal({
                               </div>
                             )}
 
-                            {/* Driver info if assigned */}
-                            {order.deliveryDriverName && (
+                            {/* Driver info if assigned (only while delivery is active, removed when delivered) */}
+                            {!isDelivered && order.deliveryDriverName && (
                               <div className="p-3 bg-[#161F30] border border-[#232E42] rounded-xl flex items-center justify-between gap-3 text-xs">
                                 <div className="flex items-center gap-2.5">
                                   <div className="w-8 h-8 rounded-full bg-[#E63946]/15 flex items-center justify-center text-[#E63946]">
@@ -1585,29 +1590,33 @@ export default function CustomerPortalModal({
                               </div>
                             </div>
 
-                            {/* Actions */}
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setTrackingOrder(order)}
-                                className="flex-1 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
-                              >
-                                <Navigation className="w-3.5 h-3.5 text-white animate-pulse" />
-                                <span>Seguir mi pedido</span>
-                              </button>
+                            {/* Actions - driver tracking & store contact */}
+                            {(!isDelivered || order.storePhone) && (
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                {!isDelivered && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setTrackingOrder(order)}
+                                    className="flex-1 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
+                                  >
+                                    <Navigation className="w-3.5 h-3.5 text-white animate-pulse" />
+                                    <span>Seguir mi pedido</span>
+                                  </button>
+                                )}
 
-                              {order.storePhone && (
-                                <a
-                                  href={`https://wa.me/57${order.storePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola, consulto sobre el estado de mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="flex-1 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800"
-                                >
-                                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                                  Chat con la Tienda
-                                </a>
-                              )}
-                            </div>
+                                {order.storePhone && (
+                                  <a
+                                    href={`https://wa.me/57${order.storePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola, consulto sobre el estado de mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`${!isDelivered ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                    Chat con la Tienda
+                                  </a>
+                                )}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
