@@ -666,8 +666,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       await updateOrderDeliveryStep(activeDelivery.id, nextStep, driver.id, systemDeliveryFee || activeDelivery.deliveryFee || 7000);
       const computedStatus: OrderItem['status'] = 
         nextStep === 'delivered' ? 'delivered' : 
-        (nextStep === 'to_client' || nextStep === 'at_destination') ? 'delivering' : 
-        nextStep === 'picked_up' ? 'preparing' : 
+        (nextStep === 'to_client' || nextStep === 'at_destination') ? 'shipped' : 
+        nextStep === 'picked_up' ? 'shipped' : 
         (nextStep === 'accepted' || nextStep === 'to_store' || nextStep === 'at_store') ? 'processing' :
         activeDelivery.status;
 
@@ -1633,7 +1633,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                               className="w-full py-2.5 px-3 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#F4B400]/20 active:scale-95"
                                             >
                                               <ShoppingBag className="w-4 h-4" />
-                                              <span>2. Marcar Recogido en Tienda (Pasa a En Cocina) ➔</span>
+                                              <span>2. Marcar Recogido en Tienda (Pasa a Enviado) ➔</span>
                                             </button>
                                           </div>
                                         )}
@@ -1970,7 +1970,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           className="flex-1 py-3.5 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-[#F4B400]/20 flex items-center justify-center gap-2"
                         >
                           <ShoppingBag className="w-4 h-4" />
-                          <span>2. Marcar Recogido en Tienda (En Cocina)</span>
+                          <span>2. Marcar Recogido en Tienda (Enviado)</span>
                         </button>
                       )}
 

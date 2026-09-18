@@ -2540,11 +2540,45 @@ export async function fetchAllSubscriptionPayments(): Promise<SubscriptionPaymen
 }
 
 /**
- * Normalizes order status when an order is taken/accepted by a delivery driver.
- * When a driver takes/accepts an order, its status automatically changes from 'pending' (or 'confirmed') to 'processing'.
+ * Normalizes order status when an order is taken/accepted by a delivery driver or picked up at store.
+ * - When a driver takes/accepts an order, its status automatically changes from 'pending' (or 'confirmed') to 'processing'.
+ * - When a driver marks the order as picked up in store ('picked_up', 'to_client', 'at_destination'), its status automatically transitions to 'shipped' (enviado).
  */
 export function normalizeOrderDriverStatus(order: OrderItem, autoPersist: boolean = false): OrderItem {
   if (!order) return order;
+
+  // Never alter terminal final states
+  if (order.status === 'delivered' || order.status === 'cancelled') {
+    return order;
+  }
+
+  const isPickedUpAtStore = 
+    order.deliveryStep === 'picked_up' || 
+    order.deliveryStep === 'to_client' || 
+    order.deliveryStep === 'at_destination' || 
+    order.status === 'picked_up' || 
+    order.status === 'delivering';
+
+  if (isPickedUpAtStore) {
+    if (order.status !== 'shipped') {
+      const updatedOrder: OrderItem = {
+        ...order,
+        status: 'shipped',
+        deliveryStep: order.deliveryStep || 'picked_up',
+        deliveryStepUpdatedAt: order.deliveryStepUpdatedAt || new Date().toISOString()
+      };
+      if (autoPersist && order.id) {
+        updateDoc(doc(db, 'orders', order.id), {
+          status: 'shipped',
+          deliveryStep: updatedOrder.deliveryStep,
+          deliveryStepUpdatedAt: updatedOrder.deliveryStepUpdatedAt
+        }).catch((e) => console.warn("Could not auto-heal order status to shipped in Firestore:", e));
+      }
+      return updatedOrder;
+    }
+    return order;
+  }
+
   const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
                     Boolean(order.driverId && order.driverId.trim() !== '') ||
                     Boolean(order.deliveryStep);
@@ -4333,11 +4367,11 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
       ? 'Domiciliario en camino a la tienda' 
       : 'Domiciliario esperando en la tienda';
   } else if (step === 'picked_up') {
-    nextStatus = 'preparing';
-    historyNote = 'En cocina: pedido en preparación y recogido en tienda';
+    nextStatus = 'shipped';
+    historyNote = 'Pedido recogido en tienda por el domiciliario (enviado)';
   } else if (step === 'to_client' || step === 'at_destination') {
-    nextStatus = 'delivering';
-    historyNote = 'Tu pedido va en camino a tu dirección (recogido por domiciliario)';
+    nextStatus = 'shipped';
+    historyNote = 'Tu pedido va en camino a tu dirección (recogido por domiciliario - enviado)';
   } else if (step === 'delivered') {
     nextStatus = 'delivered';
     historyNote = '¡Pedido entregado exitosamente!';

@@ -274,7 +274,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
                         Boolean(o.driverId && o.driverId.trim() !== '') ||
                         Boolean(o.deliveryStep);
-      return o.status === 'pending' && !hasDriver;
+      const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
+      return o.status === 'pending' && !hasDriver && !isPickedUp;
     }).length;
   }, [allOrders]);
 
@@ -1565,7 +1566,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
                           Boolean(order.driverId && order.driverId.trim() !== '') ||
                           Boolean(order.deliveryStep);
-        const effStatus = (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+        const isDeliveredOrCancelled = order.status === 'delivered' || order.status === 'cancelled';
+        const isPickedUpAtStore = !isDeliveredOrCancelled && (
+          order.status === 'shipped' ||
+          order.status === 'delivering' ||
+          order.status === 'picked_up' ||
+          order.deliveryStep === 'picked_up' ||
+          order.deliveryStep === 'to_client' ||
+          order.deliveryStep === 'at_destination'
+        );
+        const effStatus = isDeliveredOrCancelled
+          ? order.status
+          : isPickedUpAtStore
+          ? 'shipped'
+          : (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
           ? 'processing'
           : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
         if (effStatus !== selectedOrderStatusFilter) {
@@ -3419,7 +3433,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
                                       Boolean(order.driverId && order.driverId.trim() !== '') ||
                                       Boolean(order.deliveryStep);
-                    const effectiveStatus = (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+                    const isDeliveredOrCancelled = order.status === 'delivered' || order.status === 'cancelled';
+                    const isPickedUpAtStore = !isDeliveredOrCancelled && (
+                      order.status === 'shipped' ||
+                      order.status === 'delivering' ||
+                      order.status === 'picked_up' ||
+                      order.deliveryStep === 'picked_up' ||
+                      order.deliveryStep === 'to_client' ||
+                      order.deliveryStep === 'at_destination'
+                    );
+                    const effectiveStatus = isDeliveredOrCancelled
+                      ? order.status
+                      : isPickedUpAtStore
+                      ? 'shipped'
+                      : (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
                       ? 'processing'
                       : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
 
@@ -3428,7 +3455,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       pending: { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' },
                       processing: { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', label: 'PROCESANDO' },
                       confirmed: { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', label: 'PROCESANDO' },
-                      shipped: { bg: 'bg-purple-950/80 text-purple-400 border-purple-800/60', label: 'DESPACHADO' },
+                      shipped: { bg: 'bg-purple-950/80 text-purple-400 border-purple-800/60', label: 'ENVIADO' },
                       cancelled: { bg: 'bg-red-950/80 text-red-400 border-red-800/60', label: 'CANCELADO' }
                     }[effectiveStatus] || { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' };
 
@@ -3562,7 +3589,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             >
                               <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
                               <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
-                              <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Despachado</option>
+                              <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Enviado</option>
                               <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
                               <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                             </select>
@@ -3761,7 +3788,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
                                                   Boolean(order.driverId && order.driverId.trim() !== '') ||
                                                   Boolean(order.deliveryStep);
-                                const effectiveStatus = (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+                                const isDeliveredOrCancelled = order.status === 'delivered' || order.status === 'cancelled';
+                                const isPickedUpAtStore = !isDeliveredOrCancelled && (
+                                  order.status === 'shipped' ||
+                                  order.status === 'delivering' ||
+                                  order.status === 'picked_up' ||
+                                  order.deliveryStep === 'picked_up' ||
+                                  order.deliveryStep === 'to_client' ||
+                                  order.deliveryStep === 'at_destination'
+                                );
+                                const effectiveStatus = isDeliveredOrCancelled
+                                  ? order.status
+                                  : isPickedUpAtStore
+                                  ? 'shipped'
+                                  : (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
                                   ? 'processing'
                                   : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
 
@@ -4585,7 +4625,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     const hasDriver = Boolean(viewingOrder.deliveryDriverId && viewingOrder.deliveryDriverId.trim() !== '') ||
                                       Boolean(viewingOrder.driverId && viewingOrder.driverId.trim() !== '') ||
                                       Boolean(viewingOrder.deliveryStep);
-                    const effectiveStatus = (hasDriver && (viewingOrder.status === 'pending' || viewingOrder.status === 'confirmed'))
+                    const isDeliveredOrCancelled = viewingOrder.status === 'delivered' || viewingOrder.status === 'cancelled';
+                    const isPickedUpAtStore = !isDeliveredOrCancelled && (
+                      viewingOrder.status === 'shipped' ||
+                      viewingOrder.status === 'delivering' ||
+                      viewingOrder.status === 'picked_up' ||
+                      viewingOrder.deliveryStep === 'picked_up' ||
+                      viewingOrder.deliveryStep === 'to_client' ||
+                      viewingOrder.deliveryStep === 'at_destination'
+                    );
+                    const effectiveStatus = isDeliveredOrCancelled
+                      ? viewingOrder.status
+                      : isPickedUpAtStore
+                      ? 'shipped'
+                      : (hasDriver && (viewingOrder.status === 'pending' || viewingOrder.status === 'confirmed'))
                       ? 'processing'
                       : (viewingOrder.status === 'confirmed' ? 'processing' : viewingOrder.status || 'pending');
 
@@ -4598,7 +4651,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         <option value="pending">🟡 Pendiente</option>
                         <option value="processing">🔵 Procesando</option>
                         {!checkIsTableOrder(viewingOrder) && (
-                          <option value="shipped">🟣 Enviado / Despachado</option>
+                          <option value="shipped">🟣 Enviado</option>
                         )}
                         <option value="delivered">🟢 Entregado</option>
                         <option value="cancelled">🔴 Cancelado</option>
