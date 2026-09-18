@@ -268,9 +268,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(20);
   const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Real-time Pending Orders Count - strictly pending/new orders only
+  // Real-time Pending Orders Count - strictly pending/new orders without an assigned driver
   const pendingOrdersCount = useMemo(() => {
-    return allOrders.filter(o => o.status === 'pending').length;
+    return allOrders.filter(o => {
+      const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
+                        Boolean(o.driverId && o.driverId.trim() !== '') ||
+                        Boolean(o.deliveryStep);
+      return o.status === 'pending' && !hasDriver;
+    }).length;
   }, [allOrders]);
 
   // Push Notification & Sound Alert States (FCM Powered)
@@ -1556,8 +1561,16 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         return false;
       }
       // 2. Status Filter
-      if (selectedOrderStatusFilter !== 'all' && order.status !== selectedOrderStatusFilter) {
-        return false;
+      if (selectedOrderStatusFilter !== 'all') {
+        const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
+                          Boolean(order.driverId && order.driverId.trim() !== '') ||
+                          Boolean(order.deliveryStep);
+        const effStatus = (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+          ? 'processing'
+          : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
+        if (effStatus !== selectedOrderStatusFilter) {
+          return false;
+        }
       }
       // 3. Search text (name, phone, email, notes, order number, driver info, or store name/username)
       if (orderSearchQuery.trim()) {
@@ -3310,7 +3323,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Pendientes</span>
                 <span className="text-xl font-black text-amber-400">
-                  {allOrders.filter(o => o.status === 'pending').length}
+                  {pendingOrdersCount}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
@@ -3372,7 +3385,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   >
                     <option value="all" className="bg-gray-950">Todos</option>
                     <option value="pending" className="bg-gray-950 text-amber-400 font-bold">🟡 Pendiente</option>
-                    <option value="processing" className="bg-gray-950 text-sky-400 font-bold">🔵 En Proceso</option>
+                    <option value="processing" className="bg-gray-950 text-sky-400 font-bold">🔵 Procesando</option>
                     <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">🟣 Enviado</option>
                     <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">🟢 Entregado</option>
                     <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">🔴 Cancelado</option>
@@ -3403,19 +3416,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     const isTable = checkIsTableOrder(order);
                     const isPickup = checkIsPickupOrder(order);
 
+                    const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
+                                      Boolean(order.driverId && order.driverId.trim() !== '') ||
+                                      Boolean(order.deliveryStep);
+                    const effectiveStatus = (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+                      ? 'processing'
+                      : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
+
                     const statusBadge = {
                       delivered: { bg: 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60', label: 'ENTREGADO' },
                       pending: { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' },
-                      processing: { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', label: 'EN PROCESO' },
+                      processing: { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', label: 'PROCESANDO' },
+                      confirmed: { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', label: 'PROCESANDO' },
                       shipped: { bg: 'bg-purple-950/80 text-purple-400 border-purple-800/60', label: 'DESPACHADO' },
                       cancelled: { bg: 'bg-red-950/80 text-red-400 border-red-800/60', label: 'CANCELADO' }
-                    }[order.status] || { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' };
+                    }[effectiveStatus] || { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' };
 
                     const statusTextColor = 
-                      order.status === 'delivered' ? 'text-emerald-400' :
-                      order.status === 'processing' ? 'text-sky-400' :
-                      order.status === 'shipped' ? 'text-purple-400' :
-                      order.status === 'cancelled' ? 'text-red-400' :
+                      effectiveStatus === 'delivered' ? 'text-emerald-400' :
+                      effectiveStatus === 'processing' ? 'text-sky-400' :
+                      effectiveStatus === 'shipped' ? 'text-purple-400' :
+                      effectiveStatus === 'cancelled' ? 'text-red-400' :
                       'text-amber-400';
 
                     return (
@@ -3525,22 +3546,22 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           </span>
                           {isTable ? (
                             <select
-                              value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status || 'pending'}
+                              value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus === 'cancelled' ? 'pending' : effectiveStatus}
                               onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
                               className={`bg-transparent text-xs font-extrabold outline-none cursor-pointer text-right ${statusTextColor}`}
                             >
                               <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
-                              <option value="processing" className="bg-gray-950 text-sky-400 font-bold">En Proceso</option>
+                              <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
                               <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
                             </select>
                           ) : (
                             <select
-                              value={order.status || 'pending'}
+                              value={effectiveStatus}
                               onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
                               className={`bg-transparent text-xs font-extrabold outline-none cursor-pointer text-right ${statusTextColor}`}
                             >
                               <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
-                              <option value="processing" className="bg-gray-950 text-sky-400 font-bold">En Proceso</option>
+                              <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
                               <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Despachado</option>
                               <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
                               <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
@@ -3736,39 +3757,48 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               </span>
                             </td>
                             <td className="py-3.5 px-3 align-top text-center">
-                              {checkIsTableOrder(order) ? (
-                                <select
-                                  value={order.status === 'shipped' ? 'processing' : order.status === 'cancelled' ? 'pending' : order.status}
-                                  onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                  className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2 cursor-pointer outline-none w-full max-w-[120px]"
-                                >
-                                  <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
-                                  <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
-                                  <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
-                                </select>
-                              ) : (
-                                <select
-                                  value={order.status || 'pending'}
-                                  onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                  className={`rounded-lg py-1 px-2 text-[10px] uppercase font-black border cursor-pointer outline-none w-full max-w-[120px] ${
-                                    order.status === 'delivered'
-                                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                      : order.status === 'processing'
-                                      ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-                                      : order.status === 'shipped'
-                                      ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                      : order.status === 'cancelled'
-                                      ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                  }`}
-                                >
-                                  <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
-                                  <option value="processing" className="bg-gray-950 text-white">🔵 En Proceso</option>
-                                  <option value="shipped" className="bg-gray-950 text-white">🟣 Enviado</option>
-                                  <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
-                                  <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
-                                </select>
-                              )}
+                              {(() => {
+                                const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
+                                                  Boolean(order.driverId && order.driverId.trim() !== '') ||
+                                                  Boolean(order.deliveryStep);
+                                const effectiveStatus = (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+                                  ? 'processing'
+                                  : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
+
+                                return checkIsTableOrder(order) ? (
+                                  <select
+                                    value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus === 'cancelled' ? 'pending' : effectiveStatus}
+                                    onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                                    className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2 cursor-pointer outline-none w-full max-w-[120px]"
+                                  >
+                                    <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
+                                    <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
+                                    <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                  </select>
+                                ) : (
+                                  <select
+                                    value={effectiveStatus}
+                                    onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                                    className={`rounded-lg py-1 px-2 text-[10px] uppercase font-black border cursor-pointer outline-none w-full max-w-[120px] ${
+                                      effectiveStatus === 'delivered'
+                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                        : effectiveStatus === 'processing'
+                                        ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                                        : effectiveStatus === 'shipped'
+                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                        : effectiveStatus === 'cancelled'
+                                        ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    }`}
+                                  >
+                                    <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
+                                    <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
+                                    <option value="shipped" className="bg-gray-950 text-white">🟣 Enviado</option>
+                                    <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                    <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
+                                  </select>
+                                );
+                              })()}
                             </td>
                             <td className="py-3.5 px-3 align-top text-right sticky right-0 bg-[#090b14] group-hover:bg-[#0f1424] z-10 border-l border-gray-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.35)] transition-colors">
                               <div className="flex items-center justify-end gap-1.5">
@@ -4551,19 +4581,30 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <span className="text-[10.5px] font-black uppercase text-gray-400 tracking-wider">
                     Actualizar Estado:
                   </span>
-                  <select
-                    value={checkIsTableOrder(viewingOrder) && viewingOrder.status === 'shipped' ? 'processing' : viewingOrder.status || 'pending'}
-                    onChange={(e) => handleUpdateOrderStatus(viewingOrder.id, viewingOrder.storeOwnerId, e.target.value as any)}
-                    className="bg-gray-950 border border-gray-700 text-white rounded-lg py-1.5 px-3 text-xs font-bold outline-none cursor-pointer"
-                  >
-                    <option value="pending">🟡 Pendiente</option>
-                    <option value="processing">🔵 En Proceso</option>
-                    {!checkIsTableOrder(viewingOrder) && (
-                      <option value="shipped">🟣 Enviado / Despachado</option>
-                    )}
-                    <option value="delivered">🟢 Entregado</option>
-                    <option value="cancelled">🔴 Cancelado</option>
-                  </select>
+                  {(() => {
+                    const hasDriver = Boolean(viewingOrder.deliveryDriverId && viewingOrder.deliveryDriverId.trim() !== '') ||
+                                      Boolean(viewingOrder.driverId && viewingOrder.driverId.trim() !== '') ||
+                                      Boolean(viewingOrder.deliveryStep);
+                    const effectiveStatus = (hasDriver && (viewingOrder.status === 'pending' || viewingOrder.status === 'confirmed'))
+                      ? 'processing'
+                      : (viewingOrder.status === 'confirmed' ? 'processing' : viewingOrder.status || 'pending');
+
+                    return (
+                      <select
+                        value={checkIsTableOrder(viewingOrder) && effectiveStatus === 'shipped' ? 'processing' : effectiveStatus}
+                        onChange={(e) => handleUpdateOrderStatus(viewingOrder.id, viewingOrder.storeOwnerId, e.target.value as any)}
+                        className="bg-gray-950 border border-gray-700 text-white rounded-lg py-1.5 px-3 text-xs font-bold outline-none cursor-pointer"
+                      >
+                        <option value="pending">🟡 Pendiente</option>
+                        <option value="processing">🔵 Procesando</option>
+                        {!checkIsTableOrder(viewingOrder) && (
+                          <option value="shipped">🟣 Enviado / Despachado</option>
+                        )}
+                        <option value="delivered">🟢 Entregado</option>
+                        <option value="cancelled">🔴 Cancelado</option>
+                      </select>
+                    );
+                  })()}
                 </div>
               </div>
 

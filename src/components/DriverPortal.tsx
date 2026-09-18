@@ -639,7 +639,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           deliveryDriverName: driver.name,
           deliveryDriverPhone: driver.phone,
           deliveryType: 'ryyco_driver',
-          status: 'confirmed',
+          status: 'processing',
           deliveryStep: 'accepted'
         });
         setSelectedIncomingOrder(null);
@@ -668,6 +668,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         nextStep === 'delivered' ? 'delivered' : 
         (nextStep === 'to_client' || nextStep === 'at_destination') ? 'delivering' : 
         nextStep === 'picked_up' ? 'preparing' : 
+        (nextStep === 'accepted' || nextStep === 'to_store' || nextStep === 'at_store') ? 'processing' :
         activeDelivery.status;
 
       const updated = {

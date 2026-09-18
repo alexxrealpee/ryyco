@@ -2539,6 +2539,35 @@ export async function fetchAllSubscriptionPayments(): Promise<SubscriptionPaymen
   return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
+/**
+ * Normalizes order status when an order is taken/accepted by a delivery driver.
+ * When a driver takes/accepts an order, its status automatically changes from 'pending' (or 'confirmed') to 'processing'.
+ */
+export function normalizeOrderDriverStatus(order: OrderItem, autoPersist: boolean = false): OrderItem {
+  if (!order) return order;
+  const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
+                    Boolean(order.driverId && order.driverId.trim() !== '') ||
+                    Boolean(order.deliveryStep);
+
+  if (hasDriver && (order.status === 'pending' || order.status === 'confirmed')) {
+    const updatedOrder: OrderItem = {
+      ...order,
+      status: 'processing',
+      deliveryStep: order.deliveryStep || 'accepted',
+      deliveryStepUpdatedAt: order.deliveryStepUpdatedAt || new Date().toISOString()
+    };
+    if (autoPersist && order.id) {
+      updateDoc(doc(db, 'orders', order.id), {
+        status: 'processing',
+        deliveryStep: updatedOrder.deliveryStep,
+        deliveryStepUpdatedAt: updatedOrder.deliveryStepUpdatedAt
+      }).catch((e) => console.warn("Could not auto-heal order status in Firestore:", e));
+    }
+    return updatedOrder;
+  }
+  return order;
+}
+
 // Fetch all orders from all stores (Admins only)
 export async function fetchAllOrders(): Promise<OrderItem[]> {
   let deletedIds: string[] = [];
@@ -2551,7 +2580,9 @@ export async function fetchAllOrders(): Promise<OrderItem[]> {
     const snapshot = await getDocs(collection(db, 'orders'));
     snapshot.forEach(document => {
       if (!deletedIds.includes(document.id)) {
-        result.push({ id: document.id, ...document.data() } as OrderItem);
+        const rawOrder = { id: document.id, ...document.data() } as OrderItem;
+        const normalized = normalizeOrderDriverStatus(rawOrder, true);
+        result.push(normalized);
       }
     });
     // Sort in-memory to prevent missing composite index errors
@@ -2567,7 +2598,7 @@ export async function fetchAllOrders(): Promise<OrderItem[]> {
       const list = JSON.parse(cachedAll) as OrderItem[];
       list.forEach(item => {
         if (!deletedIds.includes(item.id) && !result.some(r => r.id === item.id)) {
-          result.push(item);
+          result.push(normalizeOrderDriverStatus(item, false));
         }
       });
     }
@@ -2640,7 +2671,8 @@ export function subscribeToAllOrders(
 
     snapshot.forEach(docSnap => {
       if (!deletedIds.includes(docSnap.id)) {
-        const order = { id: docSnap.id, ...docSnap.data() } as OrderItem;
+        const rawOrder = { id: docSnap.id, ...docSnap.data() } as OrderItem;
+        const order = normalizeOrderDriverStatus(rawOrder, true);
         result.push(order);
         if (!isInitial && !knownIds.has(docSnap.id)) {
           newIncoming.push(order);
@@ -4171,7 +4203,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         };
       }
 
-      if (orderData.status !== 'pending') {
+      if (orderData.status !== 'pending' && orderData.status !== 'confirmed') {
         return {
           success: false,
           message: "El pedido ya no se encuentra esperando asignación."
@@ -4181,9 +4213,9 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
       const now = new Date().toISOString();
       const effectiveFee = systemFee || 7000;
       const historyItem: OrderStatusHistoryItem = {
-        status: 'confirmed',
+        status: 'processing',
         timestamp: now,
-        note: `Pedido aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName}`,
+        note: `Pedido aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName} (en procesamiento)`,
         updatedBy: 'driver'
       };
 
@@ -4199,7 +4231,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         deliveryVehiclePlate: driver.vehiclePlate || '',
         deliveryStep: 'accepted' as const,
         deliveryStepUpdatedAt: now,
-        status: 'confirmed',
+        status: 'processing',
         statusHistory: [
           ...(orderData.statusHistory || [
             { status: 'pending', timestamp: orderData.createdAt || now, note: 'Esperando confirmación', updatedBy: 'customer' }
@@ -4290,10 +4322,17 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
     throw new Error("Un pedido cancelado no puede ser modificado.");
   }
 
-  let nextStatus: OrderStatus = currentOrder?.status || 'confirmed';
+  let nextStatus: OrderStatus = currentOrder?.status || 'processing';
   let historyNote = '';
 
-  if (step === 'picked_up') {
+  if (step === 'accepted' || step === 'to_store' || step === 'at_store') {
+    nextStatus = 'processing';
+    historyNote = step === 'accepted' 
+      ? 'Pedido aceptado por domiciliario (en procesamiento)' 
+      : step === 'to_store' 
+      ? 'Domiciliario en camino a la tienda' 
+      : 'Domiciliario esperando en la tienda';
+  } else if (step === 'picked_up') {
     nextStatus = 'preparing';
     historyNote = 'En cocina: pedido en preparación y recogido en tienda';
   } else if (step === 'to_client' || step === 'at_destination') {
@@ -4302,10 +4341,6 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
   } else if (step === 'delivered') {
     nextStatus = 'delivered';
     historyNote = '¡Pedido entregado exitosamente!';
-  } else if (step === 'to_store') {
-    historyNote = 'Domiciliario en camino a la tienda';
-  } else if (step === 'at_store') {
-    historyNote = 'Domiciliario esperando en la tienda';
   }
 
   const historyItem: OrderStatusHistoryItem = {
