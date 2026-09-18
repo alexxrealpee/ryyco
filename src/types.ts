@@ -435,6 +435,21 @@ export interface ClickAnalytic {
 
 export type PrizeCategory = 'dish' | 'drink' | 'dessert' | 'discount' | 'points' | 'combo' | 'appetizer' | 'main';
 
+export interface RyycoMovement {
+  id: string;
+  customerId: string; // Celular del cliente
+  type: 'earned_purchase' | 'welcome_bonus' | 'spin_prize' | 'redeemed_reward' | 'transfer_sent' | 'transfer_received' | 'gift';
+  amount: number; // Positivo (ingreso) o negativo (egreso)
+  balanceAfter: number; // Saldo de RYYCOS después del movimiento
+  description: string;
+  referenceId?: string; // ID de orden, código de canje o ID de transferencia
+  targetPhone?: string; // Celular del destinatario si es transferencia enviada
+  targetName?: string; // Nombre del destinatario si es transferencia enviada
+  senderPhone?: string; // Celular del remitente si es transferencia recibida
+  senderName?: string; // Nombre del remitente si es transferencia recibida
+  createdAt: string;
+}
+
 export interface CustomerPrize {
   id: string;
   title: string;
@@ -458,7 +473,9 @@ export interface CustomerProfile {
   authUid?: string;
   address?: string;
   notes?: string;
-  points: number; // Puntos de fidelidad Ryyco
+  points: number; // Saldo de RYYCOS (Moneda interna del ecosistema RYYCO)
+  ryycos?: number; // Alias conveniente para RYYCOS
+  movements?: RyycoMovement[]; // Historial de movimientos de RYYCOS
   totalOrdersCount: number;
   totalSpent: number;
   spinsAvailable: number; // Tiros o giros disponibles en la ruleta de platos gratis

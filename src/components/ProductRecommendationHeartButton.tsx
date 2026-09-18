@@ -484,7 +484,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                   </div>
                   <div className="flex items-center gap-2 text-xs font-medium text-stone-300">
                     <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>¡Gana 1.000 Puntos ($1.000 COP) y giros en la ruleta al registrarte!</span>
+                    <span>¡Gana 1.000 RYYCOS ($1.000 COP) y giros en la ruleta al registrarte!</span>
                   </div>
                 </div>
 

@@ -157,8 +157,14 @@ service cloud.firestore {
       allow read, create, update, delete: if true;
     }
 
-    // Customers collection rules (Customers look up their points, account & roulette spins by phone)
+    // Customers collection rules (Customers look up their RYYCOS, account & roulette spins by phone)
     match /customers/{customerId} {
+      allow read, create, update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // RYYCOS transaction audit logs
+    match /ryyco_transactions/{transactionId} {
       allow read, create, update: if true;
       allow delete: if isAdmin();
     }

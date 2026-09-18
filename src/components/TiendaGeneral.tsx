@@ -1126,13 +1126,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
-                    {/* Item 2: Mis Puntos & Ruleta */}
+                    {/* Item 2: Mis RYYCOS & Ruleta */}
                     <button
                       id="drawer-my-points-btn"
                       type="button"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
-                        setCustomerPortalTab('wheel');
+                        setCustomerPortalTab('rewards');
                         setIsCustomerPortalOpen(true);
                       }}
                       className="w-full text-left p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/20 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
@@ -1143,14 +1143,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-extrabold text-amber-300 text-xs block">
-                            Mis Puntos
+                            Mis RYYCOS
                           </span>
                           <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md">
-                            Premios
+                            Billetera
                           </span>
                         </div>
                         <p className="text-[10px] text-gray-300 font-medium leading-tight">
-                          Billetera $ COP y ruleta de platos gratis
+                          Billetera $ COP, transferencias y canjes
                         </p>
                       </div>
                     </button>
@@ -1327,15 +1327,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <span>Mis Pedidos</span>
             </button>
 
-            {/* Mis Puntos Button (Desktop & Tablet) */}
+            {/* Mis RYYCOS Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-points-btn"
-              onClick={() => { setCustomerPortalTab('wheel'); setIsCustomerPortalOpen(true); }}
+              onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
               className="hidden sm:flex px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-              title="Mis Puntos acumulados, Ruleta de Platos Gratis y Recompensas"
+              title="Mis RYYCOS acumulados, Billetera y Transferencias"
             >
               <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span>Mis Puntos</span>
+              <span>Mis RYYCOS</span>
             </button>
 
             {/* Dynamic Cart Button in Navbar */}
@@ -1996,13 +1996,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           <div />
                         )}
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <ProductShareButton
-                            product={product}
-                            storeUsername={profile?.username || ''}
-                            storeName={profile?.storeName || profile?.displayName || ''}
-                            currency={currency}
-                            variant="card-overlay"
-                          />
                           <ProductRecommendationHeartButton
                             productId={product.id}
                             productName={product.name}
@@ -2016,6 +2009,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             }}
                             variant="card-overlay"
                             className="shrink-0"
+                          />
+                          <ProductShareButton
+                            product={product}
+                            storeUsername={profile?.username || ''}
+                            storeName={profile?.storeName || profile?.displayName || ''}
+                            currency={currency}
+                            variant="card-overlay"
                           />
                         </div>
                       </div>

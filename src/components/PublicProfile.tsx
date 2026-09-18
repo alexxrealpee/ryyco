@@ -1839,13 +1839,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           <div className="w-full aspect-square bg-gradient-to-b from-[#111625] to-[#1a233a] rounded-none mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5">
                             {/* Product Heart & Share Buttons */}
                             <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
-                              <ProductShareButton
-                                product={p}
-                                storeUsername={profile?.username || ''}
-                                storeName={profile?.displayName || profile?.storeName || ''}
-                                currency={getStoreCurrency()}
-                                variant="card-overlay"
-                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -1854,6 +1847,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                 activeCustomer={activeCustomer}
                                 onCustomerUpdate={setActiveCustomer}
                                 onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
                                 variant="card-overlay"
                               />
                             </div>
@@ -1932,13 +1932,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           <div className="w-full aspect-square bg-black/40 rounded-2xl mb-4 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-2">
                             {/* Product Heart & Share Buttons */}
                             <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
-                              <ProductShareButton
-                                product={p}
-                                storeUsername={profile?.username || ''}
-                                storeName={profile?.displayName || profile?.storeName || ''}
-                                currency={getStoreCurrency()}
-                                variant="card-overlay"
-                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -1947,6 +1940,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                 activeCustomer={activeCustomer}
                                 onCustomerUpdate={setActiveCustomer}
                                 onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
                                 variant="card-overlay"
                               />
                             </div>
@@ -2051,13 +2051,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                 🍽️ {p.category || 'MENÚ'}
                               </span>
                               <div className="flex items-center gap-1.5 shrink-0">
-                                <ProductShareButton
-                                  product={p}
-                                  storeUsername={profile?.username || ''}
-                                  storeName={profile?.displayName || profile?.storeName || ''}
-                                  currency={getStoreCurrency()}
-                                  variant="card-overlay"
-                                />
                                 <ProductRecommendationHeartButton
                                   productId={p.id}
                                   productName={p.name}
@@ -2068,6 +2061,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                   onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
                                   variant="card-overlay"
                                   className="shrink-0"
+                                />
+                                <ProductShareButton
+                                  product={p}
+                                  storeUsername={profile?.username || ''}
+                                  storeName={profile?.displayName || profile?.storeName || ''}
+                                  currency={getStoreCurrency()}
+                                  variant="card-overlay"
                                 />
                               </div>
                             </div>
@@ -2135,13 +2135,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           <div className="w-full aspect-square bg-black/40 rounded-xl mb-3.5 overflow-hidden flex items-center justify-center text-3xl font-bold relative border border-white/5 p-1.5">
                             {/* Product Heart & Share Buttons */}
                             <div className="absolute top-2 right-2 z-20 flex items-center gap-1.5">
-                              <ProductShareButton
-                                product={p}
-                                storeUsername={profile?.username || ''}
-                                storeName={profile?.displayName || profile?.storeName || ''}
-                                currency={getStoreCurrency()}
-                                variant="card-overlay"
-                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -2150,6 +2143,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                 activeCustomer={activeCustomer}
                                 onCustomerUpdate={setActiveCustomer}
                                 onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
+                                variant="card-overlay"
+                              />
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
                                 variant="card-overlay"
                               />
                             </div>
@@ -2248,13 +2248,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                               {p.category || 'General'}
                             </span>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <ProductShareButton
-                                product={p}
-                                storeUsername={profile?.username || ''}
-                                storeName={profile?.displayName || profile?.storeName || ''}
-                                currency={getStoreCurrency()}
-                                variant="card-overlay"
-                              />
                               <ProductRecommendationHeartButton
                                 productId={p.id}
                                 productName={p.name}
@@ -2265,6 +2258,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                                 onOpenCustomerPortal={() => setIsCustomerPortalOpen(true)}
                                 variant="card-overlay"
                                 className="shrink-0"
+                              />
+                              <ProductShareButton
+                                product={p}
+                                storeUsername={profile?.username || ''}
+                                storeName={profile?.displayName || profile?.storeName || ''}
+                                currency={getStoreCurrency()}
+                                variant="card-overlay"
                               />
                             </div>
                           </div>
@@ -3506,12 +3506,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-xs">
                   <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
-                  <span>¡Ganaste +500 Puntos ($500 COP)!</span>
+                  <span>¡Ganaste +500 RYYCOS ($500 COP)!</span>
                 </div>
                 <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">+1 Giro Gratis</span>
               </div>
               <p className="text-[10px] text-gray-300 font-semibold leading-relaxed">
-                Por tu compra sumaste <strong>500 Puntos ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
+                Por tu compra sumaste <strong>500 RYYCOS ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
               </p>
               <button
                 type="button"
@@ -3523,7 +3523,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
               >
                 <Sparkles className="w-3.5 h-3.5 text-black" />
-                ¡Girar Ruleta y Ver Mis Puntos Ahora!
+                ¡Girar Ruleta y Ver Mis RYYCOS Ahora!
               </button>
             </div>
 

@@ -43,7 +43,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, OrderStatus, OrderStatusHistoryItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, OrderStatus, OrderStatusHistoryItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData, RyycoMovement } from '../types';
 import { safeSetItem } from './safeStorage';
 import { extractCoordinates } from './coordinateUtils';
 import { generateRyycoImageName } from './seoImageRenamer';
@@ -5278,6 +5278,21 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   const existing = await fetchCustomerProfileByPhone(phone);
   const now = new Date().toISOString();
 
+  const defaultWelcomeMovement: RyycoMovement = {
+    id: 'mov_welcome_' + phone,
+    customerId: phone,
+    type: 'welcome_bonus',
+    amount: 1000,
+    balanceAfter: 1000,
+    description: 'Bono de bienvenida: 1.000 RYYCOS de regalo para comida',
+    createdAt: existing?.createdAt || now
+  };
+
+  const currentPoints = cust.points !== undefined ? cust.points : (existing?.points || 1000);
+  const movements = cust.movements !== undefined 
+    ? cust.movements 
+    : (existing?.movements && existing.movements.length > 0 ? existing.movements : [defaultWelcomeMovement]);
+
   const customerData: CustomerProfile = {
     id: phone,
     phone,
@@ -5288,7 +5303,9 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     authUid: cust.authUid ?? existing?.authUid ?? '',
     address: cust.address ?? existing?.address ?? '',
     notes: cust.notes ?? existing?.notes ?? '',
-    points: cust.points !== undefined ? cust.points : (existing?.points || 1000), // 1.000 bonus welcome points ($1.000 COP)!
+    points: currentPoints, // Saldo de RYYCOS (1.000 bonus welcome RYYCOS = $1.000 COP)
+    ryycos: currentPoints,
+    movements,
     totalOrdersCount: cust.totalOrdersCount !== undefined ? cust.totalOrdersCount : (existing?.totalOrdersCount || 0),
     totalSpent: cust.totalSpent !== undefined ? cust.totalSpent : (existing?.totalSpent || 0),
     spinsAvailable: cust.spinsAvailable !== undefined ? cust.spinsAvailable : (existing?.spinsAvailable !== undefined ? existing.spinsAvailable : 1), // 1 free welcome spin!
@@ -5314,14 +5331,14 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
 }
 
 /**
- * Award points and free dish wheel spin when an order is completed/placed
+ * Award RYYCOS and free dish wheel spin when an order is completed/placed
  */
 export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ earnedPoints: number; spinsAwarded: number; newTotalPoints: number } | null> {
   if (!order.customerPhone) return null;
   const phone = sanitizeCustomerPhone(order.customerPhone);
   if (!phone || phone.length < 7) return null;
 
-  // Rule: Por cada compra que realice un cliente se gana 500 puntos ($500 COP) que se van acumulando para comprar en la tienda
+  // Regla: Por cada compra que realice un cliente se gana 500 RYYCOS ($500 COP) que se van acumulando para comprar en la tienda
   const earnedPoints = 500;
   const spinsAwarded = 1; // 1 spin per order for the Free Dish Wheel!
 
@@ -5337,7 +5354,7 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
       phone,
       name: order.customerName || 'Cliente Ryyco',
       address: isInvalidAddr(order.customerAddress) ? '' : (order.customerAddress || ''),
-      points: 1000, // Welcome bonus (1.000 Pts = $1.000 COP)
+      points: 1000, // Welcome bonus (1.000 RYYCOS = $1.000 COP)
       spinsAvailable: 1
     });
   }
@@ -5351,9 +5368,22 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
     ? order.customerAddress
     : (!isInvalidAddr(existing.address) ? existing.address : '');
 
+  const purchaseMovement: RyycoMovement = {
+    id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+    customerId: phone,
+    type: 'earned_purchase',
+    amount: earnedPoints,
+    balanceAfter: updatedPoints,
+    description: `Ganaste ${earnedPoints.toLocaleString('es-CO')} RYYCOS por compra #${order.orderNumber || ''}`,
+    referenceId: order.orderNumber !== undefined ? String(order.orderNumber) : undefined,
+    createdAt: new Date().toISOString()
+  };
+
   const updatedCust: CustomerProfile = {
     ...existing,
     points: updatedPoints,
+    ryycos: updatedPoints,
+    movements: [purchaseMovement, ...(existing.movements || [])],
     spinsAvailable: updatedSpins,
     totalOrdersCount: updatedOrders,
     totalSpent: updatedSpent,
@@ -5569,16 +5599,29 @@ export async function addCustomerWonPrize(
 
   const wonPrizes = [newPrize, ...(customer.wonPrizes || [])];
 
-  // If prize is points, also credit them directly
+  // If prize is points, also credit them directly as RYYCOS
   let newPoints = customer.points || 0;
+  let movements = [...(customer.movements || [])];
   if (prizeData.category === 'points' && prizeData.discountAmount) {
     newPoints += prizeData.discountAmount;
+    movements.unshift({
+      id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+      customerId: phone,
+      type: 'spin_prize',
+      amount: prizeData.discountAmount,
+      balanceAfter: newPoints,
+      description: `Premio Ruleta: Ganaste ${prizeData.discountAmount.toLocaleString('es-CO')} RYYCOS`,
+      referenceId: code,
+      createdAt: new Date().toISOString()
+    });
   }
 
   await saveCustomerProfile({
     ...customer,
     spinsAvailable: newSpins,
     points: newPoints,
+    ryycos: newPoints,
+    movements,
     wonPrizes
   });
 
@@ -5625,7 +5668,7 @@ export async function redeemCustomerPrize(rawPhone: string, prizeId: string): Pr
 }
 
 /**
- * Exchange accumulated points for a food reward
+ * Exchange accumulated RYYCOS for a food reward
  */
 export async function exchangePointsForReward(rawPhone: string, reward: RedeemableFoodReward): Promise<CustomerPrize> {
   const phone = sanitizeCustomerPhone(rawPhone);
@@ -5635,7 +5678,7 @@ export async function exchangePointsForReward(rawPhone: string, reward: Redeemab
   if (!customer) throw new Error("Cliente no encontrado");
 
   if ((customer.points || 0) < reward.pointsCost) {
-    throw new Error(`Puntos insuficientes. Tienes ${customer.points || 0} pts y necesitas ${reward.pointsCost} pts.`);
+    throw new Error(`RYYCOS insuficientes. Tienes ${(customer.points || 0).toLocaleString('es-CO')} RYYCOS y necesitas ${reward.pointsCost.toLocaleString('es-CO')} RYYCOS.`);
   }
 
   const remainingPoints = customer.points - reward.pointsCost;
@@ -5654,13 +5697,205 @@ export async function exchangePointsForReward(rawPhone: string, reward: Redeemab
 
   const wonPrizes = [newPrize, ...(customer.wonPrizes || [])];
 
+  const redeemMovement: RyycoMovement = {
+    id: 'mov_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+    customerId: phone,
+    type: 'redeemed_reward',
+    amount: -reward.pointsCost,
+    balanceAfter: remainingPoints,
+    description: `Canjeaste ${reward.pointsCost.toLocaleString('es-CO')} RYYCOS por ${reward.title}`,
+    referenceId: code,
+    createdAt: new Date().toISOString()
+  };
+
   await saveCustomerProfile({
     ...customer,
     points: remainingPoints,
+    ryycos: remainingPoints,
+    movements: [redeemMovement, ...(customer.movements || [])],
     wonPrizes
   });
 
   return newPrize;
+}
+
+/**
+ * Search customer profile exclusively by phone number for RYYCOS transfer (Nequi-style)
+ */
+export async function searchCustomerByPhone(
+  rawPhone: string,
+  currentCustomerPhone?: string
+): Promise<{ success: boolean; customer?: { name: string; phone: string }; error?: string }> {
+  const sanitized = sanitizeCustomerPhone(rawPhone);
+  if (!sanitized || sanitized.length < 7) {
+    return { success: false, error: "Ingresa un número de celular válido de al menos 7 a 10 dígitos." };
+  }
+
+  const currentSanitized = currentCustomerPhone ? sanitizeCustomerPhone(currentCustomerPhone) : '';
+  if (currentSanitized && (sanitized === currentSanitized || sanitized.endsWith(currentSanitized) || currentSanitized.endsWith(sanitized))) {
+    return { success: false, error: "No puedes transferirte RYYCOS a ti mismo." };
+  }
+
+  // Look up in Firestore & cache
+  let found = await fetchCustomerProfileByPhone(sanitized);
+  if (!found && !sanitized.startsWith('57') && sanitized.length === 10) {
+    found = await fetchCustomerProfileByPhone(`57${sanitized}`);
+  }
+  if (!found) {
+    try {
+      const q = query(collection(db, 'customers'), where('phone', '==', sanitized), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        found = snap.docs[0].data() as CustomerProfile;
+      }
+    } catch (e) {}
+  }
+
+  if (!found) {
+    return {
+      success: false,
+      error: `No encontramos ningún cliente registrado con el celular ${sanitized} en RYYCO.`
+    };
+  }
+
+  return {
+    success: true,
+    customer: {
+      name: found.name,
+      phone: found.phone
+    }
+  };
+}
+
+export interface RyycoTransferReceipt {
+  referenceId: string;
+  senderPhone: string;
+  senderName: string;
+  recipientPhone: string;
+  recipientName: string;
+  amount: number;
+  senderBalanceAfter: number;
+  createdAt: string;
+}
+
+/**
+ * Transfer RYYCOS exclusively using recipient's phone number (Nequi-style)
+ */
+export async function transferRyycosByPhone(
+  senderRawPhone: string,
+  recipientRawPhone: string,
+  amount: number
+): Promise<RyycoTransferReceipt> {
+  const senderPhone = sanitizeCustomerPhone(senderRawPhone);
+  const recipientPhone = sanitizeCustomerPhone(recipientRawPhone);
+
+  if (!senderPhone || senderPhone.length < 7) {
+    throw new Error("Número de remitente inválido.");
+  }
+  if (!recipientPhone || recipientPhone.length < 7) {
+    throw new Error("Ingresa un número de celular de destino válido.");
+  }
+  if (senderPhone === recipientPhone || senderPhone.endsWith(recipientPhone) || recipientPhone.endsWith(senderPhone)) {
+    throw new Error("No puedes enviarte RYYCOS a tu propio número.");
+  }
+  if (!amount || isNaN(amount) || amount <= 0) {
+    throw new Error("Ingresa una cantidad válida de RYYCOS a transferir.");
+  }
+
+  const roundedAmount = Math.floor(amount);
+
+  // Fetch sender
+  const sender = await fetchCustomerProfileByPhone(senderPhone);
+  if (!sender) {
+    throw new Error("Perfil de cliente remitente no encontrado.");
+  }
+
+  const senderBalance = sender.points || 0;
+  if (senderBalance < roundedAmount) {
+    throw new Error(`Saldo insuficiente de RYYCOS. Tienes ${senderBalance.toLocaleString('es-CO')} RYYCOS disponibles y deseas transferir ${roundedAmount.toLocaleString('es-CO')} RYYCOS.`);
+  }
+
+  // Fetch recipient
+  let recipient = await fetchCustomerProfileByPhone(recipientPhone);
+  if (!recipient && !recipientPhone.startsWith('57') && recipientPhone.length === 10) {
+    recipient = await fetchCustomerProfileByPhone(`57${recipientPhone}`);
+  }
+  if (!recipient) {
+    throw new Error(`No encontramos ningún cliente registrado con el celular ${recipientPhone} en RYYCO.`);
+  }
+
+  const now = new Date().toISOString();
+  const txRef = 'TRF-' + Date.now().toString().slice(-6) + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+
+  const senderBalanceAfter = senderBalance - roundedAmount;
+  const recipientBalanceAfter = (recipient.points || 0) + roundedAmount;
+
+  const senderMovement: RyycoMovement = {
+    id: 'mov_tx_' + txRef + '_out',
+    customerId: sender.phone,
+    type: 'transfer_sent',
+    amount: -roundedAmount,
+    balanceAfter: senderBalanceAfter,
+    description: `Envío de RYYCOS a ${recipient.name} (${recipient.phone})`,
+    referenceId: txRef,
+    targetPhone: recipient.phone,
+    targetName: recipient.name,
+    createdAt: now
+  };
+
+  const recipientMovement: RyycoMovement = {
+    id: 'mov_tx_' + txRef + '_in',
+    customerId: recipient.phone,
+    type: 'transfer_received',
+    amount: roundedAmount,
+    balanceAfter: recipientBalanceAfter,
+    description: `Recibiste RYYCOS de ${sender.name} (${sender.phone})`,
+    referenceId: txRef,
+    senderPhone: sender.phone,
+    senderName: sender.name,
+    createdAt: now
+  };
+
+  const updatedSender: CustomerProfile = {
+    ...sender,
+    points: senderBalanceAfter,
+    ryycos: senderBalanceAfter,
+    movements: [senderMovement, ...(sender.movements || [])],
+    updatedAt: now
+  };
+
+  const updatedRecipient: CustomerProfile = {
+    ...recipient,
+    points: recipientBalanceAfter,
+    ryycos: recipientBalanceAfter,
+    movements: [recipientMovement, ...(recipient.movements || [])],
+    updatedAt: now
+  };
+
+  await Promise.all([
+    saveCustomerProfile(updatedSender),
+    saveCustomerProfile(updatedRecipient),
+    setDoc(doc(db, 'ryyco_transactions', txRef), {
+      referenceId: txRef,
+      senderPhone: sender.phone,
+      senderName: sender.name,
+      recipientPhone: recipient.phone,
+      recipientName: recipient.name,
+      amount: roundedAmount,
+      createdAt: now
+    }).catch(err => console.warn("Notice: ryyco_transactions log warning:", err))
+  ]);
+
+  return {
+    referenceId: txRef,
+    senderPhone: sender.phone,
+    senderName: sender.name,
+    recipientPhone: recipient.phone,
+    recipientName: recipient.name,
+    amount: roundedAmount,
+    senderBalanceAfter,
+    createdAt: now
+  };
 }
 
 /**

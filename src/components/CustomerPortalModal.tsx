@@ -12,7 +12,7 @@ import {
   MessageCircle, ShieldCheck, Ticket, LogOut, ArrowRight,
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
   Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale,
-  Navigation
+  Navigation, Send, ArrowUpRight, ArrowDownLeft, History, Share2, Wallet, CheckCheck, Coins
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -20,7 +20,7 @@ import { isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
-  CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory 
+  CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory, RyycoMovement 
 } from '../types';
 import { 
   fetchCustomerProfileByPhone, 
@@ -34,6 +34,9 @@ import {
   exchangePointsForReward, 
   REDEEMABLE_FOOD_REWARDS,
   sanitizeCustomerPhone,
+  searchCustomerByPhone,
+  transferRyycosByPhone,
+  RyycoTransferReceipt,
   auth,
   googleProvider
 } from '../lib/firebase';
@@ -132,6 +135,18 @@ export default function CustomerPortalModal({
   // Reward redeeming action
   const [redeemingRewardId, setRedeemingRewardId] = useState<string | null>(null);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
+
+  // RYYCOS Wallet Sub-Tab: 'catalog' | 'transfer' | 'history'
+  const [ryycosView, setRyycosView] = useState<'catalog' | 'transfer' | 'history'>('catalog');
+
+  // Transfer form state (Nequi-style: Phone identifier only)
+  const [transferPhone, setTransferPhone] = useState('');
+  const [transferAmount, setTransferAmount] = useState<string>('');
+  const [isSearchingRecipient, setIsSearchingRecipient] = useState(false);
+  const [recipientResult, setRecipientResult] = useState<{ found: boolean; name?: string; phone?: string; error?: string } | null>(null);
+  const [showTransferConfirmModal, setShowTransferConfirmModal] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+  const [transferReceipt, setTransferReceipt] = useState<RyycoTransferReceipt | null>(null);
 
   // Google Onboarding / Complete Data Modal state
   const [showGoogleCompleteModal, setShowGoogleCompleteModal] = useState(false);
@@ -351,7 +366,7 @@ export default function CustomerPortalModal({
       localStorage.setItem('ryyco_auth_mode', 'customer');
       setShowGoogleCompleteModal(false);
       loadCustomerOrders(cleanPhone);
-      setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 1.000 Puntos ($1.000 COP) y 1 Giro gratis 🎁`);
+      setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 1.000 RYYCOS ($1.000 COP) y 1 Giro gratis 🎁`);
       setTimeout(() => setActionSuccessMsg(null), 5000);
     } catch (err: any) {
       setAuthError(err.message || "Error al guardar tus datos de entrega.");
@@ -404,7 +419,7 @@ export default function CustomerPortalModal({
       } else {
         // Automatically switch to registration with a message
         setIsRegisterMode(true);
-        setAuthError("El número no está registrado. Completa tu registro para ganar 1.000 puntos ($1.000 COP) y 1 tiro en la ruleta.");
+        setAuthError("El número no está registrado. Completa tu registro para ganar 1.000 RYYCOS ($1.000 COP) y 1 tiro en la ruleta.");
       }
     } catch (err: any) {
       setAuthError(err.message || "Error al buscar tu cuenta");
@@ -443,12 +458,12 @@ export default function CustomerPortalModal({
         address: addressInput.trim(),
         email: emailInput.trim(),
         notes: notesInput.trim(),
-        points: 1000, // Welcome bonus (1.000 Pts = $1.000 COP)!
+        points: 1000, // Welcome bonus (1.000 RYYCOS = $1.000 COP)!
         spinsAvailable: 1
       });
       setCustomer(newCust);
       localStorage.setItem('ryyco_active_customer_phone', cleaned);
-      setActionSuccessMsg("¡Cuenta creada con éxito! Ganaste 1.000 Puntos ($1.000 COP) y 1 Giro Gratis en la Ruleta 🎁");
+      setActionSuccessMsg("¡Cuenta creada con éxito! Ganaste 1.000 RYYCOS ($1.000 COP) y 1 Giro Gratis en la Ruleta 🎁");
       setTimeout(() => setActionSuccessMsg(null), 5000);
       loadCustomerOrders(cleaned);
     } catch (err: any) {
@@ -533,7 +548,7 @@ export default function CustomerPortalModal({
         // Show Try Again modal
         setTryAgainModal({
           title: targetSlice.title,
-          description: "¡Estuviste muy cerca de ganar un plato gratis! Recuerda que con cada compra que realices acumulas nuevos giros y puntos en Ryyco. ¡Sigue intentando!",
+          description: "¡Estuviste muy cerca de ganar un plato gratis! Recuerda que con cada compra que realices acumulas nuevos giros y RYYCOS en RYYCO. ¡Sigue intentando!",
           icon: targetSlice.icon
         });
       } catch (err) {
@@ -544,15 +559,92 @@ export default function CustomerPortalModal({
     }, 4200);
   };
 
-  // Exchange Points for Food Reward
-  const handleExchangeReward = async (reward: RedeemableFoodReward) => {
-    if (!customer) return;
-    if ((customer.points || 0) < reward.pointsCost) {
-      alert(`Te faltan ${reward.pointsCost - customer.points} puntos para canjear este premio.`);
+  // Debounced search for transfer recipient exclusively by phone number
+  useEffect(() => {
+    const raw = transferPhone.trim();
+    const cleaned = sanitizeCustomerPhone(raw);
+    if (!cleaned || cleaned.length < 10) {
+      setRecipientResult(null);
       return;
     }
 
-    const confirm = window.confirm(`¿Deseas canjear ${reward.pointsCost} Puntos por "${reward.title}"?`);
+    let isCurrent = true;
+    const delayTimer = setTimeout(async () => {
+      setIsSearchingRecipient(true);
+      try {
+        const res = await searchCustomerByPhone(cleaned, customer?.phone);
+        if (!isCurrent) return;
+        if (res.success && res.customer) {
+          setRecipientResult({ found: true, name: res.customer.name, phone: res.customer.phone });
+        } else {
+          setRecipientResult({ found: false, error: res.error || 'No se encontró el destinatario' });
+        }
+      } catch (err: any) {
+        if (!isCurrent) return;
+        setRecipientResult({ found: false, error: err.message || 'Error al buscar destinatario' });
+      } finally {
+        if (isCurrent) setIsSearchingRecipient(false);
+      }
+    }, 400);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(delayTimer);
+    };
+  }, [transferPhone, customer?.phone]);
+
+  // Execute RYYCOS Transfer
+  const handleExecuteTransfer = async () => {
+    if (!customer || !recipientResult?.phone) return;
+    const numAmount = parseInt(transferAmount, 10);
+    if (isNaN(numAmount) || numAmount <= 0) {
+      alert("Por favor ingresa una cantidad válida de RYYCOS a transferir.");
+      return;
+    }
+    if (numAmount > (customer.points || 0)) {
+      alert(`Saldo insuficiente. Tienes ${(customer.points || 0).toLocaleString('es-CO')} RYYCOS disponibles.`);
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      const receipt = await transferRyycosByPhone(customer.phone, recipientResult.phone, numAmount);
+      // Refresh current customer profile
+      const fresh = await fetchCustomerProfileByPhone(customer.phone);
+      if (fresh) setCustomer(fresh);
+      setShowTransferConfirmModal(false);
+      setTransferReceipt(receipt);
+      setTransferPhone('');
+      setTransferAmount('');
+      setRecipientResult(null);
+      setActionSuccessMsg(`¡Transferencia exitosa! Enviaste ${numAmount.toLocaleString('es-CO')} RYYCOS a ${receipt.recipientName}.`);
+      setTimeout(() => setActionSuccessMsg(null), 5000);
+    } catch (err: any) {
+      alert(err.message || "Error al realizar la transferencia.");
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const handleShareTransferWhatsApp = (receipt: RyycoTransferReceipt) => {
+    const text = `🚀 *Comprobante de Envío de RYYCOS*\n\n` +
+      `¡Hola ${receipt.recipientName}! Te acabo de enviar *${receipt.amount.toLocaleString('es-CO')} RYYCOS* ($${receipt.amount.toLocaleString('es-CO')} COP) a tu número de celular ${receipt.recipientPhone} para disfrutar comida y compras en la app RYYCO.\n\n` +
+      `📌 *Referencia:* ${receipt.referenceId}\n` +
+      `👤 *Remitente:* ${receipt.senderName}\n` +
+      `📅 *Fecha:* ${new Date(receipt.createdAt).toLocaleString('es-CO')}\n\n` +
+      `¡Revisa tu Billetera de RYYCOS en la app para ver tu saldo acumulado!`;
+    window.open(`https://wa.me/57${receipt.recipientPhone}?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // Exchange RYYCOS for Food Reward
+  const handleExchangeReward = async (reward: RedeemableFoodReward) => {
+    if (!customer) return;
+    if ((customer.points || 0) < reward.pointsCost) {
+      alert(`Te faltan ${reward.pointsCost - customer.points} RYYCOS para canjear este premio.`);
+      return;
+    }
+
+    const confirm = window.confirm(`¿Deseas canjear ${reward.pointsCost.toLocaleString('es-CO')} RYYCOS por "${reward.title}"?`);
     if (!confirm) return;
 
     setRedeemingRewardId(reward.id);
@@ -564,7 +656,7 @@ export default function CustomerPortalModal({
       setActionSuccessMsg(`¡Canje exitoso! Se ha generado tu cupón de ${reward.title}.`);
       setTimeout(() => setActionSuccessMsg(null), 5000);
     } catch (err: any) {
-      alert(err.message || "Error al canjear puntos.");
+      alert(err.message || "Error al canjear RYYCOS.");
     } finally {
       setRedeemingRewardId(null);
     }
@@ -814,7 +906,7 @@ export default function CustomerPortalModal({
                 <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-400/10 text-amber-400 border border-amber-400/20 uppercase tracking-wider">VIP</span>
               </div>
               <p className="text-[11px] text-gray-400 font-medium">
-                {customer ? `Hola, ${customer.name}` : 'Rastreo de pedidos, platos gratis y puntos'}
+                {customer ? `Hola, ${customer.name}` : 'Rastreo de pedidos, platos gratis y RYYCOS'}
               </p>
             </div>
           </div>
@@ -823,7 +915,7 @@ export default function CustomerPortalModal({
             {customer && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-xs font-mono shadow-sm">
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span>{customer.points || 0} Pts</span>
+                <span>{(customer.points || 0).toLocaleString('es-CO')} RYYCOS</span>
               </div>
             )}
             <button
@@ -846,9 +938,9 @@ export default function CustomerPortalModal({
                   <Gift className="w-6 h-6 animate-bounce" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-black text-white mb-1">¡Gana Platos Gratis y Acumula Puntos!</h4>
+                  <h4 className="text-sm font-black text-white mb-1">¡Gana Platos Gratis y Acumula RYYCOS!</h4>
                   <p className="text-xs text-gray-300 leading-relaxed">
-                    Crea tu cuenta de cliente en 30 segundos y recibe <strong className="text-amber-400 font-black">1.000 Puntos de Bienvenida ($1.000 COP)</strong> + <strong className="text-[#E63946] font-black">1 Giro en la Ruleta de Premios</strong>.
+                    Crea tu cuenta de cliente en 30 segundos y recibe <strong className="text-amber-400 font-black">1.000 RYYCOS de Bienvenida ($1.000 COP)</strong> + <strong className="text-[#E63946] font-black">1 Giro en la Ruleta de Premios</strong>.
                   </p>
                 </div>
               </div>
@@ -864,7 +956,7 @@ export default function CustomerPortalModal({
                 </div>
                 <div className="bg-black/40 rounded-xl p-2 border border-white/5">
                   <span className="text-base block">⭐</span>
-                  <span className="text-[10px] font-bold text-gray-300">1 Punto = $1 COP</span>
+                  <span className="text-[10px] font-bold text-gray-300">1 RYYCO = $1 COP</span>
                 </div>
                 <div className="bg-black/40 rounded-xl p-2 border border-white/5">
                   <span className="text-base block">🍔</span>
@@ -898,7 +990,7 @@ export default function CustomerPortalModal({
                   isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Crear Cuenta Nueva (¡+1.000 Pts!)
+                Crear Cuenta Nueva (¡+1.000 RYYCOS!)
               </button>
             </div>
 
@@ -923,7 +1015,7 @@ export default function CustomerPortalModal({
                         {isRegisterMode ? 'Registrarme como Cliente con Google' : 'Ingresar como Cliente con Google'}
                       </div>
                       <div className="text-[10px] text-slate-500 font-semibold">
-                        Acceso a puntos, ruleta de premios y pedidos
+                        Acceso a RYYCOS, ruleta de premios y pedidos
                       </div>
                     </div>
                   </>
@@ -1080,7 +1172,7 @@ export default function CustomerPortalModal({
                         className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                       />
                     </div>
-                    <span className="text-[9.5px] text-gray-500 mt-1 block">Recibe confirmaciones de despacho y respalda tus puntos de comida.</span>
+                    <span className="text-[9.5px] text-gray-500 mt-1 block">Recibe confirmaciones de despacho y respalda tus RYYCOS de comida.</span>
                   </div>
 
                   <div>
@@ -1171,7 +1263,7 @@ export default function CustomerPortalModal({
                 ) : isRegisterMode ? (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Crear Cuenta y Ganar 1.000 Puntos ($1.000 COP) 🎁
+                    Crear Cuenta y Ganar 1.000 RYYCOS ($1.000 COP) 🎁
                   </>
                 ) : (
                   <>
@@ -1245,8 +1337,8 @@ export default function CustomerPortalModal({
                     : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
                 }`}
               >
-                <Gift className="w-4 h-4 shrink-0" />
-                <span className="truncate">Canjear Comida</span>
+                <Coins className="w-4 h-4 shrink-0" />
+                <span className="truncate">Mis ryycos</span>
               </button>
 
               <button
@@ -1590,33 +1682,29 @@ export default function CustomerPortalModal({
                               </div>
                             </div>
 
-                            {/* Actions - driver tracking & store contact */}
-                            {(!isDelivered || order.storePhone) && (
-                              <div className="flex flex-col sm:flex-row gap-2">
-                                {!isDelivered && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setTrackingOrder(order)}
-                                    className="flex-1 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
-                                  >
-                                    <Navigation className="w-3.5 h-3.5 text-white animate-pulse" />
-                                    <span>Seguir mi pedido</span>
-                                  </button>
-                                )}
+                            {/* Actions - driver tracking & Soporte Ryyco */}
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              {!isDelivered && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTrackingOrder(order)}
+                                  className="flex-1 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
+                                >
+                                  <Navigation className="w-3.5 h-3.5 text-white animate-pulse" />
+                                  <span>Seguir mi pedido</span>
+                                </button>
+                              )}
 
-                                {order.storePhone && (
-                                  <a
-                                    href={`https://wa.me/57${order.storePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola, consulto sobre el estado de mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className={`${!isDelivered ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
-                                  >
-                                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                                    Chat con la Tienda
-                                  </a>
-                                )}
-                              </div>
-                            )}
+                              <a
+                                href={`https://wa.me/573106502043?text=${encodeURIComponent(`Hola Soporte Ryyco, necesito ayuda con mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`${!isDelivered ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                Soporte Ryyco
+                              </a>
+                            </div>
                           </div>
                         );
                       })}
@@ -1805,19 +1893,19 @@ export default function CustomerPortalModal({
                 </div>
               )}
 
-              {/* TAB 3: CANJEAR PUNTOS POR COMIDA */}
+              {/* TAB 3: BILLETERA Y SISTEMA DE RYYCOS */}
               {activeTab === 'rewards' && (
                 <div className="space-y-5">
-                  {/* VIP POINTS CARD */}
+                  {/* VIP RYYCOS WALLET CARD */}
                   <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 p-5 rounded-2xl text-black shadow-xl shadow-amber-500/10 flex flex-col justify-between relative overflow-hidden">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Billetera de Puntos Ryyco</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Billetera de RYYCOS</span>
                         <h3 className="text-3xl font-black font-mono tracking-tight">
-                          {customer.points || 0} <span className="text-sm font-sans font-bold">Puntos</span>
+                          {(customer.points || 0).toLocaleString('es-CO')} <span className="text-sm font-sans font-bold">RYYCOS</span>
                         </h3>
                         <p className="text-xs font-black text-black/80 mt-0.5">
-                          = ${(customer.points || 0).toLocaleString('es-CO')} COP disponibles para comida
+                          = ${(customer.points || 0).toLocaleString('es-CO')} COP disponibles para comida y compras
                         </p>
                       </div>
                       <div className="p-2 bg-black/10 rounded-xl">
@@ -1827,74 +1915,383 @@ export default function CustomerPortalModal({
 
                     <div className="mt-3 bg-black/15 rounded-xl p-2.5 flex flex-col gap-1 text-[11px] font-bold">
                       <div className="flex items-center justify-between">
-                        <span>⭐ Ganas 500 Pts ($500 COP) por cada compra</span>
-                        <span>1 Punto = $1 COP</span>
+                        <span>⭐ Ganas 500 RYYCOS ($500 COP) por cada compra</span>
+                        <span>1 RYYCO = $1 COP</span>
                       </div>
-                      <span className="text-[10px] text-black/70 font-semibold">Tus puntos se van acumulando automáticamente para pagar compras y comida en la tienda.</span>
+                      <span className="text-[10px] text-black/70 font-semibold">Tus RYYCOS se acumulan automáticamente, los puedes transferir a otros clientes o canjear por comida.</span>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-black/10 flex justify-between items-center text-xs font-bold">
-                      <span>Titular: {customer.name}</span>
-                      <span className="text-[10px] font-mono uppercase bg-black/20 px-2 py-0.5 rounded-full text-black">
+                    <div className="mt-3 pt-3 border-t border-black/15 flex justify-between items-center text-xs font-bold text-black/90">
+                      <span className="truncate">Titular: {customer.name} (📱 {customer.phone})</span>
+                      <span className="text-[10px] font-mono uppercase bg-black/20 px-2.5 py-0.5 rounded-full text-black font-extrabold shrink-0 ml-2">
                         {customer.points >= 25000 ? '👑 Cliente Diamante' : customer.points >= 10000 ? '⭐ Cliente Oro' : '🌱 Cliente Bronce'}
                       </span>
                     </div>
                   </div>
 
-                  <div>
-                    <h4 className="text-sm font-black text-white mb-1">Catálogo de Comida para Redimir</h4>
-                    <p className="text-xs text-gray-400">Canjea tus puntos acumulados por bebidas, postres y platos completos sin pagar nada (1 Punto = $1 COP).</p>
+                  {/* Action Navigation Tabs below Wallet Card */}
+                  <div className="grid grid-cols-3 gap-2 p-1.5 bg-[#090D16] border border-[#232E42] rounded-2xl shadow-sm">
+                    <button
+                      id="wallet-tab-catalog-btn"
+                      type="button"
+                      onClick={() => setRyycosView('catalog')}
+                      className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
+                        ryycosView === 'catalog'
+                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-md shadow-amber-500/20'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Gift className="w-4 h-4 shrink-0" />
+                      <span>Canjear</span>
+                    </button>
+
+                    <button
+                      id="wallet-tab-transfer-btn"
+                      type="button"
+                      onClick={() => setRyycosView('transfer')}
+                      className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
+                        ryycosView === 'transfer'
+                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-md shadow-amber-500/20'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <Send className="w-4 h-4 shrink-0" />
+                      <span>Transferir</span>
+                    </button>
+
+                    <button
+                      id="wallet-tab-history-btn"
+                      type="button"
+                      onClick={() => setRyycosView('history')}
+                      className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
+                        ryycosView === 'history'
+                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-md shadow-amber-500/20'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      <History className="w-4 h-4 shrink-0" />
+                      <span>Historial</span>
+                    </button>
                   </div>
 
-                  {/* REWARDS GRID */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {REDEEMABLE_FOOD_REWARDS.map((reward) => {
-                      const canAfford = (customer.points || 0) >= reward.pointsCost;
+                  {/* SUB-VIEW 1: CANJEAR COMIDA POR RYYCOS */}
+                  {ryycosView === 'catalog' && (
+                    <div className="space-y-4 animate-fade-in">
+                      <div>
+                        <h4 className="text-sm font-black text-white mb-1">Catálogo de Comida para Redimir</h4>
+                        <p className="text-xs text-gray-400">Canjea tus RYYCOS acumulados por bebidas, postres y platos completos sin pagar nada (1 RYYCO = $1 COP).</p>
+                      </div>
 
-                      return (
-                        <div
-                          key={reward.id}
-                          className={`bg-[#090D16] border rounded-2xl p-4 flex flex-col justify-between gap-3 transition ${
-                            canAfford 
-                              ? 'border-amber-400/40 hover:border-amber-400 shadow-md' 
-                              : 'border-[#232E42] opacity-75'
-                          }`}
-                        >
-                          <div className="space-y-1.5">
-                            <div className="flex justify-between items-start gap-2">
-                              <h5 className="text-xs font-black text-white">{reward.title}</h5>
-                              <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-black bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0">
-                                {reward.pointsCost} pts
-                              </span>
+                      {/* REWARDS GRID */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {REDEEMABLE_FOOD_REWARDS.map((reward) => {
+                          const canAfford = (customer.points || 0) >= reward.pointsCost;
+
+                          return (
+                            <div
+                              key={reward.id}
+                              className={`bg-[#090D16] border rounded-2xl p-4 flex flex-col justify-between gap-3 transition ${
+                                canAfford 
+                                  ? 'border-amber-400/40 hover:border-amber-400 shadow-md' 
+                                  : 'border-[#232E42] opacity-75'
+                              }`}
+                            >
+                              <div className="space-y-1.5">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h5 className="text-xs font-black text-white">{reward.title}</h5>
+                                  <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-black bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0">
+                                    {reward.pointsCost.toLocaleString('es-CO')} RYYCOS
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-gray-400 leading-relaxed">{reward.description}</p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleExchangeReward(reward)}
+                                disabled={!canAfford || redeemingRewardId === reward.id}
+                                className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                  canAfford
+                                    ? 'bg-[#E63946] hover:bg-[#D62839] text-white shadow-md shadow-[#E63946]/20'
+                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                                }`}
+                              >
+                                {redeemingRewardId === reward.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                ) : canAfford ? (
+                                  <>
+                                    <Gift className="w-3.5 h-3.5" />
+                                    Canjear Ahora
+                                  </>
+                                ) : (
+                                  `Faltan ${(reward.pointsCost - (customer.points || 0)).toLocaleString('es-CO')} RYYCOS`
+                                )}
+                              </button>
                             </div>
-                            <p className="text-[11px] text-gray-400 leading-relaxed">{reward.description}</p>
-                          </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
+                  {/* SUB-VIEW 2: TRANSFERIR RYYCOS */}
+                  {ryycosView === 'transfer' && (
+                    <div className="space-y-4 animate-fade-in bg-[#090D16] border border-[#232E42] rounded-2xl p-4 sm:p-5">
+                      <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                            <Send className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-black text-white">Transferir RYYCOS</h4>
+                            <p className="text-[11px] text-gray-400">Envía RYYCOS a otro cliente al instante</p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                          Sin Comisiones
+                        </span>
+                      </div>
+
+                      {/* Explicit Requirement Notice */}
+                      <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-start gap-2.5 text-[11px] text-blue-300">
+                        <ShieldCheck className="w-4 h-4 shrink-0 text-blue-400 mt-0.5" />
+                        <div className="leading-snug">
+                          <strong>Identificador Único Oficial:</strong> El cliente puede enviar RYYCOS exclusivamente utilizando el <strong>número de celular</strong> registrado en RYYCO. No se admiten transferencias por correo, usuario ni enlaces.
+                        </div>
+                      </div>
+
+                      {/* Recipient Phone Field */}
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-black uppercase text-gray-400 flex items-center justify-between">
+                          <span>Número de Celular del Destinatario</span>
+                          <span className="text-gray-500 text-[10px] lowercase">solo números colombianos</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+                            <Phone className="w-4 h-4 text-amber-400" />
+                          </div>
+                          <input
+                            type="tel"
+                            value={transferPhone}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                              setTransferPhone(val);
+                            }}
+                            placeholder="Ej: 3106502043"
+                            maxLength={10}
+                            className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-amber-400 rounded-xl pl-9 pr-10 font-mono text-sm font-bold text-white placeholder:text-gray-600 outline-none transition"
+                          />
+                          {isSearchingRecipient && (
+                            <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                              <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Recipient Verification Feedback */}
+                        {recipientResult && (
+                          <div className="mt-2">
+                            {recipientResult.found ? (
+                              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between animate-fade-in">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                                    <Check className="w-4 h-4 stroke-[3]" />
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-400 block">Destinatario Verificado</span>
+                                    <h5 className="text-xs font-black text-white">{recipientResult.name}</h5>
+                                  </div>
+                                </div>
+                                <span className="font-mono text-xs font-bold text-emerald-300">
+                                  📱 {recipientResult.phone}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-semibold flex items-center gap-2 animate-fade-in">
+                                <AlertCircle className="w-4 h-4 shrink-0" />
+                                <span>{recipientResult.error}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Amount Field */}
+                      <div className="space-y-1.5 pt-1">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-black uppercase text-gray-400">
+                            Cantidad de RYYCOS a Transferir
+                          </label>
+                          <span className="text-[11px] font-mono text-amber-400 font-bold">
+                            Disponible: {(customer.points || 0).toLocaleString('es-CO')} RYYCOS
+                          </span>
+                        </div>
+
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none font-bold text-xs text-amber-400">
+                            RYYCOS
+                          </div>
+                          <input
+                            type="number"
+                            min="1"
+                            max={customer.points || 0}
+                            value={transferAmount}
+                            onChange={(e) => setTransferAmount(e.target.value)}
+                            placeholder="0"
+                            className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-amber-400 rounded-xl pl-20 pr-3 font-mono text-sm font-black text-white placeholder:text-gray-600 outline-none transition"
+                          />
+                        </div>
+
+                        {/* Quick Amount Suggestion Chips */}
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {[1000, 2000, 5000, 10000].map((amt) => (
+                            <button
+                              key={amt}
+                              type="button"
+                              onClick={() => setTransferAmount(amt.toString())}
+                              className="px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[11px] font-mono font-bold transition cursor-pointer"
+                            >
+                              +{amt.toLocaleString('es-CO')}
+                            </button>
+                          ))}
                           <button
                             type="button"
-                            onClick={() => handleExchangeReward(reward)}
-                            disabled={!canAfford || redeemingRewardId === reward.id}
-                            className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                              canAfford
-                                ? 'bg-[#E63946] hover:bg-[#D62839] text-white shadow-md shadow-[#E63946]/20'
-                                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                            }`}
+                            onClick={() => setTransferAmount((customer.points || 0).toString())}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-mono font-bold transition cursor-pointer border border-amber-500/30"
                           >
-                            {redeemingRewardId === reward.id ? (
-                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                            ) : canAfford ? (
-                              <>
-                                <Gift className="w-3.5 h-3.5" />
-                                Canjear Ahora
-                              </>
-                            ) : (
-                              `Faltan ${reward.pointsCost - (customer.points || 0)} pts`
-                            )}
+                            Todo mi saldo
                           </button>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+
+                      {/* Transfer Summary Preview */}
+                      {parseInt(transferAmount, 10) > 0 && (
+                        <div className="p-3 bg-black/40 border border-gray-800 rounded-xl space-y-1.5 text-xs">
+                          <div className="flex justify-between text-gray-400">
+                            <span>Valor en dinero real:</span>
+                            <span className="font-mono font-bold text-white">${(parseInt(transferAmount, 10) || 0).toLocaleString('es-CO')} COP</span>
+                          </div>
+                          <div className="flex justify-between text-gray-400">
+                            <span>Tu saldo después del envío:</span>
+                            <span className={`font-mono font-bold ${
+                              (customer.points || 0) - (parseInt(transferAmount, 10) || 0) < 0 ? 'text-red-400' : 'text-emerald-400'
+                            }`}>
+                              {Math.max(0, (customer.points || 0) - (parseInt(transferAmount, 10) || 0)).toLocaleString('es-CO')} RYYCOS
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Submit Action */}
+                      <button
+                        type="button"
+                        disabled={
+                          !recipientResult?.found || 
+                          !transferAmount || 
+                          parseInt(transferAmount, 10) <= 0 || 
+                          parseInt(transferAmount, 10) > (customer.points || 0)
+                        }
+                        onClick={() => setShowTransferConfirmModal(true)}
+                        className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>Revisar y Enviar RYYCOS</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* SUB-VIEW 3: HISTORIAL DE MOVIMIENTOS */}
+                  {ryycosView === 'history' && (
+                    <div className="space-y-3 animate-fade-in">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-black text-white">Historial de RYYCOS</h4>
+                          <p className="text-xs text-gray-400">Tus ingresos, consumos y transferencias</p>
+                        </div>
+                        <span className="text-[10px] font-mono text-gray-400 font-bold bg-gray-900 border border-gray-800 px-2 py-0.5 rounded-full">
+                          {customer.movements?.length || 0} movimientos
+                        </span>
+                      </div>
+
+                      {customer.movements && customer.movements.length > 0 ? (
+                        <div className="space-y-2">
+                          {[...customer.movements].reverse().map((mov) => {
+                            const isPositive = mov.amount > 0;
+                            return (
+                              <div
+                                key={mov.id}
+                                className="bg-[#090D16] border border-[#232E42] rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 hover:border-gray-700 transition"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                    mov.type === 'transfer_received'
+                                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                                      : mov.type === 'transfer_sent'
+                                      ? 'bg-orange-500/15 text-orange-400 border border-orange-500/20'
+                                      : mov.type === 'earned_purchase'
+                                      ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                                      : mov.type === 'spin_prize'
+                                      ? 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/20'
+                                      : mov.type === 'welcome_bonus'
+                                      ? 'bg-purple-500/15 text-purple-400 border border-purple-500/20'
+                                      : 'bg-red-500/15 text-red-400 border border-red-500/20'
+                                  }`}>
+                                    {mov.type === 'transfer_received' ? (
+                                      <ArrowDownLeft className="w-4 h-4" />
+                                    ) : mov.type === 'transfer_sent' ? (
+                                      <ArrowUpRight className="w-4 h-4" />
+                                    ) : mov.type === 'earned_purchase' ? (
+                                      <ShoppingBag className="w-4 h-4" />
+                                    ) : mov.type === 'spin_prize' ? (
+                                      <Crown className="w-4 h-4" />
+                                    ) : mov.type === 'welcome_bonus' ? (
+                                      <Gift className="w-4 h-4" />
+                                    ) : (
+                                      <UtensilsCrossed className="w-4 h-4" />
+                                    )}
+                                  </div>
+
+                                  <div>
+                                    <h5 className="text-xs font-black text-white leading-snug">
+                                      {mov.title}
+                                    </h5>
+                                    <p className="text-[11px] text-gray-400 leading-tight mt-0.5">
+                                      {mov.description}
+                                    </p>
+                                    <span className="text-[9.5px] text-gray-500 font-mono mt-1 block">
+                                      {new Date(mov.createdAt).toLocaleString('es-CO', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="text-right shrink-0">
+                                  <span className={`font-mono text-xs font-black block ${
+                                    isPositive ? 'text-emerald-400' : 'text-red-400'
+                                  }`}>
+                                    {isPositive ? `+${mov.amount.toLocaleString('es-CO')}` : mov.amount.toLocaleString('es-CO')} RYYCOS
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 font-mono block mt-0.5">
+                                    Saldo: {mov.balanceAfter.toLocaleString('es-CO')}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-8 text-center bg-[#090D16] border border-[#232E42] rounded-2xl space-y-2 text-gray-400">
+                          <Wallet className="w-8 h-8 mx-auto text-gray-600" />
+                          <p className="text-xs font-semibold">Aún no tienes movimientos registrados.</p>
+                          <p className="text-[11px] text-gray-500">Realiza compras en la tienda para acumular RYYCOS o transfiérelos a tus amigos.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -2075,7 +2472,7 @@ export default function CustomerPortalModal({
                 </div>
                 <h3 className="text-lg font-black text-white leading-tight">Completa tus datos de entrega</h3>
                 <p className="text-[11.5px] text-gray-400 mt-0.5">
-                  Ingresa tu WhatsApp y dirección para rastrear tus pedidos y activar tus <strong className="text-amber-400 font-black">1.000 Puntos de Bienvenida ($1.000 COP)</strong>.
+                  Ingresa tu WhatsApp y dirección para rastrear tus pedidos y activar tus <strong className="text-amber-400 font-black">1.000 RYYCOS de Bienvenida ($1.000 COP)</strong>.
                 </p>
               </div>
             </div>
@@ -2347,6 +2744,159 @@ export default function CustomerPortalModal({
         onClose={() => setTrackingOrder(null)}
         order={trackingOrder}
       />
+
+      {/* MODAL DE CONFIRMACIÓN DE TRANSFERENCIA DE RYYCOS */}
+      {showTransferConfirmModal && recipientResult?.found && (
+        <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
+          <div className="bg-[#0e1322] border border-amber-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 mx-auto flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/20">
+              <Send className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-black tracking-widest text-amber-400">Verifica los Datos</span>
+              <h3 className="text-xl font-black text-white">¿Confirmas la Transferencia?</h3>
+            </div>
+
+            {/* Transfer breakdown card */}
+            <div className="bg-black/50 border border-gray-800 rounded-2xl p-4 text-left space-y-3">
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
+                <span className="text-xs text-gray-400">Destinatario</span>
+                <span className="text-xs font-black text-white">{recipientResult.name}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
+                <span className="text-xs text-gray-400">Celular Destino</span>
+                <span className="text-xs font-mono font-bold text-amber-400">📱 {recipientResult.phone}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2.5">
+                <span className="text-xs text-gray-400">RYYCOS a Enviar</span>
+                <div className="text-right">
+                  <span className="text-sm font-mono font-black text-emerald-400 block">
+                    {(parseInt(transferAmount, 10) || 0).toLocaleString('es-CO')} RYYCOS
+                  </span>
+                  <span className="text-[10px] text-gray-500 font-mono">
+                    = ${(parseInt(transferAmount, 10) || 0).toLocaleString('es-CO')} COP
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-xs text-gray-400">Tu Saldo Posterior</span>
+                <span className="text-xs font-mono font-bold text-gray-300">
+                  {Math.max(0, (customer?.points || 0) - (parseInt(transferAmount, 10) || 0)).toLocaleString('es-CO')} RYYCOS
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-amber-300/80 bg-amber-500/10 p-2.5 rounded-xl border border-amber-500/20 text-left leading-relaxed">
+              ⚠️ <strong>Importante:</strong> Esta transacción es inmediata e irreversible. Los RYYCOS quedarán disponibles al instante para el destinatario.
+            </p>
+
+            <div className="pt-2 flex items-center gap-3">
+              <button
+                type="button"
+                disabled={isTransferring}
+                onClick={() => setShowTransferConfirmModal(false)}
+                className="flex-1 py-3 px-4 rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 text-xs font-bold text-gray-400 hover:text-white transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isTransferring}
+                onClick={handleExecuteTransfer}
+                className="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-[0.99]"
+              >
+                {isTransferring ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Confirmar y Enviar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIGITAL RECEIPT / COMPROBANTE DE TRANSFERENCIA RYYCOS */}
+      {transferReceipt && (
+        <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
+          <div className="bg-[#0e1322] border border-emerald-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
+            {/* Success Icon */}
+            <div className="w-16 h-16 rounded-full bg-emerald-500/15 border-2 border-emerald-500/40 mx-auto flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20">
+              <Check className="w-8 h-8 stroke-[3]" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] uppercase font-black tracking-widest text-emerald-400">Comprobante Oficial</span>
+              <h3 className="text-xl font-black text-white">¡Transferencia Exitosa!</h3>
+            </div>
+
+            {/* Big Amount Badge */}
+            <div className="py-3 px-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
+              <span className="text-2xl font-black font-mono text-emerald-400 block">
+                {transferReceipt.amount.toLocaleString('es-CO')} RYYCOS
+              </span>
+              <span className="text-xs text-gray-400 font-mono">
+                = ${transferReceipt.amount.toLocaleString('es-CO')} COP transferidos
+              </span>
+            </div>
+
+            {/* Receipt details */}
+            <div className="bg-black/50 border border-gray-800 rounded-2xl p-4 text-left space-y-2.5 text-xs">
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-400">Referencia</span>
+                <span className="font-mono font-bold text-white text-[11px]">{transferReceipt.referenceId}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-400">Destinatario</span>
+                <span className="font-bold text-white">{transferReceipt.recipientName}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-400">Celular Destino</span>
+                <span className="font-mono font-bold text-amber-400">📱 {transferReceipt.recipientPhone}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-gray-800/80 pb-2">
+                <span className="text-gray-400">Fecha y Hora</span>
+                <span className="font-mono text-gray-300 text-[11px]">
+                  {new Date(transferReceipt.createdAt).toLocaleString('es-CO')}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="text-gray-400">Tu Nuevo Saldo</span>
+                <span className="font-mono font-black text-emerald-400">
+                  {transferReceipt.senderBalanceAfter.toLocaleString('es-CO')} RYYCOS
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={() => handleShareTransferWhatsApp(transferReceipt)}
+                className="w-full py-3 bg-[#25D366] hover:bg-[#20bd5a] text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-[#25D366]/20 flex items-center justify-center gap-2"
+              >
+                <Phone className="w-4 h-4" />
+                <span>Compartir por WhatsApp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTransferReceipt(null);
+                  setRyycosView('history');
+                }}
+                className="w-full py-2.5 rounded-xl border border-gray-800 bg-gray-900 hover:bg-gray-800 text-xs font-bold text-gray-400 hover:text-white transition cursor-pointer"
+              >
+                Ver en Mi Historial
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -317,7 +317,11 @@
     },
     "/customers/{customerId}": {
       "schema": "CustomerProfile",
-      "description": "Customer shopper profiles, points and reward vouchers"
+      "description": "Customer shopper profiles, RYYCOS balance, movements and reward vouchers"
+    },
+    "/ryyco_transactions/{transactionId}": {
+      "schema": "RyycoTransaction",
+      "description": "RYYCOS transfer audit records between customers"
     },
     "/recommendations/{recId}": {
       "schema": "StoreRecommendation",
