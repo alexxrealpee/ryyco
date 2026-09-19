@@ -5270,9 +5270,14 @@ export function listenToCustomerProfile(
       localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(fullCust));
     } catch (e) {}
 
-    // Dispatch global custom event for instant same-window component synchronization
+    // Dispatch global custom event only if this is the active customer in this session
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: fullCust }));
+      try {
+        const activePhone = localStorage.getItem('ryyco_active_customer_phone');
+        if (!activePhone || sanitizeCustomerPhone(activePhone) === phone) {
+          window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: fullCust }));
+        }
+      } catch (e) {}
     }
 
     onUpdate(fullCust);
@@ -5374,7 +5379,12 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     createdAt: existing?.createdAt || now
   };
 
-  const currentPoints = cust.points !== undefined ? cust.points : (existing?.points || 1000);
+  const existingPoints = existing?.points !== undefined 
+    ? Number(existing.points) 
+    : (existing?.ryycos !== undefined ? Number(existing.ryycos) : 1000);
+  const currentPoints = cust.points !== undefined 
+    ? Number(cust.points) 
+    : (cust.ryycos !== undefined ? Number(cust.ryycos) : existingPoints);
   const movements = cust.movements !== undefined 
     ? cust.movements 
     : (existing?.movements && existing.movements.length > 0 ? existing.movements : [defaultWelcomeMovement]);
@@ -5414,14 +5424,13 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   try {
     localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(customerData));
     const currentActivePhone = localStorage.getItem('ryyco_active_customer_phone');
-    if (!currentActivePhone || currentActivePhone === phone) {
+    if (!currentActivePhone || sanitizeCustomerPhone(currentActivePhone) === phone) {
       localStorage.setItem('ryyco_active_customer_phone', phone);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: customerData }));
+      }
     }
   } catch (e) {}
-
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: customerData }));
-  }
 
   return customerData;
 }
@@ -5886,7 +5895,7 @@ export async function transferRyycosByPhone(
   const recipientPhone = sanitizeCustomerPhone(recipientRawPhone);
 
   if (!senderPhone || senderPhone.length < 7) {
-    throw new Error("Número de remitente inválido.");
+    throw new Error("Número de celular remitente inválido.");
   }
   if (!recipientPhone || recipientPhone.length < 7) {
     throw new Error("Ingresa un número de celular de destino válido.");
@@ -5894,102 +5903,195 @@ export async function transferRyycosByPhone(
   if (senderPhone === recipientPhone || senderPhone.endsWith(recipientPhone) || recipientPhone.endsWith(senderPhone)) {
     throw new Error("No puedes enviarte RYYCOS a tu propio número.");
   }
-  if (!amount || isNaN(amount) || amount <= 0) {
-    throw new Error("Ingresa una cantidad válida de RYYCOS a transferir.");
+
+  // Exact whole positive integer validation
+  const numAmount = Math.floor(Number(amount));
+  if (isNaN(numAmount) || !Number.isFinite(numAmount) || numAmount <= 0) {
+    throw new Error("Ingresa una cantidad válida y mayor a 0 de RYYCOS a transferir.");
   }
 
-  const roundedAmount = Math.floor(amount);
-
-  // Fetch sender
-  const sender = await fetchCustomerProfileByPhone(senderPhone);
-  if (!sender) {
-    throw new Error("Perfil de cliente remitente no encontrado.");
+  // 1. Locate recipient in Firestore
+  let recipientDocId = recipientPhone;
+  let recipientDocSnap = await getDoc(doc(db, 'customers', recipientPhone));
+  if (!recipientDocSnap.exists() && recipientPhone.length === 10) {
+    const altSnap = await getDoc(doc(db, 'customers', '57' + recipientPhone));
+    if (altSnap.exists()) {
+      recipientDocSnap = altSnap;
+      recipientDocId = '57' + recipientPhone;
+    }
+  }
+  if (!recipientDocSnap.exists()) {
+    try {
+      const q = query(collection(db, 'customers'), where('phone', '==', recipientPhone), limit(1));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        recipientDocSnap = snap.docs[0];
+        recipientDocId = snap.docs[0].id;
+      }
+    } catch (e) {}
   }
 
-  const senderBalance = sender.points || 0;
-  if (senderBalance < roundedAmount) {
-    throw new Error(`Saldo insuficiente de RYYCOS. Tienes ${senderBalance.toLocaleString('es-CO')} RYYCOS disponibles y deseas transferir ${roundedAmount.toLocaleString('es-CO')} RYYCOS.`);
-  }
-
-  // Fetch recipient
-  let recipient = await fetchCustomerProfileByPhone(recipientPhone);
-  if (!recipient && !recipientPhone.startsWith('57') && recipientPhone.length === 10) {
-    recipient = await fetchCustomerProfileByPhone(`57${recipientPhone}`);
-  }
-  if (!recipient) {
+  if (!recipientDocSnap.exists()) {
     throw new Error(`No encontramos ningún cliente registrado con el celular ${recipientPhone} en RYYCO.`);
+  }
+
+  // 2. Locate sender in Firestore
+  let senderDocId = senderPhone;
+  let senderDocSnap = await getDoc(doc(db, 'customers', senderPhone));
+  if (!senderDocSnap.exists() && senderPhone.length === 10) {
+    const altSnap = await getDoc(doc(db, 'customers', '57' + senderPhone));
+    if (altSnap.exists()) {
+      senderDocSnap = altSnap;
+      senderDocId = '57' + senderPhone;
+    }
+  }
+
+  if (!senderDocSnap.exists()) {
+    throw new Error("Perfil de cliente remitente no encontrado. Por favor verifica tu sesión.");
   }
 
   const now = new Date().toISOString();
   const txRef = 'TRF-' + Date.now().toString().slice(-6) + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
 
-  const senderBalanceAfter = senderBalance - roundedAmount;
-  const recipientBalanceAfter = (recipient.points || 0) + roundedAmount;
+  const senderPrimaryRef = doc(db, 'customers', senderPhone);
+  const senderActualRef = doc(db, 'customers', senderDocId);
+  const recipientPrimaryRef = doc(db, 'customers', recipientPhone);
+  const recipientActualRef = doc(db, 'customers', recipientDocId);
+  const txLogRef = doc(db, 'ryyco_transactions', txRef);
 
-  const senderMovement: RyycoMovement = {
-    id: 'mov_tx_' + txRef + '_out',
-    customerId: sender.phone,
-    type: 'transfer_sent',
-    amount: -roundedAmount,
-    balanceAfter: senderBalanceAfter,
-    description: `Envío de RYYCOS a ${recipient.name} (${recipient.phone})`,
-    referenceId: txRef,
-    targetPhone: recipient.phone,
-    targetName: recipient.name,
-    createdAt: now
-  };
+  // 3. Execute atomic Firestore Transaction: guarantees exact math and zero race conditions
+  const txOutcome = await runTransaction(db, async (transaction) => {
+    const [freshSenderDoc, freshRecipientDoc] = await Promise.all([
+      transaction.get(senderActualRef),
+      transaction.get(recipientActualRef)
+    ]);
 
-  const recipientMovement: RyycoMovement = {
-    id: 'mov_tx_' + txRef + '_in',
-    customerId: recipient.phone,
-    type: 'transfer_received',
-    amount: roundedAmount,
-    balanceAfter: recipientBalanceAfter,
-    description: `Recibiste RYYCOS de ${sender.name} (${sender.phone})`,
-    referenceId: txRef,
-    senderPhone: sender.phone,
-    senderName: sender.name,
-    createdAt: now
-  };
+    if (!freshSenderDoc.exists()) {
+      throw new Error("Perfil de cliente remitente no encontrado.");
+    }
+    if (!freshRecipientDoc.exists()) {
+      throw new Error(`No encontramos ningún cliente registrado con el celular ${recipientPhone} en RYYCO.`);
+    }
 
-  const updatedSender: CustomerProfile = {
-    ...sender,
-    points: senderBalanceAfter,
-    ryycos: senderBalanceAfter,
-    movements: [senderMovement, ...(sender.movements || [])],
-    updatedAt: now
-  };
+    const sData = freshSenderDoc.data() as CustomerProfile;
+    const rData = freshRecipientDoc.data() as CustomerProfile;
 
-  const updatedRecipient: CustomerProfile = {
-    ...recipient,
-    points: recipientBalanceAfter,
-    ryycos: recipientBalanceAfter,
-    movements: [recipientMovement, ...(recipient.movements || [])],
-    updatedAt: now
-  };
+    const sBalance = Number(sData.points !== undefined ? sData.points : (sData.ryycos !== undefined ? sData.ryycos : 0));
+    const rBalance = Number(rData.points !== undefined ? rData.points : (rData.ryycos !== undefined ? rData.ryycos : 0));
 
-  await Promise.all([
-    saveCustomerProfile(updatedSender),
-    saveCustomerProfile(updatedRecipient),
-    setDoc(doc(db, 'ryyco_transactions', txRef), {
+    if (sBalance < numAmount) {
+      throw new Error(`Saldo insuficiente de RYYCOS. Tienes ${sBalance.toLocaleString('es-CO')} RYYCOS disponibles y deseas transferir ${numAmount.toLocaleString('es-CO')} RYYCOS.`);
+    }
+
+    // Exact mathematical deduction and addition
+    const senderBalanceAfter = Math.max(0, sBalance - numAmount);
+    const recipientBalanceAfter = rBalance + numAmount;
+
+    const senderMovement: RyycoMovement = {
+      id: 'mov_tx_' + txRef + '_out',
+      customerId: senderPhone,
+      type: 'transfer_sent',
+      amount: -numAmount,
+      balanceAfter: senderBalanceAfter,
+      description: `Envío de RYYCOS a ${rData.name || 'Cliente'} (${recipientPhone})`,
       referenceId: txRef,
-      senderPhone: sender.phone,
-      senderName: sender.name,
-      recipientPhone: recipient.phone,
-      recipientName: recipient.name,
-      amount: roundedAmount,
+      targetPhone: recipientPhone,
+      targetName: rData.name || 'Cliente',
       createdAt: now
-    }).catch(err => console.warn("Notice: ryyco_transactions log warning:", err))
-  ]);
+    };
+
+    const recipientMovement: RyycoMovement = {
+      id: 'mov_tx_' + txRef + '_in',
+      customerId: recipientPhone,
+      type: 'transfer_received',
+      amount: numAmount,
+      balanceAfter: recipientBalanceAfter,
+      description: `Recibiste RYYCOS de ${sData.name || 'Cliente'} (${senderPhone})`,
+      referenceId: txRef,
+      senderPhone: senderPhone,
+      senderName: sData.name || 'Cliente',
+      createdAt: now
+    };
+
+    const sMovements = [senderMovement, ...(Array.isArray(sData.movements) ? sData.movements : [])].slice(0, 50);
+    const rMovements = [recipientMovement, ...(Array.isArray(rData.movements) ? rData.movements : [])].slice(0, 50);
+
+    const updatedSender: CustomerProfile = {
+      ...sData,
+      id: senderPhone,
+      phone: senderPhone,
+      points: senderBalanceAfter,
+      ryycos: senderBalanceAfter,
+      movements: sMovements,
+      updatedAt: now
+    };
+
+    const updatedRecipient: CustomerProfile = {
+      ...rData,
+      id: recipientPhone,
+      phone: recipientPhone,
+      points: recipientBalanceAfter,
+      ryycos: recipientBalanceAfter,
+      movements: rMovements,
+      updatedAt: now
+    };
+
+    // Atomic updates to Firestore
+    transaction.set(senderPrimaryRef, cleanUndefined(updatedSender), { merge: true });
+    if (senderDocId !== senderPhone) {
+      transaction.set(senderActualRef, cleanUndefined(updatedSender), { merge: true });
+    }
+
+    transaction.set(recipientPrimaryRef, cleanUndefined(updatedRecipient), { merge: true });
+    if (recipientDocId !== recipientPhone) {
+      transaction.set(recipientActualRef, cleanUndefined(updatedRecipient), { merge: true });
+    }
+
+    // Complete audit log
+    transaction.set(txLogRef, {
+      referenceId: txRef,
+      senderPhone,
+      senderName: sData.name || 'Cliente',
+      recipientPhone,
+      recipientName: rData.name || 'Cliente',
+      amount: numAmount,
+      senderBalanceBefore: sBalance,
+      senderBalanceAfter,
+      recipientBalanceBefore: rBalance,
+      recipientBalanceAfter,
+      status: 'completed',
+      createdAt: now
+    });
+
+    return {
+      updatedSender,
+      updatedRecipient,
+      senderName: sData.name || 'Cliente',
+      recipientName: rData.name || 'Cliente',
+      senderBalanceAfter
+    };
+  });
+
+  // 4. Update local caches and broadcast updates strictly for the sender (current session)
+  try {
+    localStorage.setItem(`ryyco_customer_${senderPhone}`, JSON.stringify(txOutcome.updatedSender));
+    localStorage.setItem(`ryyco_customer_${recipientPhone}`, JSON.stringify(txOutcome.updatedRecipient));
+    if (typeof window !== 'undefined') {
+      const active = localStorage.getItem('ryyco_active_customer_phone');
+      if (!active || sanitizeCustomerPhone(active) === senderPhone) {
+        window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: txOutcome.updatedSender }));
+      }
+    }
+  } catch (e) {}
 
   return {
     referenceId: txRef,
-    senderPhone: sender.phone,
-    senderName: sender.name,
-    recipientPhone: recipient.phone,
-    recipientName: recipient.name,
-    amount: roundedAmount,
-    senderBalanceAfter,
+    senderPhone,
+    senderName: txOutcome.senderName,
+    recipientPhone,
+    recipientName: txOutcome.recipientName,
+    amount: numAmount,
+    senderBalanceAfter: txOutcome.senderBalanceAfter,
     createdAt: now
   };
 }

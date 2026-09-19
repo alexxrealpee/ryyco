@@ -438,9 +438,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     const handleProfileUpdated = (e: any) => {
       if (e.detail) {
-        setActiveCustomer(e.detail);
-        if (e.detail.phone && (!savedPhone || savedPhone !== e.detail.phone)) {
-          initCustomer(e.detail.phone);
+        const active = localStorage.getItem('ryyco_active_customer_phone');
+        if (!active || cleanColombianPhone(active) === cleanColombianPhone(e.detail.phone)) {
+          setActiveCustomer(e.detail);
         }
       }
     };

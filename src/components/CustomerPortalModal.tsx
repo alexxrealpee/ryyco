@@ -632,27 +632,51 @@ export default function CustomerPortalModal({
     if (!customer || !recipientResult?.phone) return;
     const numAmount = parseInt(transferAmount, 10);
     if (isNaN(numAmount) || numAmount <= 0) {
-      alert("Por favor ingresa una cantidad válida de RYYCOS a transferir.");
+      alert("Por favor ingresa una cantidad válida y mayor a 0 de RYYCOS a transferir.");
       return;
     }
-    if (numAmount > (customer.points || 0)) {
-      alert(`Saldo insuficiente. Tienes ${(customer.points || 0).toLocaleString('es-CO')} RYYCOS disponibles.`);
+    const currentBal = customer.points !== undefined ? customer.points : (customer.ryycos !== undefined ? customer.ryycos : 0);
+    if (numAmount > currentBal) {
+      alert(`Saldo insuficiente. Tienes ${currentBal.toLocaleString('es-CO')} RYYCOS disponibles y deseas transferir ${numAmount.toLocaleString('es-CO')} RYYCOS.`);
       return;
     }
 
     setIsTransferring(true);
     try {
       const receipt = await transferRyycosByPhone(customer.phone, recipientResult.phone, numAmount);
-      // Refresh current customer profile
-      const fresh = await fetchCustomerProfileByPhone(customer.phone);
-      if (fresh) setCustomer(fresh);
+      
+      // Update local state with exact new balance and new outgoing movement
+      const newBalance = receipt.senderBalanceAfter;
+      const newMovement: RyycoMovement = {
+        id: 'mov_tx_' + receipt.referenceId + '_out',
+        customerId: customer.phone,
+        type: 'transfer_sent',
+        amount: -receipt.amount,
+        balanceAfter: newBalance,
+        description: `Envío de RYYCOS a ${receipt.recipientName} (${receipt.recipientPhone})`,
+        referenceId: receipt.referenceId,
+        targetPhone: receipt.recipientPhone,
+        targetName: receipt.recipientName,
+        createdAt: receipt.createdAt
+      };
+
+      const updatedCustomer: CustomerProfile = {
+        ...customer,
+        points: newBalance,
+        ryycos: newBalance,
+        movements: [newMovement, ...(customer.movements || [])]
+      };
+
+      setCustomer(updatedCustomer);
+      onCustomerUpdate?.(updatedCustomer);
+
       setShowTransferConfirmModal(false);
       setTransferReceipt(receipt);
       setTransferPhone('');
       setTransferAmount('');
       setRecipientResult(null);
-      setActionSuccessMsg(`¡Transferencia exitosa! Enviaste ${numAmount.toLocaleString('es-CO')} RYYCOS a ${receipt.recipientName}.`);
-      setTimeout(() => setActionSuccessMsg(null), 5000);
+      setActionSuccessMsg(`¡Transferencia exitosa! Se enviaron exactamente ${receipt.amount.toLocaleString('es-CO')} RYYCOS a ${receipt.recipientName}. Tu nuevo saldo es de ${newBalance.toLocaleString('es-CO')} RYYCOS.`);
+      setTimeout(() => setActionSuccessMsg(null), 6000);
     } catch (err: any) {
       alert(err.message || "Error al realizar la transferencia.");
     } finally {
@@ -2166,11 +2190,25 @@ export default function CustomerPortalModal({
                             RYYCOS
                           </div>
                           <input
-                            type="number"
-                            min="1"
-                            max={customer.points || 0}
+                            type="text"
+                            inputMode="numeric"
                             value={transferAmount}
-                            onChange={(e) => setTransferAmount(e.target.value)}
+                            onChange={(e) => {
+                              const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                              if (cleaned === '') {
+                                setTransferAmount('');
+                                return;
+                              }
+                              const num = parseInt(cleaned, 10);
+                              const max = customer.points !== undefined ? customer.points : (customer.ryycos !== undefined ? customer.ryycos : 0);
+                              if (!isNaN(num)) {
+                                if (num > max) {
+                                  setTransferAmount(max.toString());
+                                } else {
+                                  setTransferAmount(num.toString());
+                                }
+                              }
+                            }}
                             placeholder="0"
                             className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-amber-400 rounded-xl pl-20 pr-3 font-mono text-sm font-black text-white placeholder:text-gray-600 outline-none transition"
                           />
@@ -2178,20 +2216,37 @@ export default function CustomerPortalModal({
 
                         {/* Quick Amount Suggestion Chips */}
                         <div className="flex flex-wrap gap-1.5 pt-1">
-                          {[1000, 2000, 5000, 10000].map((amt) => (
-                            <button
-                              key={amt}
-                              type="button"
-                              onClick={() => setTransferAmount(amt.toString())}
-                              className="px-2.5 py-1 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-[11px] font-mono font-bold transition cursor-pointer"
-                            >
-                              +{amt.toLocaleString('es-CO')}
-                            </button>
-                          ))}
+                          {[1000, 2000, 5000, 10000].map((amt) => {
+                            const max = customer.points !== undefined ? customer.points : (customer.ryycos !== undefined ? customer.ryycos : 0);
+                            const isAffordable = amt <= max;
+                            return (
+                              <button
+                                key={amt}
+                                type="button"
+                                onClick={() => {
+                                  if (isAffordable) {
+                                    setTransferAmount(amt.toString());
+                                  }
+                                }}
+                                disabled={!isAffordable}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold transition cursor-pointer ${
+                                  isAffordable
+                                    ? 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white'
+                                    : 'bg-gray-900/60 text-gray-600 cursor-not-allowed border border-gray-800/40'
+                                }`}
+                              >
+                                +{amt.toLocaleString('es-CO')}
+                              </button>
+                            );
+                          })}
                           <button
                             type="button"
-                            onClick={() => setTransferAmount((customer.points || 0).toString())}
-                            className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-mono font-bold transition cursor-pointer border border-amber-500/30"
+                            onClick={() => {
+                              const max = customer.points !== undefined ? customer.points : (customer.ryycos !== undefined ? customer.ryycos : 0);
+                              setTransferAmount(Math.max(0, max).toString());
+                            }}
+                            disabled={(customer.points || 0) <= 0}
+                            className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-mono font-bold transition cursor-pointer border border-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             Todo mi saldo
                           </button>
