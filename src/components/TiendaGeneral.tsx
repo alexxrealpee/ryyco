@@ -293,6 +293,32 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       setProfiles(prev => ({ ...prev, ...profilesMap }));
     }
   }, [profilesMap]);
+
+  // Direct listener for background full catalog completion
+  useEffect(() => {
+    const handleCatalogUpdate = (e: any) => {
+      const detail = e.detail;
+      const incomingProducts: ProductItem[] = 
+        (Array.isArray(detail?.products) ? detail.products : detail?.catalog?.products) || [];
+      if (incomingProducts.length > 0) {
+        setProducts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newOnes = incomingProducts.filter(p => p && p.id && !existingIds.has(p.id));
+          if (newOnes.length === 0) return prev;
+          const merged = [...prev, ...newOnes];
+          registerProductImages(merged);
+          return merged;
+        });
+      }
+      const incomingProfiles = detail?.profiles;
+      if (incomingProfiles && Object.keys(incomingProfiles).length > 0) {
+        setProfiles(prev => ({ ...prev, ...incomingProfiles }));
+      }
+    };
+
+    window.addEventListener('linnk:catalog_updated', handleCatalogUpdate);
+    return () => window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
+  }, []);
   
   // Filtering & search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -899,14 +925,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
     if (visibleLimit < filteredProducts.length) {
       setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length));
-      // If reaching the end of buffered products and Firebase has more, prefetch the next 4
-      if (hasMoreProgressive && visibleLimit + 4 >= filteredProducts.length) {
+      // If reaching near the end of buffered products, prefetch the next batch
+      if (hasMoreProgressive && visibleLimit + 6 >= filteredProducts.length) {
         loadNextFourProducts();
       }
       return;
     }
 
-    // 2. Otherwise, fetch the next 4 products directly from Firebase
+    // 2. Otherwise, fetch the next 4 products (from memory cache, API or Firebase)
     if (hasMoreProgressive) {
       isFetchingNextBatchRef.current = true;
       setIsLoadingMore(true);
@@ -933,11 +959,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ticking = true;
 
       window.requestAnimationFrame(() => {
-        const scrollBottom = window.innerHeight + window.scrollY;
-        const pageHeight = document.documentElement.scrollHeight;
+        const scrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const windowHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+        const docHeight = Math.max(
+          document.body.scrollHeight,
+          document.documentElement.scrollHeight,
+          document.body.offsetHeight,
+          document.documentElement.offsetHeight
+        );
 
-        // Trigger when the user is within 350px of the page bottom
-        if (scrollBottom >= pageHeight - 350) {
+        // Trigger when within 650px of page bottom for seamless smooth continuous scrolling
+        if (scrollTop + windowHeight >= docHeight - 650) {
           if (!isFetchingNextBatchRef.current && !isProgressiveLoadingMore) {
             loadNextBatchOfFour();
           }

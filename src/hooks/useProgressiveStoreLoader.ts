@@ -200,6 +200,53 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     setIsLoadingMore(true);
 
     try {
+      // 1. Check local memory/storage cache for unrendered products first (instant response, 0ms)
+      let availablePool: ProductItem[] = [];
+      try {
+        const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
+        if (rawLocal) {
+          const parsed = JSON.parse(rawLocal);
+          if (Array.isArray(parsed?.products)) availablePool = parsed.products;
+        }
+      } catch (e) {}
+
+      if (availablePool.length === 0 && (window as any).__INITIAL_CATALOG_DATA__?.catalog?.products) {
+        availablePool = (window as any).__INITIAL_CATALOG_DATA__.catalog.products;
+      }
+
+      const unrendered = availablePool.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
+      if (unrendered.length > 0) {
+        const nextBatch = unrendered.slice(0, 4);
+        nextBatch.forEach(p => {
+          if (p.id) loadedProductIdsRef.current.add(p.id);
+        });
+        setLoadedProducts(prev => [...prev, ...nextBatch]);
+        setHasMore(unrendered.length > 4 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
+        return nextBatch;
+      }
+
+      // 2. If no buffered products in local storage, fetch full catalog from server API
+      try {
+        const res = await fetch('/api/catalog/available');
+        if (res.ok) {
+          const fullData = await res.json();
+          const catalogProducts: ProductItem[] = fullData?.catalog?.products || [];
+          if (catalogProducts.length > 0) {
+            const freshFromApi = catalogProducts.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
+            if (freshFromApi.length > 0) {
+              const nextBatch = freshFromApi.slice(0, 4);
+              nextBatch.forEach(p => {
+                if (p.id) loadedProductIdsRef.current.add(p.id);
+              });
+              setLoadedProducts(prev => [...prev, ...nextBatch]);
+              setHasMore(freshFromApi.length > 4 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
+              return nextBatch;
+            }
+          }
+        }
+      } catch (e) {}
+
+      // 3. Fallback: Fetch sequentially from Firestore across open restaurants
       const newBatch = await fetchBatch(4);
 
       if (newBatch.length > 0) {
@@ -221,6 +268,37 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       isFetchingMoreRef.current = false;
     }
   }, [fetchBatch, hasMore]);
+
+  // Listen for background full catalog completion
+  useEffect(() => {
+    const handleCatalogUpdate = (e: any) => {
+      const detail = e.detail;
+      const incomingProducts: ProductItem[] = 
+        (Array.isArray(detail?.products) ? detail.products : detail?.catalog?.products) || [];
+      const incomingProfiles: Record<string, UserProfile> = detail?.profiles || {};
+
+      if (incomingProducts.length > 0) {
+        setLoadedProducts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const newProducts = incomingProducts.filter(p => p && p.id && !existingIds.has(p.id));
+          if (newProducts.length === 0) return prev;
+          newProducts.forEach(p => {
+            if (p.id) loadedProductIdsRef.current.add(p.id);
+          });
+          return [...prev, ...newProducts];
+        });
+
+        if (Object.keys(incomingProfiles).length > 0) {
+          setProfilesMap(prev => ({ ...prev, ...incomingProfiles }));
+        }
+
+        setHasMore(true);
+      }
+    };
+
+    window.addEventListener('linnk:catalog_updated', handleCatalogUpdate);
+    return () => window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
+  }, []);
 
   // Main Progressive Loading Orchestrator with Stale-While-Revalidate speed
   useEffect(() => {
@@ -288,7 +366,8 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
           setLoadedProducts(finalInitialProducts);
           setProfilesMap(prev => ({ ...prev, ...activeData.profiles }));
-          setHasMore(false);
+          // Ensure hasMore remains true so user can scroll to load the remaining products
+          setHasMore(true);
         } else if (openStores.length > 0) {
           const initialBatch = await fetchBatch(8);
           if (initialBatch.length > 0) {

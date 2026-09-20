@@ -3209,6 +3209,10 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
                       try {
                         localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
                       } catch (err) {}
+
+                      try {
+                        window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: _cachedProductsData }));
+                      } catch (eventErr) {}
                     }
                   })
                   .catch(() => {});

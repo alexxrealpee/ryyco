@@ -61,10 +61,13 @@
                 .then(function(fullData) {
                   if (fullData && fullData.catalog && typeof window !== 'undefined') {
                     window.__INITIAL_CATALOG_DATA__ = fullData;
+                    try {
+                      window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: fullData }));
+                    } catch (e) {}
                   }
                 })
                 .catch(function() {});
-            }, 1200);
+            }, 600);
             return d;
           })
           .catch(function() { return null; });
