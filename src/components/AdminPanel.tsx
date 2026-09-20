@@ -1504,12 +1504,30 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     const orderValue = (order.totalAmount || 0).toLocaleString('es-CO');
-    const customerPhone = order.customerPhone || 'No registrado';
+
+    const isPickup = order.orderType === 'pickup' || order.deliveryFee === 0;
+    const isTable = order.isTableOrder || order.orderType === 'table';
+    let deliverySuffix = '';
+    if (!isPickup && !isTable) {
+      deliverySuffix = ' valor de domicilio';
+    }
+
+    let customerPhone = order.customerPhone || 'No registrado';
+    if (customerPhone !== 'No registrado') {
+      const cleanDigits = customerPhone.replace(/[^0-9]/g, '');
+      if (cleanDigits.length === 10 && cleanDigits.startsWith('3')) {
+        customerPhone = `+57${cleanDigits}`;
+      } else if (cleanDigits.length === 12 && cleanDigits.startsWith('57')) {
+        customerPhone = `+${cleanDigits}`;
+      } else if (!customerPhone.startsWith('+')) {
+        customerPhone = `+${cleanDigits}`;
+      }
+    }
 
     return `Hola, *${storeName}* 👋\n\n` +
       `Le contactamos desde *Administración General de RYYCO* con relación al *pedido #${orderNumber}*, realizado por *${customerName}*.\n\n` +
       `🍗 *Pedido:* ${productsText}\n` +
-      `💰 *Valor:* $${orderValue}\n` +
+      `💰 *Valor de pedido :* $${orderValue}${deliverySuffix}\n` +
       `📱 *WhatsApp del cliente:* ${customerPhone}\n\n` +
       `Por favor, *comuníquese directamente con el cliente vía WhatsApp* para confirmar los detalles del pedido.\n\n` +
       `Gracias por hacer parte de *RYYCO*. 🛵`;
