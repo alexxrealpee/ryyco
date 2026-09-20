@@ -20,8 +20,7 @@ import {
   getFirestore, 
   initializeFirestore,
   setLogLevel,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   getDocFromCache,
   getDocsFromCache,
   getDocFromServer,
@@ -68,15 +67,29 @@ auth.languageCode = 'es';
 // Configure Firestore logging level to prevent noise from internal transport retries
 setLogLevel('silent');
 
-// Configure Firestore with resilient cache and forced long polling.
-// Using experimentalForceLongPolling eliminates GrpcConnection RPC 'Listen' stream RST_STREAM
+// Configure Firestore with in-memory cache and forced long polling.
+// Using memoryLocalCache eliminates corrupted IndexedDbTargetCache assertion failures (ID: b815 / isCorePipeline),
+// and experimentalForceLongPolling eliminates GrpcConnection RPC 'Listen' stream RST_STREAM
 // errors caused by container reverse proxies, iframes, and Cloud Run idle HTTP/2 stream resets.
 if (typeof window !== 'undefined') {
   try {
+    // Clean up any stale/corrupted legacy IndexedDB databases left behind by persistentLocalCache
+    if (window.indexedDB && 'databases' in window.indexedDB) {
+      window.indexedDB.databases().then((dbs) => {
+        dbs.forEach((dbInfo) => {
+          if (dbInfo.name && dbInfo.name.startsWith('firestore')) {
+            try {
+              window.indexedDB.deleteDatabase(dbInfo.name);
+            } catch (e) {}
+          }
+        });
+      }).catch(() => {});
+    }
+  } catch (e) {}
+
+  try {
     initializeFirestore(app, {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-      }),
+      localCache: memoryLocalCache(),
       experimentalForceLongPolling: true,
       ignoreUndefinedProperties: true
     }, firebaseConfig.firestoreDatabaseId);
@@ -3073,31 +3086,141 @@ export function findStoreForProduct(
 // In-memory cache for products & stores to minimize Firestore reads
 let _cachedProductsData: { products: ProductItem[]; profiles: Record<string, UserProfile>; timestamp: number } | null = null;
 const PRODUCTS_CACHE_TTL_MS = 180 * 1000; // 3 minutes cache
+let _isBackgroundRefreshing = false;
 
 // Fetch all active products and profiles from Firestore and local cache
 export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = false): Promise<{ products: ProductItem[]; profiles: Record<string, UserProfile> }> {
   try {
     const now = Date.now();
 
-    // 0. Check in-memory cache first
-    if (!forceRefresh && _cachedProductsData && (now - _cachedProductsData.timestamp < PRODUCTS_CACHE_TTL_MS) && _cachedProductsData.products.length > 0) {
+    // 0. Instant in-memory cache return (Stale-While-Revalidate)
+    if (!forceRefresh && _cachedProductsData && _cachedProductsData.products.length > 0) {
+      if (now - _cachedProductsData.timestamp > PRODUCTS_CACHE_TTL_MS && !_isBackgroundRefreshing) {
+        _isBackgroundRefreshing = true;
+        setTimeout(() => {
+          fetchAllActiveProductsAndStores(true).finally(() => { _isBackgroundRefreshing = false; });
+        }, 80);
+      }
       return { products: _cachedProductsData.products, profiles: _cachedProductsData.profiles };
     }
 
-    // 0.1 Check persistent localStorage cache for instant fast response
-    if (!forceRefresh && !_cachedProductsData) {
+    // 0.1 Check persistent localStorage cache for instant fast response (Stale-While-Revalidate)
+    if (!forceRefresh) {
       try {
-        const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
+        const rawLocal = typeof window !== 'undefined' ? localStorage.getItem('linnk_all_active_data_cache') : null;
         if (rawLocal) {
           const parsed = JSON.parse(rawLocal);
           if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
             _cachedProductsData = parsed;
-            if (now - (parsed.timestamp || 0) < PRODUCTS_CACHE_TTL_MS) {
-              return { products: parsed.products, profiles: parsed.profiles || {} };
+            if (now - (parsed.timestamp || 0) > PRODUCTS_CACHE_TTL_MS && !_isBackgroundRefreshing) {
+              _isBackgroundRefreshing = true;
+              setTimeout(() => {
+                fetchAllActiveProductsAndStores(true).finally(() => { _isBackgroundRefreshing = false; });
+              }, 80);
             }
+            return { products: parsed.products, profiles: parsed.profiles || {} };
           }
         }
       } catch (e) {}
+    }
+
+    // 0.2 Instant Server-Side Catalog Cache check (/api/catalog/available or HTML prefetch)
+    // On first load (cold browser cache), the Express backend already keeps all open stores and active products in RAM.
+    // Fetching /api/catalog/available takes ~50-200ms instead of 4-8 seconds of client-side Firestore connection.
+    if (!forceRefresh && typeof window !== 'undefined') {
+      try {
+        let apiData: any = null;
+        if ((window as any).__INITIAL_CATALOG_DATA__) {
+          apiData = (window as any).__INITIAL_CATALOG_DATA__;
+        } else if ((window as any).__CATALOG_PREFETCH__) {
+          apiData = await (window as any).__CATALOG_PREFETCH__;
+          (window as any).__CATALOG_PREFETCH__ = null;
+        }
+
+        if (!apiData || !apiData.catalog) {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 2500);
+          const res = await fetch('/api/catalog/available', { signal: controller.signal });
+          clearTimeout(timeoutId);
+          if (res.ok) {
+            apiData = await res.json();
+          }
+        }
+
+        if (apiData && apiData.success && apiData.catalog) {
+          const apiStores = apiData.catalog.stores || [];
+          const apiProducts = apiData.catalog.products || [];
+          if (apiStores.length > 0 || apiProducts.length > 0) {
+            const apiProfilesMap: Record<string, UserProfile> = {};
+            apiStores.forEach((s: any) => {
+              const isSuspended = s.suspended === true || s.subscriptionStatus === 'suspended' || s.subscriptionStatus === 'expired';
+              const prof: UserProfile = {
+                ...s,
+                uid: s.uid,
+                username: s.username,
+                displayName: s.displayName || s.storeName || s.username || 'Restaurante',
+                suspended: isSuspended,
+                isClosed: isSuspended ? true : s.isClosed === true
+              };
+              if (prof.uid) apiProfilesMap[prof.uid] = prof;
+              if (prof.username) apiProfilesMap[prof.username.toLowerCase()] = prof;
+            });
+
+            const formattedProducts: ProductItem[] = apiProducts.map((p: any) => ({
+              ...p,
+              id: String(p.id).trim(),
+              name: p.name || 'Producto',
+              price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : parseFloat(p.price) || 0,
+              stock: typeof p.stock === 'number' ? p.stock : 99,
+              active: p.active !== false
+            }));
+
+            const resultData = {
+              products: formattedProducts,
+              profiles: apiProfilesMap,
+              timestamp: Date.now()
+            };
+
+            _cachedProductsData = resultData;
+            try {
+              localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(resultData));
+            } catch (e) {}
+
+            // If this was an initial partial batch for fast first paint, warm up full catalog in background
+            if (apiData.isPartial && typeof window !== 'undefined') {
+              setTimeout(() => {
+                fetch('/api/catalog/available')
+                  .then(r => r.ok ? r.json() : null)
+                  .then(full => {
+                    if (full && full.catalog && Array.isArray(full.catalog.products)) {
+                      const fullProds: ProductItem[] = full.catalog.products.map((p: any) => ({
+                        ...p,
+                        id: String(p.id).trim(),
+                        name: p.name || 'Producto',
+                        price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : parseFloat(p.price) || 0,
+                        stock: typeof p.stock === 'number' ? p.stock : 99,
+                        active: p.active !== false
+                      }));
+                      _cachedProductsData = {
+                        products: fullProds,
+                        profiles: apiProfilesMap,
+                        timestamp: Date.now()
+                      };
+                      try {
+                        localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
+                      } catch (err) {}
+                    }
+                  })
+                  .catch(() => {});
+              }, 800);
+            }
+
+            return { products: formattedProducts, profiles: apiProfilesMap };
+          }
+        }
+      } catch (err) {
+        // Continue to direct Firestore fallback if network is offline or fails
+      }
     }
 
     const profilesMap: Record<string, UserProfile> = {};
@@ -3269,8 +3392,41 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
  * Sistema de Carga Progresiva en React
  * Paso 1: Consulta a Firebase para obtener los restaurantes que están abiertos.
  */
-export async function fetchOpenRestaurantsFromFirebase(): Promise<UserProfile[]> {
+export async function fetchOpenRestaurantsFromFirebase(forceRefresh: boolean = false): Promise<UserProfile[]> {
   try {
+    // 0. Instant cached open stores check (returns in 0ms if cache exists)
+    if (!forceRefresh) {
+      let cachedProfiles: Record<string, UserProfile> | null = _cachedProductsData?.profiles || null;
+      if (!cachedProfiles) {
+        try {
+          const raw = typeof window !== 'undefined' ? (localStorage.getItem('linnk_all_active_data_cache') || localStorage.getItem('linnk_profiles')) : null;
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            cachedProfiles = (parsed.profiles || parsed) as Record<string, UserProfile>;
+          }
+        } catch (e) {}
+      }
+      if (cachedProfiles && Object.keys(cachedProfiles).length > 0) {
+        const cachedOpen: UserProfile[] = [];
+        const seen = new Set<string>();
+        Object.values(cachedProfiles).forEach(p => {
+          if (p && p.uid && !seen.has(p.uid) && !p.suspended && !checkIsStoreClosed(p)) {
+            if (p.displayName || p.username) {
+              seen.add(p.uid);
+              cachedOpen.push(p);
+            }
+          }
+        });
+        if (cachedOpen.length > 0) {
+          return cachedOpen.sort((a, b) => {
+            const aHasPhoto = a.photoURL ? 1 : 0;
+            const bHasPhoto = b.photoURL ? 1 : 0;
+            return bHasPhoto - aHasPhoto;
+          });
+        }
+      }
+    }
+
     const snap = await getDocs(collection(db, 'profiles'));
     const openStores: UserProfile[] = [];
     const seenUids = new Set<string>();
@@ -4554,6 +4710,45 @@ export async function fetchDriverOrdersHistory(driverId: string): Promise<OrderI
  * Fetch global system settings (e.g. default delivery fee, admin emails)
  */
 export async function fetchSystemSettings(): Promise<SystemSettings> {
+  // 1. Instant check from local cache
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('linnk_system_settings');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.defaultDeliveryFee === 'number') {
+          if (parsed.adminEmails && Array.isArray(parsed.adminEmails)) {
+            registerAdminEmailsInMemory(parsed.adminEmails);
+          }
+          return parsed;
+        }
+      }
+    } catch (e) {}
+  }
+
+  // 2. Fast server endpoint
+  if (typeof window !== 'undefined') {
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 1800);
+      const resp = await fetch('/api/system-settings', { signal: ctrl.signal });
+      clearTimeout(tid);
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && typeof data.defaultDeliveryFee === 'number') {
+          if (data.adminEmails && Array.isArray(data.adminEmails)) {
+            registerAdminEmailsInMemory(data.adminEmails);
+          }
+          try {
+            localStorage.setItem('linnk_system_settings', JSON.stringify(data));
+          } catch (err) {}
+          return data;
+        }
+      }
+    } catch (fetchErr) {}
+  }
+
+  // 3. Direct Firestore fallback
   try {
     const docRef = doc(db, 'settings', 'general');
     const snap = await getDoc(docRef);
@@ -5270,11 +5465,11 @@ export function listenToCustomerProfile(
       localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(fullCust));
     } catch (e) {}
 
-    // Dispatch global custom event only if this is the active customer in this session
+    // Dispatch global custom event only if this is currently the active logged-in customer in this session
     if (typeof window !== 'undefined') {
       try {
         const activePhone = localStorage.getItem('ryyco_active_customer_phone');
-        if (!activePhone || sanitizeCustomerPhone(activePhone) === phone) {
+        if (activePhone && sanitizeCustomerPhone(activePhone) === phone) {
           window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: fullCust }));
         }
       } catch (e) {}
@@ -5424,7 +5619,7 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   try {
     localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(customerData));
     const currentActivePhone = localStorage.getItem('ryyco_active_customer_phone');
-    if (!currentActivePhone || sanitizeCustomerPhone(currentActivePhone) === phone) {
+    if (currentActivePhone && sanitizeCustomerPhone(currentActivePhone) === phone) {
       localStorage.setItem('ryyco_active_customer_phone', phone);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: customerData }));
@@ -5433,6 +5628,50 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   } catch (e) {}
 
   return customerData;
+}
+
+/**
+ * Explicitly sets the active customer session across the entire app
+ */
+export function setActiveCustomerSession(profile: CustomerProfile): void {
+  const phone = sanitizeCustomerPhone(profile.phone);
+  try {
+    localStorage.setItem('ryyco_active_customer_phone', phone);
+    localStorage.setItem('ryyco_auth_mode', 'customer');
+    localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(profile));
+  } catch (e) {}
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: profile }));
+    } catch (e) {}
+  }
+}
+
+/**
+ * Safely and completely logs out the customer session across the entire app
+ */
+export async function logoutCustomerSession(): Promise<void> {
+  try {
+    const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (savedPhone) {
+      localStorage.removeItem(`ryyco_customer_${savedPhone}`);
+    }
+    localStorage.removeItem('ryyco_active_customer_phone');
+    if (localStorage.getItem('ryyco_auth_mode') === 'customer') {
+      localStorage.removeItem('ryyco_auth_mode');
+    }
+  } catch (e) {}
+
+  try {
+    await signOut(auth);
+  } catch (e) {}
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: null }));
+    } catch (e) {}
+  }
 }
 
 /**
@@ -5846,6 +6085,9 @@ export async function searchCustomerByPhone(
   if (!found && !sanitized.startsWith('57') && sanitized.length === 10) {
     found = await fetchCustomerProfileByPhone(`57${sanitized}`);
   }
+  if (!found && sanitized.startsWith('57') && sanitized.length === 12) {
+    found = await fetchCustomerProfileByPhone(sanitized.slice(2));
+  }
   if (!found) {
     try {
       const q = query(collection(db, 'customers'), where('phone', '==', sanitized), limit(1));
@@ -5905,9 +6147,13 @@ export async function transferRyycosByPhone(
   }
 
   // Exact whole positive integer validation
-  const numAmount = Math.floor(Number(amount));
-  if (isNaN(numAmount) || !Number.isFinite(numAmount) || numAmount <= 0) {
+  const rawNum = Number(amount);
+  if (isNaN(rawNum) || !Number.isFinite(rawNum) || rawNum <= 0) {
     throw new Error("Ingresa una cantidad válida y mayor a 0 de RYYCOS a transferir.");
+  }
+  const numAmount = Math.floor(rawNum);
+  if (numAmount <= 0) {
+    throw new Error("La cantidad mínima a transferir es 1 RYYCO.");
   }
 
   // 1. Locate recipient in Firestore
@@ -5918,6 +6164,13 @@ export async function transferRyycosByPhone(
     if (altSnap.exists()) {
       recipientDocSnap = altSnap;
       recipientDocId = '57' + recipientPhone;
+    }
+  }
+  if (!recipientDocSnap.exists() && recipientPhone.startsWith('57') && recipientPhone.length === 12) {
+    const altSnap = await getDoc(doc(db, 'customers', recipientPhone.slice(2)));
+    if (altSnap.exists()) {
+      recipientDocSnap = altSnap;
+      recipientDocId = recipientPhone.slice(2);
     }
   }
   if (!recipientDocSnap.exists()) {
@@ -5943,6 +6196,13 @@ export async function transferRyycosByPhone(
     if (altSnap.exists()) {
       senderDocSnap = altSnap;
       senderDocId = '57' + senderPhone;
+    }
+  }
+  if (!senderDocSnap.exists() && senderPhone.startsWith('57') && senderPhone.length === 12) {
+    const altSnap = await getDoc(doc(db, 'customers', senderPhone.slice(2)));
+    if (altSnap.exists()) {
+      senderDocSnap = altSnap;
+      senderDocId = senderPhone.slice(2);
     }
   }
 

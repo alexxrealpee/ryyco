@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type, Modality } from '@google/genai';
@@ -19,6 +20,7 @@ import { createRealtimeSessionHandler } from './server/realtimeSession';
 import { 
   initBackendCatalogManager, 
   getAvailableCatalog, 
+  refreshCatalogFromFirestore,
   syncCatalogFromClient, 
   validateProductForCart, 
   validateOrderPayload,
@@ -83,6 +85,9 @@ function getOpenAIClient(): OpenAI | null {
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Compress all responses with gzip / deflate to drastically accelerate network delivery
+  app.use(compression());
 
   // Universal CORS & Header middleware for all requests (supports custom domains like ryyco.com)
   app.use((req, res, next) => {
@@ -386,8 +391,29 @@ Formatos válidos para:
   initBackendCatalogManager();
 
   // API Routes: Dynamic Available Catalog & Real-time Validation
-  app.get('/api/catalog/available', (req, res) => {
-    const catalog = getAvailableCatalog();
+  app.get('/api/catalog/available', async (req, res) => {
+    let catalog = getAvailableCatalog();
+    if (!catalog.stores || catalog.stores.length === 0) {
+      catalog = await refreshCatalogFromFirestore();
+    }
+    const isInitial = req.query.initial === 'true' || req.query.initial === '1';
+    const limitQuery = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 0;
+    const limit = isInitial ? 20 : limitQuery;
+
+    if (limit > 0 && catalog.products && catalog.products.length > limit) {
+      res.json({
+        success: true,
+        catalog: {
+          ...catalog,
+          products: catalog.products.slice(0, limit)
+        },
+        catalogUpdatedAt: catalog.catalogUpdatedAt,
+        version: catalog.version,
+        isPartial: true
+      });
+      return;
+    }
+
     res.json({
       success: true,
       catalog,
@@ -480,20 +506,26 @@ Formatos válidos para:
   const adminFCMTokensMap = new Map<string, RegisteredAdminFCMToken>();
 
   // Helper to send FCM Web Push via Google Firebase Cloud Messaging HTTP API
-  // This is what delivers notifications even when Chrome is completely closed!
+  // This delivers notifications for background devices and integrates with SSE for real-time dashboards
   async function sendFCMWebPush(
     tokens: string[],
     notification: { title: string; body: string; icon?: string; badge?: string; sound?: string; click_action?: string },
     data: Record<string, string>
   ) {
-    const fcmServerKey = process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY;
+    const fcmServerKey = (process.env.FCM_SERVER_KEY || process.env.FIREBASE_SERVER_KEY || '').trim();
     if (!fcmServerKey) {
-      console.log('[FCM-SERVER] ℹ️ Aviso: FCM_SERVER_KEY no está definido en variables de entorno. Para enviar alertas con Chrome cerrado en segundo plano a través de los servidores de Google, agregue FCM_SERVER_KEY en .env');
       return { sent: false, reason: 'NO_FCM_SERVER_KEY' };
     }
 
     if (!tokens || tokens.length === 0) {
       return { sent: false, reason: 'NO_TOKENS' };
+    }
+
+    // Check if the provided key is a VAPID public key (which starts with BH... or is a base64url Web Push Certificate)
+    // VAPID public keys are used on the frontend by navigator.serviceWorker and getToken(), not with the legacy fcm/send HTTP endpoint
+    if (fcmServerKey.startsWith('BH') || (fcmServerKey.length > 80 && !fcmServerKey.startsWith('AAAA') && !fcmServerKey.startsWith('AIza'))) {
+      // VAPID public key detected. Front-end browsers handle Web Push and SSE stream receives all orders instantly.
+      return { sent: false, reason: 'VAPID_PUBLIC_KEY_DETECTED' };
     }
 
     try {
@@ -522,12 +554,31 @@ Formatos válidos para:
         })
       });
 
-      const resJson = await response.json();
+      const responseText = await response.text();
+      let resJson: any = null;
+      try {
+        resJson = JSON.parse(responseText);
+      } catch {
+        // Not a JSON response (Google returned HTML error page like 404/410/401)
+        resJson = null;
+      }
+
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 410) {
+          console.warn(`[FCM-SERVER] ℹ️ Aviso: El endpoint legacy de FCM (fcm/send) respondió HTTP ${response.status}. Google descontinuó la API legacy de FCM a favor de FCM HTTP v1. Las notificaciones se entregan por Server-Sent Events (SSE) y Web Push en tiempo real.`);
+        } else if (response.status === 401 || response.status === 403) {
+          console.warn(`[FCM-SERVER] ℹ️ Aviso: La clave FCM no fue autorizada por Google (HTTP ${response.status}). Las alertas en tiempo real se entregan por Server-Sent Events (SSE).`);
+        } else {
+          console.warn(`[FCM-SERVER] ⚠️ Google FCM HTTP status ${response.status}:`, resJson || (responseText ? responseText.slice(0, 100) : 'Sin respuesta'));
+        }
+        return { sent: false, status: response.status, error: resJson?.error || `HTTP ${response.status}` };
+      }
+
       console.log('[FCM-SERVER] 🚀 Notificación PUSH transmitida a Google FCM para dispositivos en segundo plano/cerrados:', resJson);
       return { sent: true, response: resJson };
     } catch (err: any) {
-      console.error('[FCM-SERVER] ❌ Error enviando a Google FCM HTTP API:', err);
-      return { sent: false, error: err.message };
+      console.warn('[FCM-SERVER] ⚠️ Aviso enviando a Google FCM HTTP API:', err?.message || err);
+      return { sent: false, error: err?.message || String(err) };
     }
   }
 

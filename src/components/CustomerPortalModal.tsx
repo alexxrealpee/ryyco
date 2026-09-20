@@ -37,6 +37,8 @@ import {
   searchCustomerByPhone,
   transferRyycosByPhone,
   listenToCustomerProfile,
+  setActiveCustomerSession,
+  logoutCustomerSession,
   RyycoTransferReceipt,
   auth,
   googleProvider
@@ -127,6 +129,7 @@ export default function CustomerPortalModal({
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [acceptedBuyerTerms, setAcceptedBuyerTerms] = useState(false);
   const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
+  const [showForgotPasswordInfo, setShowForgotPasswordInfo] = useState(false);
 
   // Wheel animation state
   const [isSpinning, setIsSpinning] = useState(false);
@@ -163,14 +166,20 @@ export default function CustomerPortalModal({
   // Auto load active session on mount
   useEffect(() => {
     if (isOpen) {
-      const savedPhone = localStorage.getItem('ryyco_active_customer_phone') || initialPhone;
-      if (savedPhone) {
-        setPhoneInput(savedPhone);
-        loadCustomerData(savedPhone);
+      const activeSessionPhone = localStorage.getItem('ryyco_active_customer_phone');
+      if (activeSessionPhone) {
+        setPhoneInput(activeSessionPhone);
+        loadCustomerData(activeSessionPhone);
+      } else {
+        setCustomer(null);
+        setOrders([]);
+        if (initialPhone) {
+          setPhoneInput(initialPhone);
+        }
       }
       setActiveTab(initialTab);
     }
-  }, [isOpen, initialPhone, initialTab]);
+  }, [isOpen, initialTab]);
 
   const loadCustomerData = async (phoneToLoad: string) => {
     const cleaned = sanitizeCustomerPhone(phoneToLoad);
@@ -231,7 +240,8 @@ export default function CustomerPortalModal({
   // Real-time live customer profile & RYYCOS balance listener
   // Automatically synchronizes when transfers are received, without reloading the page
   useEffect(() => {
-    const targetPhone = customer?.phone || phoneInput || localStorage.getItem('ryyco_active_customer_phone') || initialPhone;
+    // Only listen if there is an active logged-in customer in this modal
+    const targetPhone = customer?.phone;
     if (!isOpen || !targetPhone) return;
 
     const cleaned = sanitizeCustomerPhone(targetPhone);
@@ -240,6 +250,7 @@ export default function CustomerPortalModal({
     const unsubscribe = listenToCustomerProfile(cleaned, (updatedProfile) => {
       if (updatedProfile) {
         setCustomer(prev => {
+          if (!prev) return null; // Prevent resurrecting customer if already logged out
           // If we received new RYYCOS in real-time
           if (prev && prev.phone === updatedProfile.phone && (updatedProfile.points || 0) > (prev.points || 0)) {
             const diff = (updatedProfile.points || 0) - (prev.points || 0);
@@ -257,7 +268,7 @@ export default function CustomerPortalModal({
     return () => {
       unsubscribe();
     };
-  }, [isOpen, customer?.phone, phoneInput, initialPhone, onCustomerUpdate]);
+  }, [isOpen, customer?.phone, onCustomerUpdate]);
 
   // Keep trackingOrder synchronized in real time whenever orders list updates
   useEffect(() => {
@@ -330,8 +341,10 @@ export default function CustomerPortalModal({
         setEmailInput(updated.email || gEmail);
         setAddressInput(updated.address && !isPickupOrInvalidAddress(updated.address) ? updated.address : '');
         setNotesInput(updated.notes || '');
-        localStorage.setItem('ryyco_active_customer_phone', updated.phone);
-        localStorage.setItem('ryyco_auth_mode', 'customer');
+        
+        // Synchronize globally across mobile & desktop
+        setActiveCustomerSession(updated);
+        onCustomerUpdate?.(updated);
         loadCustomerOrders(updated.phone);
 
         // If existing profile was missing address or name, open quick window to complete it, else welcome
@@ -350,7 +363,9 @@ export default function CustomerPortalModal({
       }
     } catch (err: any) {
       console.warn("Google sign in error:", err);
-      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+      if (err.code === 'auth/popup-blocked') {
+        setAuthError("Tu navegador o dispositivo bloqueó la ventana emergente de Google. Permite las ventanas emergentes en tu navegador o ingresa con tu número celular y contraseña abajo.");
+      } else if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
         setAuthError(err.message || "Error al iniciar sesión con Google / Gmail");
       }
     } finally {
@@ -396,8 +411,8 @@ export default function CustomerPortalModal({
       });
 
       setCustomer(created);
-      localStorage.setItem('ryyco_active_customer_phone', cleanPhone);
-      localStorage.setItem('ryyco_auth_mode', 'customer');
+      setActiveCustomerSession(created);
+      onCustomerUpdate?.(created);
       setShowGoogleCompleteModal(false);
       loadCustomerOrders(cleanPhone);
       setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 1.000 RYYCOS ($1.000 COP) y 1 Giro gratis 🎁`);
@@ -446,14 +461,17 @@ export default function CustomerPortalModal({
         setAddressInput(existing.address && !isPickupOrInvalidAddress(existing.address) ? existing.address : '');
         setEmailInput(existing.email || '');
         setNotesInput(existing.notes || '');
-        localStorage.setItem('ryyco_active_customer_phone', cleaned);
+        
+        // Synchronize globally
+        setActiveCustomerSession(existing);
+        onCustomerUpdate?.(existing);
         loadCustomerOrders(cleaned);
         setActionSuccessMsg(`¡Bienvenido de vuelta, ${existing.name}! 👋`);
         setTimeout(() => setActionSuccessMsg(null), 3500);
       } else {
-        // Automatically switch to registration with a message
+        // Automatically switch to registration with a friendly message
         setIsRegisterMode(true);
-        setAuthError("El número no está registrado. Completa tu registro para ganar 1.000 RYYCOS ($1.000 COP) y 1 tiro en la ruleta.");
+        setAuthError("Este número celular aún no está registrado. Completa tu registro para ganar 1.000 RYYCOS ($1.000 COP) de bienvenida y 1 giro en la ruleta.");
       }
     } catch (err: any) {
       setAuthError(err.message || "Error al buscar tu cuenta");
@@ -485,6 +503,15 @@ export default function CustomerPortalModal({
     setLoading(true);
     setAuthError('');
     try {
+      // Safeguard: Check if phone is already registered to avoid accidental overwrites
+      const existing = await fetchCustomerProfileByPhone(cleaned);
+      if (existing) {
+        setAuthError("Este número de celular ya tiene una cuenta registrada. Por favor ingresa tu contraseña o usa tu cuenta de Google.");
+        setIsRegisterMode(false);
+        setLoading(false);
+        return;
+      }
+
       const newCust = await saveCustomerProfile({
         phone: cleaned,
         name: nameInput.trim(),
@@ -496,7 +523,8 @@ export default function CustomerPortalModal({
         spinsAvailable: 1
       });
       setCustomer(newCust);
-      localStorage.setItem('ryyco_active_customer_phone', cleaned);
+      setActiveCustomerSession(newCust);
+      onCustomerUpdate?.(newCust);
       setActionSuccessMsg("¡Cuenta creada con éxito! Ganaste 1.000 RYYCOS ($1.000 COP) y 1 Giro Gratis en la Ruleta 🎁");
       setTimeout(() => setActionSuccessMsg(null), 5000);
       loadCustomerOrders(cleaned);
@@ -521,6 +549,8 @@ export default function CustomerPortalModal({
         notes: notesInput.trim(),
       });
       setCustomer(updated);
+      setActiveCustomerSession(updated);
+      onCustomerUpdate?.(updated);
       setNewPasswordInput('');
       setActionSuccessMsg("Datos y contraseña actualizados correctamente ✅");
       setTimeout(() => setActionSuccessMsg(null), 4000);
@@ -532,17 +562,25 @@ export default function CustomerPortalModal({
   };
 
   const handleLogout = async () => {
-    localStorage.removeItem('ryyco_active_customer_phone');
-    localStorage.removeItem('ryyco_auth_mode');
+    setLoading(true);
     try {
-      await signOut(auth);
-    } catch (e) {}
+      await logoutCustomerSession();
+    } catch (e) {
+      console.warn("Error logging out customer:", e);
+    }
     setCustomer(null);
     setOrders([]);
     setIsRegisterMode(false);
+    setPhoneInput('');
+    setNameInput('');
+    setAddressInput('');
+    setEmailInput('');
+    setNotesInput('');
     setPasswordInput('');
     setNewPasswordInput('');
-    setActionSuccessMsg("Has cerrado la sesión de cliente. Puedes volver a ingresar como cliente o entrar a tu panel de vendedor.");
+    setLoading(false);
+    onCustomerUpdate?.(null);
+    setActionSuccessMsg("Has cerrado la sesión de cliente con éxito ✅");
     setTimeout(() => setActionSuccessMsg(null), 4000);
   };
 
@@ -668,6 +706,7 @@ export default function CustomerPortalModal({
       };
 
       setCustomer(updatedCustomer);
+      setActiveCustomerSession(updatedCustomer);
       onCustomerUpdate?.(updatedCustomer);
 
       setShowTransferConfirmModal(false);
@@ -971,10 +1010,21 @@ export default function CustomerPortalModal({
 
           <div className="flex items-center gap-2">
             {customer && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-xs font-mono shadow-sm">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span>{(customer.points || 0).toLocaleString('es-CO')} RYYCOS</span>
-              </div>
+              <>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-xs font-mono shadow-sm">
+                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                  <span>{(customer.points || 0).toLocaleString('es-CO')} RYYCOS</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="h-9 px-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                  title="Cerrar sesión de cliente"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-red-400" />
+                  <span className="hidden sm:inline">Cerrar Sesión</span>
+                </button>
+              </>
             )}
             <button
               onClick={onClose}
@@ -1138,6 +1188,13 @@ export default function CustomerPortalModal({
                     <label className="text-[11px] font-black uppercase text-gray-400">
                       Contraseña de Acceso *
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotPasswordInfo(!showForgotPasswordInfo)}
+                      className="text-[10px] text-[#E63946] hover:underline font-bold cursor-pointer"
+                    >
+                      ¿Olvidaste tu contraseña?
+                    </button>
                   </div>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
@@ -1160,7 +1217,30 @@ export default function CustomerPortalModal({
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <span className="text-[9.5px] text-gray-500 mt-1 block">Nota: Con el botón superior de Google no necesitas contraseña.</span>
+                  <div className="flex items-center justify-between text-[9.5px] text-gray-500 mt-1">
+                    <span>O usa el botón de Google arriba para entrar sin clave.</span>
+                  </div>
+
+                  {showForgotPasswordInfo && (
+                    <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 space-y-2">
+                      <p className="font-bold flex items-center gap-1.5">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        ¿No recuerdas tu contraseña de cliente?
+                      </p>
+                      <p className="text-[10.5px] text-gray-300 leading-relaxed">
+                        Puedes ingresar de inmediato con 1 clic usando el botón blanco <strong>"Ingresar como Cliente con Google"</strong> arriba, o escribir a soporte para recuperar tu acceso.
+                      </p>
+                      <a
+                        href="https://wa.me/573106502043?text=Hola%20soporte%20Ryyco,%20necesito%20ayuda%20para%20restablecer%20mi%20contrase%C3%B1a%20de%20cliente"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black transition"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        Pedir Ayuda a Soporte por WhatsApp
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 

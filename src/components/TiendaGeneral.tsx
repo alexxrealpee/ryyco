@@ -30,6 +30,7 @@ import {
   Layers,
   Flame,
   User,
+  LogOut,
   Bike,
   Utensils,
   ChevronLeft,
@@ -39,10 +40,23 @@ import {
 } from 'lucide-react';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
-import { fetchAllActiveProductsAndStores, saveOrder, fetchSystemSettings, checkIsStoreClosed, findStoreForProduct, fetchCustomerProfileByPhone, listenToCustomerProfile, fetchProductsForStoreOnDemand } from '../lib/firebase';
+import { 
+  fetchAllActiveProductsAndStores, 
+  saveOrder, 
+  fetchSystemSettings, 
+  checkIsStoreClosed, 
+  findStoreForProduct, 
+  fetchCustomerProfileByPhone, 
+  listenToCustomerProfile, 
+  fetchProductsForStoreOnDemand, 
+  logoutCustomerSession,
+  sanitizeCustomerPhone,
+  setActiveCustomerSession
+} from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
 import CustomerPortalModal from './CustomerPortalModal';
+import CustomerOrderAuthPromptModal from './CustomerOrderAuthPromptModal';
 import FullScreenSearchModal from './FullScreenSearchModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { DeliveryAddressCard, isPickupOrInvalidAddress } from './DeliveryAddressCard';
@@ -180,6 +194,43 @@ const getInitialGeneralData = () => {
         return {
           products: parsed.products as ProductItem[],
           profiles: (parsed.profiles || {}) as Record<string, UserProfile>,
+          hasCache: true
+        };
+      }
+    }
+
+    if (typeof window !== 'undefined' && (window as any).__INITIAL_CATALOG_DATA__?.catalog) {
+      const apiCatalog = (window as any).__INITIAL_CATALOG_DATA__.catalog;
+      const apiStores = apiCatalog.stores || [];
+      const apiProducts = apiCatalog.products || [];
+      if (apiProducts.length > 0) {
+        const profilesMap: Record<string, UserProfile> = {};
+        apiStores.forEach((s: any) => {
+          const isSuspended = s.suspended === true || s.subscriptionStatus === 'suspended' || s.subscriptionStatus === 'expired';
+          const prof: UserProfile = {
+            ...s,
+            uid: s.uid,
+            username: s.username,
+            displayName: s.displayName || s.storeName || s.username || 'Restaurante',
+            suspended: isSuspended,
+            isClosed: isSuspended ? true : s.isClosed === true
+          };
+          if (prof.uid) profilesMap[prof.uid] = prof;
+          if (prof.username) profilesMap[prof.username.toLowerCase()] = prof;
+        });
+
+        const formatted = apiProducts.map((p: any) => ({
+          ...p,
+          id: String(p.id).trim(),
+          name: p.name || 'Producto',
+          price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : parseFloat(p.price) || 0,
+          stock: typeof p.stock === 'number' ? p.stock : 99,
+          active: p.active !== false
+        }));
+
+        return {
+          products: formatted,
+          profiles: profilesMap,
           hasCache: true
         };
       }
@@ -400,6 +451,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
   const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
 
+  // Customer Checkout Verification Prompt State
+  const [orderAuthPromptData, setOrderAuthPromptData] = useState<{
+    isOpen: boolean;
+    phone: string;
+    isExisting: boolean;
+    existingProfile: CustomerProfile | null;
+  }>({
+    isOpen: false,
+    phone: '',
+    isExisting: false,
+    existingProfile: null
+  });
+
   // Synchronize delivery address across views
   useEffect(() => {
     const handleAddressUpdate = (e: any) => {
@@ -420,6 +484,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     const initCustomer = (phone: string) => {
       if (unsubProfile) unsubProfile();
       unsubProfile = listenToCustomerProfile(phone, (cust) => {
+        const active = localStorage.getItem('ryyco_active_customer_phone');
+        if (!active || sanitizeCustomerPhone(active) !== sanitizeCustomerPhone(phone)) {
+          return;
+        }
         if (cust) {
           setActiveCustomer(cust);
           if (!custPhone) setCustPhone(cust.phone);
@@ -437,14 +505,50 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
 
     const handleProfileUpdated = (e: any) => {
+      if (e.detail === null) {
+        if (unsubProfile) {
+          unsubProfile();
+          unsubProfile = null;
+        }
+        setActiveCustomer(null);
+        setCustPhone('');
+        setCustName('');
+        setCustAddress('');
+        return;
+      }
       if (e.detail) {
-        const active = localStorage.getItem('ryyco_active_customer_phone');
-        if (!active || cleanColombianPhone(active) === cleanColombianPhone(e.detail.phone)) {
-          setActiveCustomer(e.detail);
+        setActiveCustomer(e.detail);
+        if (e.detail.phone) {
+          initCustomer(e.detail.phone);
         }
       }
     };
     window.addEventListener('ryyco:customer-profile-updated', handleProfileUpdated);
+
+    // Auto-open customer portal if accessing customer routes directly
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      if (
+        searchParams.get('portal') === 'cliente' || 
+        searchParams.get('portal') === 'customer' ||
+        searchParams.get('tab') === 'rewards' ||
+        searchParams.get('tab') === 'orders' ||
+        path.includes('mis-pedidos') ||
+        path.includes('cliente') ||
+        path.includes('club') ||
+        hash.includes('mis-pedidos') ||
+        hash.includes('cliente')
+      ) {
+        if (searchParams.get('tab') === 'rewards' || path.includes('club')) {
+          setCustomerPortalTab('rewards');
+        } else {
+          setCustomerPortalTab('orders');
+        }
+        setIsCustomerPortalOpen(true);
+      }
+    } catch (e) {}
 
     return () => {
       if (unsubProfile) unsubProfile();
@@ -611,6 +715,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       });
     }
     const storeMap = new Map<string, UserProfile>();
+    // 1. Always prioritize loadedLogos from progressive loader
+    loadedLogos.forEach(s => {
+      if (s && s.uid && !storeMap.has(s.uid)) {
+        if (!checkIsStoreClosed(s) && !s.suspended) {
+          storeMap.set(s.uid, s);
+        }
+      }
+    });
+
+    // 2. Complement with profiles map
     (Object.values(profiles) as UserProfile[]).forEach(profile => {
       if (profile && profile.uid && !storeMap.has(profile.uid)) {
         if (!checkIsStoreClosed(profile) && !profile.suspended && products.some(p => p.userId === profile.uid || p.storeUsername === profile.username)) {
@@ -622,8 +736,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, [profiles, products, loadedLogos]);
 
   // Real-time loading states tied strictly to actual Firebase data presence (no fake delays)
-  const isRestaurantsLoading = (isLoadingRestaurants || progressiveStage === 'fetching_open_restaurants') && uniqueStores.length === 0;
-  const isProductsLoading = (isLoadingProducts || (products.length === 0 && progressiveStage !== 'idle'));
+  const isRestaurantsLoading = uniqueStores.length === 0 && (isLoadingRestaurants || progressiveStage === 'fetching_open_restaurants');
+  const isProductsLoading = products.length === 0 && (isLoadingProducts || progressiveStage !== 'idle');
   const isCategoriesLoading = isProductsLoading && categories.length <= 1;
 
   // Pre-load top restaurant logos and the first 6 products into browser cache for instant rendering
@@ -930,22 +1044,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     setCart(updated);
   };
 
-  const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (cart.length === 0) return;
-    
-    const cleanedPhone = cleanColombianPhone(custPhone);
-    if (!custName.trim() || (deliveryType === 'delivery' && !custAddress.trim())) {
-      alert("Por favor, completa todos los campos requeridos (*)");
-      return;
-    }
-
-    if (cleanedPhone.length !== 10) {
-      setPhoneError("Ingrese un número de celular colombiano válido.");
-      return;
-    }
-    setPhoneError("");
-
+  const executePlaceOrder = async (customer: CustomerProfile) => {
     setOrderSubmitting(true);
 
     // Group cart items by merchant userId
@@ -972,7 +1071,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         const sellerStoreName = sellerProfile?.displayName || sellerCart[0]?.product.storeName || sellerProfile?.username || 'Tienda en la plataforma';
         const sellerAddress = sellerProfile?.address || sellerProfile?.location || 'Dirección de la Tienda';
         const sellerPhone = sellerProfile?.whatsapp || sellerProfile?.phone;
-        const formattedPhone = formatColombianPhoneWith57(custPhone);
+        const formattedPhone = formatColombianPhoneWith57(customer.phone || custPhone);
         const finalAddress = deliveryType === 'pickup' 
           ? (pickupNotes.trim() ? `Recoger en Restaurante / Local (Nota: ${pickupNotes.trim()})` : 'Recoger en Restaurante / Local')
           : custAddress.trim();
@@ -984,7 +1083,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           storeAddress: sellerAddress,
           storePhone: sellerPhone,
           orderNumber: rNo,
-          customerName: custName.trim(),
+          customerName: customer.name || custName.trim(),
           customerPhone: formattedPhone,
           customerAddress: finalAddress,
           customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
@@ -1018,6 +1117,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       setCart([]);
       setIsCartOpen(false);
       setIsCheckoutOpen(false);
+      setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
       setIsSuccessOpen(true);
     } catch (err) {
       console.error(err);
@@ -1025,6 +1125,66 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     } finally {
       setOrderSubmitting(false);
     }
+  };
+
+  const handleAuthPromptSuccess = async (authenticatedCustomer: CustomerProfile) => {
+    setActiveCustomer(authenticatedCustomer);
+    setActiveCustomerSession(authenticatedCustomer);
+    setCustName(authenticatedCustomer.name);
+    setCustPhone(authenticatedCustomer.phone);
+    if (authenticatedCustomer.address && !isPickupOrInvalidAddress(authenticatedCustomer.address) && !custAddress) {
+      setCustAddress(authenticatedCustomer.address);
+    }
+    setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
+    // Automatically continue and execute the order without requiring the user to repeat or re-enter anything
+    await executePlaceOrder(authenticatedCustomer);
+  };
+
+  const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cart.length === 0) return;
+    
+    const cleanedPhone = cleanColombianPhone(custPhone);
+    if (!custName.trim() || (deliveryType === 'delivery' && !custAddress.trim())) {
+      alert("Por favor, completa todos los campos requeridos (*)");
+      return;
+    }
+
+    if (cleanedPhone.length !== 10) {
+      setPhoneError("Ingrese un número de celular colombiano válido.");
+      return;
+    }
+    setPhoneError("");
+
+    // Check if the user is already authenticated with a verified session matching this phone
+    const isCustomerVerified = activeCustomer && sanitizeCustomerPhone(activeCustomer.phone) === sanitizeCustomerPhone(cleanedPhone);
+
+    if (!isCustomerVerified) {
+      setOrderSubmitting(true);
+      try {
+        const existing = await fetchCustomerProfileByPhone(cleanedPhone);
+        setOrderAuthPromptData({
+          isOpen: true,
+          phone: cleanedPhone,
+          isExisting: !!existing,
+          existingProfile: existing
+        });
+      } catch (err) {
+        console.warn("Could not check customer profile:", err);
+        setOrderAuthPromptData({
+          isOpen: true,
+          phone: cleanedPhone,
+          isExisting: false,
+          existingProfile: null
+        });
+      } finally {
+        setOrderSubmitting(false);
+      }
+      return;
+    }
+
+    // Customer is already logged in, proceed directly with placing the order
+    await executePlaceOrder(activeCustomer);
   };
 
   const triggerShopperWhatsAppMessage = (order: OrderItem) => {
@@ -1124,6 +1284,77 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     transition={{ duration: 0.15 }}
                     className="absolute left-0 top-full mt-2 w-72 bg-[#111827] border border-[#232B3A] rounded-2xl shadow-2xl overflow-hidden z-50 p-2 space-y-1.5"
                   >
+                    {/* Customer Session Card (Mobile) */}
+                    {activeCustomer ? (
+                      <div className="p-2.5 mb-1 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                              <User className="w-4 h-4 text-emerald-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-white truncate">{activeCustomer.name}</p>
+                              <p className="text-[10px] text-gray-400 font-mono">{activeCustomer.phone}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono">
+                            {(activeCustomer.points || 0).toLocaleString('es-CO')} R
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsMobileMenuOpen(false);
+                              setCustomerPortalTab('profile');
+                              setIsCustomerPortalOpen(true);
+                            }}
+                            className="py-1.5 px-2 bg-slate-700/60 hover:bg-slate-700 text-white rounded-lg text-[10px] font-bold text-center transition"
+                          >
+                            Mi Cuenta
+                          </button>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setIsMobileMenuOpen(false);
+                              await logoutCustomerSession();
+                            }}
+                            className="py-1.5 px-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-lg text-[10px] font-bold text-center flex items-center justify-center gap-1 transition"
+                          >
+                            <LogOut className="w-3 h-3 text-red-400" />
+                            Cerrar Sesión
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setCustomerPortalTab('orders');
+                          setIsCustomerPortalOpen(true);
+                        }}
+                        className="w-full text-left p-2.5 mb-1 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40 hover:border-emerald-400 transition cursor-pointer flex items-center justify-between group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                            <User className="w-4 h-4 text-emerald-400" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black text-white group-hover:text-emerald-300 transition block">
+                              Ingresar como Cliente
+                            </span>
+                            <span className="text-[10px] text-emerald-400 font-bold block">
+                              +1.000 RYYCOS ($1.000 COP) Gratis
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-black">
+                          Entrar
+                        </span>
+                      </button>
+                    )}
+
                     {/* Item 1: Mis Pedidos */}
                     <button
                       id="drawer-my-orders-btn"
@@ -1338,6 +1569,43 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
           {/* Right: Action Buttons */}
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
+            {/* Customer Session Status (Desktop) */}
+            {activeCustomer ? (
+              <div className="hidden lg:flex items-center gap-1.5 bg-[#111827] border border-slate-700/80 rounded-xl p-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setCustomerPortalTab('profile'); setIsCustomerPortalOpen(true); }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-slate-800 text-xs font-bold text-white transition cursor-pointer"
+                  title="Mi cuenta de cliente"
+                >
+                  <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">
+                    {activeCustomer.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="max-w-[90px] truncate">{activeCustomer.name.split(' ')[0]}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await logoutCustomerSession();
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
+                  title="Cerrar sesión de cliente"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#111827] hover:bg-[#1A2234] border border-[#232B3A] text-gray-200 hover:text-white font-extrabold text-xs transition cursor-pointer shrink-0"
+                title="Ingresar como cliente"
+              >
+                <User className="w-3.5 h-3.5 text-slate-400" />
+                <span>Ingresar</span>
+              </button>
+            )}
+
             {/* Mis Pedidos Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-orders-btn"
@@ -1514,9 +1782,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               {/* Floating Transparent Food Combo Image */}
               <img 
-                src="https://firebasestorage.googleapis.com/v0/b/studio-9002217802-13e05.firebasestorage.app/o/image-removebg-preview%20(1).png?alt=media" 
+                src="/hero_combo.webp" 
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = '/hero_combo.webp';
+                  (e.target as HTMLImageElement).src = 'https://firebasestorage.googleapis.com/v0/b/studio-9002217802-13e05.firebasestorage.app/o/image-removebg-preview%20(1).png?alt=media';
                 }}
                 alt="Delicioso combo de hamburguesa, papas y bebida" 
                 className="relative z-10 w-full h-auto max-h-[170px] sm:max-h-[250px] md:max-h-[300px] object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.65)] hover:scale-105 transition-transform duration-300 pointer-events-none select-none"
@@ -2930,13 +3198,24 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <button
                   onClick={() => {
                     setIsSuccessOpen(false);
+                    setCustomerPortalTab('orders');
+                    setIsCustomerPortalOpen(true);
+                  }}
+                  className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-[#E63946]/20 cursor-pointer"
+                >
+                  <ShoppingBag className="w-4 h-4 text-white" />
+                  Ver y Rastrear Mis Pedidos en Tiempo Real 📦
+                </button>
+                <button
+                  onClick={() => {
+                    setIsSuccessOpen(false);
                     setCustomerPortalTab('wheel');
                     setIsCustomerPortalOpen(true);
                   }}
-                  className="w-full py-3 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                  className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
                 >
                   <Crown className="w-4 h-4 text-black" />
-                  ¡Girar Ruleta de Platos Gratis & Rastrear Pedido!
+                  ¡Girar Ruleta de Platos Gratis & Ver Mis RYYCOS! 🎁
                 </button>
                 <button
                   onClick={() => {
@@ -2953,6 +3232,30 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
         )}
       </AnimatePresence>
+
+      {/* Checkout Customer Verification / Registration Modal */}
+      <CustomerOrderAuthPromptModal
+        isOpen={orderAuthPromptData.isOpen}
+        onClose={() => setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }))}
+        phone={orderAuthPromptData.phone}
+        customerName={custName}
+        customerAddress={deliveryType === 'pickup' ? (pickupNotes.trim() ? `Recoger en Restaurante (${pickupNotes.trim()})` : 'Recoger en Restaurante') : custAddress}
+        customerNotes={custNotes}
+        cartSummary={{
+          itemsCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+          totalFormatted: (() => {
+            const sub = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+            const fee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
+            return `$${(sub + fee).toLocaleString('es-CO')}`;
+          })()
+        }}
+        isExistingCustomer={orderAuthPromptData.isExisting}
+        existingProfile={orderAuthPromptData.existingProfile}
+        onAuthenticated={handleAuthPromptSuccess}
+        onChangePhoneRequest={() => {
+          setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
+        }}
+      />
 
       {/* Floating Cart Button */}
       {cart.length > 0 && (

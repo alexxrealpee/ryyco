@@ -39,6 +39,11 @@ export interface CatalogStore {
   whatsapp?: string;
   isClosed: boolean;
   suspended?: boolean;
+  photoURL?: string;
+  bannerURL?: string;
+  deliveryFee?: number;
+  schedule?: any;
+  [key: string]: any;
 }
 
 export interface AvailableCatalog {
@@ -155,6 +160,7 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
         const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
         const isClosed = isSuspended || data.isClosed === true;
         rawStoresMap.set(uid, {
+          ...data,
           uid,
           username: data.username || uid,
           displayName: data.displayName || data.storeName || data.username || 'Restaurante',
@@ -162,6 +168,10 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
           address: data.address || '',
           phone: data.phone || '',
           whatsapp: data.whatsapp || '',
+          photoURL: data.photoURL || '',
+          bannerURL: data.bannerURL || '',
+          deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 7000,
+          schedule: data.schedule || null,
           isClosed,
           suspended: isSuspended
         });
@@ -230,6 +240,7 @@ export function initBackendCatalogManager() {
           const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
           const isClosed = isSuspended || data.isClosed === true;
           rawStoresMap.set(uid, {
+            ...data,
             uid,
             username: data.username || uid,
             displayName: data.displayName || data.storeName || data.username || 'Restaurante',
@@ -237,6 +248,10 @@ export function initBackendCatalogManager() {
             address: data.address || '',
             phone: data.phone || '',
             whatsapp: data.whatsapp || '',
+            photoURL: data.photoURL || '',
+            bannerURL: data.bannerURL || '',
+            deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 7000,
+            schedule: data.schedule || null,
             isClosed,
             suspended: isSuspended
           });

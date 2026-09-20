@@ -19,7 +19,9 @@ import {
   listenToCustomerProfile,
   subscribeStoreTheme,
   subscribeStoreProfile,
-  PREDEFINED_THEMES
+  PREDEFINED_THEMES,
+  sanitizeCustomerPhone,
+  setActiveCustomerSession
 } from '../lib/firebase';
 import { 
   getStoredCart, 
@@ -35,6 +37,7 @@ import {
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 import CustomerPortalModal from './CustomerPortalModal';
+import CustomerOrderAuthPromptModal from './CustomerOrderAuthPromptModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { DeliveryAddressCard, isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import { 
@@ -252,12 +255,29 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [appliedRewardCode, setAppliedRewardCode] = useState('');
   const [rewardDiscountAmount, setRewardDiscountAmount] = useState(0);
 
+  // Customer Checkout Verification Prompt State
+  const [orderAuthPromptData, setOrderAuthPromptData] = useState<{
+    isOpen: boolean;
+    phone: string;
+    isExisting: boolean;
+    existingProfile: CustomerProfile | null;
+  }>({
+    isOpen: false,
+    phone: '',
+    isExisting: false,
+    existingProfile: null
+  });
+
   // Auto-load customer profile from local storage and keep synchronized in real time
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
     const initCustomer = (phone: string) => {
       if (unsubProfile) unsubProfile();
       unsubProfile = listenToCustomerProfile(phone, (cust) => {
+        const active = localStorage.getItem('ryyco_active_customer_phone');
+        if (!active || sanitizeCustomerPhone(active) !== sanitizeCustomerPhone(phone)) {
+          return;
+        }
         if (cust) {
           setActiveCustomer(cust);
           if (!custPhone) setCustPhone(cust.phone);
@@ -277,10 +297,23 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
 
     const handleProfileUpdated = (e: any) => {
+      if (e.detail === null) {
+        if (unsubProfile) {
+          unsubProfile();
+          unsubProfile = null;
+        }
+        setActiveCustomer(null);
+        setCustPhone('');
+        setCustName('');
+        setCustAddress('');
+        setCustEmail('');
+        setCustNotes('');
+        return;
+      }
       if (e.detail) {
-        const active = localStorage.getItem('ryyco_active_customer_phone');
-        if (!active || cleanColombianPhone(active) === cleanColombianPhone(e.detail.phone)) {
-          setActiveCustomer(e.detail);
+        setActiveCustomer(e.detail);
+        if (e.detail.phone) {
+          initCustomer(e.detail.phone);
         }
       }
     };
@@ -787,6 +820,127 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     setCart(updated);
   };
 
+  const executePlaceOrder = async (customer: CustomerProfile) => {
+    if (!profile) return;
+    orderSubmittingRef.current = true;
+    setOrderSubmitting(true);
+    const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+    const isTable = deliveryType === 'table';
+    const isPickup = deliveryType === 'pickup';
+    const deliveryFee = (isPickup || isTable) ? 0 : systemDeliveryFee;
+    const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
+    const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
+    const rNo = Math.floor(1000 + Math.random() * 9000);
+
+    const formattedPhone = formatColombianPhoneWith57(customer.phone || custPhone);
+    const finalAddress = isTable
+      ? `Mesa ${tableNumber.trim()} (Servicio en Restaurante / Salón)`
+      : isPickup 
+      ? (pickupNotes.trim() ? `Recoger en Restaurante / Local (Nota: ${pickupNotes.trim()})` : `Recoger en Restaurante / Local (${profile.displayName || profile.username})`)
+      : custAddress.trim();
+
+    let finalNotes = custNotes.trim();
+    if (isTable) {
+      finalNotes = `[PEDIDO EN MESA #${tableNumber.trim()}] ${finalNotes}`.trim();
+    }
+    if (appliedRewardCode) {
+      finalNotes = `[Cupón Aplicado: ${appliedRewardCode} - Descuento: $${finalDiscount.toLocaleString('es-CO')}] ${finalNotes}`.trim();
+    }
+
+    const newOrder: OrderItem = {
+      id: `order_${Date.now()}`,
+      storeOwnerId: profile.uid,
+      storeName: profile.displayName || profile.username,
+      storeAddress: profile.address || profile.location || 'Dirección de la Tienda',
+      storeReference: profile.restaurantReference || (profile as any).storeReference || undefined,
+      storePhone: profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone,
+      storeMapUrl: (profile as any).mapUrl || undefined,
+      storeLat: profile.lat || undefined,
+      storeLng: profile.lng || undefined,
+      orderNumber: rNo,
+      customerName: customer.name || custName.trim(),
+      customerPhone: formattedPhone,
+      customerEmail: custEmail.trim() || undefined,
+      customerAddress: finalAddress,
+      customerReference: custNotes.trim() || undefined,
+      customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
+      customerLat: custCoordinates?.lat,
+      customerLng: custCoordinates?.lng,
+      items: cart.map(item => ({
+        productId: item?.product?.id || (item as any)?.productId || item?.id || '',
+        name: item?.product?.name || (item as any)?.name || 'Producto',
+        price: typeof item?.product?.price === 'number' ? item.product.price : (Number((item as any)?.price) || 0),
+        quantity: item?.quantity || 1,
+        selectedVariant: item?.selectedVariant || undefined
+      })),
+      totalAmount: totalSum,
+      deliveryFee: deliveryFee,
+      orderType: isTable ? 'table' : isPickup ? 'pickup' : 'delivery',
+      isTableOrder: isTable,
+      tableNumber: isTable ? tableNumber.trim() : undefined,
+      paymentMethod: payMethod,
+      notes: finalNotes || undefined,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      proofImage: isTable ? undefined : (uploadedOrderProofBase64 || undefined)
+    };
+
+    try {
+      const savedOrder = await saveOrder(newOrder);
+      setSubmittedOrder(savedOrder);
+
+      // Save / update customer profile with details and address in background
+      try {
+        const isRealAddress = !isPickup && !isTable && custAddress.trim() && !isPickupOrInvalidAddress(custAddress);
+        if (isRealAddress) {
+          saveCustomerProfile({
+            ...customer,
+            address: custAddress.trim(),
+            notes: custNotes.trim() || customer.notes
+          }).then(updated => {
+            setActiveCustomer(updated);
+          }).catch(err => console.warn("Failed background customer profile creation:", err));
+        }
+      } catch (e) {}
+      
+      // Clear out customer cart local states & shared storage
+      saveStoredCart([]);
+      setCart([]);
+      setUploadedOrderProofBase64('');
+      setAppliedRewardCode('');
+      setRewardDiscountAmount(0);
+      setIsCartOpen(false);
+      setIsCheckoutOpen(false);
+      setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
+
+      // Auto-trigger WhatsApp message instantly to ensure delivery to the merchant
+      try {
+        triggerShopperWhatsAppMessage(savedOrder);
+      } catch (e) {
+        console.warn("Auto-redirect blocked by browser, manual fallback remains available", e);
+      }
+    } catch(err) {
+      console.error(err);
+      alert("Ocurrió un error al registrar el pedido. Intenta nuevamente.");
+    } finally {
+      orderSubmittingRef.current = false;
+      setOrderSubmitting(false);
+    }
+  };
+
+  const handleAuthPromptSuccess = async (authenticatedCustomer: CustomerProfile) => {
+    setActiveCustomer(authenticatedCustomer);
+    setActiveCustomerSession(authenticatedCustomer);
+    setCustName(authenticatedCustomer.name);
+    setCustPhone(authenticatedCustomer.phone);
+    if (authenticatedCustomer.address && !isPickupOrInvalidAddress(authenticatedCustomer.address) && !custAddress) {
+      setCustAddress(authenticatedCustomer.address);
+    }
+    setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
+    // Continue automatically with order placement without requiring user to re-enter anything
+    await executePlaceOrder(authenticatedCustomer);
+  };
+
   // Complete Checkout Order placement
   const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -819,111 +973,35 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
     setPhoneError("");
 
-    orderSubmittingRef.current = true;
-    setOrderSubmitting(true);
-    const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-    const isTable = deliveryType === 'table';
-    const isPickup = deliveryType === 'pickup';
-    const deliveryFee = (isPickup || isTable) ? 0 : systemDeliveryFee;
-    const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
-    const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
-    const rNo = Math.floor(1000 + Math.random() * 9000);
+    // Check if the user is already authenticated with a verified session matching this phone
+    const isCustomerVerified = activeCustomer && sanitizeCustomerPhone(activeCustomer.phone) === sanitizeCustomerPhone(cleanedPhone);
 
-    const formattedPhone = formatColombianPhoneWith57(custPhone);
-    const finalAddress = isTable
-      ? `Mesa ${tableNumber.trim()} (Servicio en Restaurante / Salón)`
-      : isPickup 
-      ? (pickupNotes.trim() ? `Recoger en Restaurante / Local (Nota: ${pickupNotes.trim()})` : `Recoger en Restaurante / Local (${profile.displayName || profile.username})`)
-      : custAddress.trim();
-
-    let finalNotes = custNotes.trim();
-    if (isTable) {
-      finalNotes = `[PEDIDO EN MESA #${tableNumber.trim()}] ${finalNotes}`.trim();
-    }
-    if (appliedRewardCode) {
-      finalNotes = `[Cupón Aplicado: ${appliedRewardCode} - Descuento: $${finalDiscount.toLocaleString('es-CO')}] ${finalNotes}`.trim();
-    }
-
-    const newOrder: OrderItem = {
-      id: `order_${Date.now()}`,
-      storeOwnerId: profile.uid,
-      storeName: profile.displayName || profile.username,
-      storeAddress: profile.address || profile.location || 'Dirección de la Tienda',
-      storeReference: profile.restaurantReference || (profile as any).storeReference || undefined,
-      storePhone: profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone,
-      storeMapUrl: (profile as any).mapUrl || undefined,
-      storeLat: profile.lat || undefined,
-      storeLng: profile.lng || undefined,
-      orderNumber: rNo,
-      customerName: custName.trim(),
-      customerPhone: formattedPhone,
-      customerEmail: custEmail.trim() || undefined,
-      customerAddress: finalAddress,
-      customerReference: custNotes.trim() || undefined,
-      customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
-      customerLat: custCoordinates?.lat,
-      customerLng: custCoordinates?.lng,
-      items: cart.map(item => ({
-        productId: item?.product?.id || (item as any)?.productId || item?.id || '',
-        name: item?.product?.name || (item as any)?.name || 'Producto',
-        price: typeof item?.product?.price === 'number' ? item.product.price : (Number((item as any)?.price) || 0),
-        quantity: item?.quantity || 1,
-        selectedVariant: item?.selectedVariant || undefined
-      })),
-      totalAmount: totalSum,
-      deliveryFee: deliveryFee,
-      orderType: isTable ? 'table' : isPickup ? 'pickup' : 'delivery',
-      isTableOrder: isTable,
-      tableNumber: isTable ? tableNumber.trim() : undefined,
-      paymentMethod: payMethod,
-      notes: finalNotes || undefined,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      proofImage: isTable ? undefined : (uploadedOrderProofBase64 || undefined)
-    };
-
-    try {
-      const savedOrder = await saveOrder(newOrder);
-      setSubmittedOrder(savedOrder);
-
-      // Save / update customer profile with details and address
-      if (createAccountWithOrder || custPhone) {
-        try {
-          const isRealAddress = !isPickup && !isTable && custAddress.trim() && !isPickupOrInvalidAddress(custAddress);
-          saveCustomerProfile({
-            phone: cleanedPhone,
-            name: custName.trim(),
-            address: isRealAddress ? custAddress.trim() : (activeCustomer?.address && !isPickupOrInvalidAddress(activeCustomer.address) ? activeCustomer.address : ''),
-            email: custEmail.trim(),
-            notes: custNotes.trim()
-          }).then(updated => {
-            setActiveCustomer(updated);
-          }).catch(err => console.warn("Failed background customer profile creation:", err));
-        } catch (e) {}
-      }
-      
-      // Clear out customer cart local states & shared storage
-      saveStoredCart([]);
-      setCart([]);
-      setUploadedOrderProofBase64('');
-      setAppliedRewardCode('');
-      setRewardDiscountAmount(0);
-      setIsCartOpen(false);
-      setIsCheckoutOpen(false);
-
-      // Auto-trigger WhatsApp message instantly to ensure delivery to the merchant
+    if (!isCustomerVerified) {
+      setOrderSubmitting(true);
       try {
-        triggerShopperWhatsAppMessage(savedOrder);
-      } catch (e) {
-        console.warn("Auto-redirect blocked by browser, manual fallback remains available", e);
+        const existing = await fetchCustomerProfileByPhone(cleanedPhone);
+        setOrderAuthPromptData({
+          isOpen: true,
+          phone: cleanedPhone,
+          isExisting: !!existing,
+          existingProfile: existing
+        });
+      } catch (err) {
+        console.warn("Could not check customer profile:", err);
+        setOrderAuthPromptData({
+          isOpen: true,
+          phone: cleanedPhone,
+          isExisting: false,
+          existingProfile: null
+        });
+      } finally {
+        setOrderSubmitting(false);
       }
-    } catch(err) {
-      console.error(err);
-      alert("Ocurrió un error al registrar el pedido. Intenta nuevamente.");
-    } finally {
-      orderSubmittingRef.current = false;
-      setOrderSubmitting(false);
+      return;
     }
+
+    // Customer is already logged in, proceed directly with placing the order
+    await executePlaceOrder(activeCustomer);
   };
 
   // Launch WhatsApp pre-packaged checkout dispatch message
@@ -3604,6 +3682,33 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           </div>
         </div>
       )}
+
+      {/* Checkout Customer Verification / Registration Modal */}
+      <CustomerOrderAuthPromptModal
+        isOpen={orderAuthPromptData.isOpen}
+        onClose={() => setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }))}
+        phone={orderAuthPromptData.phone}
+        customerName={custName}
+        customerAddress={deliveryType === 'table' ? `Mesa ${tableNumber.trim()}` : deliveryType === 'pickup' ? (pickupNotes.trim() ? `Recoger en Restaurante (${pickupNotes.trim()})` : 'Recoger en Restaurante') : custAddress}
+        customerNotes={custNotes}
+        cartSummary={{
+          itemsCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+          totalFormatted: (() => {
+            const sub = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+            const isT = deliveryType === 'table';
+            const isP = deliveryType === 'pickup';
+            const fee = (isP || isT) ? 0 : systemDeliveryFee;
+            const disc = Math.min(sub, rewardDiscountAmount);
+            return `${profile?.currency || '$'}${Math.max(0, sub + fee - disc).toLocaleString('es-CO')}`;
+          })()
+        }}
+        isExistingCustomer={orderAuthPromptData.isExisting}
+        existingProfile={orderAuthPromptData.existingProfile}
+        onAuthenticated={handleAuthPromptSuccess}
+        onChangePhoneRequest={() => {
+          setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
+        }}
+      />
 
       {/* CUSTOMER LOYALTY, ACCOUNT, ORDERS & LUCKY WHEEL PORTAL MODAL */}
       <CustomerPortalModal
