@@ -4,6 +4,8 @@
  */
 
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import fs from 'fs';
+import path from 'path';
 import { 
   getFirestore, 
   collection, 
@@ -139,6 +141,15 @@ export function buildAvailableCatalog(): AvailableCatalog {
     catalogUpdatedAt: new Date().toISOString(),
     version: currentAvailableCatalog.version + 1
   };
+
+  try {
+    const publicCachePath = path.join(process.cwd(), 'public', 'catalog-cache.json');
+    fs.writeFileSync(publicCachePath, JSON.stringify({ success: true, catalog: currentAvailableCatalog, isPartial: false }));
+    const distCachePath = path.join(process.cwd(), 'dist', 'catalog-cache.json');
+    if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+      fs.writeFileSync(distCachePath, JSON.stringify({ success: true, catalog: currentAvailableCatalog, isPartial: false }));
+    }
+  } catch (e) {}
 
   return currentAvailableCatalog;
 }

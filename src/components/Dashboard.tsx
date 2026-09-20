@@ -830,6 +830,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       };
       await saveProfile(updatedProfile);
       setProfile(updatedProfile);
+      try {
+        localStorage.removeItem('linnk_all_active_data_cache');
+        window.dispatchEvent(new CustomEvent('linnk:store_status_changed', { detail: { uid: updatedProfile.uid, isClosed: nextClosedState } }));
+        fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+      } catch (e) {}
     } catch (err) {
       console.error(err);
       alert("Ocurrió un error al cambiar el estado de la tienda.");

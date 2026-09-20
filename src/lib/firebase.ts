@@ -979,6 +979,7 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
 
   if (typeof window !== 'undefined') {
     try {
+      localStorage.removeItem('linnk_all_active_data_cache');
       window.dispatchEvent(new CustomEvent('ryyco_profile_updated', { detail: { profile } }));
     } catch (e) {}
   }
@@ -3087,6 +3088,16 @@ export function findStoreForProduct(
 let _cachedProductsData: { products: ProductItem[]; profiles: Record<string, UserProfile>; timestamp: number } | null = null;
 const PRODUCTS_CACHE_TTL_MS = 180 * 1000; // 3 minutes cache
 let _isBackgroundRefreshing = false;
+
+// Clear in-memory and persistent catalog caches when store statuses change
+export function invalidateActiveCatalogCache(): void {
+  _cachedProductsData = null;
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('linnk_all_active_data_cache');
+    }
+  } catch (e) {}
+}
 
 // Fetch all active products and profiles from Firestore and local cache
 export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = false): Promise<{ products: ProductItem[]; profiles: Record<string, UserProfile> }> {

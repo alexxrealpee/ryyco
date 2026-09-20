@@ -422,6 +422,21 @@ Formatos válidos para:
     });
   });
 
+  app.post('/api/catalog/refresh', async (req, res) => {
+    try {
+      const refreshed = await refreshCatalogFromFirestore();
+      res.json({
+        success: true,
+        storeCount: refreshed.stores.length,
+        productCount: refreshed.products.length,
+        catalogUpdatedAt: refreshed.catalogUpdatedAt,
+        version: refreshed.version
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || 'Error refreshing catalog' });
+    }
+  });
+
   app.post('/api/catalog/sync', (req, res) => {
     const { stores = [], products = [] } = req.body || {};
     const updated = syncCatalogFromClient(stores, products);

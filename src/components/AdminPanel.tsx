@@ -1123,6 +1123,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       }
       await setDoc(doc(db, 'profiles', user.uid), updates, { merge: true });
       setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, ...updates } : u));
+      try {
+        localStorage.removeItem('linnk_all_active_data_cache');
+        window.dispatchEvent(new CustomEvent('linnk:store_status_changed', { detail: { uid: user.uid, isClosed: nextClosedState } }));
+        fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+      } catch (e) {}
       setNotif(`La tienda ${user.storeName || '@' + user.username} ahora se encuentra: ${nextClosedState ? '🔴 CERRADA' : '🟢 ABIERTA'}`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err) {

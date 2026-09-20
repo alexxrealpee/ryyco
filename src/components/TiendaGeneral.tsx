@@ -38,9 +38,11 @@ import {
   Film,
   Play
 } from 'lucide-react';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
 import { 
+  db,
   fetchAllActiveProductsAndStores, 
   saveOrder, 
   fetchSystemSettings, 
@@ -316,8 +318,67 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
     };
 
+    const handleStoreStatusChange = (e: any) => {
+      const { uid, isClosed } = e.detail || {};
+      if (uid) {
+        setProfiles(prev => {
+          const current = prev[uid];
+          if (!current) return prev;
+          return {
+            ...prev,
+            [uid]: { ...current, isClosed },
+            ...(current.username ? { [current.username.toLowerCase()]: { ...current, isClosed } } : {})
+          };
+        });
+      }
+    };
+
+    const handleProfileUpdate = (e: any) => {
+      const updatedProfile = e.detail?.profile;
+      if (updatedProfile && updatedProfile.uid) {
+        setProfiles(prev => ({
+          ...prev,
+          [updatedProfile.uid]: updatedProfile,
+          ...(updatedProfile.username ? { [updatedProfile.username.toLowerCase()]: updatedProfile } : {})
+        }));
+      }
+    };
+
     window.addEventListener('linnk:catalog_updated', handleCatalogUpdate);
-    return () => window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
+    window.addEventListener('linnk:store_status_changed', handleStoreStatusChange);
+    window.addEventListener('ryyco_profile_updated', handleProfileUpdate);
+    return () => {
+      window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
+      window.removeEventListener('linnk:store_status_changed', handleStoreStatusChange);
+      window.removeEventListener('ryyco_profile_updated', handleProfileUpdate);
+    };
+  }, []);
+
+  // Real-time Firestore listener for all store profiles so admin changes take effect immediately
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'profiles'), (snapshot) => {
+      const updatedMap: Record<string, UserProfile> = {};
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as UserProfile;
+        const uid = data.uid || docSnap.id;
+        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+        const prof: UserProfile = {
+          ...data,
+          uid,
+          suspended: isSuspended,
+          isClosed: isSuspended ? true : data.isClosed === true
+        };
+        updatedMap[uid] = prof;
+        if (prof.username) {
+          updatedMap[prof.username.toLowerCase()] = prof;
+        }
+      });
+      setProfiles(prev => ({ ...prev, ...updatedMap }));
+    }, (error) => {
+      console.warn("Real-time profiles listener notice:", error);
+    });
+
+    return () => unsubscribe();
   }, []);
   
   // Filtering & search states
@@ -729,35 +790,44 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, [availableBaseProducts]);
 
   // Get list of unique store profiles with active products (memoized)
+  // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
   const uniqueStores = useMemo(() => {
-    // When progressive loader has loaded logos, render them in their exact progressive sequence
-    if (loadedLogos.length > 0) {
-      const seen = new Set<string>();
-      return loadedLogos.filter(s => {
-        const id = s?.uid || s?.username;
-        if (!id || seen.has(id)) return false;
-        seen.add(id);
-        return true;
-      });
-    }
     const storeMap = new Map<string, UserProfile>();
-    // 1. Always prioritize loadedLogos from progressive loader
+
+    // 1. Prioritize loadedLogos in order, but ALWAYS check latest status from profiles state
     loadedLogos.forEach(s => {
-      if (s && s.uid && !storeMap.has(s.uid)) {
-        if (!checkIsStoreClosed(s) && !s.suspended) {
-          storeMap.set(s.uid, s);
+      if (!s) return;
+      const uid = s.uid;
+      const uname = s.username?.toLowerCase();
+      const key = uid || uname;
+      if (!key || storeMap.has(key)) return;
+
+      // Always resolve latest state from profiles state
+      const current = (uid && profiles[uid]) || (uname && profiles[uname]) || s;
+
+      // Strict open/closed validation: MUST NOT be closed and MUST NOT be suspended
+      if (!checkIsStoreClosed(current) && !current.suspended && current.isClosed !== true) {
+        storeMap.set(key, current);
+      }
+    });
+
+    // 2. Complement with any other open stores from profiles
+    (Object.values(profiles) as UserProfile[]).forEach(profile => {
+      if (!profile) return;
+      const uid = profile.uid;
+      const uname = profile.username?.toLowerCase();
+      const key = uid || uname;
+      if (!key || storeMap.has(key)) return;
+
+      if (!checkIsStoreClosed(profile) && !profile.suspended && profile.isClosed !== true) {
+        // If products are loaded, verify the store has matching active products (or show open store)
+        const hasProducts = products.length === 0 || products.some(p => (uid && p.userId === uid) || (uname && p.storeUsername?.toLowerCase() === uname));
+        if (hasProducts) {
+          storeMap.set(key, profile);
         }
       }
     });
 
-    // 2. Complement with profiles map
-    (Object.values(profiles) as UserProfile[]).forEach(profile => {
-      if (profile && profile.uid && !storeMap.has(profile.uid)) {
-        if (!checkIsStoreClosed(profile) && !profile.suspended && products.some(p => p.userId === profile.uid || p.storeUsername === profile.username)) {
-          storeMap.set(profile.uid, profile);
-        }
-      }
-    });
     return Array.from(storeMap.values());
   }, [profiles, products, loadedLogos]);
 

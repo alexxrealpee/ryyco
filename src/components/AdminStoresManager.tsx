@@ -588,6 +588,11 @@ export default function AdminStoresManager({
         updatedAt: new Date().toISOString()
       });
       store.isClosed = newIsClosed;
+      try {
+        localStorage.removeItem('linnk_all_active_data_cache');
+        window.dispatchEvent(new CustomEvent('linnk:store_status_changed', { detail: { uid: store.uid, isClosed: newIsClosed } }));
+        fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+      } catch (e) {}
       showNotif(`Tienda marcada como ${newIsClosed ? 'Cerrada Temporalmente' : 'Abierta al Público'}.`);
       if (onRefreshData) onRefreshData();
     } catch (err) {

@@ -92,7 +92,7 @@ function getCachedStoreData(): {
           };
           if (prof.uid) profilesMap[prof.uid] = prof;
           if (prof.username) profilesMap[prof.username.toLowerCase()] = prof;
-          if (!isSuspended && !prof.isClosed && (prof.displayName || prof.username)) {
+          if (!isSuspended && !prof.isClosed && prof.isClosed !== true && !checkIsStoreClosed(prof) && (prof.displayName || prof.username)) {
             openStores.push(prof);
           }
         });
@@ -269,7 +269,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     }
   }, [fetchBatch, hasMore]);
 
-  // Listen for background full catalog completion
+  // Listen for background full catalog completion and store status changes
   useEffect(() => {
     const handleCatalogUpdate = (e: any) => {
       const detail = e.detail;
@@ -290,15 +290,56 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
         if (Object.keys(incomingProfiles).length > 0) {
           setProfilesMap(prev => ({ ...prev, ...incomingProfiles }));
+          setOpenRestaurants(prev => prev.filter(s => {
+            const curr = incomingProfiles[s.uid] || (s.username ? incomingProfiles[s.username.toLowerCase()] : null) || s;
+            return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
+          }));
+          setLoadedLogos(prev => prev.filter(s => {
+            const curr = incomingProfiles[s.uid] || (s.username ? incomingProfiles[s.username.toLowerCase()] : null) || s;
+            return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
+          }));
         }
 
         setHasMore(true);
       }
     };
 
+    const handleStoreStatusChange = (e: any) => {
+      const { uid, isClosed } = e.detail || {};
+      if (uid) {
+        setProfilesMap(prev => {
+          const s = prev[uid];
+          if (!s) return prev;
+          return { ...prev, [uid]: { ...s, isClosed } };
+        });
+        if (isClosed) {
+          setOpenRestaurants(prev => prev.filter(s => s.uid !== uid));
+          setLoadedLogos(prev => prev.filter(s => s.uid !== uid));
+        }
+      }
+    };
+
     window.addEventListener('linnk:catalog_updated', handleCatalogUpdate);
-    return () => window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
+    window.addEventListener('linnk:store_status_changed', handleStoreStatusChange);
+    return () => {
+      window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
+      window.removeEventListener('linnk:store_status_changed', handleStoreStatusChange);
+    };
   }, []);
+
+  // Ensure loaded logos and open restaurants stay strictly synchronized with profilesMap
+  useEffect(() => {
+    if (Object.keys(profilesMap).length > 0) {
+      setOpenRestaurants(prev => prev.filter(s => {
+        const curr = profilesMap[s.uid] || (s.username ? profilesMap[s.username.toLowerCase()] : null) || s;
+        return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
+      }));
+      setLoadedLogos(prev => prev.filter(s => {
+        const curr = profilesMap[s.uid] || (s.username ? profilesMap[s.username.toLowerCase()] : null) || s;
+        return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
+      }));
+    }
+  }, [profilesMap]);
 
   // Main Progressive Loading Orchestrator with Stale-While-Revalidate speed
   useEffect(() => {
@@ -331,12 +372,10 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           openStores = await fetchOpenRestaurantsFromFirebase();
         }
 
-        if (openStores.length > 0) {
-          openRestaurantsRef.current = openStores;
-          setOpenRestaurants(openStores);
-          setLoadedLogos(openStores);
-          setFirstStore(openStores[0]);
-        }
+        openRestaurantsRef.current = openStores;
+        setOpenRestaurants(openStores);
+        setLoadedLogos(openStores);
+        setFirstStore(openStores[0] || null);
 
         setProfilesMap(pMap);
 
