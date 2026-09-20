@@ -1482,6 +1482,34 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return clean;
   };
 
+  const getStoreAdminWhatsAppMessage = (order: OrderItem): string => {
+    const storeName = getStoreNameForOrder(order);
+    const orderNumber = order.orderNumber || 'S/N';
+    const customerName = order.customerName || 'Cliente';
+
+    let productsText = 'Productos del pedido';
+    if (order.items && order.items.length > 0) {
+      productsText = order.items.map(it => {
+        const qty = it.quantity && it.quantity > 1 ? ` (x${it.quantity})` : '';
+        const variant = it.selectedVariant ? ` [${it.selectedVariant}]` : '';
+        return `${it.name}${variant}${qty}`;
+      }).join(', ');
+    } else if (order.notes) {
+      productsText = order.notes;
+    }
+
+    const orderValue = (order.totalAmount || 0).toLocaleString('es-CO');
+    const customerPhone = order.customerPhone || 'No registrado';
+
+    return `Hola, *${storeName}* 👋\n\n` +
+      `Le contactamos desde *Administración General de RYYCO* con relación al *pedido #${orderNumber}*, realizado por *${customerName}*.\n\n` +
+      `🍗 *Pedido:* ${productsText}\n` +
+      `💰 *Valor:* $${orderValue}\n` +
+      `📱 *WhatsApp del cliente:* ${customerPhone}\n\n` +
+      `Por favor, *comuníquese directamente con el cliente vía WhatsApp* para confirmar los detalles del pedido.\n\n` +
+      `Gracias por hacer parte de *RYYCO*. 🛵`;
+  };
+
   const storeNamesMap = useMemo(() => {
     const map: Record<string, string> = {};
     (Object.values(storesMap) as UserProfile[]).forEach((p: UserProfile) => {
@@ -3520,7 +3548,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               </span>
                               {storeWhatsapp ? (
                                 <a
-                                  href={`https://wa.me/${getCleanWhatsappNumber(storeWhatsapp)}?text=${encodeURIComponent(`Hola ${storeName}, te contactamos desde la administración general respecto al pedido #${order.orderNumber || 'S/N'}.`)}`}
+                                  href={`https://wa.me/${getCleanWhatsappNumber(storeWhatsapp)}?text=${encodeURIComponent(getStoreAdminWhatsAppMessage(order))}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
@@ -3688,7 +3716,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   )}
                                   {getStoreWhatsappForOrder(order) ? (
                                     <a
-                                      href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(order))}?text=${encodeURIComponent(`Hola ${getStoreNameForOrder(order)}, te contactamos desde administración general sobre el pedido #${order.orderNumber || 'S/N'}.`)}`}
+                                      href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(order))}?text=${encodeURIComponent(getStoreAdminWhatsAppMessage(order))}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-mono font-bold mt-0.5 truncate max-w-full"
@@ -4454,7 +4482,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {getStoreWhatsappForOrder(viewingOrder) ? (
                       <a
-                        href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(viewingOrder))}?text=${encodeURIComponent(`Hola ${getStoreNameForOrder(viewingOrder)}, te contactamos desde administración general sobre el pedido #${viewingOrder.orderNumber || 'S/N'}.`)}`}
+                        href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(viewingOrder))}?text=${encodeURIComponent(getStoreAdminWhatsAppMessage(viewingOrder))}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 text-[11px] font-mono font-bold transition shadow-sm"
