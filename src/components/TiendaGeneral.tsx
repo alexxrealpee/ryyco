@@ -1814,9 +1814,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               {/* Floating Transparent Food Combo Image */}
               <img 
-                src="/hero_combo.webp" 
+                src="https://firebasestorage.googleapis.com/v0/b/studio-9002217802-13e05.firebasestorage.app/o/ryyco%20comboo.webp?alt=media&token=bf5701d7-9702-4c3c-9794-b23dbea1cc75" 
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = 'https://firebasestorage.googleapis.com/v0/b/studio-9002217802-13e05.firebasestorage.app/o/image-removebg-preview%20(1).png?alt=media';
+                  (e.target as HTMLImageElement).src = '/hero_combo.webp';
                 }}
                 alt="Delicioso combo de hamburguesa, papas y bebida" 
                 className="relative z-10 w-full h-auto max-h-[170px] sm:max-h-[250px] md:max-h-[300px] object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.65)] hover:scale-105 transition-transform duration-300 pointer-events-none select-none"
@@ -3027,23 +3027,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <p className="text-[10px] text-gray-400 leading-tight">
                       Podrás pasar a retirar tu pedido sin pagar costo de domicilio. Te notificarán por WhatsApp cuando esté listo.
                     </p>
-                  </div>
-                )}
-
-                {/* Dispatch Address with Google Maps */}
-                {deliveryType === 'pickup' && (
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-[#A9B2C3] flex items-center gap-1.5 mb-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-[#E63946]" />
-                      <span>Detalles o Nota de Recogida (Opcional)</span>
-                    </label>
-                    <input 
-                      type="text" 
-                      value={pickupNotes}
-                      onChange={(e) => setPickupNotes(e.target.value)}
-                      placeholder="Ej: Paso a las 2:00 PM o voy en carro placa XYZ"
-                      className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 text-xs font-bold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20"
-                    />
                   </div>
                 )}
 

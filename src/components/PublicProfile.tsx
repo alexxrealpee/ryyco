@@ -3255,22 +3255,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             )}
 
-            {deliveryType === 'pickup' && (
-              <div>
-                <label className="text-[10px] font-black uppercase text-gray-500 flex items-center gap-1.5 mb-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-indigo-500" />
-                  <span>Detalles o Nota de Recogida (Opcional)</span>
-                </label>
-                <input 
-                  type="text" 
-                  value={pickupNotes}
-                  onChange={(e) => setPickupNotes(e.target.value)}
-                  placeholder="Ej: Paso a las 2:00 PM o voy en carro placa XYZ"
-                  className="w-full h-11 bg-white border border-gray-300 focus:border-indigo-500 rounded-xl px-3.5 text-xs font-bold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-indigo-500/20"
-                />
-              </div>
-            )}
-
             {deliveryType === 'delivery' && (
               <DeliveryAddressCard
                 address={custAddress}
