@@ -159,8 +159,9 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
         const uid = data.uid || docSnap.id;
         const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
         const isClosed = isSuspended || data.isClosed === true;
+        const { coverURL, bannerURL, ...cleanData } = data;
         rawStoresMap.set(uid, {
-          ...data,
+          ...cleanData,
           uid,
           username: data.username || uid,
           displayName: data.displayName || data.storeName || data.username || 'Restaurante',
@@ -169,7 +170,6 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
           phone: data.phone || '',
           whatsapp: data.whatsapp || '',
           photoURL: data.photoURL || '',
-          bannerURL: data.bannerURL || '',
           deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 7000,
           schedule: data.schedule || null,
           isClosed,
@@ -239,8 +239,9 @@ export function initBackendCatalogManager() {
         } else {
           const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
           const isClosed = isSuspended || data.isClosed === true;
+          const { coverURL, bannerURL, ...cleanData } = data;
           rawStoresMap.set(uid, {
-            ...data,
+            ...cleanData,
             uid,
             username: data.username || uid,
             displayName: data.displayName || data.storeName || data.username || 'Restaurante',
@@ -249,7 +250,6 @@ export function initBackendCatalogManager() {
             phone: data.phone || '',
             whatsapp: data.whatsapp || '',
             photoURL: data.photoURL || '',
-            bannerURL: data.bannerURL || '',
             deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 7000,
             schedule: data.schedule || null,
             isClosed,

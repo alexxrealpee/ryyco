@@ -3138,12 +3138,24 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
         }
 
         if (!apiData || !apiData.catalog) {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 2500);
-          const res = await fetch('/api/catalog/available', { signal: controller.signal });
-          clearTimeout(timeoutId);
-          if (res.ok) {
-            apiData = await res.json();
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch('/api/catalog/available', { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (res.ok && res.headers.get('content-type')?.includes('json')) {
+              apiData = await res.json();
+            }
+          } catch (e) {}
+
+          // Fallback for Hostinger environments where API rewrite isn't enabled or static hosting is used
+          if (!apiData || !apiData.catalog) {
+            try {
+              const staticRes = await fetch('/catalog-cache.json');
+              if (staticRes.ok) {
+                apiData = await staticRes.json();
+              }
+            } catch (e) {}
           }
         }
 

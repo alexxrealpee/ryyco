@@ -398,7 +398,7 @@ Formatos válidos para:
     }
     const isInitial = req.query.initial === 'true' || req.query.initial === '1';
     const limitQuery = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 0;
-    const limit = isInitial ? 20 : limitQuery;
+    const limit = isInitial ? 10 : limitQuery;
 
     if (limit > 0 && catalog.products && catalog.products.length > limit) {
       res.json({

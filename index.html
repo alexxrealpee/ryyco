@@ -51,13 +51,26 @@
     <script>
       try {
         window.__CATALOG_PREFETCH__ = fetch('/api/catalog/available?initial=true')
-          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(r) { 
+            if (r.ok) {
+              var ct = r.headers.get('content-type') || '';
+              if (ct.indexOf('application/json') !== -1) return r.json();
+            }
+            return fetch('/catalog-cache.json').then(function(cr) { return cr.ok ? cr.json() : null; });
+          })
           .then(function(d) {
-            window.__INITIAL_CATALOG_DATA__ = d;
+            if (d && d.catalog) {
+              window.__INITIAL_CATALOG_DATA__ = d;
+            }
             // Warm up the full catalog in the background once main execution settles
             setTimeout(function() {
               fetch('/api/catalog/available')
-                .then(function(res) { return res.ok ? res.json() : null; })
+                .then(function(res) { 
+                  if (res.ok && (res.headers.get('content-type') || '').indexOf('application/json') !== -1) {
+                    return res.json();
+                  }
+                  return fetch('/catalog-cache.json').then(function(cr) { return cr.ok ? cr.json() : null; });
+                })
                 .then(function(fullData) {
                   if (fullData && fullData.catalog && typeof window !== 'undefined') {
                     window.__INITIAL_CATALOG_DATA__ = fullData;
@@ -70,7 +83,11 @@
             }, 600);
             return d;
           })
-          .catch(function() { return null; });
+          .catch(function() { 
+            return fetch('/catalog-cache.json')
+              .then(function(cr) { return cr.ok ? cr.json() : null; })
+              .catch(function() { return null; });
+          });
       } catch (e) {}
     </script>
 

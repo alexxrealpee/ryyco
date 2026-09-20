@@ -38,6 +38,11 @@ if (strpos($uri, 'health') !== false) {
     exit;
 }
 
+if (strpos($uri, 'catalog') !== false) {
+    require __DIR__ . '/catalog-available.php';
+    exit;
+}
+
 header('Content-Type: application/json; charset=utf-8');
 echo json_encode([
     'status' => 'ok',
