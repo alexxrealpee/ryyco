@@ -1550,14 +1550,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const handleUpdateOrderStatus = async (orderId: string, storeOwnerId: string, newStatus: OrderItem['status']) => {
     try {
-      await updateOrderStatus(orderId, storeOwnerId, newStatus);
+      await updateOrderStatus(orderId, storeOwnerId, newStatus, {
+        updatedBy: 'system',
+        allowAdminOverride: true,
+        note: `Estado actualizado por administración a ${newStatus}`
+      });
       setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
       setViewingOrder(prev => prev && prev.id === orderId ? { ...prev, status: newStatus } : prev);
       setNotif(`¡Estado del pedido actualizado a ${newStatus.toUpperCase()} correctamente!`);
       setTimeout(() => setNotif(''), 4000);
-    } catch (err) {
-      console.error(err);
-      alert("Error al actualizar el estado del pedido.");
+    } catch (err: any) {
+      console.warn("Could not update order status:", err);
+      alert(err?.message || "Error al actualizar el estado del pedido.");
     }
   };
 
@@ -3624,13 +3628,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           </span>
                           {isTable ? (
                             <select
-                              value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus === 'cancelled' ? 'pending' : effectiveStatus}
+                              value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus}
                               onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
                               className={`bg-transparent text-xs font-extrabold outline-none cursor-pointer text-right ${statusTextColor}`}
                             >
                               <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
                               <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
                               <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                              <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                             </select>
                           ) : (
                             <select
@@ -3674,15 +3679,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 {/* Desktop View: Full Responsive Table (hidden md:block) */}
                 <div className="hidden md:block w-full overflow-x-auto rounded-2xl border border-gray-800/80 bg-gray-950/40 shadow-inner [scrollbar-width:thin] [scrollbar-color:rgba(99,102,241,0.35)_rgba(15,23,42,0.6)]">
                   <table className="w-full text-left border-collapse table-fixed min-w-[960px]">
-                    <colgroup>
-                      <col className="w-[80px]" /> {/* Pedido # */}
-                      <col className="w-[165px]" /> {/* Tienda de Origen */}
-                      <col className="w-[220px]" /> {/* Cliente / Contacto */}
-                      <col className="w-[190px]" /> {/* Artículos del Pedido */}
-                      <col className="w-[125px]" /> {/* Monto / Pago */}
-                      <col className="w-[125px]" /> {/* Estado del Pedido */}
-                      <col className="w-[85px]" /> {/* Acciones */}
-                    </colgroup>
+                    <colgroup><col className="w-[80px]" /><col className="w-[165px]" /><col className="w-[220px]" /><col className="w-[190px]" /><col className="w-[125px]" /><col className="w-[125px]" /><col className="w-[85px]" /></colgroup>
                     <thead>
                       <tr className="border-b border-gray-800 text-[10px] text-gray-400 uppercase font-black tracking-widest bg-gray-900/50">
                         <th className="py-3 px-3 w-[80px]">Pedido #</th>
@@ -3858,13 +3855,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                                 return checkIsTableOrder(order) ? (
                                   <select
-                                    value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus === 'cancelled' ? 'pending' : effectiveStatus}
+                                    value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus}
                                     onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
                                     className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2 cursor-pointer outline-none w-full max-w-[120px]"
                                   >
                                     <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
                                     <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
                                     <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                    <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
                                   </select>
                                 ) : (
                                   <select

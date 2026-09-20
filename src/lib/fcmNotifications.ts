@@ -244,14 +244,14 @@ export async function initializeFCM(): Promise<boolean> {
       window.dispatchEvent(customEvent);
 
       // 4. Show notification if allowed
-      if (Notification.permission === 'granted') {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
         const tag = isDriver
           ? (payload.data?.orderId ? `driver-fg-${payload.data.orderId}` : `driver-fg-${Date.now()}`)
           : (isSeller
             ? (payload.data?.orderId ? `seller-fg-${payload.data.orderId}` : `seller-fg-${Date.now()}`)
             : (payload.data?.orderId ? `ryyco-fg-${payload.data.orderId}` : `ryyco-fg-${Date.now()}`));
 
-        if (serviceWorkerReg) {
+        if (serviceWorkerReg && serviceWorkerReg.showNotification) {
           serviceWorkerReg.showNotification(title, {
             body,
             icon: '/logoryyco.png',
@@ -273,12 +273,21 @@ export async function initializeFCM(): Promise<boolean> {
             ] : [
               { action: 'open_admin', title: '📋 Ver en Administración' }
             ])
-          } as any);
-        } else {
-          new Notification(title, {
-            body,
-            icon: '/logoryyco.png'
+          } as any).catch(() => {
+            try {
+              new Notification(title, {
+                body,
+                icon: '/logoryyco.png'
+              });
+            } catch (e) {}
           });
+        } else {
+          try {
+            new Notification(title, {
+              body,
+              icon: '/logoryyco.png'
+            });
+          } catch (e) {}
         }
       }
     });
@@ -422,44 +431,50 @@ export async function triggerAdminOrderPush(
 
   // 3. Post message to active Service Worker to show background notification
   try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && reg.showNotification) {
-        reg.showNotification(title, {
-          body,
-          icon: '/logoryyco.png',
-          badge: '/favicon.svg',
-          vibrate: [350, 150, 350, 150, 500],
-          tag: 'ryyco-order-' + order.id,
-          renotify: true,
-          requireInteraction: true,
-          data: {
-            url: clickUrl,
-            orderId: order.id,
-            orderNumber: order.orderNumber
-          },
-          actions: [
-            { action: 'open_admin', title: '📋 Ver en Administración' }
-          ]
-        } as any);
-      }
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready.catch(() => null);
+        if (reg && reg.showNotification) {
+          await reg.showNotification(title, {
+            body,
+            icon: '/logoryyco.png',
+            badge: '/favicon.svg',
+            vibrate: [350, 150, 350, 150, 500],
+            tag: 'ryyco-order-' + order.id,
+            renotify: true,
+            requireInteraction: true,
+            data: {
+              url: clickUrl,
+              orderId: order.id,
+              orderNumber: order.orderNumber
+            },
+            actions: [
+              { action: 'open_admin', title: '📋 Ver en Administración' }
+            ]
+          } as any).catch(err => {
+            console.warn('[FCM] reg.showNotification caught error:', err);
+          });
+        }
 
-      // Also post message to service worker controller if active
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'TRIGGER_ADMIN_ORDER_NOTIFICATION',
-          title,
-          body,
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          url: clickUrl
-        });
+        // Also post message to service worker controller if active
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'TRIGGER_ADMIN_ORDER_NOTIFICATION',
+            title,
+            body,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            url: clickUrl
+          });
+        }
+      } else {
+        try {
+          new Notification(title, {
+            body,
+            icon: '/logoryyco.png'
+          });
+        } catch (e) {}
       }
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/logoryyco.png'
-      });
     }
   } catch (err) {
     console.warn('[FCM] Error displaying local push notification:', err);
@@ -651,45 +666,51 @@ export async function triggerSellerOrderPush(
 
   // 3. Post message to active Service Worker to show background notification
   try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && reg.showNotification) {
-        reg.showNotification(title, {
-          body,
-          icon: '/logoryyco.png',
-          badge: '/favicon.svg',
-          vibrate: [350, 150, 350, 150, 500],
-          tag: 'seller-order-' + order.id,
-          renotify: true,
-          requireInteraction: true,
-          data: {
-            url: clickUrl,
-            isSeller: true,
-            orderId: order.id,
-            orderNumber: order.orderNumber
-          },
-          actions: [
-            { action: 'open_seller_orders', title: '📦 Atender Pedido' }
-          ]
-        } as any);
-      }
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready.catch(() => null);
+        if (reg && reg.showNotification) {
+          await reg.showNotification(title, {
+            body,
+            icon: '/logoryyco.png',
+            badge: '/favicon.svg',
+            vibrate: [350, 150, 350, 150, 500],
+            tag: 'seller-order-' + order.id,
+            renotify: true,
+            requireInteraction: true,
+            data: {
+              url: clickUrl,
+              isSeller: true,
+              orderId: order.id,
+              orderNumber: order.orderNumber
+            },
+            actions: [
+              { action: 'open_seller_orders', title: '📦 Atender Pedido' }
+            ]
+          } as any).catch(err => {
+            console.warn('[FCM-SELLER] reg.showNotification caught error:', err);
+          });
+        }
 
-      // Also notify active controller
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'TRIGGER_SELLER_ORDER_NOTIFICATION',
-          title,
-          body,
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          url: clickUrl
-        });
+        // Also notify active controller
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'TRIGGER_SELLER_ORDER_NOTIFICATION',
+            title,
+            body,
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            url: clickUrl
+          });
+        }
+      } else {
+        try {
+          new Notification(title, {
+            body,
+            icon: '/logoryyco.png'
+          });
+        } catch (e) {}
       }
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/logoryyco.png'
-      });
     }
   } catch (err) {
     console.warn('[FCM-SELLER] Error displaying local seller notification:', err);
@@ -882,50 +903,56 @@ export async function triggerDriverDeliveryPush(
 
   // 3. Post message to active Service Worker to show background notification
   try {
-    if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg && reg.showNotification) {
-        reg.showNotification(title, {
-          body,
-          icon: '/logoryyco.png',
-          badge: '/favicon.svg',
-          vibrate: [400, 200, 400, 200, 600],
-          tag: 'driver-order-' + order.id,
-          renotify: true,
-          requireInteraction: true,
-          data: {
-            url: clickUrl,
-            isDriver: true,
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready.catch(() => null);
+        if (reg && reg.showNotification) {
+          await reg.showNotification(title, {
+            body,
+            icon: '/logoryyco.png',
+            badge: '/favicon.svg',
+            vibrate: [400, 200, 400, 200, 600],
+            tag: 'driver-order-' + order.id,
+            renotify: true,
+            requireInteraction: true,
+            data: {
+              url: clickUrl,
+              isDriver: true,
+              orderId: order.id,
+              orderNumber: order.orderNumber,
+              storeName,
+              address,
+              deliveryCost: order.deliveryCost
+            },
+            actions: [
+              { action: 'open_driver_order', title: '🛵 Ver Solicitud de Entrega' }
+            ]
+          } as any).catch(err => {
+            console.warn('[FCM-DRIVER] reg.showNotification caught error:', err);
+          });
+        }
+
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: 'TRIGGER_DRIVER_REQUEST_NOTIFICATION',
+            title,
+            body,
             orderId: order.id,
             orderNumber: order.orderNumber,
             storeName,
             address,
-            deliveryCost: order.deliveryCost
-          },
-          actions: [
-            { action: 'open_driver_order', title: '🛵 Ver Solicitud de Entrega' }
-          ]
-        } as any);
+            deliveryCost: order.deliveryCost,
+            url: clickUrl
+          });
+        }
+      } else {
+        try {
+          new Notification(title, {
+            body,
+            icon: '/logoryyco.png'
+          });
+        } catch (e) {}
       }
-
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'TRIGGER_DRIVER_REQUEST_NOTIFICATION',
-          title,
-          body,
-          orderId: order.id,
-          orderNumber: order.orderNumber,
-          storeName,
-          address,
-          deliveryCost: order.deliveryCost,
-          url: clickUrl
-        });
-      }
-    } else if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification(title, {
-        body,
-        icon: '/logoryyco.png'
-      });
     }
   } catch (err) {
     console.warn('[FCM-DRIVER] Error displaying local driver notification:', err);
@@ -1198,23 +1225,27 @@ export function connectFCMStream(
           window.dispatchEvent(new CustomEvent('ryyco:new-driver-request', {
             detail: data
           }));
-          if (Notification.permission === 'granted') {
+          if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
             const orderNum = data.orderNumber ? `#${data.orderNumber}` : '';
             const fee = data.deliveryCost ? `$${Number(data.deliveryCost).toLocaleString('es-CO')}` : '$3.000';
-            new Notification(`🛵 ¡Nueva Solicitud de Domicilio ${orderNum}!`, {
-              body: `Restaurante: ${data.storeName || 'Tienda'}\nEntrega: ${data.customerAddress || 'Ipiales'} • Ganancia: ${fee}`,
-              icon: '/logoryyco.png'
-            });
+            try {
+              new Notification(`🛵 ¡Nueva Solicitud de Domicilio ${orderNum}!`, {
+                body: `Restaurante: ${data.storeName || 'Tienda'}\nEntrega: ${data.customerAddress || 'Ipiales'} • Ganancia: ${fee}`,
+                icon: '/logoryyco.png'
+              });
+            } catch (e) {}
           }
         } else if (data.type === 'CUSTOM_DRIVER_ALERT' && role === 'driver') {
           if (!entityUid || data.driverId === 'all' || data.driverId === entityUid) {
             playDriverOrderAlertChime();
             speakDriverVoiceAlert(data.title || 'Aviso para domiciliarios RYYCO');
-            if (Notification.permission === 'granted') {
-              new Notification(data.title || '🛵 RYYCO Domicilios', {
-                body: data.message,
-                icon: '/logoryyco.png'
-              });
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification(data.title || '🛵 RYYCO Domicilios', {
+                  body: data.message,
+                  icon: '/logoryyco.png'
+                });
+              } catch (e) {}
             }
           }
         } else if (data.type === 'SELLER_ORDER_PUSH' && role === 'seller') {
@@ -1257,21 +1288,27 @@ export function connectFCMStream(
                   { action: 'open_admin', title: '📋 Ver en Administración' }
                 ]
               } as any).catch(() => {
-                new Notification(title, { body, icon: '/logoryyco.png' });
+                try {
+                  new Notification(title, { body, icon: '/logoryyco.png' });
+                } catch (e) {}
               });
             } else {
-              new Notification(title, { body, icon: '/logoryyco.png' });
+              try {
+                new Notification(title, { body, icon: '/logoryyco.png' });
+              } catch (e) {}
             }
           }
         } else if (data.type === 'CUSTOM_SELLER_ALERT' && role === 'seller') {
           if (!entityUid || data.storeOwnerId === 'all' || data.storeOwnerId === entityUid) {
             playOrderAlertChime();
             speakOrderVoiceAlert(data.title || 'Mensaje de administración RYYCO');
-            if (Notification.permission === 'granted') {
-              new Notification(data.title || '🔔 RYYCO Tiendas', {
-                body: data.message,
-                icon: '/logoryyco.png'
-              });
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+              try {
+                new Notification(data.title || '🔔 RYYCO Tiendas', {
+                  body: data.message,
+                  icon: '/logoryyco.png'
+                });
+              } catch (e) {}
             }
           }
         }

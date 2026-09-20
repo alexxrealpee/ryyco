@@ -1718,6 +1718,7 @@ export async function updateOrderStatus(
     cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'system';
     cancellationReason?: string;
     updatedBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+    allowAdminOverride?: boolean;
   }
 ): Promise<void> {
   const opts = typeof options === 'string' ? { note: options } : (options || {});
@@ -1734,13 +1735,13 @@ export async function updateOrderStatus(
     console.warn("Could not fetch current order for status validation:", e);
   }
 
-  // Prevent reverting delivered orders
-  if (currentOrder?.status === 'delivered' && status !== 'delivered') {
+  // Prevent reverting delivered orders (unless authorized admin override)
+  if (currentOrder?.status === 'delivered' && status !== 'delivered' && !opts.allowAdminOverride) {
     throw new Error("Un pedido entregado está finalizado y no puede cambiar a otro estado.");
   }
 
-  // Prevent changing cancelled orders
-  if (currentOrder?.status === 'cancelled' && status !== 'cancelled') {
+  // Prevent changing cancelled orders (unless authorized admin override)
+  if (currentOrder?.status === 'cancelled' && status !== 'cancelled' && !opts.allowAdminOverride) {
     throw new Error("Un pedido cancelado no puede reabrirse ni cambiar a otro estado.");
   }
 

@@ -92,13 +92,23 @@ if (messaging) {
       ])
     };
 
-    return self.registration.showNotification(title, notificationOptions);
+    if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+      return Promise.resolve();
+    }
+
+    return self.registration.showNotification(title, notificationOptions).catch(function(err) {
+      console.warn('[SW] showNotification background suppressed:', err);
+    });
   });
 }
 
 // Fallback & Standard Web Push event listener
 self.addEventListener('push', function(event) {
   if (!event.data) return;
+
+  if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+    return;
+  }
 
   try {
     const data = event.data.json();
@@ -156,7 +166,11 @@ self.addEventListener('push', function(event) {
       ])
     };
 
-    event.waitUntil(self.registration.showNotification(title, options));
+    event.waitUntil(
+      self.registration.showNotification(title, options).catch(function(err) {
+        console.warn('[SW] Push showNotification suppressed:', err);
+      })
+    );
   } catch (err) {
     // If text payload
     const text = event.data.text();
@@ -168,13 +182,24 @@ self.addEventListener('push', function(event) {
       tag: 'ryyco-text-push-' + Date.now(),
       data: { url: '/?view=dashboard&tab=orders' }
     };
-    event.waitUntil(self.registration.showNotification('🔔 RYYCO Tiendas', options));
+    event.waitUntil(
+      self.registration.showNotification('🔔 RYYCO Tiendas', options).catch(function(err) {
+        console.warn('[SW] Push text showNotification suppressed:', err);
+      })
+    );
   }
 });
 
 // Direct communication from client to trigger push notification via Service Worker
 self.addEventListener('message', function(event) {
-  if (event.data && event.data.type === 'TRIGGER_ADMIN_ORDER_NOTIFICATION') {
+  if (!event.data) return;
+
+  // Verify notification permission before attempting to display
+  if (typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+    return;
+  }
+
+  if (event.data.type === 'TRIGGER_ADMIN_ORDER_NOTIFICATION') {
     const { title, body, orderId, orderNumber, url } = event.data;
     const options = {
       body: body || 'Nuevo pedido recibido en administración general.',
@@ -196,8 +221,10 @@ self.addEventListener('message', function(event) {
       ]
     };
 
-    self.registration.showNotification(title || '🚨 ¡Nuevo Pedido en RYYCO!', options);
-  } else if (event.data && event.data.type === 'TRIGGER_SELLER_ORDER_NOTIFICATION') {
+    self.registration.showNotification(title || '🚨 ¡Nuevo Pedido en RYYCO!', options).catch(function(err) {
+      console.warn('[SW] showNotification admin suppressed:', err);
+    });
+  } else if (event.data.type === 'TRIGGER_SELLER_ORDER_NOTIFICATION') {
     const { title, body, orderId, orderNumber, url } = event.data;
     const options = {
       body: body || 'Nuevo pedido recibido en tu tienda.',
@@ -219,8 +246,10 @@ self.addEventListener('message', function(event) {
       ]
     };
 
-    self.registration.showNotification(title || '🔔 ¡Nuevo Pedido en Tu Tienda!', options);
-  } else if (event.data && event.data.type === 'TRIGGER_DRIVER_REQUEST_NOTIFICATION') {
+    self.registration.showNotification(title || '🔔 ¡Nuevo Pedido en Tu Tienda!', options).catch(function(err) {
+      console.warn('[SW] showNotification seller suppressed:', err);
+    });
+  } else if (event.data.type === 'TRIGGER_DRIVER_REQUEST_NOTIFICATION') {
     const { title, body, orderId, orderNumber, url, storeName, address, deliveryCost } = event.data;
     const feeText = deliveryCost ? `$${Number(deliveryCost).toLocaleString('es-CO')}` : '$3.000';
     const options = {
@@ -243,7 +272,9 @@ self.addEventListener('message', function(event) {
       ]
     };
 
-    self.registration.showNotification(title || '🛵 ¡Nueva Solicitud de Domicilio!', options);
+    self.registration.showNotification(title || '🛵 ¡Nueva Solicitud de Domicilio!', options).catch(function(err) {
+      console.warn('[SW] showNotification driver suppressed:', err);
+    });
   }
 });
 

@@ -512,18 +512,29 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
           if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
             navigator.serviceWorker.ready.then(registration => {
-              registration.showNotification(title, {
-                body,
-                icon: '/favicon.svg',
-                badge: '/favicon.svg',
-                tag: 'new-order-' + (order?.id || Date.now()),
-                renotify: true
-              } as any);
+              if (registration && registration.showNotification) {
+                return registration.showNotification(title, {
+                  body,
+                  icon: '/favicon.svg',
+                  badge: '/favicon.svg',
+                  tag: 'new-order-' + (order?.id || Date.now()),
+                  renotify: true
+                } as any).catch(err => {
+                  console.warn("Could not show SW notification:", err);
+                  try {
+                    new Notification(title, { body, icon: '/favicon.svg' });
+                  } catch (e) {}
+                });
+              }
             }).catch(() => {
-              new Notification(title, { body, icon: '/favicon.svg' });
+              try {
+                new Notification(title, { body, icon: '/favicon.svg' });
+              } catch (e) {}
             });
           } else {
-            new Notification(title, { body, icon: '/favicon.svg' });
+            try {
+              new Notification(title, { body, icon: '/favicon.svg' });
+            } catch (e) {}
           }
         }
       }
