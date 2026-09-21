@@ -438,7 +438,7 @@ export type PrizeCategory = 'dish' | 'drink' | 'dessert' | 'discount' | 'points'
 export interface RyycoMovement {
   id: string;
   customerId: string; // Celular del cliente
-  type: 'earned_purchase' | 'welcome_bonus' | 'spin_prize' | 'redeemed_reward' | 'transfer_sent' | 'transfer_received' | 'gift';
+  type: 'earned_purchase' | 'welcome_bonus' | 'spin_prize' | 'redeemed_reward' | 'transfer_sent' | 'transfer_received' | 'gift' | 'admin_gift' | 'admin_adjustment';
   amount: number; // Positivo (ingreso) o negativo (egreso)
   balanceAfter: number; // Saldo de RYYCOS después del movimiento
   description: string;

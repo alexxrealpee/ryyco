@@ -5536,6 +5536,103 @@ export function listenToCustomerProfile(
 }
 
 /**
+ * Real-time listener for all customer profiles across the platform (for Administration & WhatsApp rank).
+ */
+export function subscribeToAllCustomerProfiles(
+  callback: (customers: CustomerProfile[]) => void
+): () => void {
+  try {
+    return onSnapshot(
+      collection(db, 'customers'),
+      (snapshot) => {
+        const list: CustomerProfile[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as CustomerProfile;
+          const pointsVal = data.points !== undefined 
+            ? Number(data.points) 
+            : (data.ryycos !== undefined ? Number(data.ryycos) : 0);
+          list.push({
+            ...data,
+            id: docSnap.id,
+            phone: data.phone || docSnap.id,
+            points: pointsVal,
+            ryycos: pointsVal,
+          });
+        });
+        callback(list);
+      },
+      (err) => {
+        console.warn("Could not subscribe to all customer profiles:", err);
+      }
+    );
+  } catch (err) {
+    console.warn("Error setting up subscribeToAllCustomerProfiles:", err);
+    return () => {};
+  }
+}
+
+/**
+ * Adjust customer RYYCOS by administrator (add bonus or set fixed amount)
+ */
+export async function adjustCustomerRyycosByAdmin(
+  rawPhone: string,
+  newBalanceOrDelta: number,
+  mode: 'set' | 'add',
+  reason?: string
+): Promise<CustomerProfile> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone) throw new Error("Número de teléfono requerido");
+  
+  const existing = await fetchCustomerProfileByPhone(phone);
+  const currentPoints = existing?.points !== undefined 
+    ? Number(existing.points) 
+    : (existing?.ryycos !== undefined ? Number(existing.ryycos) : 0);
+  
+  const finalPoints = mode === 'set' 
+    ? Math.max(0, Math.round(newBalanceOrDelta)) 
+    : Math.max(0, Math.round(currentPoints + newBalanceOrDelta));
+  
+  const delta = finalPoints - currentPoints;
+  const now = new Date().toISOString();
+
+  const movement: RyycoMovement = {
+    id: 'mov_admin_' + Date.now() + '_' + Math.random().toString(36).substring(2, 5),
+    customerId: phone,
+    type: delta >= 0 ? 'admin_gift' : 'admin_adjustment',
+    amount: Math.abs(delta),
+    balanceAfter: finalPoints,
+    description: reason || (delta >= 0 
+      ? `Ajuste administrativo: +${delta.toLocaleString('es-CO')} RYYCOS` 
+      : `Ajuste administrativo: -${Math.abs(delta).toLocaleString('es-CO')} RYYCOS`),
+    createdAt: now
+  };
+
+  const updatedCust: CustomerProfile = {
+    ...(existing || {
+      id: phone,
+      phone,
+      name: 'Cliente Ryyco',
+      totalOrdersCount: 0,
+      totalSpent: 0,
+      spinsAvailable: 1,
+      createdAt: now,
+      updatedAt: now
+    }),
+    points: finalPoints,
+    ryycos: finalPoints,
+    movements: [movement, ...(existing?.movements || [])],
+    updatedAt: now
+  };
+
+  await setDoc(doc(db, 'customers', phone), cleanUndefined(updatedCust), { merge: true });
+  try {
+    localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(updatedCust));
+  } catch (e) {}
+
+  return updatedCust;
+}
+
+/**
  * Fetch customer profile by their email address
  */
 export async function fetchCustomerProfileByEmail(rawEmail: string): Promise<CustomerProfile | null> {

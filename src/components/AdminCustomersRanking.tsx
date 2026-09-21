@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   MessageCircle, 
@@ -32,9 +32,14 @@ import {
   AlertCircle,
   XCircle,
   Eye,
-  Send
+  Send,
+  Gift,
+  Coins,
+  X,
+  Plus
 } from 'lucide-react';
-import { OrderItem, UserProfile } from '../types';
+import { OrderItem, UserProfile, CustomerProfile } from '../types';
+import { subscribeToAllCustomerProfiles, adjustCustomerRyycosByAdmin } from '../lib/firebase';
 
 interface AdminCustomersRankingProps {
   allOrders: OrderItem[];
@@ -63,10 +68,14 @@ export interface CustomerAggregated {
   favoriteStoreId?: string;
   storeBreakdown: { storeId: string; storeName: string; count: number; totalSpent: number }[];
   orders: OrderItem[];
+  // RYYCOS Loyalty Data
+  ryycos: number;
+  spinsAvailable: number;
+  isRegisteredProfile: boolean;
 }
 
-type SortOrderOption = 'orders_desc' | 'orders_asc' | 'spent_desc' | 'recent_desc';
-type CustomerSegmentFilter = 'all' | 'vip' | 'frequent' | 'new' | 'has_whatsapp';
+type SortOrderOption = 'orders_desc' | 'orders_asc' | 'spent_desc' | 'recent_desc' | 'ryycos_desc' | 'ryycos_asc';
+type CustomerSegmentFilter = 'all' | 'vip' | 'frequent' | 'new' | 'has_whatsapp' | 'has_ryycos';
 type TimeRangeFilter = 'all' | 'this_month' | 'last_30_days' | 'last_7_days';
 
 // Helper to normalize phone numbers
@@ -88,14 +97,17 @@ function formatPhoneDisplay(phone?: string): string {
   return phone.trim();
 }
 
-function buildWhatsAppUrl(cleanPhone: string, customerName: string, orderCount: number, customMessage?: string): string {
+function buildWhatsAppUrl(cleanPhone: string, customerName: string, orderCount: number, customMessage?: string, ryycos?: number): string {
   if (!cleanPhone) return '';
   let waNumber = cleanPhone;
   // If 10 digits starting with 3 (Colombia mobile), prepend 57
   if (waNumber.length === 10 && waNumber.startsWith('3')) {
     waNumber = '57' + waNumber;
   }
-  const defaultText = customMessage || `¡Hola ${customerName || ''}! Te saludamos de RYYCO. 🌟 Eres uno de nuestros clientes destacados con ${orderCount} pedido${orderCount > 1 ? 's' : ''}. ¡Muchas gracias por tu preferencia! ¿En qué podemos ayudarte hoy?`;
+  const ryycosMention = (ryycos !== undefined && ryycos > 0)
+    ? ` 🪙 Tienes ${ryycos.toLocaleString('es-CO')} RYYCOS disponibles.`
+    : '';
+  const defaultText = customMessage || `¡Hola ${customerName || ''}! Te saludamos de RYYCO. 🌟 Eres uno de nuestros clientes destacados con ${orderCount} pedido${orderCount > 1 ? 's' : ''}.${ryycosMention} ¡Muchas gracias por tu preferencia! ¿En qué podemos ayudarte hoy?`;
   return `https://wa.me/${waNumber}?text=${encodeURIComponent(defaultText)}`;
 }
 
@@ -113,6 +125,47 @@ export default function AdminCustomersRanking({
   const [expandedCustomerKey, setExpandedCustomerKey] = useState<string | null>(null);
   const [copiedPhoneKey, setCopiedPhoneKey] = useState<string | null>(null);
   const [activeMessageTemplate, setActiveMessageTemplate] = useState<{ customerKey: string; type: 'vip' | 'discount' | 'checkup' } | null>(null);
+
+  // Real-time customer profiles from Firestore
+  const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
+  const [adjustingRyycosCustomer, setAdjustingRyycosCustomer] = useState<CustomerAggregated | null>(null);
+  const [adjustmentAmount, setAdjustmentAmount] = useState<string>('500');
+  const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set'>('add');
+  const [adjustmentReason, setAdjustmentReason] = useState<string>('Bonificación de fidelidad RYYCO');
+  const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState<boolean>(false);
+  const [adjustmentSuccessMsg, setAdjustmentSuccessMsg] = useState<string | null>(null);
+
+  // Subscribe to all customer profiles
+  useEffect(() => {
+    const unsub = subscribeToAllCustomerProfiles((profiles) => {
+      setCustomerProfiles(profiles);
+    });
+    return () => unsub();
+  }, []);
+
+  // Map of customer profiles for fast lookup by phone
+  const customerProfilesMap = useMemo(() => {
+    const map = new Map<string, CustomerProfile>();
+    customerProfiles.forEach(p => {
+      if (p.phone) {
+        const clean = cleanPhoneNumber(p.phone);
+        if (clean) {
+          map.set(clean, p);
+          if (clean.length === 10 && clean.startsWith('3')) {
+            map.set('57' + clean, p);
+          } else if (clean.startsWith('57') && clean.length === 12) {
+            map.set(clean.slice(2), p);
+          }
+        }
+      }
+      if (p.id) {
+        const cleanId = cleanPhoneNumber(p.id);
+        if (cleanId) map.set(cleanId, p);
+        map.set(p.id, p);
+      }
+    });
+    return map;
+  }, [customerProfiles]);
 
   // Copy phone handler
   const handleCopyPhone = (customer: CustomerAggregated, e: React.MouseEvent) => {
@@ -279,7 +332,33 @@ export default function AdminCustomersRanking({
       const firstOrderDate = sortedOrders[sortedOrders.length - 1]?.createdAt || '';
       const lastOrderDate = sortedOrders[0]?.createdAt || '';
       const formattedPhone = formatPhoneDisplay(data.rawPhone || data.cleanPhone);
-      const whatsappUrl = buildWhatsAppUrl(data.cleanPhone, data.name, totalOrders);
+
+      // Match with customer profiles for real-time RYYCOS points balance
+      const foundProfile = 
+        customerProfilesMap.get(data.cleanPhone) ||
+        (data.rawPhone ? customerProfilesMap.get(cleanPhoneNumber(data.rawPhone)) : undefined) ||
+        (data.cleanPhone.length === 10 ? customerProfilesMap.get('57' + data.cleanPhone) : undefined) ||
+        (data.cleanPhone.startsWith('57') ? customerProfilesMap.get(data.cleanPhone.slice(2)) : undefined);
+
+      let ryycos = 0;
+      let spinsAvailable = 0;
+      let isRegisteredProfile = false;
+
+      if (foundProfile) {
+        ryycos = foundProfile.points !== undefined 
+          ? Number(foundProfile.points) 
+          : (foundProfile.ryycos !== undefined ? Number(foundProfile.ryycos) : 0);
+        spinsAvailable = Number(foundProfile.spinsAvailable) || 0;
+        isRegisteredProfile = true;
+      } else {
+        // Fallback for customer orders: 1.000 de bienvenida + 500 por cada pedido no cancelado
+        const validOrders = data.orders.filter(o => o.status !== 'cancelled').length;
+        ryycos = 1000 + (validOrders * 500);
+        spinsAvailable = Math.max(1, validOrders);
+        isRegisteredProfile = false;
+      }
+
+      const whatsappUrl = buildWhatsAppUrl(data.cleanPhone, data.name, totalOrders, undefined, ryycos);
 
       list.push({
         key,
@@ -300,12 +379,56 @@ export default function AdminCustomersRanking({
         favoriteStoreName,
         favoriteStoreId,
         storeBreakdown,
-        orders: sortedOrders
+        orders: sortedOrders,
+        ryycos,
+        spinsAvailable,
+        isRegisteredProfile
       });
     });
 
+    // Also include registered customer profiles who don't have orders yet (if viewing all stores and all time)
+    if (selectedStore === 'all' && timeRange === 'all') {
+      customerProfiles.forEach(p => {
+        const clean = cleanPhoneNumber(p.phone || p.id);
+        if (!clean) return;
+        const key = `phone_${clean}`;
+        if (!map.has(key)) {
+          const rawPhone = p.phone || p.id;
+          const formattedPhone = formatPhoneDisplay(rawPhone);
+          const ryycos = p.points !== undefined ? Number(p.points) : (p.ryycos !== undefined ? Number(p.ryycos) : 0);
+          const spinsAvailable = Number(p.spinsAvailable) || 0;
+          const whatsappUrl = buildWhatsAppUrl(clean, p.name || 'Cliente', 0, undefined, ryycos);
+
+          list.push({
+            key,
+            name: p.name || 'Cliente Registrado',
+            rawPhone,
+            cleanPhone: clean,
+            formattedPhone,
+            whatsappUrl,
+            addresses: p.address ? [p.address] : [],
+            totalOrders: p.totalOrdersCount || 0,
+            completedOrders: p.totalOrdersCount || 0,
+            cancelledOrders: 0,
+            activeOrders: 0,
+            totalSpent: p.totalSpent || 0,
+            averageTicket: 0,
+            firstOrderDate: p.createdAt || '',
+            lastOrderDate: p.updatedAt || p.createdAt || '',
+            favoriteStoreName: 'Sin pedidos aún',
+            favoriteStoreId: undefined,
+            storeBreakdown: [],
+            orders: [],
+            ryycos,
+            spinsAvailable,
+            isRegisteredProfile: true
+          });
+        }
+      });
+    }
+
     return list;
-  }, [filteredOrdersByTime, selectedStore, storesMap]);
+  }, [filteredOrdersByTime, selectedStore, storesMap, customerProfilesMap, customerProfiles, timeRange]);
 
   // Apply filters and sorting
   const processedCustomers = useMemo(() => {
@@ -333,6 +456,8 @@ export default function AdminCustomersRanking({
       result = result.filter(c => c.totalOrders === 1);
     } else if (segmentFilter === 'has_whatsapp') {
       result = result.filter(c => c.cleanPhone.length >= 7);
+    } else if (segmentFilter === 'has_ryycos') {
+      result = result.filter(c => c.ryycos > 0);
     }
 
     // Sort strictly as requested:
@@ -355,6 +480,14 @@ export default function AdminCustomersRanking({
         const db = new Date(b.lastOrderDate).getTime() || 0;
         return db - da;
       }
+      if (sortBy === 'ryycos_desc') {
+        if (b.ryycos !== a.ryycos) return b.ryycos - a.ryycos;
+        return b.totalOrders - a.totalOrders;
+      }
+      if (sortBy === 'ryycos_asc') {
+        if (a.ryycos !== b.ryycos) return a.ryycos - b.ryycos;
+        return a.totalOrders - b.totalOrders;
+      }
       return 0;
     });
 
@@ -367,6 +500,7 @@ export default function AdminCustomersRanking({
     const withWhatsApp = aggregatedCustomers.filter(c => c.cleanPhone.length >= 7).length;
     const recurringCustomers = aggregatedCustomers.filter(c => c.totalOrders > 1).length;
     const totalPlatformSpent = aggregatedCustomers.reduce((acc, c) => acc + c.totalSpent, 0);
+    const totalPlatformRyycos = aggregatedCustomers.reduce((acc, c) => acc + (c.ryycos || 0), 0);
     const topCustomer = aggregatedCustomers.length > 0
       ? [...aggregatedCustomers].sort((a, b) => b.totalOrders - a.totalOrders)[0]
       : null;
@@ -378,10 +512,42 @@ export default function AdminCustomersRanking({
       recurringCustomers,
       retentionRate: totalCustomers > 0 ? Math.round((recurringCustomers / totalCustomers) * 100) : 0,
       totalPlatformSpent,
+      totalPlatformRyycos,
       topCustomer,
       maxOrders
     };
   }, [aggregatedCustomers]);
+
+  // Submit RYYCOS adjustment / bonus
+  const handleAdjustmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adjustingRyycosCustomer) return;
+    const amountNum = parseFloat(adjustmentAmount);
+    if (isNaN(amountNum) || amountNum < 0) {
+      alert("Por favor ingresa un monto válido de RYYCOS.");
+      return;
+    }
+
+    setIsSubmittingAdjustment(true);
+    setAdjustmentSuccessMsg(null);
+    try {
+      const updated = await adjustCustomerRyycosByAdmin(
+        adjustingRyycosCustomer.cleanPhone || adjustingRyycosCustomer.rawPhone,
+        amountNum,
+        adjustmentMode,
+        adjustmentReason.trim() || undefined
+      );
+      setAdjustmentSuccessMsg(`¡Saldo de ${adjustingRyycosCustomer.name} actualizado con éxito a ${updated.points.toLocaleString('es-CO')} RYYCOS!`);
+      setTimeout(() => {
+        setAdjustingRyycosCustomer(null);
+        setAdjustmentSuccessMsg(null);
+      }, 1600);
+    } catch (err: any) {
+      alert(`Error al ajustar RYYCOS: ${err?.message || 'Error desconocido'}`);
+    } finally {
+      setIsSubmittingAdjustment(false);
+    }
+  };
 
   // Export to CSV
   const handleExportCSV = () => {
@@ -391,6 +557,7 @@ export default function AdminCustomersRanking({
       'Posición',
       'Nombre Cliente',
       'WhatsApp / Teléfono',
+      'Saldo RYYCOS',
       'Número de Pedidos',
       'Pedidos Entregados',
       'Pedidos Cancelados',
@@ -405,6 +572,7 @@ export default function AdminCustomersRanking({
       idx + 1,
       `"${c.name.replace(/"/g, '""')}"`,
       `"${c.cleanPhone.length === 10 && c.cleanPhone.startsWith('3') ? '+57' + c.cleanPhone : c.rawPhone || c.cleanPhone}"`,
+      c.ryycos,
       c.totalOrders,
       c.completedOrders,
       c.cancelledOrders,
@@ -463,7 +631,7 @@ export default function AdminCustomersRanking({
         </div>
 
         {/* Global Summary KPI Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-400">Clientes Totales</span>
@@ -476,7 +644,7 @@ export default function AdminCustomersRanking({
             </div>
             <div className="mt-1 text-[11px] text-emerald-400 flex items-center gap-1 font-medium">
               <MessageCircle className="w-3 h-3" />
-              <span>{summaryStats.withWhatsApp} con WhatsApp activo</span>
+              <span>{summaryStats.withWhatsApp} con WhatsApp</span>
             </div>
           </div>
 
@@ -492,7 +660,7 @@ export default function AdminCustomersRanking({
             </div>
             <div className="mt-1 text-[11px] text-gray-400 flex items-center gap-1 font-mono">
               <ShoppingBag className="w-3 h-3 text-amber-400" />
-              <span>{summaryStats.topCustomer ? `${summaryStats.topCustomer.totalOrders} pedidos realizados` : '0 pedidos'}</span>
+              <span>{summaryStats.topCustomer ? `${summaryStats.topCustomer.totalOrders} pedidos` : '0 pedidos'}</span>
             </div>
           </div>
 
@@ -507,7 +675,22 @@ export default function AdminCustomersRanking({
               {summaryStats.retentionRate}%
             </div>
             <div className="mt-1 text-[11px] text-gray-400 font-medium">
-              {summaryStats.recurringCustomers} clientes recurrentes (2+ pedidos)
+              {summaryStats.recurringCustomers} clientes recurrentes
+            </div>
+          </div>
+
+          <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-amber-300">Total RYYCOS Clientes</span>
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <Sparkles className="w-4 h-4 fill-amber-400/20" />
+              </div>
+            </div>
+            <div className="mt-2 text-xl sm:text-2xl font-black text-amber-400 font-mono truncate" title={`${summaryStats.totalPlatformRyycos.toLocaleString('es-CO')} RYYCOS`}>
+              {summaryStats.totalPlatformRyycos.toLocaleString('es-CO')}
+            </div>
+            <div className="mt-1 text-[11px] text-amber-500/80 font-medium">
+              🪙 ${summaryStats.totalPlatformRyycos.toLocaleString('es-CO')} COP en comida
             </div>
           </div>
 
@@ -592,9 +775,11 @@ export default function AdminCustomersRanking({
               className="py-2.5 px-3 rounded-xl bg-gray-950/80 border border-gray-800 text-xs font-semibold text-gray-200 focus:outline-none focus:border-emerald-500 cursor-pointer"
             >
               <option value="orders_desc">⚡ Más pedidos primero (Mayor a Menor)</option>
+              <option value="ryycos_desc">🪙 Mayor saldo RYYCOS primero</option>
               <option value="spent_desc">💰 Mayor dinero gastado ($ COP)</option>
               <option value="recent_desc">🕒 Compra más reciente primero</option>
               <option value="orders_asc">🌱 Menos pedidos primero (1 pedido)</option>
+              <option value="ryycos_asc">🪙 Menor saldo RYYCOS primero</option>
             </select>
           </div>
         </div>
@@ -644,6 +829,21 @@ export default function AdminCustomersRanking({
             <span>Frecuentes (2-4 pedidos)</span>
             <span className="text-[10px] font-mono opacity-80">
               ({aggregatedCustomers.filter(c => c.totalOrders >= 2 && c.totalOrders < 5).length})
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSegmentFilter('has_ryycos')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              segmentFilter === 'has_ryycos'
+                ? 'bg-amber-500 text-gray-950 shadow-md shadow-amber-500/30'
+                : 'bg-gray-950 text-amber-400 hover:text-amber-200 border border-amber-900/50'
+            }`}
+          >
+            <Coins className="w-3.5 h-3.5" />
+            <span>Con RYYCOS</span>
+            <span className="text-[10px] font-mono font-bold opacity-80">
+              ({aggregatedCustomers.filter(c => c.ryycos > 0).length})
             </span>
           </button>
 
@@ -754,6 +954,15 @@ export default function AdminCustomersRanking({
                           {customer.name}
                         </h2>
 
+                        {/* RYYCOS Balance Pill in Customer Title Bar */}
+                        <div 
+                          className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/35 text-amber-300 text-[11px] font-mono font-black flex items-center gap-1 shrink-0 shadow-sm"
+                          title={`Saldo actual: ${customer.ryycos.toLocaleString('es-CO')} RYYCOS ($${customer.ryycos.toLocaleString('es-CO')} COP)`}
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-400 fill-amber-400/30 shrink-0" />
+                          <span>{customer.ryycos.toLocaleString('es-CO')} RYYCOS</span>
+                        </div>
+
                         {customer.totalOrders >= 5 && (
                           <span className="px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold flex items-center gap-1 shrink-0">
                             <Crown className="w-3 h-3 text-amber-400" />
@@ -818,9 +1027,9 @@ export default function AdminCustomersRanking({
                   </div>
 
                   {/* Middle: Metrics and Order Bar */}
-                  <div className="flex items-center justify-between sm:justify-end gap-5 shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0 border-gray-800/60">
+                  <div className="flex items-center justify-between sm:justify-end gap-4 lg:gap-5 shrink-0 border-t sm:border-t-0 pt-3 sm:pt-0 border-gray-800/60">
                     {/* Orders count badge (HIGHLIGHTED) */}
-                    <div className="text-right min-w-[100px]">
+                    <div className="text-right min-w-[90px]">
                       <div className="flex items-center justify-end gap-1.5">
                         <ShoppingBag className="w-4 h-4 text-emerald-400" />
                         <span className="text-xl sm:text-2xl font-black text-white font-mono leading-none">
@@ -832,7 +1041,7 @@ export default function AdminCustomersRanking({
                       </div>
 
                       {/* Visual Frequency Bar */}
-                      <div className="w-28 sm:w-32 bg-gray-950 rounded-full h-1.5 mt-1.5 ml-auto overflow-hidden border border-gray-800">
+                      <div className="w-24 sm:w-28 bg-gray-950 rounded-full h-1.5 mt-1.5 ml-auto overflow-hidden border border-gray-800">
                         <div
                           className={`h-full rounded-full transition-all duration-500 ${
                             isTop1 
@@ -847,13 +1056,37 @@ export default function AdminCustomersRanking({
                         ></div>
                       </div>
 
-                      <div className="text-[10.5px] text-gray-500 mt-1 font-mono">
+                      <div className="text-[10px] text-gray-500 mt-1 font-mono">
                         {customer.completedOrders} entregados • {customer.cancelledOrders} canc.
                       </div>
                     </div>
 
+                    {/* RYYCOS Balance Column */}
+                    <div className="text-right min-w-[95px] hidden sm:block">
+                      <div className="flex items-center justify-end gap-1 text-base sm:text-lg font-black text-amber-400 font-mono">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-400 fill-amber-400/30 shrink-0" />
+                        <span>{customer.ryycos.toLocaleString('es-CO')}</span>
+                      </div>
+                      <div className="text-[10px] text-amber-500/80 font-bold uppercase tracking-wider mt-0.5">
+                        RYYCOS
+                      </div>
+                      <button
+                        onClick={() => {
+                          setAdjustingRyycosCustomer(customer);
+                          setAdjustmentAmount('500');
+                          setAdjustmentMode('add');
+                          setAdjustmentReason('Bonificación fidelidad RYYCO');
+                        }}
+                        className="text-[10.5px] text-gray-400 hover:text-amber-300 underline cursor-pointer mt-0.5 flex items-center justify-end gap-0.5 ml-auto"
+                        title="Bonificar o ajustar RYYCOS a este cliente"
+                      >
+                        <Plus className="w-2.5 h-2.5" />
+                        <span>Ajustar</span>
+                      </button>
+                    </div>
+
                     {/* Total spent and average ticket */}
-                    <div className="text-right min-w-[110px] hidden sm:block">
+                    <div className="text-right min-w-[100px] hidden sm:block">
                       <div className="text-sm font-bold text-cyan-400 font-mono">
                         ${customer.totalSpent.toLocaleString('es-CO')}
                       </div>
@@ -908,15 +1141,73 @@ export default function AdminCustomersRanking({
                   </div>
                 </div>
 
-                {/* Mobile Spent Info if on small screen */}
+                {/* Mobile Spent & RYYCOS Info if on small screen */}
                 <div className="px-4 pb-3 flex items-center justify-between text-xs text-gray-400 border-t border-gray-800/40 pt-2 sm:hidden">
-                  <span>Gasto total: <strong className="text-cyan-400 font-mono">${customer.totalSpent.toLocaleString('es-CO')}</strong></span>
-                  <span>Último: {customer.lastOrderDate ? new Date(customer.lastOrderDate).toLocaleDateString('es-CO') : 'N/A'}</span>
+                  <div className="flex items-center gap-1 font-mono text-amber-400 font-bold">
+                    <Sparkles className="w-3 h-3" />
+                    <span>{customer.ryycos.toLocaleString('es-CO')} RYYCOS</span>
+                  </div>
+                  <span>Gasto: <strong className="text-cyan-400 font-mono">${customer.totalSpent.toLocaleString('es-CO')}</strong></span>
+                  <button
+                    onClick={() => {
+                      setAdjustingRyycosCustomer(customer);
+                      setAdjustmentAmount('500');
+                      setAdjustmentMode('add');
+                    }}
+                    className="text-[11px] text-amber-400 underline font-semibold cursor-pointer"
+                  >
+                    + Ajustar
+                  </button>
                 </div>
 
                 {/* Expanded Section: Orders History & WhatsApp Message Tools */}
                 {isExpanded && (
                   <div className="border-t border-gray-800 bg-gray-950/90 p-4 sm:p-6 space-y-5 animate-fade-in">
+                    {/* RYYCOS Loyalty & Admin Adjustment Bar */}
+                    <div className="bg-gradient-to-r from-amber-950/40 via-gray-900 to-amber-950/20 border border-amber-800/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                          <Coins className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-black text-amber-300">
+                              Fidelización RYYCOS de {customer.name}
+                            </span>
+                            {customer.isRegisteredProfile ? (
+                              <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">
+                                Perfil Registrado
+                              </span>
+                            ) : (
+                              <span className="text-[10px] bg-gray-800 text-gray-400 border border-gray-700 px-2 py-0.5 rounded-full">
+                                Acumulado por Pedidos
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Saldo disponible: <strong className="text-amber-400 font-mono text-sm">{customer.ryycos.toLocaleString('es-CO')} RYYCOS</strong>
+                            {' '}(Equivalente a <span className="text-white font-mono font-bold">${customer.ryycos.toLocaleString('es-CO')} COP</span> para redimir)
+                            {customer.spinsAvailable > 0 && ` • 🎡 ${customer.spinsAvailable} giros en ruleta`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => {
+                            setAdjustingRyycosCustomer(customer);
+                            setAdjustmentAmount('1000');
+                            setAdjustmentMode('add');
+                            setAdjustmentReason('Bonificación especial por lealtad');
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 text-xs font-black transition flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Bonificar / Ajustar Saldo</span>
+                        </button>
+                      </div>
+                    </div>
+
                     {/* WhatsApp Quick Message Bar */}
                     {hasWhatsApp && (
                       <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-xl p-4 space-y-3">
@@ -930,7 +1221,27 @@ export default function AdminCustomersRanking({
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                          <a
+                            href={buildWhatsAppUrl(
+                              customer.cleanPhone,
+                              customer.name,
+                              customer.totalOrders,
+                              `¡Hola ${customer.name}! 🪙 Te recordamos desde RYYCO que tienes un saldo acumulado de ${customer.ryycos.toLocaleString('es-CO')} RYYCOS ($${customer.ryycos.toLocaleString('es-CO')} COP) listos para usar en tus próximos pedidos de comida. ¡Aprovéchalos hoy mismo! 🍕🍔`
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-2.5 rounded-lg bg-amber-900/30 hover:bg-amber-900/50 border border-amber-800/50 text-left transition text-xs space-y-1 block hover:border-amber-500 cursor-pointer"
+                          >
+                            <div className="font-bold text-amber-300 flex items-center gap-1">
+                              <Coins className="w-3 h-3 text-amber-400" />
+                              Aviso Saldo RYYCOS
+                            </div>
+                            <div className="text-[11px] text-gray-400 line-clamp-2">
+                              "Tienes un saldo de {customer.ryycos.toLocaleString('es-CO')} RYYCOS listos para usar..."
+                            </div>
+                          </a>
+
                           <a
                             href={buildWhatsAppUrl(
                               customer.cleanPhone,
@@ -1135,6 +1446,173 @@ export default function AdminCustomersRanking({
           })
         )}
       </div>
+
+      {/* Admin RYYCOS Adjustment Modal */}
+      {adjustingRyycosCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+            <button
+              onClick={() => {
+                setAdjustingRyycosCustomer(null);
+                setAdjustmentSuccessMsg(null);
+              }}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                <Coins className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-black text-white">
+                  Bonificar / Ajustar RYYCOS
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Cliente: <strong className="text-amber-300 font-semibold">{adjustingRyycosCustomer.name}</strong> ({adjustingRyycosCustomer.formattedPhone})
+                </p>
+              </div>
+            </div>
+
+            {/* Current Balance Card */}
+            <div className="bg-gray-950/80 rounded-xl p-3.5 border border-gray-800 flex items-center justify-between">
+              <span className="text-xs text-gray-400 font-medium">Saldo actual del cliente:</span>
+              <div className="flex items-center gap-1.5 font-mono font-black text-amber-400 text-lg">
+                <Sparkles className="w-4 h-4 fill-amber-400/20" />
+                <span>{adjustingRyycosCustomer.ryycos.toLocaleString('es-CO')} RYYCOS</span>
+              </div>
+            </div>
+
+            {adjustmentSuccessMsg ? (
+              <div className="p-4 rounded-xl bg-emerald-950/60 border border-emerald-800/80 text-emerald-300 text-xs text-center space-y-1 font-semibold animate-fade-in">
+                <Check className="w-6 h-6 mx-auto text-emerald-400" />
+                <div>{adjustmentSuccessMsg}</div>
+              </div>
+            ) : (
+              <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
+                {/* Mode Selector */}
+                <div className="grid grid-cols-2 gap-2 p-1 bg-gray-950 rounded-xl border border-gray-800 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustmentMode('add')}
+                    className={`py-2 rounded-lg transition cursor-pointer ${
+                      adjustmentMode === 'add'
+                        ? 'bg-amber-500 text-gray-950 font-black shadow'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    + Sumar Bonificación
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdjustmentMode('set')}
+                    className={`py-2 rounded-lg transition cursor-pointer ${
+                      adjustmentMode === 'set'
+                        ? 'bg-amber-500 text-gray-950 font-black shadow'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Fijar Saldo Exacto
+                  </button>
+                </div>
+
+                {/* Quick Add Buttons if in Add mode */}
+                {adjustmentMode === 'add' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500">Rápido:</span>
+                    {['200', '500', '1000', '2000', '5000'].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setAdjustmentAmount(amt)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold border transition cursor-pointer ${
+                          adjustmentAmount === amt
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                            : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
+                        }`}
+                      >
+                        +{amt}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Amount Input */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-300 flex items-center justify-between">
+                    <span>{adjustmentMode === 'add' ? 'Puntos RYYCOS a Bonificar' : 'Nuevo Saldo Total RYYCOS'}</span>
+                    <span className="text-amber-400 font-mono text-[11px]">1 RYYCO = $1 COP</span>
+                  </label>
+                  <div className="relative">
+                    <Coins className="w-4 h-4 text-amber-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="number"
+                      min="0"
+                      step="50"
+                      value={adjustmentAmount}
+                      onChange={(e) => setAdjustmentAmount(e.target.value)}
+                      placeholder="Ej: 500"
+                      required
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-gray-950 border border-gray-800 text-white font-mono text-base font-bold focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Reason */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-gray-300">
+                    Motivo o concepto (visible internamente)
+                  </label>
+                  <input
+                    type="text"
+                    value={adjustmentReason}
+                    onChange={(e) => setAdjustmentReason(e.target.value)}
+                    placeholder="Ej: Bonificación de bienvenida, compensación, etc."
+                    className="w-full px-3.5 py-2 rounded-xl bg-gray-950 border border-gray-800 text-xs text-gray-200 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Preview Calculation */}
+                <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-800/30 text-xs flex items-center justify-between text-gray-300">
+                  <span>Nuevo saldo resultante:</span>
+                  <strong className="text-amber-400 font-mono text-sm">
+                    {adjustmentMode === 'add'
+                      ? (adjustingRyycosCustomer.ryycos + (parseFloat(adjustmentAmount) || 0)).toLocaleString('es-CO')
+                      : (parseFloat(adjustmentAmount) || 0).toLocaleString('es-CO')} RYYCOS
+                  </strong>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAdjustingRyycosCustomer(null)}
+                    disabled={isSubmittingAdjustment}
+                    className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAdjustment}
+                    className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-gray-950 text-xs font-black transition shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingAdjustment ? (
+                      <span>Guardando...</span>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Guardar Saldo</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
