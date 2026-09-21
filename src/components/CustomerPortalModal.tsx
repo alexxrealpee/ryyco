@@ -1130,14 +1130,6 @@ export default function CustomerPortalModal({
                 )}
               </button>
 
-              {/* Multi-role notice for clarity */}
-              <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 text-[11px] text-amber-300 flex items-start gap-2">
-                <span className="text-sm shrink-0">💡</span>
-                <p className="leading-snug">
-                  <strong>¿Eres vendedor de una tienda?</strong> Puedes usar tu mismo correo de Google para comprar aquí como cliente. Este botón te identificará en <strong>Modo Cliente Comprador</strong>.
-                </p>
-              </div>
-
               <div className="text-[10.5px] text-gray-400 text-center px-2">
                 Al continuar o ingresar con Google, aceptas los{' '}
                 <button
