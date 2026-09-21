@@ -1512,26 +1512,27 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       'cancelled': 'Cancelado 🚫'
     };
     
-    const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
-    const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
-    const ryycoHomeUrl = `${baseUrl}/`;
-    const storeDisplayName = profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'nuestra tienda');
+    const baseUrl = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')
+      ? window.location.origin
+      : 'https://ryyco.com';
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/tienda`;
+    const ryycoHomeUrl = `${cleanBaseUrl}/`;
+    const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'nuestra tienda')).trim();
 
     const intro = `Hola *${order.customerName}*, te contactamos de *${storeDisplayName}* respecto a tu compra #${order.orderNumber}.\n\n`;
     const statusMsg = `El estado actual de tu pedido es: *${statusLang[order.status] || order.status}*.\n\n`;
     const total = `Total: *${formatPrice(order.totalAmount)}*\n\n`;
     const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.\n\n`;
     const footerLinks = `-----------------------------\n` +
-      `🍔 *¿NECESITA AYUDA CON SU PEDIDO?*\n` +
-      `Comuníquese con *Soporte Ryyco* y le ayudaremos a agilizar su pedido:\n` +
-      `💬 Contactar a Soporte Ryyco: https://wa.me/573106502043\n\n` +
-      `⭐ *¿CÓMO FUE SU EXPERIENCIA?*\n` +
-      `Califique su experiencia en *${storeDisplayName}* y ayúdenos a seguir mejorando:\n` +
-      `⭐ Calificar restaurante: ${storeRatingUrl}\n\n` +
-      `🍽️ *¡SIGA DISFRUTANDO EN RYYCO!*\n` +
-      `Regrese a nuestra plataforma y descubra *más restaurantes, platos y experiencias*:\n` +
-      `🍴 Volver a Ryyco: ${ryycoHomeUrl}\n\n` +
-      `*¡Gracias por pedir con Ryyco! ❤️💛*`;
+      `🍔 *¿NECESITA AYUDA?*\n` +
+      `💬 Soporte RYYCO: https://wa.me/573106502043\n\n` +
+      `⭐ *Califique su experiencia en ${storeDisplayName}:*\n` +
+      `${storeRatingUrl}\n\n` +
+      `🍽️ *¡Siga disfrutando RYYCO!*\n\n` +
+      `Regrese a nuestra plataforma\n` +
+      `${ryycoHomeUrl}\n\n` +
+      `¡Gracias por pedir con RYYCO! ❤️💛`;
     
     let rawPhone = order.customerPhone.replace(/[^0-9]/g, '');
     if (rawPhone.length === 10 && rawPhone.startsWith('3')) {

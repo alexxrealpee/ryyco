@@ -1052,22 +1052,23 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       ? `¡Hola! Ya estamos ubicados en la mesa. ¡Agradecemos confirmación para iniciar la preparación en cocina! 🍽️\n\n`
       : `¡Espero confirmación para continuar con el ${isPickup ? 'pedido para recoger' : 'pago/envío'}!\n\n`;
 
-    const baseUrl = typeof window !== 'undefined' && window.location.origin ? window.location.origin : 'https://ryyco.com';
-    const storeRatingUrl = profile.username ? `${baseUrl}/${profile.username}` : `${baseUrl}/tienda`;
-    const ryycoHomeUrl = `${baseUrl}/`;
-    const storeDisplayName = profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'el restaurante');
+    const baseUrl = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')
+      ? window.location.origin
+      : 'https://ryyco.com';
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
+    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/tienda`;
+    const ryycoHomeUrl = `${cleanBaseUrl}/`;
+    const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'el restaurante')).trim();
 
     msg += `-----------------------------\n`;
-    msg += `🍔 *¿NECESITA AYUDA CON SU PEDIDO?*\n`;
-    msg += `Comuníquese con *Soporte Ryyco* y le ayudaremos a agilizar su pedido:\n`;
-    msg += `💬 Contactar a Soporte Ryyco: https://wa.me/573106502043\n\n`;
-    msg += `⭐ *¿CÓMO FUE SU EXPERIENCIA?*\n`;
-    msg += `Califique su experiencia en *${storeDisplayName}* y ayúdenos a seguir mejorando:\n`;
-    msg += `⭐ Calificar restaurante: ${storeRatingUrl}\n\n`;
-    msg += `🍽️ *¡SIGA DISFRUTANDO EN RYYCO!*\n`;
-    msg += `Regrese a nuestra plataforma y descubra *más restaurantes, platos y experiencias*:\n`;
-    msg += `🍴 Volver a Ryyco: ${ryycoHomeUrl}\n\n`;
-    msg += `*¡Gracias por pedir con Ryyco! ❤️💛*`;
+    msg += `🍔 *¿NECESITA AYUDA?*\n`;
+    msg += `💬 Soporte RYYCO: https://wa.me/573106502043\n\n`;
+    msg += `⭐ *Califique su experiencia en ${storeDisplayName}:*\n`;
+    msg += `${storeRatingUrl}\n\n`;
+    msg += `🍽️ *¡Siga disfrutando RYYCO!*\n\n`;
+    msg += `Regrese a nuestra plataforma\n`;
+    msg += `${ryycoHomeUrl}\n\n`;
+    msg += `¡Gracias por pedir con RYYCO! ❤️💛`;
 
     const cleanMsg = encodeURIComponent(msg);
     let targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';
