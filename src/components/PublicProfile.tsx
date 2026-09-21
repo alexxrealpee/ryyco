@@ -251,6 +251,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   // Customer Portal & Rewards State
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
+  const [isCustomerRegisterMode, setIsCustomerRegisterMode] = useState(false);
   const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
   const [appliedRewardCode, setAppliedRewardCode] = useState('');
   const [rewardDiscountAmount, setRewardDiscountAmount] = useState(0);
@@ -577,6 +578,32 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             if (urlMesa) {
               setDeliveryType('table');
               setTableNumber(urlMesa.trim());
+            }
+
+            const isRegisterReq = 
+              searchParams.get('registro') === 'cliente' || 
+              searchParams.get('registro') === 'true' || 
+              searchParams.get('portal') === 'registro' ||
+              searchParams.get('modo') === 'registro' ||
+              searchParams.get('action') === 'register' ||
+              searchParams.get('register') === 'customer' ||
+              searchParams.get('register') === 'true';
+
+            const isCustomerPortalReq = 
+              isRegisterReq ||
+              searchParams.get('portal') === 'cliente' || 
+              searchParams.get('portal') === 'customer' ||
+              searchParams.get('tab') === 'rewards' ||
+              searchParams.get('tab') === 'club';
+
+            if (isCustomerPortalReq) {
+              if (isRegisterReq) {
+                setIsCustomerRegisterMode(true);
+              }
+              if (searchParams.get('tab') === 'rewards' || searchParams.get('tab') === 'club') {
+                setCustomerPortalTab('rewards');
+              }
+              setIsCustomerPortalOpen(true);
             }
           } catch (e) {}
         } else {
@@ -3698,9 +3725,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       {/* CUSTOMER LOYALTY, ACCOUNT, ORDERS & LUCKY WHEEL PORTAL MODAL */}
       <CustomerPortalModal
         isOpen={isCustomerPortalOpen}
-        onClose={() => setIsCustomerPortalOpen(false)}
+        onClose={() => {
+          setIsCustomerPortalOpen(false);
+          setIsCustomerRegisterMode(false);
+        }}
         initialPhone={custPhone}
         initialTab={customerPortalTab}
+        initialRegisterMode={isCustomerRegisterMode}
         storeCurrency={getStoreCurrency()}
         onCustomerUpdate={setActiveCustomer}
         onSelectRewardCode={(code, discount) => {

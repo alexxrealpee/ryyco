@@ -536,6 +536,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Customer Loyalty & Account Modal
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
+  const [isCustomerRegisterMode, setIsCustomerRegisterMode] = useState(false);
   const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
 
   // Customer Checkout Verification Prompt State
@@ -617,7 +618,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       const searchParams = new URLSearchParams(window.location.search);
       const path = window.location.pathname.toLowerCase();
       const hash = window.location.hash.toLowerCase();
+      const isRegisterDirect = 
+        searchParams.get('registro') === 'cliente' || 
+        searchParams.get('registro') === 'true' || 
+        searchParams.get('portal') === 'registro' ||
+        searchParams.get('modo') === 'registro' ||
+        searchParams.get('action') === 'register' ||
+        searchParams.get('register') === 'customer' ||
+        searchParams.get('register') === 'true' ||
+        hash.includes('registro') ||
+        hash.includes('crear-cuenta');
+
       if (
+        isRegisterDirect ||
         searchParams.get('portal') === 'cliente' || 
         searchParams.get('portal') === 'customer' ||
         searchParams.get('tab') === 'rewards' ||
@@ -628,6 +641,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         hash.includes('mis-pedidos') ||
         hash.includes('cliente')
       ) {
+        if (isRegisterDirect) {
+          setIsCustomerRegisterMode(true);
+        }
         if (searchParams.get('tab') === 'rewards' || path.includes('club')) {
           setCustomerPortalTab('rewards');
         } else {
@@ -3360,9 +3376,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       {/* CUSTOMER LOYALTY, ACCOUNT, ORDERS & LUCKY WHEEL PORTAL MODAL */}
       <CustomerPortalModal
         isOpen={isCustomerPortalOpen}
-        onClose={() => setIsCustomerPortalOpen(false)}
+        onClose={() => {
+          setIsCustomerPortalOpen(false);
+          setIsCustomerRegisterMode(false);
+        }}
         initialPhone={custPhone}
         initialTab={customerPortalTab}
+        initialRegisterMode={isCustomerRegisterMode}
         onCustomerUpdate={setActiveCustomer}
       />
 

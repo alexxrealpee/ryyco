@@ -70,6 +70,7 @@ interface CustomerPortalModalProps {
   onClose: () => void;
   initialPhone?: string;
   initialTab?: 'orders' | 'wheel' | 'rewards' | 'profile';
+  initialRegisterMode?: boolean;
   storeCurrency?: string;
   onSelectRewardCode?: (code: string, discount?: number) => void;
   onCustomerUpdate?: (customer: CustomerProfile | null) => void;
@@ -103,6 +104,7 @@ export default function CustomerPortalModal({
   onClose,
   initialPhone = '',
   initialTab = 'orders',
+  initialRegisterMode = false,
   storeCurrency = '$',
   onSelectRewardCode,
   onCustomerUpdate
@@ -178,8 +180,31 @@ export default function CustomerPortalModal({
         }
       }
       setActiveTab(initialTab);
+
+      // Detect if user specifically requested the registration tab via prop or URL params
+      if (initialRegisterMode) {
+        setIsRegisterMode(true);
+      } else {
+        try {
+          const searchParams = new URLSearchParams(window.location.search);
+          const hash = window.location.hash.toLowerCase();
+          const isRegisterUrl = 
+            searchParams.get('registro') === 'cliente' || 
+            searchParams.get('registro') === 'true' || 
+            searchParams.get('portal') === 'registro' ||
+            searchParams.get('modo') === 'registro' ||
+            searchParams.get('action') === 'register' ||
+            searchParams.get('register') === 'customer' ||
+            searchParams.get('register') === 'true' ||
+            hash.includes('registro') ||
+            hash.includes('crear-cuenta');
+          if (isRegisterUrl) {
+            setIsRegisterMode(true);
+          }
+        } catch (e) {}
+      }
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, initialRegisterMode]);
 
   const loadCustomerData = async (phoneToLoad: string) => {
     const cleaned = sanitizeCustomerPhone(phoneToLoad);

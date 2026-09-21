@@ -70,12 +70,24 @@ const detectInitialRouteFromUrl = (): {
   while (hashUser.endsWith('/')) hashUser = hashUser.substring(0, hashUser.length - 1);
   if (hashUser.startsWith('@')) hashUser = hashUser.substring(1);
 
-  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets'];
+  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets', 'registro-cliente'];
 
   const pathLower = pathUser.toLowerCase();
   const hashLower = hashUser.toLowerCase();
   const searchTab = searchParams.get('tab')?.toLowerCase();
   const searchView = searchParams.get('view')?.toLowerCase();
+
+  // Route: Direct Customer Registration & Club Portal
+  if (
+    searchParams.get('registro') === 'cliente' ||
+    searchParams.get('portal') === 'registro' ||
+    searchParams.get('portal') === 'cliente' ||
+    searchParams.get('role') === 'cliente' ||
+    pathLower === 'registro-cliente' ||
+    hashLower === 'registro-cliente'
+  ) {
+    return { view: 'tienda', username: null, reelId: null };
+  }
 
   // 1. Explicit driver routes (e.g. /?view=driver, /domiciliario, /driver-portal, #driver-portal)
   if (
