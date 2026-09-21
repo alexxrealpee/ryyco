@@ -45,7 +45,10 @@ import {
   HelpCircle,
   Volume2,
   VolumeX,
-  Radio
+  Radio,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle
 } from 'lucide-react';
 import { 
   fetchDriverProfileByUid, 
@@ -156,6 +159,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [availableOrders, setAvailableOrders] = useState<OrderItem[]>([]);
   const [activeDelivery, setActiveDelivery] = useState<OrderItem | null>(null);
   const [trackingPreviewOpen, setTrackingPreviewOpen] = useState<boolean>(false);
+  const [showActiveOrderDetails, setShowActiveOrderDetails] = useState<boolean>(true);
 
   // Active store exact location and navigation data (resolved live from order or store profile)
   const [activeStoreLocation, setActiveStoreLocation] = useState<{
@@ -1331,6 +1335,150 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       })()}
                     </div>
 
+                    {/* DETALLES COMPLETOS DEL PEDIDO EN CURSO (PRODUCTOS, NOTAS Y VALORES) */}
+                    {(() => {
+                      const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
+                      const totalOrderAmount = activeDelivery.totalAmount || 0;
+                      const foodCost = Math.max(0, totalOrderAmount - deliveryFeeVal);
+                      const itemsCount = activeDelivery.items?.length || 0;
+                      const totalUnits = activeDelivery.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
+                      const isCashOrCod = activeDelivery.paymentMethod === 'whatsapp' || 
+                                          activeDelivery.paymentMethod === 'cod' || 
+                                          activeDelivery.paymentMethod === 'delivery_cash';
+
+                      return (
+                        <div className="bg-[#090D16] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xl">
+                          <div className="flex items-center justify-between border-b border-[#1C2433] pb-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                                <ShoppingBag className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
+                                  <span>Detalles del Pedido</span>
+                                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25">
+                                    {itemsCount} {itemsCount === 1 ? 'producto' : 'productos'} • {totalUnits} {totalUnits === 1 ? 'unidad' : 'unidades'}
+                                  </span>
+                                </h3>
+                                <p className="text-[11px] text-gray-400">
+                                  Productos a reclamar en tienda y entregar al cliente
+                                </p>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowActiveOrderDetails(!showActiveOrderDetails)}
+                              className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1C2433] border border-[#232B3A] flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                            >
+                              <span>{showActiveOrderDetails ? 'Ocultar' : 'Ver detalle'}</span>
+                              {showActiveOrderDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-400" />}
+                            </button>
+                          </div>
+
+                          {showActiveOrderDetails && (
+                            <div className="space-y-3 pt-1">
+                              {/* Lista de productos */}
+                              {activeDelivery.items && activeDelivery.items.length > 0 ? (
+                                <div className="space-y-2 bg-[#05070D] border border-[#1C2433] p-3 rounded-xl max-h-60 overflow-y-auto divide-y divide-[#1C2433]/70">
+                                  {activeDelivery.items.map((item, idx) => (
+                                    <div key={idx} className="pt-2.5 first:pt-0 flex items-start justify-between gap-3 text-xs">
+                                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
+                                        <span className="bg-[#E63946]/20 text-[#E63946] font-black text-xs px-2 py-0.5 rounded-md border border-[#E63946]/35 shrink-0">
+                                          {item.quantity}x
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <span className="font-bold text-white block text-sm leading-tight">
+                                            {item.name}
+                                          </span>
+                                          {item.selectedVariant && (
+                                            <span className="text-[11px] text-amber-300/90 block mt-0.5">
+                                              Opción / Sabor: <strong>{item.selectedVariant}</strong>
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <span className="text-gray-300 font-mono font-bold text-xs shrink-0 text-right">
+                                        ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="p-3 bg-[#05070D] border border-[#1C2433] rounded-xl text-xs text-gray-400 italic">
+                                  No hay desglose de productos individuales disponible para este pedido.
+                                </div>
+                              )}
+
+                              {/* Observaciones o Notas del cliente */}
+                              {activeDelivery.notes && (
+                                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs text-amber-200 flex items-start gap-2">
+                                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <strong className="text-amber-300 block text-xs">Notas / Observaciones del Cliente:</strong>
+                                    <p className="mt-0.5 text-[11px] leading-relaxed">{activeDelivery.notes}</p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Resumen Financiero y Cobro */}
+                              <div className="bg-[#05070D] border border-[#1C2433] p-3.5 rounded-xl space-y-2.5 text-xs">
+                                <div className="flex items-center justify-between border-b border-[#1C2433] pb-2">
+                                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Resumen Financiero del Pedido</span>
+                                  </span>
+                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#111827] text-gray-300 border border-[#232B3A]">
+                                    Pago: {activeDelivery.paymentMethod}
+                                  </span>
+                                </div>
+
+                                <div className="space-y-1.5 pt-0.5">
+                                  <div className="flex justify-between text-gray-300">
+                                    <span>Valor Comida / Productos:</span>
+                                    <strong className="text-white font-mono">${foodCost.toLocaleString('es-CO')} COP</strong>
+                                  </div>
+                                  <div className="flex justify-between text-gray-300">
+                                    <span className="text-emerald-300 font-bold">Ganancia Domicilio (Tu Pago):</span>
+                                    <strong className="text-emerald-400 font-mono font-bold">${deliveryFeeVal.toLocaleString('es-CO')} COP</strong>
+                                  </div>
+                                  <div className="flex justify-between items-center pt-2 border-t border-[#1C2433]">
+                                    <div>
+                                      <span className="text-white font-bold block text-sm">Valor Total del Pedido:</span>
+                                      <span className="text-[10px] text-gray-400 block">
+                                        {isCashOrCod ? 'Monto a cobrar en efectivo al cliente' : 'Total cancelado por el cliente'}
+                                      </span>
+                                    </div>
+                                    <span className="text-lg font-black text-[#E63946] font-mono">
+                                      ${totalOrderAmount.toLocaleString('es-CO')} COP
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {isCashOrCod ? (
+                                  <div className="mt-2 p-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-lg text-[11px] text-emerald-300 flex items-start gap-2">
+                                    <Banknote className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                                    <div>
+                                      <strong className="block text-emerald-300">Cobro en Efectivo Contra Entrega:</strong>
+                                      <span>Debes recaudar exactamente <strong>${totalOrderAmount.toLocaleString('es-CO')} COP</strong> al entregar al cliente.</span>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="mt-2 p-2.5 bg-sky-500/10 border border-sky-500/25 rounded-lg text-[11px] text-sky-300 flex items-start gap-2">
+                                    <Receipt className="w-4 h-4 shrink-0 text-sky-400 mt-0.5" />
+                                    <div>
+                                      <strong className="block text-sky-300">Pago Digital Confirmado:</strong>
+                                      <span>El cliente ya transfirió el valor del pedido. Solo entrega los productos.</span>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     {/* Panel de Ruta Completa en 2 Etapas: Domiciliario -> Restaurante -> Cliente */}
                     {(() => {
                       const currentStepIdx = getStepIndex(activeDelivery.deliveryStep);
@@ -1414,6 +1562,34 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                     <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
                                     <span>{activeDelivery.storeAddress}</span>
                                   </p>
+
+                                  {/* Compact preview of items to claim in store */}
+                                  {activeDelivery.items && activeDelivery.items.length > 0 && (
+                                    <div className="mt-2 p-2 bg-[#05070D] border border-[#232B3A] rounded-lg text-[11px] space-y-1">
+                                      <div className="flex items-center justify-between text-amber-300 font-bold">
+                                        <span className="flex items-center gap-1">
+                                          <ShoppingBag className="w-3 h-3 text-amber-400" />
+                                          <span>Productos a reclamar:</span>
+                                        </span>
+                                        <span className="text-[10px] text-gray-400 font-normal">
+                                          {activeDelivery.items.length} {activeDelivery.items.length === 1 ? 'ítem' : 'ítems'}
+                                        </span>
+                                      </div>
+                                      <div className="space-y-1 max-h-24 overflow-y-auto divide-y divide-[#1C2433]/60">
+                                        {activeDelivery.items.map((item, idx) => (
+                                          <div key={idx} className="pt-1 first:pt-0 flex justify-between items-center text-[11px]">
+                                            <span className="text-white truncate">
+                                              <strong className="text-amber-400 font-mono">{item.quantity}x</strong> {item.name}
+                                              {item.selectedVariant ? ` (${item.selectedVariant})` : ''}
+                                            </span>
+                                            <span className="text-gray-400 font-mono shrink-0 ml-2 text-[10px]">
+                                              ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
 
                                 {/* Flow when Etapa 1 is active: Payment Verification & COD confirmation */}
