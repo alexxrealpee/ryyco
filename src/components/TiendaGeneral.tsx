@@ -2312,8 +2312,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   onClick={() => setSelectedProduct(product)}
                   className="bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/50 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
                 >
-                  {/* Store source badge on top right */}
-                  <div className="absolute top-3 left-3 z-20">
+                  {/* Store source badge on top left */}
+                  <div className="absolute top-3 left-3 z-20 max-w-[85%]">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2321,10 +2321,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           onNavigateToStore(profile.username);
                         }
                       }}
-                      className="flex items-center gap-1.5 px-2.5 py-1 bg-[#090B12]/85 hover:bg-[#090B12] border border-[#232B3A] rounded-full transition text-[10px] font-black tracking-wide text-white cursor-pointer backdrop-blur-md"
+                      className="flex items-center gap-1 px-2 py-0.5 bg-[#090B12]/85 hover:bg-[#090B12] border border-[#232B3A] rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
                     >
-                      <Store className="w-3 h-3 text-[#E63946]" />
-                      <span>{profile?.displayName || 'Tienda'}</span>
+                      <Store className="w-2.5 h-2.5 text-[#E63946] shrink-0" />
+                      <span className="truncate">{profile?.displayName || 'Tienda'}</span>
                     </button>
                   </div>
 
