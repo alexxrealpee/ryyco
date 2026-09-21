@@ -71,7 +71,10 @@ import {
   buildGoogleNavigationUrl, 
   buildWazeNavigationUrl, 
   buildGoogleMapSearchUrl,
-  buildGoogleFullRouteUrl
+  buildGoogleFullRouteUrl,
+  calculateDistanceKm,
+  formatDistanceKm,
+  getOrderRouteDistance
 } from '../lib/coordinateUtils';
 import {
   playDriverOrderAlertChime,
@@ -2127,54 +2130,120 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {availableOrders.map((order) => (
-                          <div
-                            key={order.id}
-                            className="bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/40 rounded-2xl p-5 shadow-lg space-y-4 transition"
-                          >
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <span className="text-[10px] font-bold text-[#A9B2C3] uppercase block">Tienda</span>
-                                <h4 className="text-sm font-black text-white">{order.storeName || 'Tienda Aliada'}</h4>
-                              </div>
-                              <div className="text-right">
-                                <span className="text-[10px] font-bold text-[#A9B2C3] uppercase block">Domicilio</span>
-                                <span className="text-base font-black text-[#E63946]">
-                                  ${(systemDeliveryFee || order.deliveryFee || 7000).toLocaleString('es-CO')}
-                                </span>
-                              </div>
-                            </div>
+                        {availableOrders.map((order) => {
+                          const cardDist = getOrderRouteDistance({
+                            driverLat: currentCoords?.latitude,
+                            driverLng: currentCoords?.longitude,
+                            storeLat: order.storeLat,
+                            storeLng: order.storeLng,
+                            storeMapUrl: order.storeMapUrl,
+                            customerLat: order.customerLat,
+                            customerLng: order.customerLng,
+                            customerMapUrl: order.customerMapUrl,
+                          });
+                          const cardDeliveryFee = systemDeliveryFee || order.deliveryFee || 7000;
+                          const cardTotalAmount = order.totalAmount || 0;
+                          const cardItemsCount = order.items?.length || 0;
+                          const cardTotalUnits = order.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
 
-                            <div className="space-y-1.5 text-xs text-gray-300 border-t border-b border-[#232B3A] py-3">
-                              <div className="flex items-center gap-2">
-                                <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
-                                <span>Recogida: <strong>{order.storeAddress || 'Dirección de la Tienda'}</strong></span>
-                              </div>
-                              {(order.storeReference || (order as any).restaurantReference) && (
-                                <div className="flex items-center gap-2 pl-5 text-[11px] text-amber-300">
-                                  <Navigation className="w-3 h-3 text-amber-400 shrink-0" />
-                                  <span>Punto Ref: <strong>{order.storeReference || (order as any).restaurantReference}</strong></span>
-                                </div>
-                              )}
-                              <div className="flex items-center gap-2">
-                                <MapPin className="w-3.5 h-3.5 text-[#E63946] shrink-0" />
-                                <span>Entrega: <strong>{order.customerAddress}</strong></span>
-                              </div>
-                              <div className="flex justify-between pt-1 text-[11px] text-[#A9B2C3]">
-                                <span>Cliente: <strong className="text-white">{order.customerName}</strong></span>
-                                <span>Pago: <strong className="text-white uppercase">{order.paymentMethod}</strong></span>
-                              </div>
-                            </div>
-
-                            <button
-                              onClick={() => setSelectedIncomingOrder(order)}
-                              className="w-full py-2.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition cursor-pointer shadow-md flex items-center justify-center gap-2"
+                          return (
+                            <div
+                              key={order.id}
+                              className="bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/40 rounded-2xl p-5 shadow-lg space-y-3.5 transition"
                             >
-                              <Bike className="w-4 h-4" />
-                              <span>Ver Detalles y Aceptar</span>
-                            </button>
-                          </div>
-                        ))}
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-[#A9B2C3] uppercase block">Tienda</span>
+                                    {order.orderNumber && (
+                                      <span className="text-[9px] font-mono font-bold bg-[#E63946]/20 text-[#E63946] px-1.5 py-0.5 rounded">
+                                        #{order.orderNumber}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <h4 className="text-sm font-black text-white">{order.storeName || 'Tienda Aliada'}</h4>
+                                </div>
+                                <div className="text-right">
+                                  <span className="text-[10px] font-bold text-[#A9B2C3] uppercase block">Ganancia Domicilio</span>
+                                  <span className="text-base font-black text-[#E63946]">
+                                    ${cardDeliveryFee.toLocaleString('es-CO')}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="space-y-2 text-xs text-gray-300 border-t border-b border-[#232B3A] py-3">
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
+                                  <span className="truncate">Recogida: <strong>{order.storeAddress || 'Dirección de la Tienda'}</strong></span>
+                                </div>
+                                {(order.storeReference || (order as any).restaurantReference) && (
+                                  <div className="flex items-center gap-2 pl-5 text-[11px] text-amber-300">
+                                    <Navigation className="w-3 h-3 text-amber-400 shrink-0" />
+                                    <span className="truncate">Punto Ref: <strong>{order.storeReference || (order as any).restaurantReference}</strong></span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-3.5 h-3.5 text-[#E63946] shrink-0" />
+                                  <span className="truncate">Entrega: <strong>{order.customerAddress}</strong></span>
+                                </div>
+
+                                {/* Distancia y Valor del Pedido */}
+                                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-[#232B3A]/60 text-[11px]">
+                                  <div className="bg-[#090B12] p-2 rounded-lg border border-[#232B3A] flex items-center gap-1.5">
+                                    <Navigation className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                                    <div className="truncate">
+                                      <span className="text-[10px] text-[#A9B2C3] block">Distancia:</span>
+                                      <strong className="text-sky-400">
+                                        {cardDist.totalEstimatedKm !== null ? `~${formatDistanceKm(cardDist.totalEstimatedKm)}` : 'Por calcular'}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-[#090B12] p-2 rounded-lg border border-[#232B3A] flex items-center gap-1.5">
+                                    <DollarSign className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                    <div className="truncate">
+                                      <span className="text-[10px] text-[#A9B2C3] block">Valor Pedido:</span>
+                                      <strong className="text-white">
+                                        ${cardTotalAmount.toLocaleString('es-CO')}
+                                      </strong>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Resumen del Pedido (Items) */}
+                                {order.items && order.items.length > 0 && (
+                                  <div className="bg-[#090B12] p-2 rounded-lg border border-[#232B3A] text-[11px] space-y-1">
+                                    <div className="flex items-center justify-between text-amber-400 font-bold">
+                                      <span className="flex items-center gap-1">
+                                        <ShoppingBag className="w-3 h-3" />
+                                        <span>Detalles del Pedido:</span>
+                                      </span>
+                                      <span className="text-[10px] text-gray-400 font-normal">
+                                        {cardItemsCount} items ({cardTotalUnits} uds)
+                                      </span>
+                                    </div>
+                                    <p className="text-gray-300 truncate">
+                                      {order.items.map(it => `${it.quantity}x ${it.name}`).join(' • ')}
+                                    </p>
+                                  </div>
+                                )}
+
+                                <div className="flex justify-between pt-0.5 text-[11px] text-[#A9B2C3]">
+                                  <span>Cliente: <strong className="text-white">{order.customerName}</strong></span>
+                                  <span>Pago: <strong className="text-white uppercase">{order.paymentMethod}</strong></span>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => setSelectedIncomingOrder(order)}
+                                className="w-full py-2.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition cursor-pointer shadow-md flex items-center justify-center gap-2"
+                              >
+                                <Bike className="w-4 h-4" />
+                                <span>Ver Detalles y Aceptar</span>
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2462,141 +2531,287 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       {/* ------------------------------------------------------------------
           INCOMING ORDER REAL-TIME POPUP MODAL
          ------------------------------------------------------------------ */}
-      {selectedIncomingOrder && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-[#111827] border-2 border-[#E63946]/50 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-6 relative animate-scaleUp">
-            <button
-              onClick={() => setSelectedIncomingOrder(null)}
-              className="absolute top-4 right-4 text-[#A9B2C3] hover:text-white p-1 rounded-lg hover:bg-[#232B3A] cursor-pointer"
-            >
-              ✕
-            </button>
+      {selectedIncomingOrder && (() => {
+        const routeDist = getOrderRouteDistance({
+          driverLat: currentCoords?.latitude,
+          driverLng: currentCoords?.longitude,
+          storeLat: selectedIncomingOrder.storeLat,
+          storeLng: selectedIncomingOrder.storeLng,
+          storeMapUrl: selectedIncomingOrder.storeMapUrl,
+          customerLat: selectedIncomingOrder.customerLat,
+          customerLng: selectedIncomingOrder.customerLng,
+          customerMapUrl: selectedIncomingOrder.customerMapUrl,
+        });
 
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-[#E63946]/10 border border-[#E63946]/30 text-[#E63946] rounded-xl flex items-center justify-center shrink-0">
-                <Bike className="w-6 h-6 animate-bounce" />
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase text-[#E63946] tracking-wider">¡Nuevo Pedido Recibido!</span>
-                <h3 className="text-lg font-black text-white">{selectedIncomingOrder.storeName || 'Tienda Aliada'}</h3>
-              </div>
-            </div>
+        const deliveryFeeVal = systemDeliveryFee || selectedIncomingOrder.deliveryFee || 7000;
+        const totalOrderAmount = selectedIncomingOrder.totalAmount || 0;
+        const foodCost = Math.max(0, totalOrderAmount - deliveryFeeVal);
+        const itemsCount = selectedIncomingOrder.items?.length || 0;
+        const totalUnits = selectedIncomingOrder.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
+        const isCashOrCod = selectedIncomingOrder.paymentMethod === 'whatsapp' || 
+                            selectedIncomingOrder.paymentMethod === 'cod' || 
+                            selectedIncomingOrder.paymentMethod === 'delivery_cash';
 
-            {claimStatusMsg && (
-              <div className="p-3 bg-[#F4B400]/10 border border-[#F4B400]/20 text-[#F4B400] text-xs font-semibold rounded-xl flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{claimStatusMsg}</span>
-              </div>
-            )}
-
-            <div className="space-y-3 bg-[#090B12] border border-[#232B3A] p-4 rounded-xl text-xs">
-              <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start">
-                <span className="text-[#A9B2C3] shrink-0">Punto de Recogida:</span>
-                <div className="text-right">
-                  <strong className="text-white block">{selectedIncomingOrder.storeAddress || 'Tienda en la plataforma'}</strong>
-                  {((selectedIncomingOrder.storeLat && selectedIncomingOrder.storeLng) || selectedIncomingOrder.storeMapUrl) && (
-                    <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono font-bold mt-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                      GPS Exacto Configurado
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Punto de Referencia para Domiciliarios (Tienda) */}
-              {(incomingStoreRef || selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference) && (
-                <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start bg-amber-500/10 -mx-1 px-2.5 py-2 rounded-xl border border-amber-500/25">
-                  <span className="text-amber-400 font-bold shrink-0 flex items-center gap-1.5 text-xs">
-                    <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    Punto de Referencia para Domiciliarios:
-                  </span>
-                  <div className="text-right ml-2">
-                    <strong className="text-amber-200 text-xs font-bold block">
-                      {incomingStoreRef || selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference}
-                    </strong>
-                  </div>
-                </div>
-              )}
-
-              {((selectedIncomingOrder.storeLat && selectedIncomingOrder.storeLng) || selectedIncomingOrder.storeMapUrl) && (
-                <div className="flex justify-end -mt-1 pb-1">
-                  <a
-                    href={buildGoogleNavigationUrl({
-                      lat: selectedIncomingOrder.storeLat,
-                      lng: selectedIncomingOrder.storeLng,
-                      mapUrl: selectedIncomingOrder.storeMapUrl,
-                      address: selectedIncomingOrder.storeAddress,
-                      storeName: selectedIncomingOrder.storeName
-                    })}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-amber-400 hover:text-amber-300 underline font-bold flex items-center gap-1"
-                  >
-                    <Navigation className="w-3 h-3" />
-                    <span>Ver ubicación exacta del restaurante</span>
-                  </a>
-                </div>
-              )}
-
-              <div className="flex justify-between border-b border-[#232B3A] pb-2">
-                <span className="text-[#A9B2C3]">Cliente y Destino:</span>
-                <strong className="text-[#E63946] text-right">{selectedIncomingOrder.customerName} ({selectedIncomingOrder.customerAddress})</strong>
-              </div>
-
-              {/* Punto de Referencia Entrega (Cliente) */}
-              {(selectedIncomingOrder.customerReference || selectedIncomingOrder.notes) && (
-                <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start text-xs bg-sky-500/10 -mx-1 px-2.5 py-2 rounded-xl border border-sky-500/20">
-                  <span className="text-sky-300 font-bold shrink-0 flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    Punto de Referencia Entrega:
-                  </span>
-                  <div className="text-right ml-2">
-                    <strong className="text-sky-100 text-xs font-semibold block">
-                      {selectedIncomingOrder.customerReference || selectedIncomingOrder.notes}
-                    </strong>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex justify-between border-b border-[#232B3A] pb-2">
-                <span className="text-[#A9B2C3]">Método de Pago:</span>
-                <strong className="text-white uppercase">{selectedIncomingOrder.paymentMethod}</strong>
-              </div>
-
-              <div className="flex justify-between items-center pt-1">
-                <span className="text-gray-300 font-bold">Ganancia Domicilio:</span>
-                <span className="text-xl font-black text-[#E63946]">
-                  ${(systemDeliveryFee || selectedIncomingOrder.deliveryFee || 7000).toLocaleString('es-CO')} COP
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => handleAcceptOrder(selectedIncomingOrder)}
-                disabled={claimingLoading}
-                className="flex-1 py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                {claimingLoading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
-                ) : (
-                  <>
-                    <Bike className="w-5 h-5" />
-                    <span>Aceptar Pedido 🚀</span>
-                  </>
-                )}
-              </button>
-
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+            <div className="bg-[#111827] border-2 border-[#E63946]/50 rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 relative animate-scaleUp max-h-[92vh] overflow-y-auto">
               <button
                 onClick={() => setSelectedIncomingOrder(null)}
-                className="px-4 py-3 bg-[#090B12] hover:bg-[#232B3A] text-[#A9B2C3] font-bold text-xs rounded-xl border border-[#232B3A] transition cursor-pointer"
+                className="absolute top-4 right-4 text-[#A9B2C3] hover:text-white p-1 rounded-lg hover:bg-[#232B3A] cursor-pointer"
               >
-                Ignorar
+                ✕
               </button>
+
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-[#E63946]/10 border border-[#E63946]/30 text-[#E63946] rounded-xl flex items-center justify-center shrink-0">
+                  <Bike className="w-6 h-6 animate-bounce" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-[#E63946] tracking-wider">¡Nuevo Pedido Recibido!</span>
+                    {selectedIncomingOrder.orderNumber && (
+                      <span className="text-[10px] font-mono font-bold bg-[#E63946]/20 text-[#E63946] px-1.5 py-0.5 rounded">
+                        #{selectedIncomingOrder.orderNumber}
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-lg font-black text-white">{selectedIncomingOrder.storeName || 'Tienda Aliada'}</h3>
+                </div>
+              </div>
+
+              {claimStatusMsg && (
+                <div className="p-3 bg-[#F4B400]/10 border border-[#F4B400]/20 text-[#F4B400] text-xs font-semibold rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{claimStatusMsg}</span>
+                </div>
+              )}
+
+              {/* SECTION 1: UBICACIONES Y DISTANCIA */}
+              <div className="space-y-3 bg-[#090B12] border border-[#232B3A] p-4 rounded-xl text-xs">
+                <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start">
+                  <span className="text-[#A9B2C3] shrink-0 font-medium">Punto de Recogida:</span>
+                  <div className="text-right">
+                    <strong className="text-white block">{selectedIncomingOrder.storeAddress || 'Tienda en la plataforma'}</strong>
+                    {((selectedIncomingOrder.storeLat && selectedIncomingOrder.storeLng) || selectedIncomingOrder.storeMapUrl) && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono font-bold mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        GPS Exacto Configurado
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Punto de Referencia para Domiciliarios (Tienda) */}
+                {(incomingStoreRef || selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference) && (
+                  <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start bg-amber-500/10 -mx-1 px-2.5 py-2 rounded-xl border border-amber-500/25">
+                    <span className="text-amber-400 font-bold shrink-0 flex items-center gap-1.5 text-xs">
+                      <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      Punto Ref. Tienda:
+                    </span>
+                    <div className="text-right ml-2">
+                      <strong className="text-amber-200 text-xs font-bold block">
+                        {incomingStoreRef || selectedIncomingOrder.storeReference || (selectedIncomingOrder as any).restaurantReference}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start">
+                  <span className="text-[#A9B2C3] shrink-0 font-medium">Cliente y Destino:</span>
+                  <strong className="text-[#E63946] text-right ml-2">{selectedIncomingOrder.customerName} ({selectedIncomingOrder.customerAddress})</strong>
+                </div>
+
+                {/* Punto de Referencia Entrega (Cliente) */}
+                {selectedIncomingOrder.customerReference && (
+                  <div className="flex justify-between border-b border-[#232B3A] pb-2 items-start text-xs bg-sky-500/10 -mx-1 px-2.5 py-2 rounded-xl border border-sky-500/20">
+                    <span className="text-sky-300 font-bold shrink-0 flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                      Punto Ref. Entrega:
+                    </span>
+                    <div className="text-right ml-2">
+                      <strong className="text-sky-100 text-xs font-semibold block">
+                        {selectedIncomingOrder.customerReference}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                {/* DISTANCIA DEL PEDIDO */}
+                <div className="pt-1">
+                  <div className="bg-[#111827] border border-sky-500/30 p-2.5 rounded-xl space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sky-300 text-xs font-bold flex items-center gap-1.5">
+                        <Navigation className="w-3.5 h-3.5 text-sky-400" />
+                        Distancia Estimada:
+                      </span>
+                      {routeDist.totalEstimatedKm !== null ? (
+                        <span className="text-xs font-black text-sky-300 bg-sky-500/20 px-2.5 py-0.5 rounded-full border border-sky-500/30">
+                          ~{formatDistanceKm(routeDist.totalEstimatedKm)}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-gray-400">A verificar en mapa</span>
+                      )}
+                    </div>
+
+                    {routeDist.storeToCustomerKm !== null && (
+                      <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-400 gap-1 pt-1 border-t border-[#232B3A]">
+                        <span>Tienda ➔ Cliente: <strong className="text-gray-200">~{formatDistanceKm(routeDist.storeToCustomerKm)}</strong></span>
+                        {routeDist.driverToStoreKm !== null && (
+                          <span>Hasta la tienda: <strong className="text-amber-300">~{formatDistanceKm(routeDist.driverToStoreKm)}</strong></span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex justify-end pt-1">
+                      <a
+                        href={buildGoogleFullRouteUrl({
+                          driverLat: currentCoords?.latitude,
+                          driverLng: currentCoords?.longitude,
+                          storeLat: selectedIncomingOrder.storeLat,
+                          storeLng: selectedIncomingOrder.storeLng,
+                          storeAddress: selectedIncomingOrder.storeAddress,
+                          storeMapUrl: selectedIncomingOrder.storeMapUrl,
+                          destLat: selectedIncomingOrder.customerLat,
+                          destLng: selectedIncomingOrder.customerLng,
+                          destAddress: selectedIncomingOrder.customerAddress,
+                          destMapUrl: selectedIncomingOrder.customerMapUrl,
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] text-sky-400 hover:text-sky-300 underline font-bold flex items-center gap-1"
+                      >
+                        <Compass className="w-3.5 h-3.5" />
+                        <span>Ver ruta en Google Maps</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: DETALLES DEL PEDIDO (PRODUCTOS) */}
+              <div className="bg-[#090B12] border border-[#232B3A] p-3.5 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between border-b border-[#232B3A] pb-2">
+                  <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                    <ShoppingBag className="w-4 h-4 text-amber-400" />
+                    Detalles del Pedido:
+                  </span>
+                  <span className="text-[11px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/25">
+                    {itemsCount} {itemsCount === 1 ? 'producto' : 'productos'} ({totalUnits} {totalUnits === 1 ? 'unidad' : 'unidades'})
+                  </span>
+                </div>
+
+                {selectedIncomingOrder.items && selectedIncomingOrder.items.length > 0 ? (
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 divide-y divide-[#232B3A]/50">
+                    {selectedIncomingOrder.items.map((item, idx) => (
+                      <div key={idx} className="pt-1.5 first:pt-0 flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2 flex-1 min-w-0">
+                          <span className="bg-[#E63946]/20 text-[#E63946] font-black text-[11px] px-1.5 py-0.5 rounded border border-[#E63946]/30 shrink-0">
+                            {item.quantity}x
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <span className="font-bold text-white block truncate">{item.name}</span>
+                            {item.selectedVariant && (
+                              <span className="text-[10px] text-gray-400 block truncate">
+                                Opción: {item.selectedVariant}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <span className="text-gray-300 font-mono font-semibold shrink-0 text-right">
+                          ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400 italic">No hay desglose de productos individuales.</p>
+                )}
+
+                {selectedIncomingOrder.notes && (
+                  <div className="pt-2 border-t border-[#232B3A] text-[11px] bg-amber-500/10 -mx-1 px-2.5 py-1.5 rounded-lg border border-amber-500/20 text-amber-200">
+                    <strong className="text-amber-300 block mb-0.5">Observaciones / Notas del Cliente:</strong>
+                    <span>{selectedIncomingOrder.notes}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* SECTION 3: EL VALOR Y GANANCIA */}
+              <div className="bg-[#090B12] border border-[#232B3A] p-3.5 rounded-xl space-y-2 text-xs">
+                <div className="flex items-center justify-between border-b border-[#232B3A] pb-2">
+                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
+                    Valor del Pedido y Ganancia:
+                  </span>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#111827] text-gray-200 border border-[#232B3A]">
+                    {selectedIncomingOrder.paymentMethod}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex justify-between text-gray-300">
+                    <span>Valor Productos / Comida:</span>
+                    <strong className="text-white font-mono">${foodCost.toLocaleString('es-CO')} COP</strong>
+                  </div>
+
+                  <div className="flex justify-between text-gray-300">
+                    <span className="text-emerald-300 font-bold">Ganancia Domicilio (Tu Pago):</span>
+                    <strong className="text-emerald-400 font-mono font-bold">${deliveryFeeVal.toLocaleString('es-CO')} COP</strong>
+                  </div>
+
+                  <div className="flex justify-between items-center pt-2 border-t border-[#232B3A]">
+                    <div>
+                      <span className="text-white font-bold block text-xs">Valor Total del Pedido:</span>
+                      <span className="text-[10px] text-gray-400 block">
+                        {isCashOrCod ? 'Monto a recaudar al cliente' : 'Total facturado'}
+                      </span>
+                    </div>
+                    <span className="text-xl font-black text-[#E63946] font-mono">
+                      ${totalOrderAmount.toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
+                </div>
+
+                {isCashOrCod ? (
+                  <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/25 rounded-lg text-[11px] text-emerald-300 flex items-center gap-1.5">
+                    <Banknote className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span><strong>Cobro en Efectivo:</strong> Debes cobrar <strong>${totalOrderAmount.toLocaleString('es-CO')} COP</strong> al entregar al cliente.</span>
+                  </div>
+                ) : (
+                  <div className="mt-2 p-2 bg-sky-500/10 border border-sky-500/25 rounded-lg text-[11px] text-sky-300 flex items-center gap-1.5">
+                    <Receipt className="w-4 h-4 shrink-0 text-sky-400" />
+                    <span><strong>Pago por Transferencia:</strong> El cliente ya transfirió el monto del pedido.</span>
+                  </div>
+                )}
+              </div>
+
+              {/* ACTION BUTTONS */}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => handleAcceptOrder(selectedIncomingOrder)}
+                  disabled={claimingLoading}
+                  className="flex-1 py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {claimingLoading ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                  ) : (
+                    <>
+                      <Bike className="w-5 h-5" />
+                      <span>Aceptar Pedido 🚀</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setSelectedIncomingOrder(null)}
+                  className="px-4 py-3 bg-[#090B12] hover:bg-[#232B3A] text-[#A9B2C3] font-bold text-xs rounded-xl border border-[#232B3A] transition cursor-pointer"
+                >
+                  Ignorar
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Customer Tracking Live Map Preview Modal */}
       {activeDelivery && (

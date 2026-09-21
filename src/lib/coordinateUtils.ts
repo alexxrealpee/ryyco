@@ -66,6 +66,99 @@ export function isValidCoordinate(lat?: number | null, lng?: number | null): boo
 }
 
 /**
+ * Calculates distance in kilometers between two GPS coordinates using the Haversine formula.
+ */
+export function calculateDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a = 
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * 
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
+ * Formats a distance in kilometers to a clean, user-friendly label (e.g. "850 m" or "2,4 km").
+ */
+export function formatDistanceKm(km?: number | null): string {
+  if (km === undefined || km === null || isNaN(km) || km < 0) return '';
+  if (km < 1) {
+    return `${Math.round(km * 1000)} m`;
+  }
+  return `${km.toFixed(1).replace('.', ',')} km`;
+}
+
+/**
+ * Computes the route distance breakdown for an order:
+ * - Driver GPS to store (if driver position is available)
+ * - Store to customer
+ * - Total estimated distance
+ */
+export function getOrderRouteDistance(options: {
+  driverLat?: number | null;
+  driverLng?: number | null;
+  storeLat?: number | null;
+  storeLng?: number | null;
+  storeMapUrl?: string | null;
+  customerLat?: number | null;
+  customerLng?: number | null;
+  customerMapUrl?: string | null;
+}): {
+  storeToCustomerKm: number | null;
+  driverToStoreKm: number | null;
+  totalEstimatedKm: number | null;
+  summaryLabel: string;
+} {
+  let storeCoords: GeoCoords | null = null;
+  if (isValidCoordinate(options.storeLat, options.storeLng)) {
+    storeCoords = { lat: options.storeLat!, lng: options.storeLng! };
+  } else if (options.storeMapUrl) {
+    storeCoords = extractCoordinates(options.storeMapUrl);
+  }
+
+  let custCoords: GeoCoords | null = null;
+  if (isValidCoordinate(options.customerLat, options.customerLng)) {
+    custCoords = { lat: options.customerLat!, lng: options.customerLng! };
+  } else if (options.customerMapUrl) {
+    custCoords = extractCoordinates(options.customerMapUrl);
+  }
+
+  let storeToCustomerKm: number | null = null;
+  if (storeCoords && custCoords) {
+    storeToCustomerKm = calculateDistanceKm(storeCoords.lat, storeCoords.lng, custCoords.lat, custCoords.lng);
+  }
+
+  let driverToStoreKm: number | null = null;
+  if (isValidCoordinate(options.driverLat, options.driverLng) && storeCoords) {
+    driverToStoreKm = calculateDistanceKm(options.driverLat!, options.driverLng!, storeCoords.lat, storeCoords.lng);
+  }
+
+  let totalEstimatedKm: number | null = null;
+  if (driverToStoreKm !== null && storeToCustomerKm !== null) {
+    totalEstimatedKm = driverToStoreKm + storeToCustomerKm;
+  } else if (storeToCustomerKm !== null) {
+    totalEstimatedKm = storeToCustomerKm;
+  } else if (driverToStoreKm !== null) {
+    totalEstimatedKm = driverToStoreKm;
+  }
+
+  let summaryLabel = '';
+  if (totalEstimatedKm !== null) {
+    summaryLabel = formatDistanceKm(totalEstimatedKm);
+  }
+
+  return {
+    storeToCustomerKm,
+    driverToStoreKm,
+    totalEstimatedKm,
+    summaryLabel
+  };
+}
+
+/**
  * Builds a direct Google Maps Navigation URL (turn-by-turn routing).
  * If coordinates are provided, it leads the driver exactly to that GPS pinpoint.
  */
