@@ -3047,7 +3047,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </button>
             </div>
 
-            <p className="text-[11px] text-gray-500 font-semibold leading-relaxed">Completa los datos de envío. La orden se guardará e iniciará una comunicación con el vendedor por WhatsApp.</p>
+            <p className="text-[11px] text-gray-400 font-semibold leading-relaxed">Completa los datos de entrega</p>
 
             {/* Inputs */}
             <div>

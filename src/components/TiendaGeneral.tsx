@@ -1629,11 +1629,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     </button>
 
                     {/* Centro de Ayuda */}
-                    <button
-                      type="button"
+                    <a
+                      href="https://wa.me/573106502043?text=Hola%20Soporte%20Ryyco%2C%20necesito%20ayuda"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={() => {
                         setIsMobileMenuOpen(false);
-                        onNavigateHome();
                       }}
                       className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group border-t border-[#232B3A] pt-2 mt-1"
                     >
@@ -1648,7 +1649,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           Atención y soporte por WhatsApp
                         </p>
                       </div>
-                    </button>
+                    </a>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -2991,7 +2992,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* Scrollable Form Body */}
               <form onSubmit={handlePlaceOrderSubmit} className="flex-grow overflow-y-auto p-5 space-y-4 text-left">
                 <p className="text-[11px] text-[#A9B2C3] font-medium leading-relaxed">
-                  Completa los datos de envío. La orden se enviará a los emprendedores por WhatsApp al finalizar.
+                  Completa los datos de entrega
                 </p>
 
                 {/* Name */}
