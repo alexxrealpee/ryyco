@@ -6541,13 +6541,18 @@ export async function fetchStoreRecommendations(storeId: string, currentUserId?:
     const userHasRecommended = currentUserId 
       ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
       : false;
+    const userHasDisliked = currentUserId
+      ? recs.some(r => r.userId === currentUserId && r.recommended === false)
+      : false;
 
     return {
       storeId,
       count,
+      dislikeCount: negativeRecs.length,
       percentage,
       totalEvaluated: totalVotes,
       userHasRecommended,
+      userHasDisliked,
       recommendations: recs
     };
   } catch (err) {
@@ -6555,16 +6560,18 @@ export async function fetchStoreRecommendations(storeId: string, currentUserId?:
     return {
       storeId,
       count: 0,
+      dislikeCount: 0,
       percentage: 0,
       totalEvaluated: 0,
       userHasRecommended: false,
+      userHasDisliked: false,
       recommendations: []
     };
   }
 }
 
 /**
- * Toggle (add or withdraw) a recommendation with hearts ❤️
+ * Toggle (add or withdraw) a recommendation with hearts ❤️ or broken hearts 💔
  * Protects against duplicate recommendations by enforcing docId == storeId + '_' + userId
  */
 export async function toggleStoreRecommendation(params: {
@@ -6575,9 +6582,22 @@ export async function toggleStoreRecommendation(params: {
   userEmail?: string;
   userPhone?: string;
   feedbackTag?: string;
-  isCurrentlyRecommended: boolean;
-}): Promise<{ success: boolean; userHasRecommended: boolean }> {
-  const { storeId, storeUsername, userId, userName, userEmail, userPhone, feedbackTag, isCurrentlyRecommended } = params;
+  isCurrentlyRecommended?: boolean;
+  isCurrentlyDisliked?: boolean;
+  type?: 'like' | 'dislike';
+}): Promise<{ success: boolean; userHasRecommended: boolean; userHasDisliked: boolean }> {
+  const {
+    storeId,
+    storeUsername,
+    userId,
+    userName,
+    userEmail,
+    userPhone,
+    feedbackTag,
+    isCurrentlyRecommended = false,
+    isCurrentlyDisliked = false,
+    type = 'like'
+  } = params;
 
   if (!storeId || !userId) {
     throw new Error("Identificador de tienda y usuario requeridos.");
@@ -6586,26 +6606,51 @@ export async function toggleStoreRecommendation(params: {
   const docId = `${storeId}_${userId}`;
   const docRef = doc(db, 'recommendations', docId);
 
-  if (isCurrentlyRecommended) {
-    // Retirar recomendación
-    await deleteDoc(docRef);
-    return { success: true, userHasRecommended: false };
+  if (type === 'dislike') {
+    if (isCurrentlyDisliked) {
+      // Retirar corazón roto
+      await deleteDoc(docRef);
+      return { success: true, userHasRecommended: false, userHasDisliked: false };
+    } else {
+      // Guardar corazón roto
+      const recDoc: StoreRecommendation = {
+        id: docId,
+        storeId,
+        storeUsername: storeUsername || '',
+        userId,
+        userName: userName || 'Cliente Ryyco',
+        userEmail: userEmail || '',
+        userPhone: userPhone || '',
+        recommended: false,
+        feedbackTag: feedbackTag || '',
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(docRef, recDoc);
+      return { success: true, userHasRecommended: false, userHasDisliked: true };
+    }
   } else {
-    // Guardar recomendación
-    const recDoc: StoreRecommendation = {
-      id: docId,
-      storeId,
-      storeUsername: storeUsername || '',
-      userId,
-      userName: userName || 'Cliente Ryyco',
-      userEmail: userEmail || '',
-      userPhone: userPhone || '',
-      recommended: true,
-      feedbackTag: feedbackTag || '',
-      createdAt: new Date().toISOString()
-    };
-    await setDoc(docRef, recDoc);
-    return { success: true, userHasRecommended: true };
+    // type === 'like'
+    if (isCurrentlyRecommended) {
+      // Retirar recomendación
+      await deleteDoc(docRef);
+      return { success: true, userHasRecommended: false, userHasDisliked: false };
+    } else {
+      // Guardar recomendación
+      const recDoc: StoreRecommendation = {
+        id: docId,
+        storeId,
+        storeUsername: storeUsername || '',
+        userId,
+        userName: userName || 'Cliente Ryyco',
+        userEmail: userEmail || '',
+        userPhone: userPhone || '',
+        recommended: true,
+        feedbackTag: feedbackTag || '',
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(docRef, recDoc);
+      return { success: true, userHasRecommended: true, userHasDisliked: false };
+    }
   }
 }
 
@@ -6643,13 +6688,18 @@ export function subscribeStoreRecommendations(
     const userHasRecommended = currentUserId
       ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
       : false;
+    const userHasDisliked = currentUserId
+      ? recs.some(r => r.userId === currentUserId && r.recommended === false)
+      : false;
 
     onUpdate({
       storeId,
       count,
+      dislikeCount: negativeRecs.length,
       percentage,
       totalEvaluated: totalVotes,
       userHasRecommended,
+      userHasDisliked,
       recommendations: recs
     });
   }, (err) => {

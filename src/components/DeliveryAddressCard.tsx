@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, X } from 'lucide-react';
 
 interface DeliveryAddressCardProps {
   address: string;
@@ -16,12 +16,13 @@ export const isPickupOrInvalidAddress = (addr?: string | null): boolean => {
   const lower = addr.toLowerCase().trim();
   return (
     lower === '' ||
-    lower.includes('recoger en') ||
-    lower.includes('para llevar') ||
-    lower.includes('en mesa') ||
-    lower.startsWith('mesa ') ||
-    lower.includes('sin costo de envío') ||
-    lower.includes('restaurante / local')
+    lower.startsWith('recoger en restaurante') ||
+    lower.startsWith('recoger en local') ||
+    lower === 'recoger en restaurante / local' ||
+    lower.includes('¡sin costo de envío!') ||
+    lower === 'para llevar' ||
+    lower === 'en mesa' ||
+    /^mesa\s+\d+/i.test(lower)
   );
 };
 
@@ -37,12 +38,12 @@ export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({
   const isInvalid = isPickupOrInvalidAddress(address);
   const displayAddress = isInvalid ? '' : address;
 
-  // If previous pickup or table label was stored in address, clean it immediately
+  // If previous pickup or table label was stored in address on initial load, clean it
   React.useEffect(() => {
-    if (address && isPickupOrInvalidAddress(address)) {
+    if (address && isPickupOrInvalidAddress(address) && address.trim() !== '') {
       onChangeAddress('');
     }
-  }, [address, onChangeAddress]);
+  }, []);
 
   return (
     <div className="w-full space-y-2">
@@ -63,7 +64,7 @@ export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({
         </button>
       </div>
 
-      {/* 2. Main Input: Directly Editable Address Input + Map Button */}
+      {/* 2. Main Input: Directly Editable Address Input + Clear Button + Map Button */}
       <div className="w-full min-h-[44px] bg-white rounded-xl px-3.5 sm:px-4 py-1 flex items-center gap-2.5 shadow-inner border border-gray-200 focus-within:border-[#E63946] focus-within:ring-2 focus-within:ring-[#E63946]/20 transition-all">
         <MapPin className="w-5 h-5 text-gray-400 shrink-0" />
         <input
@@ -74,6 +75,16 @@ export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({
           placeholder={placeholder}
           className="w-full h-9 bg-transparent text-gray-900 placeholder:text-gray-400 font-semibold text-xs sm:text-sm outline-none"
         />
+        {displayAddress && (
+          <button
+            type="button"
+            onClick={() => onChangeAddress('')}
+            title="Borrar dirección para escribir una nueva"
+            className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-full transition shrink-0"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={onOpenMapPicker}

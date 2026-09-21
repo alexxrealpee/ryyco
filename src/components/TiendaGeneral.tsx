@@ -53,7 +53,8 @@ import {
   fetchProductsForStoreOnDemand, 
   logoutCustomerSession,
   sanitizeCustomerPhone,
-  setActiveCustomerSession
+  setActiveCustomerSession,
+  saveCustomerProfile
 } from '../lib/firebase';
 import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
 import LinnkProLogo from './LinnkProLogo';
@@ -538,6 +539,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
   const [isCustomerRegisterMode, setIsCustomerRegisterMode] = useState(false);
   const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
+  const [updateProfileWithOrderDetails, setUpdateProfileWithOrderDetails] = useState(true);
+
+  // Refs for current field values to avoid stale closures in background listeners
+  const custNameRef = useRef(custName);
+  custNameRef.current = custName;
+  const custPhoneRef = useRef(custPhone);
+  custPhoneRef.current = custPhone;
+  const custAddressRef = useRef(custAddress);
+  custAddressRef.current = custAddress;
+  const custNotesRef = useRef(custNotes);
+  custNotesRef.current = custNotes;
+  const isCheckoutOpenRef = useRef(isCheckoutOpen);
+  isCheckoutOpenRef.current = isCheckoutOpen;
+  const activeListeningPhoneRef = useRef('');
+  const userHasEditedFormRef = useRef(false);
 
   // Customer Checkout Verification Prompt State
   const [orderAuthPromptData, setOrderAuthPromptData] = useState<{
@@ -570,18 +586,27 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
     const initCustomer = (phone: string) => {
+      const cleanTarget = sanitizeCustomerPhone(phone);
+      if (!cleanTarget) return;
+      if (activeListeningPhoneRef.current === cleanTarget && unsubProfile) {
+        return; // Already listening
+      }
+      activeListeningPhoneRef.current = cleanTarget;
       if (unsubProfile) unsubProfile();
-      unsubProfile = listenToCustomerProfile(phone, (cust) => {
+      unsubProfile = listenToCustomerProfile(cleanTarget, (cust) => {
         const active = localStorage.getItem('ryyco_active_customer_phone');
-        if (!active || sanitizeCustomerPhone(active) !== sanitizeCustomerPhone(phone)) {
+        if (!active || sanitizeCustomerPhone(active) !== cleanTarget) {
           return;
         }
         if (cust) {
           setActiveCustomer(cust);
-          if (!custPhone) setCustPhone(cust.phone);
-          if (!custName) setCustName(cust.name);
-          if (!custAddress && cust.address && !isPickupOrInvalidAddress(cust.address)) {
-            setCustAddress(cust.address);
+          // Never overwrite user inputs if checkout modal is actively open or if user has modified fields
+          if (!userHasEditedFormRef.current && !isCheckoutOpenRef.current) {
+            if (!custPhoneRef.current && cust.phone) setCustPhone(cust.phone);
+            if (!custNameRef.current && cust.name) setCustName(cust.name);
+            if (!custAddressRef.current && cust.address && !isPickupOrInvalidAddress(cust.address)) {
+              setCustAddress(cust.address);
+            }
           }
         }
       });
@@ -598,7 +623,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           unsubProfile();
           unsubProfile = null;
         }
+        activeListeningPhoneRef.current = '';
         setActiveCustomer(null);
+        userHasEditedFormRef.current = false;
         setCustPhone('');
         setCustName('');
         setCustAddress('');
@@ -606,8 +633,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
       if (e.detail) {
         setActiveCustomer(e.detail);
-        if (e.detail.phone) {
-          initCustomer(e.detail.phone);
+        const p = e.detail.phone ? sanitizeCustomerPhone(e.detail.phone) : '';
+        if (p && p !== activeListeningPhoneRef.current) {
+          initCustomer(p);
         }
       }
     };
@@ -1274,8 +1302,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
     setPhoneError("");
 
-    // If customer is already logged in, allow them to freely change data for this order form without auth prompt or altering their base profile
+    // If customer is already logged in, allow them to freely change data for this order form
     if (activeCustomer) {
+      if (updateProfileWithOrderDetails) {
+        try {
+          const updatedProfileData: CustomerProfile = {
+            ...activeCustomer,
+            name: custName.trim() || activeCustomer.name,
+            address: (deliveryType === 'delivery' && custAddress.trim()) ? custAddress.trim() : activeCustomer.address
+          };
+          await saveCustomerProfile(updatedProfileData);
+          setActiveCustomer(updatedProfileData);
+        } catch (err) {
+          console.warn("Notice: could not update customer profile in background:", err);
+        }
+      }
       await executePlaceOrder(activeCustomer);
       return;
     }
@@ -3016,60 +3057,128 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     Completa los datos de entrega
                   </p>
                   {activeCustomer && (
-                    <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                      Sesión activa • Puedes cambiar los datos solo para este pedido
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                        Sesión activa • Puedes cambiar los datos libremente
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          userHasEditedFormRef.current = false;
+                          setCustName(activeCustomer.name || '');
+                          setCustPhone(activeCustomer.phone || '');
+                          if (activeCustomer.address && !isPickupOrInvalidAddress(activeCustomer.address)) {
+                            setCustAddress(activeCustomer.address);
+                          }
+                        }}
+                        title="Restaurar a los datos originales de mi perfil"
+                        className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer transition"
+                      >
+                        Restaurar datos
+                      </button>
+                    </div>
                   )}
                 </div>
 
                 {/* Name */}
                 <div>
                   <label className="text-[10px] font-black uppercase text-[#A9B2C3] block mb-1">Nombre Completo *</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={custName}
-                    onChange={(e) => setCustName(e.target.value)}
-                    placeholder="Ej: Alex Realpe"
-                    className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20"
-                  />
+                  <div className="relative flex items-center">
+                    <input 
+                      type="text" 
+                      required
+                      value={custName}
+                      onChange={(e) => {
+                        userHasEditedFormRef.current = true;
+                        setCustName(e.target.value);
+                      }}
+                      placeholder="Ej: Alex Realpe"
+                      className="w-full h-11 bg-white border border-[#232B3A] focus:border-[#E63946] rounded-xl pl-3.5 pr-8 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 focus:ring-[#E63946]/20 cursor-text"
+                    />
+                    {custName && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          userHasEditedFormRef.current = true;
+                          setCustName('');
+                        }}
+                        title="Borrar nombre"
+                        className="absolute right-2.5 p-1 text-gray-400 hover:text-gray-700 transition"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* WhatsApp Phone */}
                 <div>
                   <label className="text-[10px] font-black uppercase text-[#A9B2C3] block mb-1">WhatsApp de contacto *</label>
-                  <input 
-                    type="tel" 
-                    required
-                    value={custPhone}
-                    onChange={(e) => {
-                      const cleaned = cleanColombianPhone(e.target.value);
-                      setCustPhone(cleaned);
-                      if (phoneError) {
-                        if (cleaned.length === 10) {
-                          setPhoneError('');
+                  <div className="relative flex items-center">
+                    <input 
+                      type="tel" 
+                      required
+                      value={custPhone}
+                      onChange={(e) => {
+                        userHasEditedFormRef.current = true;
+                        const cleaned = cleanColombianPhone(e.target.value);
+                        setCustPhone(cleaned);
+                        if (phoneError) {
+                          if (cleaned.length === 10) {
+                            setPhoneError('');
+                          }
                         }
-                      }
-                    }}
-                    onBlur={() => {
-                      if (custPhone && cleanColombianPhone(custPhone).length !== 10) {
-                        setPhoneError("Ingrese un número de celular colombiano válido.");
-                      } else {
-                        setPhoneError("");
-                      }
-                    }}
-                    placeholder="Ej: 3106502043"
-                    className={`w-full h-11 bg-white border ${
-                      phoneError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-[#232B3A] focus:border-[#E63946] focus:ring-[#E63946]/20'
-                    } rounded-xl px-3.5 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1`}
-                  />
+                      }}
+                      onBlur={() => {
+                        if (custPhone && cleanColombianPhone(custPhone).length !== 10) {
+                          setPhoneError("Ingrese un número de celular colombiano válido.");
+                        } else {
+                          setPhoneError("");
+                        }
+                      }}
+                      placeholder="Ej: 3106502043"
+                      className={`w-full h-11 bg-white border ${
+                        phoneError ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20' : 'border-[#232B3A] focus:border-[#E63946] focus:ring-[#E63946]/20'
+                      } rounded-xl pl-3.5 pr-8 text-xs font-semibold outline-none text-gray-900 placeholder:text-gray-400 focus:ring-1 cursor-text`}
+                    />
+                    {custPhone && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          userHasEditedFormRef.current = true;
+                          setCustPhone('');
+                        }}
+                        title="Borrar número"
+                        className="absolute right-2.5 p-1 text-gray-400 hover:text-gray-700 transition"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                   {phoneError && (
                     <p className="text-[11px] font-bold text-red-500 mt-1 flex items-center gap-1">
                       <span>⚠️</span> {phoneError}
                     </p>
                   )}
                 </div>
+
+                {activeCustomer && (
+                  <label className="flex items-start gap-2.5 p-2.5 bg-blue-950/30 border border-blue-500/20 rounded-xl cursor-pointer hover:bg-blue-950/50 transition">
+                    <input
+                      type="checkbox"
+                      checked={updateProfileWithOrderDetails}
+                      onChange={(e) => setUpdateProfileWithOrderDetails(e.target.checked)}
+                      className="mt-0.5 rounded text-blue-500 focus:ring-blue-500/30"
+                    />
+                    <span className="text-[11px] text-blue-200 leading-snug">
+                      <strong>Guardar y actualizar estos datos en mi perfil</strong>
+                      <span className="block text-[10px] text-blue-300/70">
+                        Si lo desmarcas, los cambios solo se aplicarán a este pedido sin alterar tu perfil.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {/* Delivery Type Option (Domicilio vs Recoger en Restaurante) */}
                 <div className="space-y-2 pt-2 border-t border-[#232B3A]">

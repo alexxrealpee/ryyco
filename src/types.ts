@@ -510,9 +510,11 @@ export interface StoreRecommendation {
 export interface StoreRecommendationStats {
   storeId: string;
   count: number; // total positive recommendations (hearts)
+  dislikeCount?: number; // total negative reactions (broken hearts)
   percentage: number; // e.g. 96 (%)
   totalEvaluated: number; // total interactions / evaluated diners
   userHasRecommended: boolean;
+  userHasDisliked?: boolean;
   recommendations: StoreRecommendation[];
 }
 
