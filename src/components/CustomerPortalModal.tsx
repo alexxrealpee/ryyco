@@ -989,90 +989,70 @@ export default function CustomerPortalModal({
         <div className="absolute top-0 right-1/4 w-72 h-72 bg-[#E63946]/10 rounded-full blur-[90px] pointer-events-none" />
         <div className="absolute bottom-0 left-10 w-72 h-72 bg-amber-500/10 rounded-full blur-[90px] pointer-events-none" />
 
-        {/* HEADER */}
-        <div className="p-4 sm:p-5 border-b border-gray-800 flex items-center justify-between relative z-10 bg-[#0d1322]/90 backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10">
-              <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center">
-                <Crown className="w-5 h-5 text-amber-400" />
+        {/* HEADER (shown when logged in, or clean close button when not logged in) */}
+        {customer ? (
+          <div className="p-4 sm:p-5 border-b border-gray-800 flex items-center justify-between relative z-10 bg-[#0d1322]/90 backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10">
+                <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center">
+                  <Crown className="w-5 h-5 text-amber-400" />
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-white tracking-tight">Club de Clientes Ryyco</h3>
+                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-400/10 text-amber-400 border border-amber-400/20 uppercase tracking-wider">VIP</span>
+                </div>
+                <p className="text-[11px] text-gray-400 font-medium">
+                  Hola, {customer.name}
+                </p>
               </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-black text-white tracking-tight">Club de Clientes Ryyco</h3>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-400/10 text-amber-400 border border-amber-400/20 uppercase tracking-wider">VIP</span>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-xs font-mono shadow-sm">
+                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                <span>{(customer.points || 0).toLocaleString('es-CO')} RYYCOS</span>
               </div>
-              <p className="text-[11px] text-gray-400 font-medium">
-                {customer ? `Hola, ${customer.name}` : 'Rastreo de pedidos, platos gratis y RYYCOS'}
-              </p>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="h-9 px-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                title="Cerrar sesión de cliente"
+              >
+                <LogOut className="w-3.5 h-3.5 text-red-400" />
+                <span className="hidden sm:inline">Cerrar Sesión</span>
+              </button>
+              <button
+                onClick={onClose}
+                className="w-9 h-9 rounded-xl bg-[#E63946] hover:bg-red-600 border border-red-500/60 flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 transition cursor-pointer active:scale-95"
+                title="Cerrar"
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            {customer && (
-              <>
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-xs font-mono shadow-sm">
-                  <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                  <span>{(customer.points || 0).toLocaleString('es-CO')} RYYCOS</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="h-9 px-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
-                  title="Cerrar sesión de cliente"
-                >
-                  <LogOut className="w-3.5 h-3.5 text-red-400" />
-                  <span className="hidden sm:inline">Cerrar Sesión</span>
-                </button>
-              </>
-            )}
+        ) : (
+          <div className="p-5 sm:p-6 pb-2 flex items-start justify-between relative z-20">
+            <div className="pr-3 text-left">
+              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">Bienvenido a RYYCO</h3>
+              <p className="text-xs sm:text-sm text-gray-400 mt-1 font-medium leading-relaxed">
+                Inicia sesión para ver tus pedidos, ganar premios y acumular RYYCOS.
+              </p>
+            </div>
             <button
               onClick={onClose}
-              className="w-9 h-9 rounded-xl bg-[#E63946] hover:bg-red-600 border border-red-500/60 flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 transition cursor-pointer active:scale-95"
+              className="w-9 h-9 rounded-xl bg-[#E63946] hover:bg-red-600 border border-red-500/60 flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 transition cursor-pointer active:scale-95 shrink-0"
               title="Cerrar"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
-        </div>
+        )}
 
         {/* NOT LOGGED IN SCREEN */}
         {!customer ? (
-          <div className="p-5 sm:p-8 overflow-y-auto flex-1 space-y-6">
-            {/* Promo banner */}
-            <div className="bg-gradient-to-br from-[#1E293B] via-[#121827] to-[#0B0F19] border border-[#E63946]/30 rounded-2xl p-5 relative overflow-hidden shadow-xl">
-              <div className="flex items-start gap-3.5 relative z-10">
-                <div className="p-3 bg-[#E63946]/15 border border-[#E63946]/30 rounded-xl text-[#E63946] shrink-0 shadow-md shadow-[#E63946]/10">
-                  <Gift className="w-6 h-6 animate-bounce" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-white mb-1">¡Gana Platos Gratis y Acumula RYYCOS!</h4>
-                  <p className="text-xs text-gray-300 leading-relaxed">
-                    Crea tu cuenta de cliente en 30 segundos y recibe <strong className="text-amber-400 font-black">1.000 RYYCOS de Bienvenida ($1.000 COP)</strong> + <strong className="text-[#E63946] font-black">1 Giro en la Ruleta de Premios</strong>.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-white/10 text-center">
-                <div className="bg-black/40 rounded-xl p-2 border border-white/5">
-                  <span className="text-base block">🛵</span>
-                  <span className="text-[10px] font-bold text-gray-300">Rastreo en Vivo</span>
-                </div>
-                <div className="bg-black/40 rounded-xl p-2 border border-white/5">
-                  <span className="text-base block">🎡</span>
-                  <span className="text-[10px] font-bold text-gray-300">Ruleta de Comida</span>
-                </div>
-                <div className="bg-black/40 rounded-xl p-2 border border-white/5">
-                  <span className="text-base block">⭐</span>
-                  <span className="text-[10px] font-bold text-gray-300">1 RYYCO = $1 COP</span>
-                </div>
-                <div className="bg-black/40 rounded-xl p-2 border border-white/5">
-                  <span className="text-base block">🍔</span>
-                  <span className="text-[10px] font-bold text-gray-300">Platos Gratis</span>
-                </div>
-              </div>
-            </div>
-
+          <div className="p-5 sm:p-8 pt-2 sm:pt-3 overflow-y-auto flex-1 space-y-6">
             {/* Error prompt */}
             {authError && (
               <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold">
@@ -1129,18 +1109,6 @@ export default function CustomerPortalModal({
                   </>
                 )}
               </button>
-
-              <div className="text-[10.5px] text-gray-400 text-center px-2">
-                Al continuar o ingresar con Google, aceptas los{' '}
-                <button
-                  type="button"
-                  onClick={() => setIsBuyerTermsModalOpen(true)}
-                  className="text-[#E63946] hover:underline font-bold inline cursor-pointer"
-                >
-                  Términos y Condiciones para Usuarios y Compradores
-                </button>
-                {' '}de Ryyco.
-              </div>
 
               {/* DIVIDER */}
               <div className="relative flex py-1 items-center">
