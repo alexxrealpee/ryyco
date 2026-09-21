@@ -646,7 +646,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           deliveryDriverName: driver.name,
           deliveryDriverPhone: driver.phone,
           deliveryType: 'ryyco_driver',
-          status: 'processing',
+          status: 'confirmed',
           deliveryStep: 'accepted'
         });
         setSelectedIncomingOrder(null);
@@ -675,7 +675,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         nextStep === 'delivered' ? 'delivered' : 
         (nextStep === 'to_client' || nextStep === 'at_destination') ? 'shipped' : 
         nextStep === 'picked_up' ? 'shipped' : 
-        (nextStep === 'accepted' || nextStep === 'to_store' || nextStep === 'at_store') ? 'processing' :
+        (nextStep === 'accepted' || nextStep === 'to_store' || nextStep === 'at_store') ? 'confirmed' :
         activeDelivery.status;
 
       const updated = {

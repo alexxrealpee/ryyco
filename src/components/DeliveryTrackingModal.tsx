@@ -384,7 +384,13 @@ export default function DeliveryTrackingModal({
           desc: 'Entrega finalizada con éxito. ¡Buen provecho!',
           color: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
         };
+      case 'confirmed':
       case 'accepted':
+        return {
+          label: activeOrder.deliveryDriverName ? `Confirmado • Domiciliario: ${activeOrder.deliveryDriverName}` : 'Pedido Confirmado',
+          desc: activeOrder.deliveryDriverName ? `${activeOrder.deliveryDriverName} aceptó tu pedido y se encuentra en gestión` : 'Tu pedido ha sido confirmado',
+          color: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+        };
       default:
         return {
           label: activeOrder.deliveryDriverName ? 'Domiciliario Asignado' : 'En Gestión',
@@ -515,6 +521,7 @@ export default function DeliveryTrackingModal({
                     {isPreparationStage ? (
                       currentStep === 'pending' ? 'Etapa 1 • Recepción' :
                       currentStep === 'restaurant_confirmed' ? 'Etapa 1 • Domicilio Propio' :
+                      (currentStep === 'accepted' || currentStep === 'confirmed') ? 'Etapa 1 • Confirmado' :
                       currentStep === 'ready' ? 'Etapa 1 • Listo' : 'Etapa 1 • En Cocina'
                     ) : (
                       <>
@@ -527,8 +534,8 @@ export default function DeliveryTrackingModal({
                     {isPreparationStage ? (
                       currentStep === 'pending' ? 'Confirmando Pedido' :
                       currentStep === 'restaurant_confirmed' ? 'Confirmado por Restaurante' :
-                      currentStep === 'ready' ? 'Listo para Despacho' :
-                      currentStep === 'accepted' ? 'Domiciliario Asignado' : 'Preparando Alimentos'
+                      (currentStep === 'accepted' || currentStep === 'confirmed') ? (activeOrder.deliveryDriverName ? `Confirmado • ${activeOrder.deliveryDriverName}` : 'Confirmado • Domiciliario Asignado') :
+                      currentStep === 'ready' ? 'Listo para Despacho' : 'Preparando Alimentos'
                     ) : (
                       <>
                         <span className="sm:hidden">Hacia Tienda</span>

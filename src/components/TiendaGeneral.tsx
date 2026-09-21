@@ -1189,7 +1189,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         const sellerStoreName = sellerProfile?.displayName || sellerCart[0]?.product.storeName || sellerProfile?.username || 'Tienda en la plataforma';
         const sellerAddress = sellerProfile?.address || sellerProfile?.location || 'Dirección de la Tienda';
         const sellerPhone = sellerProfile?.whatsapp || sellerProfile?.phone;
-        const formattedPhone = formatColombianPhoneWith57(customer.phone || custPhone);
+        const formattedPhone = formatColombianPhoneWith57(custPhone.trim() || customer.phone);
         const finalAddress = deliveryType === 'pickup' 
           ? (pickupNotes.trim() ? `Recoger en Restaurante / Local (Nota: ${pickupNotes.trim()})` : 'Recoger en Restaurante / Local')
           : custAddress.trim();
@@ -1201,7 +1201,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           storeAddress: sellerAddress,
           storePhone: sellerPhone,
           orderNumber: rNo,
-          customerName: customer.name || custName.trim(),
+          customerName: custName.trim() || customer.name,
           customerPhone: formattedPhone,
           customerAddress: finalAddress,
           customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
@@ -1274,35 +1274,32 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
     setPhoneError("");
 
-    // Check if the user is already authenticated with a verified session matching this phone
-    const isCustomerVerified = activeCustomer && sanitizeCustomerPhone(activeCustomer.phone) === sanitizeCustomerPhone(cleanedPhone);
-
-    if (!isCustomerVerified) {
-      setOrderSubmitting(true);
-      try {
-        const existing = await fetchCustomerProfileByPhone(cleanedPhone);
-        setOrderAuthPromptData({
-          isOpen: true,
-          phone: cleanedPhone,
-          isExisting: !!existing,
-          existingProfile: existing
-        });
-      } catch (err) {
-        console.warn("Could not check customer profile:", err);
-        setOrderAuthPromptData({
-          isOpen: true,
-          phone: cleanedPhone,
-          isExisting: false,
-          existingProfile: null
-        });
-      } finally {
-        setOrderSubmitting(false);
-      }
+    // If customer is already logged in, allow them to freely change data for this order form without auth prompt or altering their base profile
+    if (activeCustomer) {
+      await executePlaceOrder(activeCustomer);
       return;
     }
 
-    // Customer is already logged in, proceed directly with placing the order
-    await executePlaceOrder(activeCustomer);
+    setOrderSubmitting(true);
+    try {
+      const existing = await fetchCustomerProfileByPhone(cleanedPhone);
+      setOrderAuthPromptData({
+        isOpen: true,
+        phone: cleanedPhone,
+        isExisting: !!existing,
+        existingProfile: existing
+      });
+    } catch (err) {
+      console.warn("Could not check customer profile:", err);
+      setOrderAuthPromptData({
+        isOpen: true,
+        phone: cleanedPhone,
+        isExisting: false,
+        existingProfile: null
+      });
+    } finally {
+      setOrderSubmitting(false);
+    }
   };
 
   const triggerShopperWhatsAppMessage = (order: OrderItem) => {
@@ -2952,6 +2949,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                       <button
                         onClick={() => {
+                          if (activeCustomer) {
+                            if (!custName) setCustName(activeCustomer.name || '');
+                            if (!custPhone) setCustPhone(activeCustomer.phone || '');
+                            if (!custAddress && activeCustomer.address && !isPickupOrInvalidAddress(activeCustomer.address)) {
+                              setCustAddress(activeCustomer.address);
+                            }
+                          }
                           setIsCartOpen(false);
                           setIsCheckoutOpen(true);
                         }}
@@ -3007,9 +3011,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               {/* Scrollable Form Body */}
               <form onSubmit={handlePlaceOrderSubmit} className="flex-grow overflow-y-auto p-5 space-y-4 text-left">
-                <p className="text-[11px] text-[#A9B2C3] font-medium leading-relaxed">
-                  Completa los datos de entrega
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-1.5 pb-0.5">
+                  <p className="text-[11px] text-[#A9B2C3] font-medium leading-relaxed">
+                    Completa los datos de entrega
+                  </p>
+                  {activeCustomer && (
+                    <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      Sesión activa • Puedes cambiar los datos solo para este pedido
+                    </span>
+                  )}
+                </div>
 
                 {/* Name */}
                 <div>

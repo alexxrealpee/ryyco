@@ -2598,16 +2598,16 @@ export function normalizeOrderDriverStatus(order: OrderItem, autoPersist: boolea
                     Boolean(order.driverId && order.driverId.trim() !== '') ||
                     Boolean(order.deliveryStep);
 
-  if (hasDriver && (order.status === 'pending' || order.status === 'confirmed')) {
+  if (hasDriver && order.status === 'pending') {
     const updatedOrder: OrderItem = {
       ...order,
-      status: 'processing',
+      status: 'confirmed',
       deliveryStep: order.deliveryStep || 'accepted',
       deliveryStepUpdatedAt: order.deliveryStepUpdatedAt || new Date().toISOString()
     };
     if (autoPersist && order.id) {
       updateDoc(doc(db, 'orders', order.id), {
-        status: 'processing',
+        status: 'confirmed',
         deliveryStep: updatedOrder.deliveryStep,
         deliveryStepUpdatedAt: updatedOrder.deliveryStepUpdatedAt
       }).catch((e) => console.warn("Could not auto-heal order status in Firestore:", e));
@@ -4431,9 +4431,9 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
       const now = new Date().toISOString();
       const effectiveFee = systemFee || 7000;
       const historyItem: OrderStatusHistoryItem = {
-        status: 'processing',
+        status: 'confirmed',
         timestamp: now,
-        note: `Pedido aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName} (en procesamiento)`,
+        note: `Pedido confirmado y aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName}`,
         updatedBy: 'driver'
       };
 
@@ -4449,7 +4449,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         deliveryVehiclePlate: driver.vehiclePlate || '',
         deliveryStep: 'accepted' as const,
         deliveryStepUpdatedAt: now,
-        status: 'processing',
+        status: 'confirmed',
         statusHistory: [
           ...(orderData.statusHistory || [
             { status: 'pending', timestamp: orderData.createdAt || now, note: 'Esperando confirmación', updatedBy: 'customer' }
@@ -4544,9 +4544,9 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
   let historyNote = '';
 
   if (step === 'accepted' || step === 'to_store' || step === 'at_store') {
-    nextStatus = 'processing';
+    nextStatus = 'confirmed';
     historyNote = step === 'accepted' 
-      ? 'Pedido aceptado por domiciliario (en procesamiento)' 
+      ? 'Pedido confirmado y aceptado por domiciliario' 
       : step === 'to_store' 
       ? 'Domiciliario en camino a la tienda' 
       : 'Domiciliario esperando en la tienda';
@@ -6669,9 +6669,11 @@ export async function fetchProductRecommendations(
     return {
       productId: '',
       count: 0,
+      dislikeCount: 0,
       percentage: 0,
       totalEvaluated: 0,
       userHasRecommended: false,
+      userHasDisliked: false,
       recommendations: []
     };
   }
@@ -6687,6 +6689,7 @@ export async function fetchProductRecommendations(
     const positiveRecs = recs.filter(r => r.recommended !== false);
     const negativeRecs = recs.filter(r => r.recommended === false);
     const count = positiveRecs.length;
+    const dislikeCount = negativeRecs.length;
     const totalVotes = positiveRecs.length + negativeRecs.length;
 
     let percentage = 0;
@@ -6701,13 +6704,18 @@ export async function fetchProductRecommendations(
     const userHasRecommended = currentUserId 
       ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
       : false;
+    const userHasDisliked = currentUserId 
+      ? recs.some(r => r.userId === currentUserId && r.recommended === false)
+      : false;
 
     return {
       productId,
       count,
+      dislikeCount,
       percentage,
       totalEvaluated: totalVotes,
       userHasRecommended,
+      userHasDisliked,
       recommendations: recs
     };
   } catch (err) {
@@ -6715,9 +6723,11 @@ export async function fetchProductRecommendations(
     return {
       productId,
       count: 0,
+      dislikeCount: 0,
       percentage: 0,
       totalEvaluated: 0,
       userHasRecommended: false,
+      userHasDisliked: false,
       recommendations: []
     };
   }
@@ -6729,13 +6739,13 @@ export async function fetchProductRecommendations(
 export async function fetchMultipleProductsRecommendations(
   productIds: string[],
   currentUserId?: string | null
-): Promise<Record<string, { count: number; percentage: number; userHasRecommended: boolean }>> {
-  const result: Record<string, { count: number; percentage: number; userHasRecommended: boolean }> = {};
+): Promise<Record<string, { count: number; dislikeCount?: number; percentage: number; userHasRecommended: boolean; userHasDisliked?: boolean }>> {
+  const result: Record<string, { count: number; dislikeCount?: number; percentage: number; userHasRecommended: boolean; userHasDisliked?: boolean }> = {};
   if (!productIds || productIds.length === 0) return result;
 
   // Initialize defaults
   productIds.forEach(id => {
-    result[id] = { count: 0, percentage: 0, userHasRecommended: false };
+    result[id] = { count: 0, dislikeCount: 0, percentage: 0, userHasRecommended: false, userHasDisliked: false };
   });
 
   try {
@@ -6751,14 +6761,20 @@ export async function fetchMultipleProductsRecommendations(
       snap.forEach(d => {
         const data = d.data() as ProductRecommendation;
         if (!result[data.productId]) {
-          result[data.productId] = { count: 0, percentage: 0, userHasRecommended: false };
+          result[data.productId] = { count: 0, dislikeCount: 0, percentage: 0, userHasRecommended: false, userHasDisliked: false };
         }
         if (data.recommended !== false) {
           result[data.productId].count += 1;
           result[data.productId].percentage = 100;
+        } else {
+          result[data.productId].dislikeCount = (result[data.productId].dislikeCount || 0) + 1;
         }
-        if (currentUserId && data.userId === currentUserId && data.recommended !== false) {
-          result[data.productId].userHasRecommended = true;
+        if (currentUserId && data.userId === currentUserId) {
+          if (data.recommended !== false) {
+            result[data.productId].userHasRecommended = true;
+          } else {
+            result[data.productId].userHasDisliked = true;
+          }
         }
       });
     }));
@@ -6782,8 +6798,10 @@ export async function toggleProductRecommendation(params: {
   userEmail?: string;
   userPhone?: string;
   feedbackTag?: string;
-  isCurrentlyRecommended: boolean;
-}): Promise<{ success: boolean; userHasRecommended: boolean }> {
+  isCurrentlyRecommended?: boolean;
+  isCurrentlyDisliked?: boolean;
+  type?: 'like' | 'dislike';
+}): Promise<{ success: boolean; userHasRecommended: boolean; userHasDisliked: boolean }> {
   const {
     productId,
     productName,
@@ -6794,7 +6812,9 @@ export async function toggleProductRecommendation(params: {
     userEmail,
     userPhone,
     feedbackTag,
-    isCurrentlyRecommended
+    isCurrentlyRecommended = false,
+    isCurrentlyDisliked = false,
+    type = 'like'
   } = params;
 
   if (!productId || !userId) {
@@ -6804,28 +6824,55 @@ export async function toggleProductRecommendation(params: {
   const docId = `${productId}_${userId}`;
   const docRef = doc(db, 'product_recommendations', docId);
 
-  if (isCurrentlyRecommended) {
-    // Retirar recomendación
-    await deleteDoc(docRef);
-    return { success: true, userHasRecommended: false };
+  if (type === 'dislike') {
+    if (isCurrentlyDisliked) {
+      // Retirar corazón roto
+      await deleteDoc(docRef);
+      return { success: true, userHasRecommended: false, userHasDisliked: false };
+    } else {
+      // Guardar corazón roto
+      const recDoc: ProductRecommendation = {
+        id: docId,
+        productId,
+        productName: productName || 'Producto',
+        storeId: storeId || '',
+        storeUsername: storeUsername || '',
+        userId,
+        userName: userName || 'Cliente Ryyco',
+        userEmail: userEmail || '',
+        userPhone: userPhone || '',
+        recommended: false,
+        feedbackTag: feedbackTag || '',
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(docRef, recDoc);
+      return { success: true, userHasRecommended: false, userHasDisliked: true };
+    }
   } else {
-    // Guardar recomendación
-    const recDoc: ProductRecommendation = {
-      id: docId,
-      productId,
-      productName: productName || 'Producto',
-      storeId: storeId || '',
-      storeUsername: storeUsername || '',
-      userId,
-      userName: userName || 'Cliente Ryyco',
-      userEmail: userEmail || '',
-      userPhone: userPhone || '',
-      recommended: true,
-      feedbackTag: feedbackTag || '',
-      createdAt: new Date().toISOString()
-    };
-    await setDoc(docRef, recDoc);
-    return { success: true, userHasRecommended: true };
+    // type === 'like'
+    if (isCurrentlyRecommended) {
+      // Retirar recomendación
+      await deleteDoc(docRef);
+      return { success: true, userHasRecommended: false, userHasDisliked: false };
+    } else {
+      // Guardar recomendación
+      const recDoc: ProductRecommendation = {
+        id: docId,
+        productId,
+        productName: productName || 'Producto',
+        storeId: storeId || '',
+        storeUsername: storeUsername || '',
+        userId,
+        userName: userName || 'Cliente Ryyco',
+        userEmail: userEmail || '',
+        userPhone: userPhone || '',
+        recommended: true,
+        feedbackTag: feedbackTag || '',
+        createdAt: new Date().toISOString()
+      };
+      await setDoc(docRef, recDoc);
+      return { success: true, userHasRecommended: true, userHasDisliked: false };
+    }
   }
 }
 
@@ -6849,6 +6896,7 @@ export function subscribeProductRecommendations(
     const positiveRecs = recs.filter(r => r.recommended !== false);
     const negativeRecs = recs.filter(r => r.recommended === false);
     const count = positiveRecs.length;
+    const dislikeCount = negativeRecs.length;
     const totalVotes = positiveRecs.length + negativeRecs.length;
 
     let percentage = 0;
@@ -6863,13 +6911,18 @@ export function subscribeProductRecommendations(
     const userHasRecommended = currentUserId
       ? recs.some(r => r.userId === currentUserId && r.recommended !== false)
       : false;
+    const userHasDisliked = currentUserId
+      ? recs.some(r => r.userId === currentUserId && r.recommended === false)
+      : false;
 
     onUpdate({
       productId,
       count,
+      dislikeCount,
       percentage,
       totalEvaluated: totalVotes,
       userHasRecommended,
+      userHasDisliked,
       recommendations: recs
     });
   }, (err) => {

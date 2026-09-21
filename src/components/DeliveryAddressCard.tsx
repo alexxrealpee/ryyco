@@ -53,32 +53,36 @@ export const DeliveryAddressCard: React.FC<DeliveryAddressCardProps> = ({
             DIRECCIÓN PARA RECIBIR TU PEDIDO {required && <span className="text-[#E63946]">*</span>}
           </span>
         </div>
+        <button
+          type="button"
+          onClick={onOpenMapPicker}
+          className="text-[11px] font-bold text-[#E63946] hover:text-[#D62839] flex items-center gap-1 transition cursor-pointer"
+        >
+          <MapPin className="w-3.5 h-3.5" />
+          <span>Abrir Mapa GPS</span>
+        </button>
       </div>
 
-      {/* 2. Main Input: Address Input Box (Opens Map Picker) */}
-      <div
-        onClick={onOpenMapPicker}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onOpenMapPicker();
-          }
-        }}
-        className="w-full h-[44px] min-h-[44px] bg-white rounded-xl px-3.5 sm:px-4 flex items-center gap-2.5 shadow-inner border border-gray-200 hover:border-[#E63946]/40 focus-within:ring-2 focus-within:ring-[#E63946]/30 transition-all cursor-pointer group"
-      >
-        <MapPin className="w-5 h-5 text-gray-400 group-hover:text-[#E63946] shrink-0 transition-colors" />
+      {/* 2. Main Input: Directly Editable Address Input + Map Button */}
+      <div className="w-full min-h-[44px] bg-white rounded-xl px-3.5 sm:px-4 py-1 flex items-center gap-2.5 shadow-inner border border-gray-200 focus-within:border-[#E63946] focus-within:ring-2 focus-within:ring-[#E63946]/20 transition-all">
+        <MapPin className="w-5 h-5 text-gray-400 shrink-0" />
         <input
           type="text"
           required={required}
-          readOnly
           value={displayAddress}
-          onClick={onOpenMapPicker}
           onChange={(e) => onChangeAddress(e.target.value)}
           placeholder={placeholder}
-          className="w-full h-full bg-transparent text-gray-900 placeholder:text-gray-500 font-semibold text-xs sm:text-sm outline-none cursor-pointer select-none"
+          className="w-full h-9 bg-transparent text-gray-900 placeholder:text-gray-400 font-semibold text-xs sm:text-sm outline-none"
         />
+        <button
+          type="button"
+          onClick={onOpenMapPicker}
+          title="Seleccionar en Google Maps"
+          className="shrink-0 px-2.5 py-1.5 bg-gray-100 hover:bg-[#E63946] text-gray-700 hover:text-white rounded-lg text-[11px] font-black transition flex items-center gap-1 cursor-pointer border border-gray-200 hover:border-[#E63946]"
+        >
+          <MapPin className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Mapa</span>
+        </button>
       </div>
     </div>
   );

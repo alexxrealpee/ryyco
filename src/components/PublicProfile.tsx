@@ -859,7 +859,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
     const rNo = Math.floor(1000 + Math.random() * 9000);
 
-    const formattedPhone = formatColombianPhoneWith57(customer.phone || custPhone);
+    const formattedPhone = formatColombianPhoneWith57(custPhone.trim() || customer.phone);
     const finalAddress = isTable
       ? `Mesa ${tableNumber.trim()} (Servicio en Restaurante / Salón)`
       : isPickup 
@@ -885,7 +885,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       storeLat: profile.lat || undefined,
       storeLng: profile.lng || undefined,
       orderNumber: rNo,
-      customerName: customer.name || custName.trim(),
+      customerName: custName.trim() || customer.name,
       customerPhone: formattedPhone,
       customerEmail: custEmail.trim() || undefined,
       customerAddress: finalAddress,
@@ -915,20 +915,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     try {
       const savedOrder = await saveOrder(newOrder);
       setSubmittedOrder(savedOrder);
-
-      // Save / update customer profile with details and address in background
-      try {
-        const isRealAddress = !isPickup && !isTable && custAddress.trim() && !isPickupOrInvalidAddress(custAddress);
-        if (isRealAddress) {
-          saveCustomerProfile({
-            ...customer,
-            address: custAddress.trim(),
-            notes: custNotes.trim() || customer.notes
-          }).then(updated => {
-            setActiveCustomer(updated);
-          }).catch(err => console.warn("Failed background customer profile creation:", err));
-        }
-      } catch (e) {}
       
       // Clear out customer cart local states & shared storage
       saveStoredCart([]);
@@ -1000,35 +986,32 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
     setPhoneError("");
 
-    // Check if the user is already authenticated with a verified session matching this phone
-    const isCustomerVerified = activeCustomer && sanitizeCustomerPhone(activeCustomer.phone) === sanitizeCustomerPhone(cleanedPhone);
-
-    if (!isCustomerVerified) {
-      setOrderSubmitting(true);
-      try {
-        const existing = await fetchCustomerProfileByPhone(cleanedPhone);
-        setOrderAuthPromptData({
-          isOpen: true,
-          phone: cleanedPhone,
-          isExisting: !!existing,
-          existingProfile: existing
-        });
-      } catch (err) {
-        console.warn("Could not check customer profile:", err);
-        setOrderAuthPromptData({
-          isOpen: true,
-          phone: cleanedPhone,
-          isExisting: false,
-          existingProfile: null
-        });
-      } finally {
-        setOrderSubmitting(false);
-      }
+    // If customer is already logged in, allow them to freely change data for this order form without auth prompt or altering their base profile
+    if (activeCustomer) {
+      await executePlaceOrder(activeCustomer);
       return;
     }
 
-    // Customer is already logged in, proceed directly with placing the order
-    await executePlaceOrder(activeCustomer);
+    setOrderSubmitting(true);
+    try {
+      const existing = await fetchCustomerProfileByPhone(cleanedPhone);
+      setOrderAuthPromptData({
+        isOpen: true,
+        phone: cleanedPhone,
+        isExisting: !!existing,
+        existingProfile: existing
+      });
+    } catch (err) {
+      console.warn("Could not check customer profile:", err);
+      setOrderAuthPromptData({
+        isOpen: true,
+        phone: cleanedPhone,
+        isExisting: false,
+        existingProfile: null
+      });
+    } finally {
+      setOrderSubmitting(false);
+    }
   };
 
   // Launch WhatsApp pre-packaged checkout dispatch message
@@ -3038,7 +3021,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   )}
                   <button
                     type="button"
-                    onClick={() => { setIsCartOpen(false); setIsCheckoutOpen(true); }}
+                    onClick={() => {
+                      if (activeCustomer) {
+                        if (!custName) setCustName(activeCustomer.name || '');
+                        if (!custPhone) setCustPhone(activeCustomer.phone || '');
+                        if (!custAddress && activeCustomer.address && !isPickupOrInvalidAddress(activeCustomer.address)) {
+                          setCustAddress(activeCustomer.address);
+                        }
+                      }
+                      setIsCartOpen(false);
+                      setIsCheckoutOpen(true);
+                    }}
                     className="w-full py-4 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow cursor-pointer transition active:scale-[0.98]"
                     style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
                   >
@@ -3074,7 +3067,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </button>
             </div>
 
-            <p className="text-[11px] text-gray-400 font-semibold leading-relaxed">Completa los datos de entrega</p>
+            <div className="flex flex-wrap items-center justify-between gap-1.5 pb-0.5">
+              <p className="text-[11px] text-gray-400 font-semibold leading-relaxed">Completa los datos de entrega</p>
+              {activeCustomer && (
+                <span className="text-[10px] font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                  Sesión activa • Puedes cambiar los datos solo para este pedido
+                </span>
+              )}
+            </div>
 
             {/* Inputs */}
             <div>

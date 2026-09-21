@@ -803,17 +803,19 @@ export default function CustomerPortalModal({
     if (
       ord.status === 'ready' ||
       ord.status === 'preparing' || 
-      ord.status === 'processing' || 
       ord.status === 'picked_up' || 
-      ord.deliveryStep === 'picked_up' || 
-      ord.deliveryStep === 'to_store' || 
-      ord.deliveryStep === 'at_store'
+      ord.deliveryStep === 'picked_up'
     ) return 3;
     if (
       ord.status === 'confirmed' ||
+      ord.status === 'processing' ||
+      ord.deliveryStep === 'accepted' ||
+      ord.deliveryStep === 'to_store' || 
+      ord.deliveryStep === 'at_store' ||
       ord.deliveryType === 'restaurant' ||
       Boolean(ord.deliveryDriverId) ||
-      Boolean(ord.deliveryDriverName)
+      Boolean(ord.deliveryDriverName) ||
+      Boolean(ord.driverId)
     ) return 2;
     return 1;
   };
@@ -839,10 +841,10 @@ export default function CustomerPortalModal({
           stageTitle: 'Paso 2 de 5 • Confirmación',
           headline: isStoreOwn 
             ? 'Confirmado por Restaurante (Entrega Propia)' 
-            : (driverName ? `Domiciliario Asignado: ${driverName}` : 'Pedido Confirmado'),
+            : (driverName ? `Pedido Confirmado • Domiciliario: ${driverName}` : 'Pedido Confirmado'),
           description: isStoreOwn 
             ? 'El restaurante confirmó tu orden y realizará la entrega con su propio domiciliario.'
-            : (driverName ? `${driverName} aceptó la entrega y se prepara para recoger en el restaurante.` : 'El pedido ya tiene responsable de despacho asignado.'),
+            : (driverName ? `${driverName} aceptó tu pedido y se encuentra confirmado.` : 'Tu pedido ha sido confirmado con éxito.'),
           percentageLabel: '35%',
           icon: <CheckCircle2 className="w-4 h-4 text-blue-400" />,
           iconBadge: 'bg-blue-400/20 text-blue-400 border border-blue-400/30',
@@ -955,15 +957,7 @@ export default function CustomerPortalModal({
         </span>
       );
     }
-    if (ord.deliveryStep === 'to_store' || ord.deliveryStep === 'at_store') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-sky-500/15 text-sky-300 border border-sky-500/30">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-          🛵 Repartidor en Tienda
-        </span>
-      );
-    }
-    if (ord.status === 'preparing' || ord.status === 'processing') {
+    if (ord.status === 'preparing') {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
@@ -971,27 +965,26 @@ export default function CustomerPortalModal({
         </span>
       );
     }
-    if (ord.status === 'confirmed') {
+    if (
+      ord.status === 'confirmed' ||
+      ord.status === 'processing' ||
+      ord.deliveryStep === 'accepted' ||
+      ord.deliveryStep === 'to_store' ||
+      ord.deliveryStep === 'at_store' ||
+      ((ord.deliveryDriverName || ord.deliveryDriverId || ord.driverId) && ord.deliveryStep !== 'picked_up' && ord.deliveryStep !== 'to_client' && ord.deliveryStep !== 'at_destination' && ord.deliveryStep !== 'delivered')
+    ) {
       if (ord.deliveryType === 'restaurant') {
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-            🛵 Domicilio Propio Confirmado
+            ✓ Confirmado (Domicilio Propio)
           </span>
         );
       }
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-          🛵 Domiciliario Asignado
-        </span>
-      );
-    }
-    if (ord.deliveryStep === 'accepted' || (ord.deliveryDriverName && !ord.deliveryStep)) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-500/15 text-blue-300 border border-blue-500/30">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-          🛵 Domiciliario Asignado
+          ✓ Confirmado {ord.deliveryDriverName ? `• ${ord.deliveryDriverName}` : '• Domiciliario Asignado'}
         </span>
       );
     }

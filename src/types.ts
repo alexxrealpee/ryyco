@@ -534,9 +534,11 @@ export interface ProductRecommendation {
 export interface ProductRecommendationStats {
   productId: string;
   count: number; // total positive recommendations (hearts)
+  dislikeCount?: number; // total negative reactions (broken hearts)
   percentage: number; // e.g. 97 (%)
   totalEvaluated: number; // total interactions / reviews
   userHasRecommended: boolean;
+  userHasDisliked?: boolean;
   recommendations: ProductRecommendation[];
 }
 

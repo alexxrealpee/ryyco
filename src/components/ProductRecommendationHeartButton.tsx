@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Sparkles, Phone, X, Check, ShieldCheck, Award } from 'lucide-react';
+import { Heart, HeartCrack, Sparkles, Phone, X, Check, ShieldCheck, Award } from 'lucide-react';
 import { CustomerProfile, ProductRecommendationStats } from '../types';
 import { 
   fetchProductRecommendations, 
@@ -53,14 +53,17 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
   const [stats, setStats] = useState<ProductRecommendationStats>({
     productId,
     count: initialCount,
+    dislikeCount: 0,
     percentage: initialPercentage,
     totalEvaluated: initialCount,
     userHasRecommended: initialRecommended,
+    userHasDisliked: false,
     recommendations: []
   });
 
   const [loading, setLoading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalContext, setAuthModalContext] = useState<'heart' | 'dislike'>('heart');
   const [showFeedbackToast, setShowFeedbackToast] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showWithdrawConfirm, setShowWithdrawConfirm] = useState(false);
@@ -87,6 +90,9 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
         ...updatedStats,
         userHasRecommended: currentUserId 
           ? updatedStats.recommendations.some(r => r.userId === currentUserId && r.recommended !== false)
+          : false,
+        userHasDisliked: currentUserId
+          ? updatedStats.recommendations.some(r => r.userId === currentUserId && r.recommended === false)
           : false
       }));
     });
@@ -94,7 +100,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
     return () => unsubscribe();
   }, [productId, currentUserId]);
 
-  // Handle recommendation action
+  // Handle recommendation (Heart ❤️) action
   const handleHeartClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -102,6 +108,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
     // 1. Check if user is logged in
     const isLoggedIn = Boolean(auth.currentUser || activeCustomer);
     if (!isLoggedIn) {
+      setAuthModalContext('heart');
       setShowAuthModal(true);
       return;
     }
@@ -116,8 +123,83 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
     await executeToggle(false);
   };
 
+  // Handle broken heart (HeartCrack 💔) action
+  const handleDislikeClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    // 1. Check if user is logged in
+    const isLoggedIn = Boolean(auth.currentUser || activeCustomer);
+    if (!isLoggedIn) {
+      setAuthModalContext('dislike');
+      setShowAuthModal(true);
+      return;
+    }
+
+    // 2. Toggle broken heart reaction
+    await executeToggleDislike(Boolean(stats.userHasDisliked));
+  };
+
+  const executeToggleDislike = async (isCurrentlyDisliked: boolean) => {
+    if (!currentUserId) {
+      setAuthModalContext('dislike');
+      setShowAuthModal(true);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await toggleProductRecommendation({
+        productId,
+        productName,
+        storeId,
+        storeUsername,
+        userId: currentUserId,
+        userName: currentUserName,
+        userEmail: currentUserEmail,
+        userPhone: currentUserPhone,
+        isCurrentlyRecommended: Boolean(stats.userHasRecommended),
+        isCurrentlyDisliked,
+        type: 'dislike'
+      });
+
+      // If user had previously recommended, decrement heart count
+      const hadRecommended = Boolean(stats.userHasRecommended);
+      const nextCount = hadRecommended ? Math.max(0, stats.count - 1) : stats.count;
+      const nextDislikeCount = isCurrentlyDisliked 
+        ? Math.max(0, (stats.dislikeCount || 0) - 1) 
+        : (stats.dislikeCount || 0) + 1;
+      const nextTotal = nextCount + nextDislikeCount;
+      const nextPercentage = nextTotal > 0 ? Math.round((nextCount / nextTotal) * 100) : 0;
+
+      setStats(prev => ({
+        ...prev,
+        count: nextCount,
+        dislikeCount: nextDislikeCount,
+        percentage: nextPercentage,
+        totalEvaluated: nextTotal,
+        userHasRecommended: false,
+        userHasDisliked: res.userHasDisliked
+      }));
+
+      if (!isCurrentlyDisliked) {
+        setShowFeedbackToast(`Marcaste "${productName}" con un corazón roto 💔`);
+      } else {
+        setShowFeedbackToast(`Has retirado tu corazón roto 💔.`);
+      }
+      setTimeout(() => setShowFeedbackToast(null), 3500);
+    } catch (err: any) {
+      console.error("Error toggling product dislike:", err);
+      setShowFeedbackToast("No se pudo guardar la calificación. Inténtalo de nuevo.");
+      setTimeout(() => setShowFeedbackToast(null), 3500);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const executeToggle = async (isCurrentlyRecommended: boolean) => {
     if (!currentUserId) {
+      setAuthModalContext('heart');
       setShowAuthModal(true);
       return;
     }
@@ -134,19 +216,25 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
         userEmail: currentUserEmail,
         userPhone: currentUserPhone,
         feedbackTag: isCurrentlyRecommended ? '' : selectedTag,
-        isCurrentlyRecommended
+        isCurrentlyRecommended,
+        isCurrentlyDisliked: Boolean(stats.userHasDisliked),
+        type: 'like'
       });
 
-      // Update local state smoothly
+      // If user had previously disliked, decrement dislikeCount
+      const hadDisliked = Boolean(stats.userHasDisliked);
+      const nextDislikeCount = hadDisliked ? Math.max(0, (stats.dislikeCount || 0) - 1) : (stats.dislikeCount || 0);
       const nextCount = isCurrentlyRecommended ? Math.max(0, stats.count - 1) : stats.count + 1;
-      const nextTotal = Math.max(nextCount, isCurrentlyRecommended ? Math.max(0, stats.totalEvaluated - 1) : stats.totalEvaluated + 1);
+      const nextTotal = nextCount + nextDislikeCount;
       const nextPercentage = nextTotal > 0 ? Math.min(100, Math.max(1, Math.round((nextCount / nextTotal) * 100))) : 0;
 
       setStats(prev => ({
         ...prev,
         count: nextCount,
+        dislikeCount: nextDislikeCount,
         percentage: nextCount > 0 ? (nextPercentage || 100) : 0,
-        userHasRecommended: res.userHasRecommended
+        userHasRecommended: res.userHasRecommended,
+        userHasDisliked: false
       }));
 
       if (!isCurrentlyRecommended) {
@@ -216,29 +304,57 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
 
       setShowAuthModal(false);
 
-      // Automatically register recommendation immediately after sign in
+      // Automatically register the action (Heart or Broken Heart) immediately after sign in
       const effectiveUserId = user.uid || finalCustomer.phone;
-      await toggleProductRecommendation({
-        productId,
-        productName,
-        storeId,
-        storeUsername,
-        userId: effectiveUserId,
-        userName: gName,
-        userEmail: gEmail,
-        userPhone: finalCustomer.phone || '',
-        feedbackTag: selectedTag,
-        isCurrentlyRecommended: false
-      });
+      if (authModalContext === 'dislike') {
+        await toggleProductRecommendation({
+          productId,
+          productName,
+          storeId,
+          storeUsername,
+          userId: effectiveUserId,
+          userName: gName,
+          userEmail: gEmail,
+          userPhone: finalCustomer.phone || '',
+          isCurrentlyRecommended: false,
+          isCurrentlyDisliked: false,
+          type: 'dislike'
+        });
 
-      setStats(prev => ({
-        ...prev,
-        count: prev.count + 1,
-        percentage: prev.percentage > 0 ? prev.percentage : 100,
-        userHasRecommended: true
-      }));
+        setStats(prev => ({
+          ...prev,
+          dislikeCount: (prev.dislikeCount || 0) + 1,
+          userHasDisliked: true,
+          userHasRecommended: false
+        }));
 
-      setShowFeedbackToast(`¡Bienvenido ${gName}! Recomendaste "${productName}" ❤️`);
+        setShowFeedbackToast(`¡Bienvenido ${gName}! Marcaste "${productName}" con un corazón roto 💔`);
+      } else {
+        await toggleProductRecommendation({
+          productId,
+          productName,
+          storeId,
+          storeUsername,
+          userId: effectiveUserId,
+          userName: gName,
+          userEmail: gEmail,
+          userPhone: finalCustomer.phone || '',
+          feedbackTag: selectedTag,
+          isCurrentlyRecommended: false,
+          isCurrentlyDisliked: false,
+          type: 'like'
+        });
+
+        setStats(prev => ({
+          ...prev,
+          count: prev.count + 1,
+          percentage: prev.percentage > 0 ? prev.percentage : 100,
+          userHasRecommended: true,
+          userHasDisliked: false
+        }));
+
+        setShowFeedbackToast(`¡Bienvenido ${gName}! Recomendaste "${productName}" ❤️`);
+      }
       setTimeout(() => setShowFeedbackToast(null), 3500);
     } catch (err: any) {
       console.warn("Google login error:", err);
@@ -261,22 +377,52 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
   const percentageDisplay = stats.percentage > 0 ? `${stats.percentage}%` : (stats.count > 0 ? '100%' : null);
 
   // ----------------------------------------------------
-  // VARIANT: CARD OVERLAY (Floating heart on image corner)
+  // VARIANT: CARD OVERLAY (Floating reactions on card header)
   // ----------------------------------------------------
   if (variant === 'card-overlay') {
     return (
-      <div className={`relative z-20 ${className}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`relative z-20 flex items-center gap-1.5 ${className}`} onClick={(e) => e.stopPropagation()}>
+        {/* Corazón Roto (Broken Heart 💔) Button */}
+        <motion.button
+          id={`btn-product-dislike-${productId}`}
+          type="button"
+          onClick={handleDislikeClick}
+          whileTap={{ scale: 0.85 }}
+          whileHover={{ scale: 1.1 }}
+          className={`flex items-center justify-center gap-1 px-2 py-1 rounded-full backdrop-blur-md shadow-md transition-all border cursor-pointer ${
+            stats.userHasDisliked
+              ? 'bg-rose-950/90 text-rose-300 border-rose-500 shadow-rose-950/40'
+              : 'bg-black/60 hover:bg-black/80 text-white/80 border-white/15 hover:border-rose-400/60 hover:text-rose-400'
+          }`}
+          title={stats.userHasDisliked ? 'Has marcado con corazón roto (Click para retirar)' : 'Marcar con corazón roto 💔'}
+        >
+          <HeartCrack 
+            className={`w-3.5 h-3.5 transition-transform ${
+              stats.userHasDisliked 
+                ? 'text-rose-400 fill-rose-950' 
+                : 'text-stone-300 group-hover:scale-110 hover:text-rose-400'
+            }`} 
+          />
+          {(stats.dislikeCount || 0) > 0 && (
+            <span className="text-[10px] font-black tracking-tight font-mono text-rose-300">
+              {stats.dislikeCount}
+            </span>
+          )}
+        </motion.button>
+
+        {/* Corazón (Heart ❤️) Button */}
         <motion.button
           id={`btn-product-heart-${productId}`}
+          type="button"
           onClick={handleHeartClick}
           whileTap={{ scale: 0.85 }}
           whileHover={{ scale: 1.1 }}
-          className={`flex items-center gap-1 px-2 py-1 rounded-full backdrop-blur-md shadow-md transition-all border ${
+          className={`flex items-center justify-center gap-1 px-2 py-1 rounded-full backdrop-blur-md shadow-md transition-all border cursor-pointer ${
             stats.userHasRecommended
               ? 'bg-rose-600/90 text-white border-rose-400 shadow-rose-600/30'
               : 'bg-black/60 hover:bg-black/80 text-white/90 border-white/15 hover:border-rose-400/80 hover:text-rose-400'
           }`}
-          title={stats.userHasRecommended ? 'Haz recomendado este producto (Click para retirar)' : 'Recomendar este producto con ❤️'}
+          title={stats.userHasRecommended ? 'Has recomendado este producto (Click para retirar)' : 'Recomendar este producto con ❤️'}
         >
           <Heart 
             className={`w-3.5 h-3.5 transition-transform ${
@@ -303,10 +449,28 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
   if (variant === 'card-badge' || variant === 'compact') {
     return (
       <div className={`inline-flex items-center gap-1.5 ${className}`} onClick={(e) => e.stopPropagation()}>
+        {/* Broken heart small badge */}
+        <button
+          id={`badge-product-dislike-${productId}`}
+          type="button"
+          onClick={handleDislikeClick}
+          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold transition-all border cursor-pointer ${
+            stats.userHasDisliked
+              ? 'bg-rose-950/80 text-rose-300 border-rose-500/50'
+              : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-400 border-stone-700 hover:border-rose-400/40'
+          }`}
+          title={stats.userHasDisliked ? 'Has marcado con corazón roto (Click para retirar)' : 'Marcar con corazón roto 💔'}
+        >
+          <HeartCrack className={`w-3 h-3 ${stats.userHasDisliked ? 'text-rose-400' : 'text-stone-400'}`} />
+          {(stats.dislikeCount || 0) > 0 && <span className="font-mono">{stats.dislikeCount}</span>}
+        </button>
+
+        {/* Heart recommendation badge */}
         <button
           id={`badge-product-rec-${productId}`}
+          type="button"
           onClick={handleHeartClick}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border cursor-pointer ${
             stats.userHasRecommended
               ? 'bg-rose-500/15 text-rose-400 border-rose-500/30 hover:bg-rose-500/25'
               : 'bg-stone-800/80 hover:bg-stone-700/80 text-stone-300 border-stone-700 hover:border-rose-500/40'
@@ -354,54 +518,85 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                     <span className="text-rose-400">{percentageDisplay}</span> lo recomienda
                   </>
                 ) : (
-                  <span>Sé el primero en recomendar</span>
+                  <span>Sé el primero en calificar</span>
                 )}
               </span>
               {stats.count > 0 && (
                 <span className="text-xs text-stone-400 font-mono">
-                  ({stats.count} {stats.count === 1 ? 'opinión' : 'opiniones'})
+                  ({stats.count} {stats.count === 1 ? 'opinión positiva' : 'opiniones positivas'})
+                </span>
+              )}
+              {(stats.dislikeCount || 0) > 0 && (
+                <span className="text-xs text-rose-400/80 font-mono">
+                  · {stats.dislikeCount} 💔
                 </span>
               )}
             </div>
             <p className="text-[11px] text-stone-400 flex items-center gap-1 mt-0.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 inline" />
-              Recomendado por comensales y clientes verificados
+              Opiniones de comensales y clientes verificados
             </p>
           </div>
         </div>
 
-        {/* Right: Toggle Button */}
-        <motion.button
-          id={`btn-modal-product-rec-${productId}`}
-          onClick={handleHeartClick}
-          disabled={loading}
-          whileTap={{ scale: 0.95 }}
-          whileHover={{ scale: 1.02 }}
-          className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md shrink-0 ${
-            stats.userHasRecommended
-              ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 hover:bg-rose-500/30'
-              : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
-          }`}
-        >
-          <motion.span
-            animate={stats.userHasRecommended ? { scale: [1, 1.25, 1] } : {}}
-            transition={{ duration: 0.3 }}
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Broken Heart Button */}
+          <motion.button
+            id={`btn-modal-product-dislike-${productId}`}
+            type="button"
+            onClick={handleDislikeClick}
+            disabled={loading}
+            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
+            className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md shrink-0 cursor-pointer ${
+              stats.userHasDisliked
+                ? 'bg-rose-950/80 text-rose-300 border border-rose-500/60'
+                : 'bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-stone-200 border border-stone-700'
+            }`}
+            title="Calificar con corazón roto 💔"
           >
-            <Heart 
-              className={`w-4 h-4 ${
-                stats.userHasRecommended 
-                  ? 'fill-rose-400 text-rose-400' 
-                  : 'text-white fill-white/20'
-              }`} 
-            />
-          </motion.span>
-          <span>
-            {stats.userHasRecommended ? 'Recomendado ❤️' : 'Recomendar con ❤️'}
-          </span>
-        </motion.button>
+            <HeartCrack className={`w-4 h-4 ${stats.userHasDisliked ? 'text-rose-400' : 'text-stone-400'}`} />
+            <span>{stats.userHasDisliked ? 'Corazón roto 💔' : '💔'}</span>
+            {(stats.dislikeCount || 0) > 0 && (
+              <span className="text-[10px] font-mono opacity-80">({stats.dislikeCount})</span>
+            )}
+          </motion.button>
+
+          {/* Heart Button */}
+          <motion.button
+            id={`btn-modal-product-rec-${productId}`}
+            type="button"
+            onClick={handleHeartClick}
+            disabled={loading}
+            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
+            className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-md shrink-0 cursor-pointer ${
+              stats.userHasRecommended
+                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/50 hover:bg-rose-500/30'
+                : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-600/30'
+            }`}
+          >
+            <motion.span
+              animate={stats.userHasRecommended ? { scale: [1, 1.25, 1] } : {}}
+              transition={{ duration: 0.3 }}
+            >
+              <Heart 
+                className={`w-4 h-4 ${
+                  stats.userHasRecommended 
+                    ? 'fill-rose-400 text-rose-400' 
+                    : 'text-white fill-white/20'
+                }`} 
+              />
+            </motion.span>
+            <span>
+              {stats.userHasRecommended ? 'Recomendado ❤️' : 'Recomendar ❤️'}
+            </span>
+          </motion.button>
+        </div>
       </div>
 
-      {/* Optional feedback tags pills when recommended */}
+      {/* Optional feedback tags pills when recommending */}
       {!stats.userHasRecommended && (
         <div className="mt-2.5 flex items-center gap-1.5 overflow-x-auto py-1 no-scrollbar text-[10px]">
           <span className="text-stone-400 text-[10px] whitespace-nowrap mr-1 flex items-center gap-1">
@@ -412,7 +607,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
               key={tag}
               type="button"
               onClick={() => setSelectedTag(tag)}
-              className={`px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors ${
+              className={`px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors cursor-pointer ${
                 selectedTag === tag
                   ? 'bg-rose-500/20 border-rose-500/60 text-rose-300 font-bold'
                   : 'bg-stone-900/60 border-stone-700/60 text-stone-400 hover:text-stone-200'
@@ -440,13 +635,17 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
               exit={{ opacity: 0, y: 15, scale: 0.95 }}
               className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-2xl shadow-2xl backdrop-blur-md text-xs sm:text-sm font-bold border border-stone-700"
             >
-              <Heart className="w-4 h-4 text-rose-500 fill-rose-500 shrink-0" />
+              {showFeedbackToast.includes('💔') ? (
+                <HeartCrack className="w-4 h-4 text-rose-400 shrink-0" />
+              ) : (
+                <Heart className="w-4 h-4 text-rose-500 fill-rose-500 shrink-0" />
+              )}
               <span>{showFeedbackToast}</span>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Modal: Must be logged in to recommend */}
+        {/* Modal: Must be logged in to react */}
         <AnimatePresence>
           {showAuthModal && (
             <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
@@ -457,6 +656,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                 className="w-full max-w-md bg-[#111622] rounded-3xl p-6 sm:p-7 shadow-2xl border border-stone-800 text-white relative overflow-hidden"
               >
                 <button
+                  type="button"
                   onClick={() => setShowAuthModal(false)}
                   className="absolute top-4 right-4 p-2 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition-colors"
                 >
@@ -464,15 +664,23 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                 </button>
 
                 <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center mb-5 mx-auto">
-                  <Heart className="w-7 h-7 text-rose-500 fill-rose-500 animate-pulse" />
+                  {authModalContext === 'dislike' ? (
+                    <HeartCrack className="w-7 h-7 text-rose-400 animate-pulse" />
+                  ) : (
+                    <Heart className="w-7 h-7 text-rose-500 fill-rose-500 animate-pulse" />
+                  )}
                 </div>
 
                 <div className="text-center">
                   <h3 className="text-xl font-bold text-white">
-                    ¿Te encantó {productName}?
+                    {authModalContext === 'dislike' ? `¿No te convenció ${productName}?` : `¿Te encantó ${productName}?`}
                   </h3>
                   <p className="text-xs sm:text-sm text-stone-400 mt-2 leading-relaxed">
-                    Para calificar y recomendar este producto con un corazón <span className="text-rose-500 font-bold">❤️</span> en Ryyco, ingresa a tu cuenta.
+                    {authModalContext === 'dislike' ? (
+                      <>Para calificar este producto con un corazón roto <span className="text-rose-400 font-bold">💔</span> en Ryyco, ingresa a tu cuenta.</>
+                    ) : (
+                      <>Para calificar y recomendar este producto con un corazón <span className="text-rose-500 font-bold">❤️</span> en Ryyco, ingresa a tu cuenta.</>
+                    )}
                   </p>
                 </div>
 
@@ -480,7 +688,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                 <div className="my-5 p-3 rounded-2xl bg-stone-900/80 border border-stone-800 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-medium text-stone-300">
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Recomendación auténtica (1 voto verificado por cliente)</span>
+                    <span>Opinión auténtica (1 voto verificado por cliente)</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs font-medium text-stone-300">
                     <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
@@ -492,9 +700,10 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                 <div className="space-y-2.5">
                   <button
                     id="btn-auth-google-product-recommend"
+                    type="button"
                     onClick={handleGoogleLogin}
                     disabled={isGoogleLoading}
-                    className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white hover:bg-stone-100 text-stone-900 font-bold text-sm shadow-sm transition-all"
+                    className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-white hover:bg-stone-100 text-stone-900 font-bold text-sm shadow-sm transition-all cursor-pointer"
                   >
                     <svg className="w-4 h-4" viewBox="0 0 24 24">
                       <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -507,8 +716,9 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
 
                   <button
                     id="btn-auth-phone-product-recommend"
+                    type="button"
                     onClick={handleOpenPhoneRegister}
-                    className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-sm transition-all border border-stone-700"
+                    className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-stone-800 hover:bg-stone-700 text-white font-bold text-sm transition-all border border-stone-700 cursor-pointer"
                   >
                     <Phone className="w-4 h-4 text-emerald-400" />
                     <span>Ingresar con Celular / WhatsApp</span>
@@ -517,8 +727,9 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
 
                 <div className="mt-4 text-center">
                   <button
+                    type="button"
                     onClick={() => setShowAuthModal(false)}
-                    className="text-xs text-stone-500 hover:text-stone-300 font-medium"
+                    className="text-xs text-stone-500 hover:text-stone-300 font-medium cursor-pointer"
                   >
                     Quizás más tarde
                   </button>
@@ -550,16 +761,18 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
 
                 <div className="grid grid-cols-2 gap-2.5 mt-6">
                   <button
+                    type="button"
                     onClick={() => setShowWithdrawConfirm(false)}
-                    className="py-2.5 px-4 rounded-xl border border-stone-700 text-stone-300 text-xs font-bold hover:bg-stone-800 transition-colors"
+                    className="py-2.5 px-4 rounded-xl border border-stone-700 text-stone-300 text-xs font-bold hover:bg-stone-800 transition-colors cursor-pointer"
                   >
                     Mantener ❤️
                   </button>
                   <button
                     id="btn-confirm-withdraw-product-rec"
+                    type="button"
                     onClick={() => executeToggle(true)}
                     disabled={loading}
-                    className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-sm"
+                    className="py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-colors shadow-sm cursor-pointer"
                   >
                     {loading ? 'Retirando...' : 'Retirar'}
                   </button>
@@ -572,3 +785,4 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
     );
   }
 };
+
