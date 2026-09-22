@@ -12,7 +12,6 @@ import {
   Compass,
   Layers,
   Sparkles,
-  ArrowRight,
   Store
 } from 'lucide-react';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
@@ -498,91 +497,6 @@ export default function DeliveryTrackingModal({
                 </span>
               </div>
             )}
-          </div>
-
-          {/* Two Stages Indicator Banner */}
-          <div className="bg-[#090D16] border border-[#232B3A] p-2 sm:p-2.5 rounded-2xl shadow-inner">
-            <div className="flex items-center justify-between gap-1.5 sm:gap-2 text-xs">
-              {/* Etapa 1 */}
-              <div className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl flex-1 min-w-0 transition ${
-                isPreparationStage
-                  ? (currentStep === 'pending' ? 'bg-amber-500/15 border border-amber-500/35 text-amber-300 ring-1 ring-amber-500/30' : 'bg-orange-500/15 border border-orange-500/35 text-orange-300 ring-1 ring-orange-500/30')
-                  : (!isPickedUp 
-                      ? 'bg-amber-500/15 border border-amber-500/35 text-amber-300 ring-1 ring-amber-500/30' 
-                      : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400')
-              }`}>
-                <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black shrink-0 ${
-                  isPreparationStage || !isPickedUp ? 'bg-amber-500 text-gray-950 font-black' : 'bg-emerald-500/30 text-emerald-300'
-                }`}>
-                  {isPreparationStage || !isPickedUp ? '1' : '✓'}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span className="text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider block opacity-90 truncate">
-                    {isPreparationStage ? (
-                      currentStep === 'pending' ? 'Etapa 1 • Recepción' :
-                      currentStep === 'restaurant_confirmed' ? 'Etapa 1 • Domicilio Propio' :
-                      (currentStep === 'accepted' || currentStep === 'confirmed') ? 'Etapa 1 • Confirmado' :
-                      currentStep === 'ready' ? 'Etapa 1 • Listo' : 'Etapa 1 • En Cocina'
-                    ) : (
-                      <>
-                        <span className="sm:hidden">Etapa 1 {!isPickedUp ? '• En curso' : '• Lista'}</span>
-                        <span className="hidden sm:inline">Etapa 1 {!isPickedUp ? '(En curso)' : '(Completada)'}</span>
-                      </>
-                    )}
-                  </span>
-                  <span className="text-[10px] sm:text-[11.5px] font-bold truncate block text-white mt-0.5">
-                    {isPreparationStage ? (
-                      currentStep === 'pending' ? 'Confirmando Pedido' :
-                      currentStep === 'restaurant_confirmed' ? 'Confirmado por Restaurante' :
-                      (currentStep === 'accepted' || currentStep === 'confirmed') ? (activeOrder.deliveryDriverName ? `Confirmado • ${activeOrder.deliveryDriverName}` : 'Confirmado • Domiciliario Asignado') :
-                      currentStep === 'ready' ? 'Listo para Despacho' : 'Preparando Alimentos'
-                    ) : (
-                      <>
-                        <span className="sm:hidden">Hacia Tienda</span>
-                        <span className="hidden sm:inline">Domiciliario ➔ Restaurante</span>
-                      </>
-                    )}
-                  </span>
-                </div>
-              </div>
-
-              <ArrowRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-500 shrink-0 mx-0.5" />
-
-              {/* Etapa 2 */}
-              <div className={`flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-xl flex-1 min-w-0 transition ${
-                isPickedUp 
-                  ? 'bg-[#E63946]/15 border border-[#E63946]/35 text-[#E63946] ring-1 ring-[#E63946]/30 animate-pulse' 
-                  : 'bg-gray-900/60 border border-gray-800 text-gray-400'
-              }`}>
-                <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black shrink-0 ${
-                  isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
-                }`}>
-                  2
-                </span>
-                <div className="min-w-0 flex-1">
-                  <span className="text-[8.5px] sm:text-[9.5px] font-black uppercase tracking-wider block opacity-90 truncate">
-                    {isPreparationStage ? (
-                      'Etapa 2 • Despacho'
-                    ) : (
-                      <>
-                        <span className="sm:hidden">Etapa 2 {isPickedUp ? '• En curso' : '• Pendiente'}</span>
-                        <span className="hidden sm:inline">Etapa 2 {isPickedUp ? '(En curso)' : '(Siguiente etapa)'}</span>
-                      </>
-                    )}
-                  </span>
-                  <span className="text-[10px] sm:text-[11.5px] font-bold truncate block text-white mt-0.5">
-                    {isPreparationStage ? (
-                      'Entrega a Domicilio'
-                    ) : (
-                      <>
-                        <span className="sm:hidden">Hacia Cliente</span>
-                        <span className="hidden sm:inline">Restaurante ➔ Cliente</span>
-                      </>
-                    )}
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Interactive Map */}

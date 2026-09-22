@@ -1736,8 +1736,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg hover:bg-slate-800 text-xs font-bold text-white transition cursor-pointer"
                   title="Mi cuenta de cliente"
                 >
-                  <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-black">
-                    {activeCustomer.name.charAt(0).toUpperCase()}
+                  <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-black shrink-0 overflow-hidden">
+                    {activeCustomer.avatarUrl ? (
+                      <img src={activeCustomer.avatarUrl} alt={activeCustomer.name} className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      activeCustomer.name.charAt(0).toUpperCase()
+                    )}
                   </div>
                   <span className="max-w-[90px] truncate">{activeCustomer.name.split(' ')[0]}</span>
                 </button>
@@ -1746,7 +1750,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   onClick={async () => {
                     await logoutCustomerSession();
                   }}
-                  className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition cursor-pointer shrink-0"
                   title="Cerrar sesión de cliente"
                 >
                   <LogOut className="w-3.5 h-3.5" />

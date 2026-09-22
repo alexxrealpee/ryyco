@@ -50,7 +50,9 @@ import {
   ChevronUp,
   AlertCircle
 } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { 
+  db,
   fetchDriverProfileByUid, 
   fetchProfileByUid,
   updateDriverAvailability, 
@@ -157,9 +159,45 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     return Boolean(init?.isAvailable);
   });
   const [availableOrders, setAvailableOrders] = useState<OrderItem[]>([]);
-  const [activeDelivery, setActiveDelivery] = useState<OrderItem | null>(null);
+  const [activeDelivery, setActiveDelivery] = useState<OrderItem | null>(() => {
+    try {
+      const init = initialDriver || getStoredDriverSession();
+      if (init?.id) {
+        const cached = localStorage.getItem(`ryyco_active_delivery_${init.id}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.status !== 'delivered' && parsed.status !== 'cancelled' && parsed.deliveryStep !== 'delivered') {
+            return parsed;
+          }
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+  const [activeOrderChecked, setActiveOrderChecked] = useState<boolean>(false);
   const [trackingPreviewOpen, setTrackingPreviewOpen] = useState<boolean>(false);
   const [showActiveOrderDetails, setShowActiveOrderDetails] = useState<boolean>(true);
+
+  // Hard guarantee: When active delivery exists, suppress and wipe all available unassigned orders & popups
+  useEffect(() => {
+    if (activeDelivery) {
+      setSelectedIncomingOrder(null);
+      setAvailableOrders([]);
+      if (driver?.id) {
+        try {
+          localStorage.setItem(`ryyco_active_delivery_${driver.id}`, JSON.stringify(activeDelivery));
+          localStorage.setItem('ryyco_driver_has_active_delivery', 'true');
+        } catch (e) {}
+      }
+    } else {
+      if (driver?.id) {
+        try {
+          localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
+          localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
+        } catch (e) {}
+      }
+    }
+  }, [activeDelivery, driver?.id]);
 
   // Active store exact location and navigation data (resolved live from order or store profile)
   const [activeStoreLocation, setActiveStoreLocation] = useState<{
@@ -458,14 +496,24 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     };
   }, [driver?.id, driver?.status, isAvailable, activeDelivery]);
 
-  // Real-time unassigned orders listener when available
+  // Real-time unassigned orders listener: only active if driver is approved, available, NOT currently on an active delivery, and initial check has finished
   useEffect(() => {
-    if (!driver || driver.status !== 'approved' || !isAvailable) {
+    // If not approved, not available, still verifying active delivery, OR already has an active delivery:
+    // Strictly do NOT listen to unassigned orders, keep available list empty and close popups
+    if (!driver || driver.status !== 'approved' || !isAvailable || !activeOrderChecked || Boolean(activeDelivery)) {
       setAvailableOrders([]);
+      setSelectedIncomingOrder(null);
       return;
     }
 
     const unsubscribe = listenToUnassignedOrders((unassignedOrders) => {
+      // Hard guard: if driver has an active delivery, immediately discard incoming orders
+      if (activeDelivery) {
+        setAvailableOrders([]);
+        setSelectedIncomingOrder(null);
+        return;
+      }
+
       // Filter strictly for delivery orders in 'pending' status (excluding table orders and pickup orders)
       const pendingOrders = unassignedOrders.filter(o => {
         const isTableOrPickup = o.orderType === 'table' || o.orderType === 'pickup' || o.isTableOrder || o.customerName?.toLowerCase().startsWith('mesa ') || o.customerAddress?.toLowerCase().includes('mesa') || o.customerAddress?.toLowerCase().includes('recoger');
@@ -481,7 +529,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         return prev;
       });
 
-      // If new order arrived and modal not open, automatically pop up highest priority order
+      // If new order arrived and driver has NO active delivery and modal not open, automatically pop up highest priority order
       if (pendingOrders.length > 0 && !activeDelivery) {
         const newest = pendingOrders[0];
         // If it's a new order id we haven't popped yet
@@ -497,7 +545,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     return () => {
       unsubscribe();
     };
-  }, [driver, isAvailable, activeDelivery]);
+  }, [driver?.id, driver?.status, isAvailable, activeOrderChecked, Boolean(activeDelivery)]);
 
   // Load order history and ratings for logged driver
   const loadHistoryAndRatings = async (driverId: string) => {
@@ -515,8 +563,16 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       );
       if (active) {
         setActiveDelivery(active);
+        try {
+          localStorage.setItem(`ryyco_active_delivery_${driverId}`, JSON.stringify(active));
+          localStorage.setItem('ryyco_driver_has_active_delivery', 'true');
+        } catch (e) {}
       } else {
         setActiveDelivery(null);
+        try {
+          localStorage.removeItem(`ryyco_active_delivery_${driverId}`);
+          localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
+        } catch (e) {}
       }
 
       const ratings = await fetchDriverRatings(driverId);
@@ -525,8 +581,48 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       console.error(e);
     } finally {
       setLoadingHistory(false);
+      setActiveOrderChecked(true);
     }
   };
+
+  // Real-time listener for active delivery progress/updates
+  useEffect(() => {
+    if (!activeDelivery?.id) return;
+
+    const unsubscribe = onSnapshot(doc(db, 'orders', activeDelivery.id), (docSnap) => {
+      if (!docSnap.exists()) {
+        setActiveDelivery(null);
+        if (driver?.id) {
+          try {
+            localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
+            localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
+          } catch (e) {}
+        }
+        return;
+      }
+      const data = { id: docSnap.id, ...docSnap.data() } as OrderItem;
+      // If delivery is completed or cancelled, clear active delivery so driver can take new orders
+      if (data.status === 'delivered' || data.deliveryStep === 'delivered' || data.status === 'cancelled') {
+        setActiveDelivery(null);
+        if (driver?.id) {
+          try {
+            localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
+            localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
+          } catch (e) {}
+          loadHistoryAndRatings(driver.id);
+        }
+      } else {
+        // Merge updates
+        setActiveDelivery(prev => prev ? { ...prev, ...data } : data);
+      }
+    }, (err) => {
+      console.warn("Error listening to active delivery order:", err);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeDelivery?.id]);
 
   // Login Handler
   const handleLogin = async (e: React.FormEvent) => {
@@ -631,6 +727,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   // Claim order transaction execution
   const handleAcceptOrder = async (orderToClaim: OrderItem) => {
     if (!driver) return;
+    if (activeDelivery) {
+      setClaimStatusMsg('Ya tienes una entrega en curso. Debes finalizarla y entregarla antes de tomar otra.');
+      return;
+    }
     setClaimingLoading(true);
     setClaimStatusMsg('');
 
@@ -638,18 +738,24 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       const res = await acceptDeliveryOrderTransaction(orderToClaim.id, driver, systemDeliveryFee);
       if (res.success) {
         // Order assigned to this driver!
-        setActiveDelivery({
+        const newActive: OrderItem = {
           ...orderToClaim,
           storeReference: incomingStoreRef || orderToClaim.storeReference || (orderToClaim as any).restaurantReference,
           deliveryFee: systemDeliveryFee || orderToClaim.deliveryFee || 7000,
           deliveryDriverId: driver.id,
           deliveryDriverName: driver.name,
           deliveryDriverPhone: driver.phone,
-          deliveryType: 'ryyco_driver',
+          deliveryType: 'ryyco',
           status: 'confirmed',
           deliveryStep: 'accepted'
-        });
+        };
+        setActiveDelivery(newActive);
         setSelectedIncomingOrder(null);
+        setAvailableOrders([]);
+        try {
+          localStorage.setItem(`ryyco_active_delivery_${driver.id}`, JSON.stringify(newActive));
+          localStorage.setItem('ryyco_driver_has_active_delivery', 'true');
+        } catch (e) {}
         // Refresh history
         loadHistoryAndRatings(driver.id);
       } else {
@@ -691,6 +797,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       if (nextStep === 'delivered') {
         // Delivery completed!
         setActiveDelivery(null);
+        try {
+          localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
+          localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
+        } catch (e) {}
         // Refresh driver stats & order history
         const updatedDriver = await fetchDriverProfileByUid(driver.id);
         if (updatedDriver) {
@@ -827,7 +937,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   // Delivery Stepper Array (Simplified 4 steps)
   const deliverySteps: { key: OrderItem['deliveryStep']; label: string }[] = [
     { key: 'accepted', label: '1. Aceptado' },
-    { key: 'picked_up', label: '2. Recogiendo en tienda' },
+    { key: 'picked_up', label: '2. En restaurante' },
     { key: 'to_client', label: '3. En Camino' },
     { key: 'delivered', label: '4. Entregado ✓' }
   ];
@@ -973,18 +1083,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
               />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm sm:text-base font-extrabold text-white tracking-tight">{driver.firstName} {driver.lastName}</h1>
-                <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-[#E63946]/10 text-[#E63946] border border-[#E63946]/20">
-                  {driver.vehicleType}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-[#A9B2C3]">
-                <span className="flex items-center gap-1 text-[#F4B400] font-extrabold">
-                  <Star className="w-3.5 h-3.5 fill-[#F4B400] text-[#F4B400]" /> {driver.rating?.toFixed(1) || '5.0'}
-                </span>
-                <span>•</span>
-                <span>{driver.completedDeliveriesCount || 0} entregas</span>
+              <h1 className="text-sm sm:text-base font-extrabold text-white tracking-tight">{driver.firstName} {driver.lastName}</h1>
+              <div className="flex items-center gap-1 text-xs text-[#F4B400] font-extrabold mt-0.5">
+                <Star className="w-3.5 h-3.5 fill-[#F4B400] text-[#F4B400]" /> {driver.rating?.toFixed(1) || '5.0'}
               </div>
             </div>
           </div>
@@ -1022,14 +1123,16 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
               <button
                 onClick={handleToggleAvailability}
                 className={`px-3.5 py-2 rounded-2xl font-black text-xs flex items-center gap-2 transition cursor-pointer shadow-md active:scale-95 ${
-                  isAvailable 
-                    ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white shadow-[#E63946]/20 hover:brightness-110' 
-                    : 'bg-[#090B12] text-[#A9B2C3] hover:bg-[#232B3A] border border-[#232B3A]'
+                  activeDelivery
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : isAvailable 
+                      ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white shadow-[#E63946]/20 hover:brightness-110' 
+                      : 'bg-[#090B12] text-[#A9B2C3] hover:bg-[#232B3A] border border-[#232B3A]'
                 }`}
               >
                 <Power className={`w-4 h-4 ${isAvailable ? 'animate-pulse' : ''}`} />
-                <span className="hidden sm:inline">{isAvailable ? 'Disponible' : 'No disponible'}</span>
-                <span className="sm:hidden">{isAvailable ? 'On' : 'Off'}</span>
+                <span className="hidden sm:inline">{activeDelivery ? 'En entrega activa' : (isAvailable ? 'Disponible' : 'No disponible')}</span>
+                <span className="sm:hidden">{activeDelivery ? 'En ruta' : (isAvailable ? 'On' : 'Off')}</span>
               </button>
             )}
 
@@ -1232,47 +1335,47 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 {/* ACTIVE DELIVERY IN PROGRESS TRACKER */}
                 {activeDelivery ? (
                   <div className="bg-[#111827] border-2 border-[#E63946]/40 rounded-2xl p-6 shadow-2xl space-y-6">
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-[#232B3A] pb-4">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider bg-[#E63946]/20 text-[#E63946] px-2.5 py-0.5 rounded-full border border-[#E63946]/30">
-                            Entrega en Curso
-                          </span>
-                          <span className="text-xs font-mono text-[#A9B2C3]">Pedido #{activeDelivery.orderNumber}</span>
-                        </div>
-                        <h2 className="text-lg font-black text-white mt-1">
-                          {activeDelivery.storeName || 'Tienda Aliada'}
-                        </h2>
-                      </div>
-
-                      <div className="text-right">
-                        <span className="text-xs text-[#A9B2C3] block">Valor del Domicilio</span>
-                        <span className="text-xl font-black text-[#E63946]">
-                          ${(systemDeliveryFee || activeDelivery.deliveryFee || 7000).toLocaleString('es-CO')}
+                    <div className="border-b border-[#232B3A] pb-4 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs sm:text-sm font-black font-mono text-gray-300">
+                          Pedido #{activeDelivery.orderNumber}
                         </span>
                       </div>
-                    </div>
 
-                    {/* Progressive Stepper Display */}
-                    <div className="bg-[#090B12] border border-[#232B3A] p-3 sm:p-4 rounded-2xl space-y-3.5 shadow-inner">
                       {(() => {
-                        const currentIdx = getStepIndex(activeDelivery.deliveryStep);
-                        const currentStepObj = deliverySteps[currentIdx] || deliverySteps[0];
-                        const currentLabel = currentStepObj.label.split('.')[1]?.trim() || 'En Proceso';
+                        const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
+                        const totalOrderAmount = activeDelivery.totalAmount || 0;
+                        const productsTotal = activeDelivery.items && activeDelivery.items.length > 0
+                          ? activeDelivery.items.reduce((acc, it) => acc + ((it.price || 0) * (it.quantity || 1)), 0)
+                          : Math.max(0, totalOrderAmount - deliveryFeeVal);
 
                         return (
-                          <>
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-[10px] sm:text-xs font-black text-[#A9B2C3] uppercase tracking-wider">
-                                Paso {currentIdx + 1} de {deliverySteps.length}
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#E63946]/15 border border-[#E63946]/35 text-[#E63946] text-[10px] sm:text-xs font-black">
-                                <span className="w-1.5 h-1.5 rounded-full bg-[#E63946] animate-pulse" />
-                                <span>{currentLabel}</span>
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="text-left">
+                              <span className="text-xs text-[#A9B2C3] block font-medium">Valor del Domicilio</span>
+                              <span className="text-xl font-black text-[#E63946]">
+                                ${deliveryFeeVal.toLocaleString('es-CO')}
                               </span>
                             </div>
 
-                            <div className="relative pt-1 px-1 sm:px-2">
+                            <div className="text-right">
+                              <span className="text-xs text-[#A9B2C3] block font-medium">Valor del Pedido</span>
+                              <span className="text-xl font-black text-white">
+                                ${productsTotal.toLocaleString('es-CO')}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Progressive Stepper Display */}
+                    <div className="bg-[#090B12] border border-[#232B3A] p-3 sm:p-4 rounded-2xl shadow-inner">
+                      {(() => {
+                        const currentIdx = getStepIndex(activeDelivery.deliveryStep);
+
+                        return (
+                          <div className="relative pt-1 px-1 sm:px-2">
                               {/* Background track */}
                               <div className="absolute top-4 sm:top-5 left-6 right-6 h-0.5 bg-[#1F2937] -translate-y-1/2 z-0" />
                               
@@ -1291,7 +1394,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                   const isDone = idx < currentIdx;
                                   const isCurrent = idx === currentIdx;
 
-                                  const shortLabel = idx === 0 ? 'Aceptado' : idx === 1 ? 'En Tienda' : idx === 2 ? 'En Camino' : 'Entregado';
+                                  const shortLabel = idx === 0 ? 'Aceptado' : idx === 1 ? 'En restaurante' : idx === 2 ? 'En Camino' : 'Entregado';
                                   const fullLabel = s.label.split('.')[1]?.trim();
 
                                   return (
@@ -1330,160 +1433,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                 })}
                               </div>
                             </div>
-                          </>
-                        );
-                      })()}
+                          );
+                        })()}
                     </div>
 
-                    {/* DETALLES COMPLETOS DEL PEDIDO EN CURSO (PRODUCTOS, NOTAS Y VALORES) */}
-                    {(() => {
-                      const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
-                      const totalOrderAmount = activeDelivery.totalAmount || 0;
-                      const foodCost = Math.max(0, totalOrderAmount - deliveryFeeVal);
-                      const itemsCount = activeDelivery.items?.length || 0;
-                      const totalUnits = activeDelivery.items?.reduce((acc, it) => acc + (it.quantity || 1), 0) || 0;
-                      const isCashOrCod = activeDelivery.paymentMethod === 'whatsapp' || 
-                                          activeDelivery.paymentMethod === 'cod' || 
-                                          activeDelivery.paymentMethod === 'delivery_cash';
-
-                      return (
-                        <div className="bg-[#090D16] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xl">
-                          <div className="flex items-center justify-between border-b border-[#1C2433] pb-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30">
-                                <ShoppingBag className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
-                                  <span>Detalles del Pedido</span>
-                                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/25">
-                                    {itemsCount} {itemsCount === 1 ? 'producto' : 'productos'} • {totalUnits} {totalUnits === 1 ? 'unidad' : 'unidades'}
-                                  </span>
-                                </h3>
-                                <p className="text-[11px] text-gray-400">
-                                  Productos a reclamar en tienda y entregar al cliente
-                                </p>
-                              </div>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => setShowActiveOrderDetails(!showActiveOrderDetails)}
-                              className="text-xs text-gray-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1C2433] border border-[#232B3A] flex items-center gap-1.5 transition cursor-pointer shrink-0"
-                            >
-                              <span>{showActiveOrderDetails ? 'Ocultar' : 'Ver detalle'}</span>
-                              {showActiveOrderDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5 text-amber-400" />}
-                            </button>
-                          </div>
-
-                          {showActiveOrderDetails && (
-                            <div className="space-y-3 pt-1">
-                              {/* Lista de productos */}
-                              {activeDelivery.items && activeDelivery.items.length > 0 ? (
-                                <div className="space-y-2 bg-[#05070D] border border-[#1C2433] p-3 rounded-xl max-h-60 overflow-y-auto divide-y divide-[#1C2433]/70">
-                                  {activeDelivery.items.map((item, idx) => (
-                                    <div key={idx} className="pt-2.5 first:pt-0 flex items-start justify-between gap-3 text-xs">
-                                      <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                        <span className="bg-[#E63946]/20 text-[#E63946] font-black text-xs px-2 py-0.5 rounded-md border border-[#E63946]/35 shrink-0">
-                                          {item.quantity}x
-                                        </span>
-                                        <div className="min-w-0 flex-1">
-                                          <span className="font-bold text-white block text-sm leading-tight">
-                                            {item.name}
-                                          </span>
-                                          {item.selectedVariant && (
-                                            <span className="text-[11px] text-amber-300/90 block mt-0.5">
-                                              Opción / Sabor: <strong>{item.selectedVariant}</strong>
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <span className="text-gray-300 font-mono font-bold text-xs shrink-0 text-right">
-                                        ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="p-3 bg-[#05070D] border border-[#1C2433] rounded-xl text-xs text-gray-400 italic">
-                                  No hay desglose de productos individuales disponible para este pedido.
-                                </div>
-                              )}
-
-                              {/* Observaciones o Notas del cliente */}
-                              {activeDelivery.notes && (
-                                <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl text-xs text-amber-200 flex items-start gap-2">
-                                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                                  <div>
-                                    <strong className="text-amber-300 block text-xs">Notas / Observaciones del Cliente:</strong>
-                                    <p className="mt-0.5 text-[11px] leading-relaxed">{activeDelivery.notes}</p>
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Resumen Financiero y Cobro */}
-                              <div className="bg-[#05070D] border border-[#1C2433] p-3.5 rounded-xl space-y-2.5 text-xs">
-                                <div className="flex items-center justify-between border-b border-[#1C2433] pb-2">
-                                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                                    <span>Resumen Financiero del Pedido</span>
-                                  </span>
-                                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[#111827] text-gray-300 border border-[#232B3A]">
-                                    Pago: {activeDelivery.paymentMethod}
-                                  </span>
-                                </div>
-
-                                <div className="space-y-1.5 pt-0.5">
-                                  <div className="flex justify-between text-gray-300">
-                                    <span>Valor Comida / Productos:</span>
-                                    <strong className="text-white font-mono">${foodCost.toLocaleString('es-CO')} COP</strong>
-                                  </div>
-                                  <div className="flex justify-between text-gray-300">
-                                    <span className="text-emerald-300 font-bold">Ganancia Domicilio (Tu Pago):</span>
-                                    <strong className="text-emerald-400 font-mono font-bold">${deliveryFeeVal.toLocaleString('es-CO')} COP</strong>
-                                  </div>
-                                  <div className="flex justify-between items-center pt-2 border-t border-[#1C2433]">
-                                    <div>
-                                      <span className="text-white font-bold block text-sm">Valor Total del Pedido:</span>
-                                      <span className="text-[10px] text-gray-400 block">
-                                        {isCashOrCod ? 'Monto a cobrar en efectivo al cliente' : 'Total cancelado por el cliente'}
-                                      </span>
-                                    </div>
-                                    <span className="text-lg font-black text-[#E63946] font-mono">
-                                      ${totalOrderAmount.toLocaleString('es-CO')} COP
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {isCashOrCod ? (
-                                  <div className="mt-2 p-2.5 bg-emerald-500/10 border border-emerald-500/25 rounded-lg text-[11px] text-emerald-300 flex items-start gap-2">
-                                    <Banknote className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-                                    <div>
-                                      <strong className="block text-emerald-300">Cobro en Efectivo Contra Entrega:</strong>
-                                      <span>Debes recaudar exactamente <strong>${totalOrderAmount.toLocaleString('es-CO')} COP</strong> al entregar al cliente.</span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="mt-2 p-2.5 bg-sky-500/10 border border-sky-500/25 rounded-lg text-[11px] text-sky-300 flex items-start gap-2">
-                                    <Receipt className="w-4 h-4 shrink-0 text-sky-400 mt-0.5" />
-                                    <div>
-                                      <strong className="block text-sky-300">Pago Digital Confirmado:</strong>
-                                      <span>El cliente ya transfirió el valor del pedido. Solo entrega los productos.</span>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    {/* Panel de Ruta Completa en 2 Etapas: Domiciliario -> Restaurante -> Cliente */}
+                    {/* Panel de Ruta: Domiciliario -> Restaurante -> Cliente */}
                     {(() => {
                       const currentStepIdx = getStepIndex(activeDelivery.deliveryStep);
                       const isPickedUp = currentStepIdx >= 2;
-                      const driverHasGps = !!currentCoords?.latitude && !!currentCoords?.longitude;
 
                       const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
                       const totalOrderAmount = activeDelivery.totalAmount || 0;
@@ -1495,42 +1452,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
                       return (
                         <div className="bg-[#090D16] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#1C2433] pb-3">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-xl bg-cyan-500/15 text-cyan-400 flex items-center justify-center border border-cyan-500/30">
-                                <Compass className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <h3 className="text-sm font-black text-white flex items-center gap-2">
-                                  <span>Ruta Completa del Domiciliario</span>
-                                  <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">
-                                    2 Etapas
-                                  </span>
-                                </h3>
-                                <p className="text-[11px] text-gray-400">
-                                  Navegación secuencial con origen en tu GPS en tiempo real
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* GPS Live Status pill */}
-                            <div className="flex items-center gap-1.5 self-start sm:self-center">
-                              {driverHasGps ? (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold">
-                                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                                  GPS en Vivo ({currentCoords?.latitude?.toFixed(4)}, {currentCoords?.longitude?.toFixed(4)})
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-bold">
-                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                                  Obteniendo GPS en tiempo real...
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Visual Sequence: Domiciliario -> Restaurante -> Cliente */}
-                          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                          {/* Visual Sequence: Domiciliario -> Restaurante */}
+                          <div className="grid grid-cols-1 gap-3.5">
                             {/* Etapa 1 Card: Restaurante & Gestión de Pago */}
                             <div className={`p-4 rounded-xl border transition flex flex-col justify-between ${
                               !isPickedUp
@@ -1538,25 +1461,11 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                 : 'bg-[#121824] border-[#232B3A] text-gray-400 opacity-80'
                             }`}>
                               <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
-                                    !isPickedUp ? 'bg-amber-500 text-black font-black' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  }`}>
-                                    {!isPickedUp ? 'Etapa 1 (Activa)' : 'Etapa 1 (Completada ✓)'}
-                                  </span>
-                                  <span className="text-xs font-bold text-gray-400">Paso 1 de 2</span>
-                                </div>
-
-                                <div className="space-y-1 mt-2">
-                                  <div className="text-xs font-black text-white flex items-center gap-1.5">
-                                    <span>📍 Domiciliario</span>
-                                    <span className="text-amber-400 font-bold">➔</span>
-                                    <span className="text-amber-300">🍽️ {activeDelivery.storeName || 'Restaurante'}</span>
-                                  </div>
-                                  <p className="text-[11px] text-gray-300">
+                                <div className="space-y-1">
+                                  <p className="text-[11px] text-gray-300 font-medium">
                                     {!isPickedUp 
-                                      ? 'Dirígete primero a la ubicación del restaurante a reclamar el pedido.' 
-                                      : 'Pedido reclamado en el restaurante.'}
+                                      ? `Reclamar pedido en restaurante (${activeDelivery.storeName || 'Restaurante'})` 
+                                      : `Pedido reclamado en restaurante (${activeDelivery.storeName || 'Restaurante'}).`}
                                   </p>
                                   <p className="text-[10px] text-gray-400 truncate flex items-center gap-1">
                                     <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
@@ -1607,7 +1516,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                       <div className="flex items-center justify-between">
                                         <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
                                           <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                                          1. ¿Cliente ya pagó al restaurante?
+                                          Informar al restaurante
                                         </span>
                                         {restPaymentStatus !== 'unconfirmed' && (
                                           <button
@@ -1623,21 +1532,30 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                       {restPaymentStatus === 'unconfirmed' ? (
                                         <div className="space-y-2">
                                           <p className="text-[11px] text-gray-300">
-                                            Pregunta al restaurante si el pedido #{activeDelivery.orderNumber} ya fue pagado por el cliente o si está pendiente de pago.
+                                            Avisa al restaurante que vas por el pedido #{activeDelivery.orderNumber} y confirma si el cliente ya pagó.
                                           </p>
 
                                           <div className="flex gap-2">
-                                            {effectiveStorePhone && (
-                                              <a
-                                                href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor me confirmas: ¿el cliente ya pagó el pedido o está pendiente de pago? Gracias.`)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
-                                              >
-                                                <MessageSquare className="w-3.5 h-3.5 fill-current" />
-                                                <span>Preguntar por WhatsApp</span>
-                                              </a>
-                                            )}
+                                            {effectiveStorePhone && (() => {
+                                              const itemsFormatted = activeDelivery.items && activeDelivery.items.length > 0
+                                                ? activeDelivery.items.map(it => `${it.quantity || 1}x ${it.name} $${((it.price || 0) * (it.quantity || 1)).toLocaleString('es-CO')}`).join(', ')
+                                                : '';
+                                              const clientPart = activeDelivery.customerName ? ` del cliente ${activeDelivery.customerName}` : '';
+                                              const itemsPart = itemsFormatted ? ` pedido ${itemsFormatted}` : '';
+                                              const waText = `Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}.${clientPart}${itemsPart} Ya voy en camino por el pedido, por favor me confirmas si el cliente ya pagó. Gracias.`;
+
+                                              return (
+                                                <a
+                                                  href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waText)}`}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                                                >
+                                                  <MessageSquare className="w-3.5 h-3.5 fill-current" />
+                                                  <span>Preguntar por WhatsApp</span>
+                                                </a>
+                                              );
+                                            })()}
                                             {effectiveStorePhone && (
                                               <a
                                                 href={`tel:${effectiveStorePhone}`}
@@ -1647,25 +1565,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                                 <Phone className="w-3.5 h-3.5" />
                                               </a>
                                             )}
-                                          </div>
-
-                                          <div className="grid grid-cols-2 gap-2 pt-1">
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdatePaymentStatus('already_paid', false, false)}
-                                              className="py-2 px-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
-                                            >
-                                              <Check className="w-3.5 h-3.5" />
-                                              <span>✓ Sí, ya pagó</span>
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdatePaymentStatus('not_paid', false, false)}
-                                              className="py-2 px-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-lg text-xs font-black transition flex items-center justify-center gap-1 cursor-pointer active:scale-95"
-                                            >
-                                              <AlertTriangle className="w-3.5 h-3.5" />
-                                              <span>✗ No ha pagado</span>
-                                            </button>
                                           </div>
                                         </div>
                                       ) : restPaymentStatus === 'already_paid' ? (
@@ -1839,57 +1738,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                 )}
                               </div>
                             </div>
-
-                            {/* Etapa 2 Card */}
-                            <div className={`p-4 rounded-xl border transition flex flex-col justify-between ${
-                              isPickedUp
-                                ? 'bg-[#E63946]/10 border-[#E63946]/40 text-white ring-1 ring-[#E63946]/30'
-                                : 'bg-[#121824] border-[#232B3A] text-gray-400'
-                            }`}>
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
-                                    isPickedUp ? 'bg-[#E63946] text-white font-black' : 'bg-gray-800 text-gray-400'
-                                  }`}>
-                                    {isPickedUp ? 'Etapa 2 (Activa)' : 'Etapa 2 (Siguiente)'}
-                                  </span>
-                                  <span className="text-xs font-bold text-gray-400">Paso 2 de 2</span>
-                                </div>
-
-                                <div className="space-y-1 mt-2">
-                                  <div className="text-xs font-black text-white flex items-center gap-1.5">
-                                    <span>🍽️ Restaurante</span>
-                                    <span className="text-[#E63946] font-bold">➔</span>
-                                    <span className="text-emerald-400">🏠 {activeDelivery.customerName || 'Cliente'}</span>
-                                  </div>
-                                  <p className="text-[11px] text-gray-300">
-                                    {isPickedUp 
-                                      ? 'Continúa desde el restaurante hasta la dirección de entrega del cliente.' 
-                                      : 'Se activará automáticamente al marcar el pedido como recogido.'}
-                                  </p>
-                                  <p className="text-[10px] text-gray-400 truncate flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-[#E63946] shrink-0" />
-                                    <span>{activeDelivery.customerAddress}</span>
-                                  </p>
-                                </div>
-
-                                {/* Highlight COD collection on active Etapa 2 */}
-                                {isPickedUp && driverPaid && (
-                                  <div className="mt-3 p-3 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-100 text-xs font-bold space-y-1">
-                                    <div className="flex items-center gap-1.5 text-emerald-300 font-black">
-                                      <Banknote className="w-4 h-4" />
-                                      <span>RECAUDAR AL CLIENTE CONTRA ENTREGA:</span>
-                                    </div>
-                                    <div className="text-base font-black text-white font-mono">
-                                      ${totalOrderAmount.toLocaleString('es-CO')}
-                                    </div>
-                                    <p className="text-[10px] text-emerald-200">
-                                      Recuperas ${paidAmount.toLocaleString('es-CO')} pagados en restaurante + ${deliveryFeeVal.toLocaleString('es-CO')} tu tarifa de domicilio.
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
                           </div>
 
                           {/* Action Buttons */}
@@ -1902,33 +1750,44 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition">
                                 <Compass className="w-4 h-4 text-cyan-400" />
                               </div>
-                              <span>Mirar Ruta Completa (Mapa en Vivo)</span>
-                              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/25">
-                                {!isPickedUp ? 'Domiciliario ➔ Restaurante ➔ Cliente' : 'Domiciliario ➔ Cliente'}
-                              </span>
+                              <span>Ruta Completa</span>
                             </button>
 
                             <a
-                              href={buildGoogleFullRouteUrl({
-                                driverLat: currentCoords?.latitude,
-                                driverLng: currentCoords?.longitude,
-                                storeLat: activeStoreLocation?.lat || activeDelivery.storeLat,
-                                storeLng: activeStoreLocation?.lng || activeDelivery.storeLng,
-                                storeAddress: activeDelivery.storeAddress,
-                                storeMapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
-                                destLat: activeDelivery.customerLat,
-                                destLng: activeDelivery.customerLng,
-                                destAddress: activeDelivery.customerAddress,
-                                destMapUrl: activeDelivery.customerMapUrl,
-                                isPickedUp
-                              })}
+                              href={(() => {
+                                const isGoingToStore = activeDelivery.deliveryStep === 'accepted' || !isPickedUp;
+                                const originParam = (currentCoords?.latitude && currentCoords?.longitude)
+                                  ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
+                                  : '';
+                                if (isGoingToStore) {
+                                  const baseNav = buildGoogleNavigationUrl({
+                                    lat: activeStoreLocation?.lat || activeDelivery.storeLat,
+                                    lng: activeStoreLocation?.lng || activeDelivery.storeLng,
+                                    mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
+                                    address: activeDelivery.storeAddress,
+                                    storeName: activeDelivery.storeName
+                                  });
+                                  return `${baseNav}${originParam}`;
+                                }
+                                const baseNav = buildGoogleNavigationUrl({
+                                  lat: activeDelivery.customerLat,
+                                  lng: activeDelivery.customerLng,
+                                  mapUrl: activeDelivery.customerMapUrl,
+                                  address: activeDelivery.customerAddress
+                                });
+                                return `${baseNav}${originParam}`;
+                              })()}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 shrink-0 active:scale-[0.99] cursor-pointer"
-                              title="Navegar ruta completa en Google Maps"
+                              title={activeDelivery.deliveryStep === 'accepted' || !isPickedUp ? "Navegar hacia al restaurante" : "Navegar hacia el cliente"}
                             >
                               <Navigation className="w-4 h-4 text-white" />
-                              <span>Navegar en Google Maps</span>
+                              <span>
+                                {activeDelivery.deliveryStep === 'accepted' || !isPickedUp
+                                  ? 'Navegar hacia al restaurante'
+                                  : 'Navegar hacia el cliente'}
+                              </span>
                               <ExternalLink className="w-3.5 h-3.5 text-white/80" />
                             </a>
                           </div>
@@ -1969,55 +1828,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               </div>
                             </div>
                           )}
-                        </div>
-
-
-
-                        {/* Nota para comunicarse por WhatsApp con el restaurante */}
-                        <div className="bg-emerald-950/40 border border-emerald-500/35 p-3 rounded-xl flex items-start gap-2.5 shadow-sm">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 mt-0.5">
-                            <MessageSquare className="w-4 h-4 text-emerald-400" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">
-                                Nota Importante:
-                              </span>
-                            </div>
-                            <p className="text-xs font-bold text-emerald-100 mt-0.5 leading-snug">
-                              Comunicarse por WhatsApp con el restaurante para que preparen el pedido.
-                            </p>
-                            {effectiveStorePhone && (
-                              <a
-                                href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor tenerlo en preparación, ya voy en camino a recogerlo.`)}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-gray-950 text-xs font-black rounded-lg transition active:scale-95 shadow-md shadow-emerald-500/20"
-                              >
-                                <MessageSquare className="w-3.5 h-3.5 fill-current" />
-                                <span>Escribir por WhatsApp al Restaurante</span>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Navigation Button to Store */}
-                        <div className="pt-1">
-                          <a
-                            href={buildGoogleNavigationUrl({
-                              lat: activeStoreLocation?.lat || activeDelivery.storeLat,
-                              lng: activeStoreLocation?.lng || activeDelivery.storeLng,
-                              mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
-                              address: activeDelivery.storeAddress,
-                              storeName: activeDelivery.storeName
-                            })}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 font-black text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-95"
-                          >
-                            <Navigation className="w-4 h-4 fill-current" />
-                            <span>¿Cómo llegar al Restaurante?</span>
-                          </a>
                         </div>
 
                         {effectiveStorePhone && (
@@ -2072,23 +1882,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           )}
                         </div>
 
-                        {/* Direct navigation to customer button */}
-                        <div className="pt-1">
-                          <a
-                            href={buildGoogleNavigationUrl({
-                              lat: activeDelivery.customerLat,
-                              lng: activeDelivery.customerLng,
-                              mapUrl: activeDelivery.customerMapUrl,
-                              address: activeDelivery.customerAddress
-                            })}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-2.5 px-3 bg-[#E63946]/15 hover:bg-[#E63946]/25 border border-[#E63946]/40 text-[#E63946] hover:text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 active:scale-95"
-                          >
-                            <Navigation className="w-4 h-4" />
-                            <span>¿Cómo llegar al Cliente? (GPS)</span>
-                          </a>
-                        </div>
 
                         <div className="flex items-center gap-3 pt-1 border-t border-[#232B3A]/60">
                           <a
@@ -2149,7 +1942,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           className="flex-1 py-3.5 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-[#F4B400]/20 flex items-center justify-center gap-2"
                         >
                           <ShoppingBag className="w-4 h-4" />
-                          <span>2. Marcar Recogido en Tienda (Enviado)</span>
+                          <span>Marcar como llegué al restaurante</span>
                         </button>
                       )}
 
@@ -2707,7 +2500,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       {/* ------------------------------------------------------------------
           INCOMING ORDER REAL-TIME POPUP MODAL
          ------------------------------------------------------------------ */}
-      {selectedIncomingOrder && (() => {
+      {!activeDelivery && selectedIncomingOrder && (() => {
         const routeDist = getOrderRouteDistance({
           driverLat: currentCoords?.latitude,
           driverLng: currentCoords?.longitude,

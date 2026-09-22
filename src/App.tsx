@@ -5,8 +5,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, fetchProfileByUid, captureUrlReferralCode, getActiveReferralCode, checkIsAdminEmail, fetchSystemSettings } from './lib/firebase';
-import { UserProfile } from './types';
+import { 
+  auth, 
+  fetchProfileByUid, 
+  captureUrlReferralCode, 
+  getActiveReferralCode, 
+  checkIsAdminEmail, 
+  fetchSystemSettings,
+  fetchCustomerProfileByPhone,
+  fetchCustomerProfileByEmail,
+  fetchCustomerProfileByUid,
+  setActiveCustomerSession
+} from './lib/firebase';
+import { UserProfile, CustomerProfile } from './types';
 
 // Importing Custom Component views
 import LandingPage from './components/LandingPage';
@@ -342,9 +353,24 @@ export default function App() {
         if (authMode === 'customer' || authMode === 'driver') {
           // User is authenticated as a customer or driver. Do not hijack view or set seller userProfile.
           setUserProfile(null);
+          if (authMode === 'customer') {
+            const activeCustomerPhone = localStorage.getItem('ryyco_active_customer_phone');
+            let custProfile: CustomerProfile | null = null;
+            if (activeCustomerPhone) {
+              custProfile = await fetchCustomerProfileByPhone(activeCustomerPhone);
+            }
+            if (!custProfile && user.email) {
+              custProfile = await fetchCustomerProfileByEmail(user.email);
+            }
+            if (!custProfile && user.uid) {
+              custProfile = await fetchCustomerProfileByUid(user.uid);
+            }
+            if (custProfile) {
+              setActiveCustomerSession(custProfile);
+            }
+          }
         } else {
           // Seller mode (default for merchant login / admin)
-          localStorage.setItem('ryyco_auth_mode', 'seller');
           fetchSystemSettings().catch(() => {});
           let profile = await fetchProfileByUid(user.uid);
           
@@ -360,6 +386,38 @@ export default function App() {
               }
             } catch (e) {}
           }
+
+          // If no seller profile exists, check if user is actually a buyer / customer or on a public route
+          if (!profile) {
+            const activeCustomerPhone = localStorage.getItem('ryyco_active_customer_phone');
+            let custProfile: CustomerProfile | null = null;
+            if (activeCustomerPhone) {
+              custProfile = await fetchCustomerProfileByPhone(activeCustomerPhone);
+            }
+            if (!custProfile && user.email) {
+              custProfile = await fetchCustomerProfileByEmail(user.email);
+            }
+            if (!custProfile && user.uid) {
+              custProfile = await fetchCustomerProfileByUid(user.uid);
+            }
+
+            const activeUserProfileUrl = getUsernameFromUrl();
+            const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
+            const hashVal = window.location.hash.toLowerCase();
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
+
+            if (custProfile || activeUserProfileUrl || isPublicRoute || !authMode) {
+              localStorage.setItem('ryyco_auth_mode', 'customer');
+              setUserProfile(null);
+              if (custProfile) {
+                setActiveCustomerSession(custProfile);
+              }
+              return;
+            }
+          }
+
+          localStorage.setItem('ryyco_auth_mode', 'seller');
 
           if (profile) {
             const isAdmin = Boolean(profile.role === 'admin' || checkIsAdminEmail(profile.email) || checkIsAdminEmail(user.email));

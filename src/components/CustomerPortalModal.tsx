@@ -25,6 +25,8 @@ import {
 import { 
   fetchCustomerProfileByPhone, 
   fetchCustomerProfileByEmail,
+  fetchCustomerProfileByUid,
+  getActiveCustomerSession,
   saveCustomerProfile, 
   fetchCustomerOrders, 
   listenToCustomerOrders,
@@ -165,18 +167,85 @@ export default function CustomerPortalModal({
     avatarUrl: string;
   } | null>(null);
 
+  // Global listener for customer session changes
+  useEffect(() => {
+    const handleCustomerSync = (e: any) => {
+      const updated = e.detail;
+      if (updated === null) {
+        setCustomer(null);
+        setOrders([]);
+        setIsRegisterMode(false);
+        setPasswordInput('');
+        setNewPasswordInput('');
+        setAuthError('');
+      } else if (updated && updated.phone) {
+        setCustomer(updated);
+        setPhoneInput(updated.phone);
+        setNameInput(updated.name || '');
+        setAddressInput(updated.address && !isPickupOrInvalidAddress(updated.address) ? updated.address : '');
+        setEmailInput(updated.email || '');
+        setNotesInput(updated.notes || '');
+      }
+    };
+
+    window.addEventListener('ryyco:customer-profile-updated', handleCustomerSync);
+    return () => {
+      window.removeEventListener('ryyco:customer-profile-updated', handleCustomerSync);
+    };
+  }, []);
+
   // Auto load active session on mount
   useEffect(() => {
     if (isOpen) {
-      const activeSessionPhone = localStorage.getItem('ryyco_active_customer_phone');
-      if (activeSessionPhone) {
-        setPhoneInput(activeSessionPhone);
-        loadCustomerData(activeSessionPhone);
+      const activeSession = getActiveCustomerSession();
+      if (activeSession && activeSession.phone) {
+        setCustomer(activeSession);
+        setPhoneInput(activeSession.phone);
+        setNameInput(activeSession.name || '');
+        setAddressInput(activeSession.address && !isPickupOrInvalidAddress(activeSession.address) ? activeSession.address : '');
+        setEmailInput(activeSession.email || '');
+        setNotesInput(activeSession.notes || '');
+        loadCustomerOrders(activeSession.phone);
       } else {
-        setCustomer(null);
-        setOrders([]);
-        if (initialPhone) {
-          setPhoneInput(initialPhone);
+        const activeSessionPhone = localStorage.getItem('ryyco_active_customer_phone');
+        if (activeSessionPhone) {
+          const cleaned = sanitizeCustomerPhone(activeSessionPhone);
+          setPhoneInput(cleaned);
+          loadCustomerData(cleaned);
+        } else {
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            const loadAuthUser = async () => {
+              let cust: CustomerProfile | null = null;
+              if (currentUser.uid) {
+                cust = await fetchCustomerProfileByUid(currentUser.uid);
+              }
+              if (!cust && currentUser.email) {
+                cust = await fetchCustomerProfileByEmail(currentUser.email);
+              }
+              if (cust && cust.phone) {
+                setActiveCustomerSession(cust);
+                setCustomer(cust);
+                setPhoneInput(cust.phone);
+                setNameInput(cust.name || '');
+                setAddressInput(cust.address && !isPickupOrInvalidAddress(cust.address) ? cust.address : '');
+                setEmailInput(cust.email || '');
+                setNotesInput(cust.notes || '');
+                loadCustomerOrders(cust.phone);
+              } else {
+                setCustomer(null);
+                setOrders([]);
+                if (initialPhone) setPhoneInput(initialPhone);
+              }
+            };
+            loadAuthUser().catch(() => {});
+          } else {
+            setCustomer(null);
+            setOrders([]);
+            if (initialPhone) {
+              setPhoneInput(initialPhone);
+            }
+          }
         }
       }
       setActiveTab(initialTab);
@@ -334,9 +403,12 @@ export default function CustomerPortalModal({
         avatarUrl: gAvatar
       });
 
-      // 1. Try finding existing customer by email
+      // 1. Try finding existing customer by uid first, then email, then phone
       let existingProfile: CustomerProfile | null = null;
-      if (gEmail) {
+      if (user.uid) {
+        existingProfile = await fetchCustomerProfileByUid(user.uid);
+      }
+      if (!existingProfile && gEmail) {
         existingProfile = await fetchCustomerProfileByEmail(gEmail);
       }
       // 2. Or by user's phone if attached to Google account
@@ -603,6 +675,11 @@ export default function CustomerPortalModal({
     setNotesInput('');
     setPasswordInput('');
     setNewPasswordInput('');
+    setShowGoogleCompleteModal(false);
+    setShowTransferConfirmModal(false);
+    setWonPrizeModal(null);
+    setTryAgainModal(null);
+    setTransferReceipt(null);
     setLoading(false);
     onCustomerUpdate?.(null);
     setActionSuccessMsg("Has cerrado la sesión de cliente con éxito ✅");
@@ -857,12 +934,12 @@ export default function CustomerPortalModal({
         return {
           stageTitle: isReady 
             ? 'Paso 3 de 5 • Empacado y Listo' 
-            : (isPickedUpAtStore ? 'Paso 3 de 5 • En Cocina (Recogido en Tienda)' : 'Paso 3 de 5 • En Cocina'),
+            : (isPickedUpAtStore ? 'Paso 3 de 5 • En restaurante (Recogido en Tienda)' : 'Paso 3 de 5 • En restaurante'),
           headline: isReady 
             ? '¡Pedido Listo y Empacado!' 
             : (isPickedUpAtStore 
-                ? (ord.deliveryDriverName ? `${ord.deliveryDriverName} en tienda alistando pedido` : 'En Cocina / Recogido en Tienda') 
-                : 'En Preparación / Cocina'),
+                ? (ord.deliveryDriverName ? `${ord.deliveryDriverName} en tienda alistando pedido` : 'En restaurante') 
+                : 'En restaurante'),
           description: isReady 
             ? 'Tu pedido está listo y empacado, esperando salida para entrega.'
             : (isPickedUpAtStore 
@@ -945,7 +1022,7 @@ export default function CustomerPortalModal({
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-          👨‍🍳 En Cocina
+          👨‍🍳 En restaurante
         </span>
       );
     }
@@ -961,7 +1038,7 @@ export default function CustomerPortalModal({
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-          👨‍🍳 En Cocina / Preparación
+          👨‍🍳 En restaurante
         </span>
       );
     }
@@ -1009,42 +1086,54 @@ export default function CustomerPortalModal({
 
         {/* HEADER (shown when logged in, or clean close button when not logged in) */}
         {customer ? (
-          <div className="p-4 sm:p-5 border-b border-gray-800 flex items-center justify-between relative z-10 bg-[#0d1322]/90 backdrop-blur-md">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10">
-                <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center">
-                  <Crown className="w-5 h-5 text-amber-400" />
+          <div className="p-3 sm:p-5 border-b border-gray-800 flex items-center justify-between relative z-10 bg-[#0d1322]/95 backdrop-blur-md">
+            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 pr-2">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10 shrink-0">
+                <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center overflow-hidden">
+                  {customer.avatarUrl ? (
+                    <img 
+                      src={customer.avatarUrl} 
+                      alt={customer.name} 
+                      className="w-full h-full object-cover shrink-0 aspect-square" 
+                      referrerPolicy="no-referrer" 
+                    />
+                  ) : (
+                    <Crown className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
+                  )}
                 </div>
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-black text-white tracking-tight">Club de Clientes Ryyco</h3>
-                  <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-400/10 text-amber-400 border border-amber-400/20 uppercase tracking-wider">VIP</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h3 className="text-xs sm:text-base font-black text-white tracking-tight truncate">
+                    <span className="sm:hidden">Club Ryyco</span>
+                    <span className="hidden sm:inline">Club de Clientes Ryyco</span>
+                  </h3>
+                  <span className="px-1.5 py-0.2 rounded-full text-[8.5px] sm:text-[9px] font-black bg-amber-400/15 text-amber-400 border border-amber-400/30 uppercase tracking-wider shrink-0">VIP</span>
                 </div>
-                <p className="text-[11px] text-gray-400 font-medium">
+                <p className="text-[10.5px] sm:text-[11px] text-gray-400 font-medium truncate">
                   Hola, {customer.name}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-xs font-mono shadow-sm">
-                <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span>{(customer.points || 0).toLocaleString('es-CO')} RYYCOS</span>
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-[11px] sm:text-xs font-mono shadow-sm whitespace-nowrap">
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                <span>{(customer.points || 0).toLocaleString('es-CO')} <span className="text-[9.5px] text-amber-400/80">RYYCOS</span></span>
               </div>
               <button
                 type="button"
                 onClick={handleLogout}
-                className="h-9 px-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+                className="hidden sm:flex h-9 px-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-700 hover:border-red-500/40 text-xs font-bold transition items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
                 title="Cerrar sesión de cliente"
               >
                 <LogOut className="w-3.5 h-3.5 text-red-400" />
-                <span className="hidden sm:inline">Cerrar Sesión</span>
+                <span>Cerrar Sesión</span>
               </button>
               <button
                 onClick={onClose}
-                className="w-9 h-9 rounded-xl bg-[#E63946] hover:bg-red-600 border border-red-500/60 flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 transition cursor-pointer active:scale-95"
-                title="Cerrar"
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#E63946] hover:bg-red-600 border border-red-500/60 flex items-center justify-center text-white shadow-md shadow-[#E63946]/20 transition cursor-pointer active:scale-95 shrink-0"
+                title="Cerrar ventana"
               >
                 <X className="w-4 h-4 stroke-[2.5]" />
               </button>
@@ -1407,11 +1496,11 @@ export default function CustomerPortalModal({
           <div className="flex flex-col flex-1 overflow-hidden">
             
             {/* Top Navigation Tabs */}
-            <div className="grid grid-cols-4 bg-[#090D16] border-b border-gray-800 p-1.5 gap-1 shrink-0 text-center">
+            <div className="grid grid-cols-4 bg-[#090D16] border-b border-gray-800 p-1 sm:p-1.5 gap-1 shrink-0 text-center">
               <button
                 type="button"
                 onClick={() => setActiveTab('orders')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1.5 transition cursor-pointer ${
+                className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
                   activeTab === 'orders'
                     ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
@@ -1429,7 +1518,7 @@ export default function CustomerPortalModal({
               <button
                 type="button"
                 onClick={() => setActiveTab('wheel')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1.5 transition relative cursor-pointer ${
+                className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition relative cursor-pointer ${
                   activeTab === 'wheel'
                     ? 'bg-gradient-to-r from-amber-500 to-[#E63946] text-white shadow-md shadow-amber-500/20'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
@@ -1438,7 +1527,7 @@ export default function CustomerPortalModal({
                 <Trophy className="w-4 h-4 shrink-0 text-amber-300 animate-pulse" />
                 <span className="truncate">Platos Gratis</span>
                 {(customer.spinsAvailable || 0) > 0 && (
-                  <span className="absolute -top-1 -right-1 sm:static px-1.5 py-0.5 rounded-full text-[9px] font-black bg-amber-400 text-black animate-bounce">
+                  <span className="absolute -top-1 right-1 sm:static px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-400 text-black shadow-sm animate-bounce">
                     {customer.spinsAvailable} Giro
                   </span>
                 )}
@@ -1447,7 +1536,7 @@ export default function CustomerPortalModal({
               <button
                 type="button"
                 onClick={() => setActiveTab('rewards')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1.5 transition cursor-pointer ${
+                className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
                   activeTab === 'rewards'
                     ? 'bg-amber-500 text-black shadow font-black'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
@@ -1460,7 +1549,7 @@ export default function CustomerPortalModal({
               <button
                 type="button"
                 onClick={() => setActiveTab('profile')}
-                className={`py-2.5 px-2 rounded-xl text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1.5 transition cursor-pointer ${
+                className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
                   activeTab === 'profile'
                     ? 'bg-[#1E293B] text-white shadow'
                     : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
@@ -1650,7 +1739,7 @@ export default function CustomerPortalModal({
                                         <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
                                           step >= 3 ? 'text-orange-400' : 'text-gray-500'
                                         }`}>
-                                          {order.status === 'ready' ? 'Listo' : 'En Cocina'}
+                                          {order.status === 'ready' ? 'Listo' : 'En restaurante'}
                                         </span>
                                       </div>
 
@@ -2446,47 +2535,55 @@ export default function CustomerPortalModal({
               {activeTab === 'profile' && (
                 <div className="space-y-4">
                   {/* USER SUMMARY CARD WITH AVATAR & GOOGLE STATUS */}
-                  <div className="bg-[#090D16] border border-[#232E42] rounded-2xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3.5">
-                      <div className="relative">
+                  <div className="bg-[#090D16] border border-[#232E42] rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                    <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                      <div className="relative shrink-0 w-12 h-12 sm:w-14 sm:h-14">
                         {customer.avatarUrl ? (
                           <img
                             src={customer.avatarUrl}
                             alt={customer.name}
-                            className="w-12 h-12 rounded-2xl object-cover border-2 border-amber-400/40 shadow"
+                            className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-amber-400/40 shadow shrink-0 aspect-square"
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white font-black text-lg shadow">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white font-black text-base sm:text-lg shadow shrink-0 aspect-square">
                             {customer.name?.charAt(0)?.toUpperCase() || 'C'}
                           </div>
                         )}
-                        <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#0b0f19]" />
+                        <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-[#090D16] shadow-sm" title="Sesión activa" />
                       </div>
 
-                      <div>
-                        <h4 className="text-sm font-black text-white">{customer.name}</h4>
-                        <div className="flex items-center gap-1.5 mt-0.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm sm:text-base font-black text-white truncate">{customer.name}</h4>
+                          <span className="px-1.5 py-0.2 rounded text-[8.5px] sm:text-[9px] font-black bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
+                            Activo
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1 min-w-0">
                           {customer.email ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-medium border border-emerald-500/20">
-                              <CheckCircle className="w-3 h-3 text-emerald-400" />
-                              {customer.email}
+                            <span className="inline-flex items-center gap-1 text-[10.5px] sm:text-[11px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-medium border border-emerald-500/20 max-w-full truncate">
+                              <CheckCircle className="w-3 h-3 text-emerald-400 shrink-0" />
+                              <span className="truncate">{customer.email}</span>
                             </span>
                           ) : (
-                            <span className="text-[10px] text-gray-400 font-mono">{customer.phone}</span>
+                            <span className="text-[11px] text-gray-400 font-mono truncate">{customer.phone}</span>
                           )}
                         </div>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleLogout}
-                      className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      Cerrar Sesión
-                    </button>
+                    <div className="flex items-center justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-[#232E42]/60 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="w-full sm:w-auto px-3.5 py-2 bg-red-500/10 hover:bg-red-500/20 active:scale-95 text-red-400 border border-red-500/20 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                        title="Cerrar sesión de cliente"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Cerrar Sesión</span>
+                      </button>
+                    </div>
                   </div>
 
                   <form onSubmit={handleUpdateProfile} className="space-y-3.5">
@@ -2604,7 +2701,7 @@ export default function CustomerPortalModal({
                 <img
                   src={googleTempUser.avatarUrl}
                   alt={googleTempUser.name}
-                  className="w-12 h-12 rounded-2xl border-2 border-white/20 object-cover shadow shrink-0"
+                  className="w-12 h-12 rounded-2xl border-2 border-white/20 object-cover shadow shrink-0 aspect-square"
                   referrerPolicy="no-referrer"
                 />
               ) : (

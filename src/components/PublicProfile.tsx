@@ -21,7 +21,9 @@ import {
   subscribeStoreProfile,
   PREDEFINED_THEMES,
   sanitizeCustomerPhone,
-  setActiveCustomerSession
+  setActiveCustomerSession,
+  getActiveCustomerSession,
+  logoutCustomerSession
 } from '../lib/firebase';
 import { 
   getStoredCart, 
@@ -88,6 +90,7 @@ import {
   Heart,
   Search,
   User,
+  LogOut,
   Shirt,
   Cpu,
   Terminal,
@@ -318,6 +321,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       });
     };
 
+    const cachedCustomer = getActiveCustomerSession();
+    if (cachedCustomer) {
+      setActiveCustomer(cachedCustomer);
+    }
     const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
     if (savedPhone) {
       initCustomer(savedPhone);
@@ -1562,6 +1569,52 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <QrCode className="w-[19px] h-[19px]" />
             </button>
 
+            {/* Customer Session: Mi Cuenta / Ingresar (Desktop only) */}
+            {activeCustomer ? (
+              <div className="hidden md:flex items-center gap-1 bg-white/10 backdrop-blur-md border border-white/15 rounded-full pl-1 pr-1.5 py-0.5 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomerPortalTab('profile');
+                    setIsCustomerPortalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition cursor-pointer text-inherit"
+                  title="Mi cuenta de cliente y saldo de RYYCOS"
+                >
+                  <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-black shrink-0 overflow-hidden">
+                    {activeCustomer.avatarUrl ? (
+                      <img src={activeCustomer.avatarUrl} alt={activeCustomer.name} className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      activeCustomer.name.charAt(0).toUpperCase()
+                    )}
+                  </div>
+                  <span className="hidden sm:inline max-w-[70px] truncate text-[11px]">{activeCustomer.name.split(' ')[0]}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await logoutCustomerSession();
+                  }}
+                  className="p-1 text-inherit/60 hover:text-red-400 hover:bg-red-500/10 rounded-full transition cursor-pointer shrink-0"
+                  title="Cerrar sesión de cliente"
+                >
+                  <LogOut className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomerPortalTab('orders');
+                  setIsCustomerPortalOpen(true);
+                }}
+                className="hidden md:flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/15 text-xs font-bold transition shadow-sm cursor-pointer text-inherit"
+                title="Ingresar o crear cuenta de cliente"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline text-[11px]">Ingresar</span>
+              </button>
+            )}
 
             {/* Shoppable cart badge element */}
             <button 

@@ -31,6 +31,7 @@ import {
   saveCustomerProfile,
   fetchCustomerProfileByPhone,
   fetchCustomerProfileByEmail,
+  fetchCustomerProfileByUid,
   setActiveCustomerSession,
   sanitizeCustomerPhone
 } from '../lib/firebase';
@@ -149,8 +150,9 @@ export default function CustomerOrderAuthPromptModal({
           notes: customerNotes?.trim() || existingProfile.notes
         };
 
-        setActiveCustomerSession(updatedProfile);
-        onAuthenticated(updatedProfile);
+        const saved = await saveCustomerProfile(updatedProfile);
+        setActiveCustomerSession(saved);
+        onAuthenticated(saved);
       } else {
         // Register new customer profile!
         const newProfile = await saveCustomerProfile({
@@ -196,8 +198,14 @@ export default function CustomerOrderAuthPromptModal({
       setGoogleAuthStage('loading_profile');
       setLoadingProfileStatusText('Cargando y sincronizando tu perfil...');
 
-      // Check if profile exists by phone or email
-      let profile = await fetchCustomerProfileByPhone(cleanedPhone);
+      // Check if profile exists by uid, phone, or email
+      let profile: CustomerProfile | null = null;
+      if (user.uid) {
+        profile = await fetchCustomerProfileByUid(user.uid);
+      }
+      if (!profile) {
+        profile = await fetchCustomerProfileByPhone(cleanedPhone);
+      }
       if (!profile && gEmail) {
         profile = await fetchCustomerProfileByEmail(gEmail);
       }

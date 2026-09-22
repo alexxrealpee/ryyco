@@ -4389,6 +4389,29 @@ export function listenToUnassignedOrders(onOrdersChanged: (orders: OrderItem[]) 
  * or where a driver accepts after the restaurant already confirmed with its own courier.
  */
 export async function acceptDeliveryOrderTransaction(orderId: string, driver: DriverProfile, systemFee?: number): Promise<{ success: boolean; message: string }> {
+  // Pre-check: Ensure driver does not already have an active unfinished delivery
+  try {
+    const activeOrdersSnap = await getDocs(
+      query(
+        collection(db, 'orders'),
+        where('deliveryDriverId', '==', driver.id)
+      )
+    );
+    const hasUnfinishedOrder = activeOrdersSnap.docs.some(d => {
+      if (d.id === orderId) return false;
+      const o = d.data() as OrderItem;
+      return o.status !== 'delivered' && o.status !== 'cancelled' && o.deliveryStep !== 'delivered';
+    });
+    if (hasUnfinishedOrder) {
+      return {
+        success: false,
+        message: "Ya tienes una entrega en curso. Debes finalizarla y entregarla antes de tomar otra solicitud."
+      };
+    }
+  } catch (errCheck) {
+    console.warn("Could not pre-verify active deliveries:", errCheck);
+  }
+
   const orderRef = doc(db, 'orders', orderId);
 
   try {
@@ -5647,7 +5670,7 @@ export async function fetchCustomerProfileByEmail(rawEmail: string): Promise<Cus
         const item = localStorage.getItem(key);
         if (item) {
           const parsed = JSON.parse(item) as CustomerProfile;
-          if (parsed.email && parsed.email.toLowerCase() === email) {
+          if (parsed.email && parsed.email.trim().toLowerCase() === email) {
             return parsed;
           }
         }
@@ -5655,10 +5678,15 @@ export async function fetchCustomerProfileByEmail(rawEmail: string): Promise<Cus
     }
   } catch (e) {}
 
-  // 2. Fetch from Firestore
+  // 2. Fetch from Firestore (try lowercase match first)
   try {
-    const q = query(collection(db, 'customers'), where('email', '==', email), limit(1));
-    const snap = await getDocs(q);
+    let q = query(collection(db, 'customers'), where('email', '==', email), limit(1));
+    let snap = await getDocs(q);
+    if (snap.empty && rawEmail.trim() !== email) {
+      // Fallback query with raw case if stored previously with uppercase
+      q = query(collection(db, 'customers'), where('email', '==', rawEmail.trim()), limit(1));
+      snap = await getDocs(q);
+    }
     if (!snap.empty) {
       const data = snap.docs[0].data() as CustomerProfile;
       const fullCust: CustomerProfile = {
@@ -5676,6 +5704,68 @@ export async function fetchCustomerProfileByEmail(rawEmail: string): Promise<Cus
     console.warn("Error querying customer by email:", err);
   }
 
+  return null;
+}
+
+/**
+ * Fetch customer profile by Firebase Auth UID (authUid)
+ */
+export async function fetchCustomerProfileByUid(uid: string): Promise<CustomerProfile | null> {
+  if (!uid) return null;
+
+  // 1. Check local cache
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('ryyco_customer_')) {
+        const item = localStorage.getItem(key);
+        if (item) {
+          const parsed = JSON.parse(item) as CustomerProfile;
+          if (parsed.authUid && parsed.authUid === uid) {
+            return parsed;
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 2. Fetch from Firestore
+  try {
+    const q = query(collection(db, 'customers'), where('authUid', '==', uid), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const data = snap.docs[0].data() as CustomerProfile;
+      const fullCust: CustomerProfile = {
+        ...data,
+        id: snap.docs[0].id,
+        phone: data.phone || snap.docs[0].id,
+        wonPrizes: Array.isArray(data.wonPrizes) ? data.wonPrizes : []
+      };
+      try {
+        localStorage.setItem(`ryyco_customer_${fullCust.phone}`, JSON.stringify(fullCust));
+      } catch (e) {}
+      return fullCust;
+    }
+  } catch (err) {
+    console.warn("Error querying customer by authUid:", err);
+  }
+
+  return null;
+}
+
+/**
+ * Synchronously retrieves current active customer profile from localStorage cache if present
+ */
+export function getActiveCustomerSession(): CustomerProfile | null {
+  try {
+    const activePhone = localStorage.getItem('ryyco_active_customer_phone');
+    if (!activePhone) return null;
+    const cleanPhone = sanitizeCustomerPhone(activePhone);
+    const cached = localStorage.getItem(`ryyco_customer_${cleanPhone}`) || localStorage.getItem(`ryyco_customer_${activePhone}`);
+    if (cached) {
+      return JSON.parse(cached) as CustomerProfile;
+    }
+  } catch (e) {}
   return null;
 }
 
@@ -5709,12 +5799,16 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     ? cust.movements 
     : (existing?.movements && existing.movements.length > 0 ? existing.movements : [defaultWelcomeMovement]);
 
+  const cleanEmail = cust.email !== undefined 
+    ? (cust.email ? cust.email.trim().toLowerCase() : '')
+    : (existing?.email ? existing.email.trim().toLowerCase() : '');
+
   const customerData: CustomerProfile = {
     id: phone,
     phone,
     name: cust.name || existing?.name || 'Cliente Ryyco',
     password: cust.password !== undefined ? cust.password : (existing?.password || ''),
-    email: cust.email ?? existing?.email ?? '',
+    email: cleanEmail,
     avatarUrl: cust.avatarUrl ?? existing?.avatarUrl ?? '',
     authUid: cust.authUid ?? existing?.authUid ?? '',
     address: cust.address ?? existing?.address ?? '',
@@ -5781,6 +5875,10 @@ export async function logoutCustomerSession(): Promise<void> {
     const savedPhone = localStorage.getItem('ryyco_active_customer_phone');
     if (savedPhone) {
       localStorage.removeItem(`ryyco_customer_${savedPhone}`);
+      const cleanPhone = sanitizeCustomerPhone(savedPhone);
+      if (cleanPhone && cleanPhone !== savedPhone) {
+        localStorage.removeItem(`ryyco_customer_${cleanPhone}`);
+      }
     }
     localStorage.removeItem('ryyco_active_customer_phone');
     if (localStorage.getItem('ryyco_auth_mode') === 'customer') {

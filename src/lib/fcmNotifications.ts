@@ -1220,6 +1220,16 @@ export function connectFCMStream(
 
         // Auto-handle driver order request push
         if (data.type === 'DRIVER_REQUEST_PUSH' && role === 'driver') {
+          // Suppress alert if driver already has an active delivery in progress
+          const hasActiveDelivery = typeof window !== 'undefined' && (
+            localStorage.getItem('ryyco_driver_has_active_delivery') === 'true' ||
+            (entityUid ? Boolean(localStorage.getItem(`ryyco_active_delivery_${entityUid}`)) : false)
+          );
+          if (hasActiveDelivery) {
+            console.log('[FCM-SSE] Suppressed new driver request push because driver has an active delivery in progress.');
+            return;
+          }
+
           playDriverOrderAlertChime();
           speakDriverVoiceAlert(`¡Nueva solicitud de domicilio en ${data.storeName || 'RYYCO'}!`);
           window.dispatchEvent(new CustomEvent('ryyco:new-driver-request', {
