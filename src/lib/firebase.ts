@@ -2567,19 +2567,18 @@ export function normalizeOrderDriverStatus(order: OrderItem, autoPersist: boolea
     return order;
   }
 
-  const isPickedUpAtStore = 
-    order.deliveryStep === 'picked_up' || 
+  // When driver is on the way to the client (En Camino)
+  const isEnRouteToClient = 
     order.deliveryStep === 'to_client' || 
     order.deliveryStep === 'at_destination' || 
-    order.status === 'picked_up' || 
     order.status === 'delivering';
 
-  if (isPickedUpAtStore) {
+  if (isEnRouteToClient) {
     if (order.status !== 'shipped') {
       const updatedOrder: OrderItem = {
         ...order,
         status: 'shipped',
-        deliveryStep: order.deliveryStep || 'picked_up',
+        deliveryStep: order.deliveryStep || 'to_client',
         deliveryStepUpdatedAt: order.deliveryStepUpdatedAt || new Date().toISOString()
       };
       if (autoPersist && order.id) {
@@ -2588,6 +2587,32 @@ export function normalizeOrderDriverStatus(order: OrderItem, autoPersist: boolea
           deliveryStep: updatedOrder.deliveryStep,
           deliveryStepUpdatedAt: updatedOrder.deliveryStepUpdatedAt
         }).catch((e) => console.warn("Could not auto-heal order status to shipped in Firestore:", e));
+      }
+      return updatedOrder;
+    }
+    return order;
+  }
+
+  // When driver arrived at the store / restaurant (En restaurante)
+  const isAtStore = 
+    order.deliveryStep === 'picked_up' || 
+    order.deliveryStep === 'at_store' || 
+    order.status === 'picked_up';
+
+  if (isAtStore) {
+    if (order.status !== 'picked_up') {
+      const updatedOrder: OrderItem = {
+        ...order,
+        status: 'picked_up',
+        deliveryStep: order.deliveryStep || 'picked_up',
+        deliveryStepUpdatedAt: order.deliveryStepUpdatedAt || new Date().toISOString()
+      };
+      if (autoPersist && order.id) {
+        updateDoc(doc(db, 'orders', order.id), {
+          status: 'picked_up',
+          deliveryStep: updatedOrder.deliveryStep,
+          deliveryStepUpdatedAt: updatedOrder.deliveryStepUpdatedAt
+        }).catch((e) => console.warn("Could not auto-heal order status to picked_up in Firestore:", e));
       }
       return updatedOrder;
     }
@@ -4574,8 +4599,8 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
       ? 'Domiciliario en camino a la tienda' 
       : 'Domiciliario esperando en la tienda';
   } else if (step === 'picked_up') {
-    nextStatus = 'shipped';
-    historyNote = 'Pedido recogido en tienda por el domiciliario (enviado)';
+    nextStatus = 'picked_up';
+    historyNote = 'Domiciliario llegó al restaurante y está gestionando el pedido';
   } else if (step === 'to_client' || step === 'at_destination') {
     nextStatus = 'shipped';
     historyNote = 'Tu pedido va en camino a tu dirección (recogido por domiciliario - enviado)';

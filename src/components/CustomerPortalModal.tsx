@@ -872,16 +872,17 @@ export default function CustomerPortalModal({
     if (ord.status === 'cancelled') return 0;
     if (ord.status === 'delivered' || ord.deliveryStep === 'delivered') return 5;
     if (
-      ord.status === 'delivering' ||
-      ord.status === 'shipped' || 
       ord.deliveryStep === 'to_client' || 
-      ord.deliveryStep === 'at_destination'
+      ord.deliveryStep === 'at_destination' ||
+      ord.status === 'delivering' ||
+      (ord.status === 'shipped' && ord.deliveryStep !== 'picked_up' && ord.deliveryStep !== 'at_store')
     ) return 4;
     if (
+      ord.deliveryStep === 'picked_up' || 
+      ord.deliveryStep === 'at_store' ||
+      ord.status === 'picked_up' ||
       ord.status === 'ready' ||
-      ord.status === 'preparing' || 
-      ord.status === 'picked_up' || 
-      ord.deliveryStep === 'picked_up'
+      ord.status === 'preparing'
     ) return 3;
     if (
       ord.status === 'confirmed' ||
@@ -930,22 +931,22 @@ export default function CustomerPortalModal({
         };
       case 3:
         const isReady = ord.status === 'ready';
-        const isPickedUpAtStore = ord.deliveryStep === 'picked_up' || ord.status === 'picked_up';
+        const driverNameStep3 = ord.deliveryDriverName;
         return {
           stageTitle: isReady 
             ? 'Paso 3 de 5 • Empacado y Listo' 
-            : (isPickedUpAtStore ? 'Paso 3 de 5 • En restaurante (Recogido en Tienda)' : 'Paso 3 de 5 • En restaurante'),
+            : 'Paso 3 de 5 • En restaurante',
           headline: isReady 
             ? '¡Pedido Listo y Empacado!' 
-            : (isPickedUpAtStore 
-                ? (ord.deliveryDriverName ? `${ord.deliveryDriverName} en tienda alistando pedido` : 'En restaurante') 
-                : 'En restaurante'),
+            : (driverNameStep3 
+                ? `Pedido En Restaurante • Domiciliario: ${driverNameStep3}` 
+                : 'Pedido En Restaurante'),
           description: isReady 
             ? 'Tu pedido está listo y empacado, esperando salida para entrega.'
-            : (isPickedUpAtStore 
-                ? (ord.deliveryDriverName ? `${ord.deliveryDriverName} está en el restaurante esperando la entrega de tus platos recién cocinados.` : 'Tu pedido se encuentra en cocina y siendo alistado por el domiciliario en la tienda.')
-                : 'El restaurante está cocinando tus platos con los mejores ingredientes.'),
-          percentageLabel: isReady ? '65%' : (isPickedUpAtStore ? '60%' : '50%'),
+            : (driverNameStep3 
+                ? `${driverNameStep3} llegó al restaurante y se encuentra alistando tu pedido.` 
+                : 'El domiciliario se encuentra en el restaurante alistando tu pedido.'),
+          percentageLabel: isReady ? '65%' : '60%',
           icon: <Utensils className="w-4 h-4 text-orange-400" />,
           iconBadge: 'bg-orange-400/20 text-orange-400 border border-orange-400/30',
           bannerBg: 'bg-orange-500/10 border-orange-500/25',
@@ -1006,10 +1007,10 @@ export default function CustomerPortalModal({
       );
     }
     if (
-      ord.status === 'delivering' || 
-      ord.status === 'shipped' || 
       ord.deliveryStep === 'to_client' || 
-      ord.deliveryStep === 'at_destination'
+      ord.deliveryStep === 'at_destination' ||
+      ord.status === 'delivering' ||
+      (ord.status === 'shipped' && ord.deliveryStep !== 'picked_up' && ord.deliveryStep !== 'at_store')
     ) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-500/15 text-purple-300 border border-purple-500/30">
@@ -1018,11 +1019,11 @@ export default function CustomerPortalModal({
         </span>
       );
     }
-    if (ord.status === 'picked_up' || ord.deliveryStep === 'picked_up') {
+    if (ord.status === 'picked_up' || ord.deliveryStep === 'picked_up' || ord.deliveryStep === 'at_store') {
       return (
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-orange-500/15 text-orange-400 border border-orange-500/30">
           <span className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-          👨‍🍳 En restaurante
+          👨‍🍳 En restaurante {ord.deliveryDriverName ? `• ${ord.deliveryDriverName}` : ''}
         </span>
       );
     }

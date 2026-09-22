@@ -780,7 +780,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       const computedStatus: OrderItem['status'] = 
         nextStep === 'delivered' ? 'delivered' : 
         (nextStep === 'to_client' || nextStep === 'at_destination') ? 'shipped' : 
-        nextStep === 'picked_up' ? 'shipped' : 
+        nextStep === 'picked_up' ? 'picked_up' : 
         (nextStep === 'accepted' || nextStep === 'to_store' || nextStep === 'at_store') ? 'confirmed' :
         activeDelivery.status;
 
@@ -1755,7 +1755,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
                             <a
                               href={(() => {
-                                const isGoingToStore = activeDelivery.deliveryStep === 'accepted' || !isPickedUp;
+                                const isGoingToStore = currentStepIdx === 0;
                                 const originParam = (currentCoords?.latitude && currentCoords?.longitude)
                                   ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
                                   : '';
@@ -1780,11 +1780,11 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               target="_blank"
                               rel="noopener noreferrer"
                               className="py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 shrink-0 active:scale-[0.99] cursor-pointer"
-                              title={activeDelivery.deliveryStep === 'accepted' || !isPickedUp ? "Navegar hacia al restaurante" : "Navegar hacia el cliente"}
+                              title={currentStepIdx === 0 ? "Navegar hacia al restaurante" : "Navegar hacia el cliente"}
                             >
                               <Navigation className="w-4 h-4 text-white" />
                               <span>
-                                {activeDelivery.deliveryStep === 'accepted' || !isPickedUp
+                                {currentStepIdx === 0
                                   ? 'Navegar hacia al restaurante'
                                   : 'Navegar hacia el cliente'}
                               </span>
