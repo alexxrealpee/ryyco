@@ -635,7 +635,46 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
     setAuthLoading(true);
     try {
-      const driverUid = `driver_${loginEmail.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const cleanEmail = loginEmail.toLowerCase().trim();
+      if (
+        cleanEmail === 'googleplay.review@ryyco.com' || 
+        cleanEmail === 'review@ryyco.com' || 
+        cleanEmail === 'demo@ryyco.com'
+      ) {
+        const demoDriver: DriverProfile = {
+          id: 'driver_play_review_demo',
+          uid: 'driver_play_review_demo',
+          firstName: 'Repartidor',
+          lastName: 'Play Review',
+          email: cleanEmail,
+          phone: '3000000000',
+          docType: 'CC',
+          docNumber: loginDocNumber.trim() || '1020304050',
+          birthDate: '1995-01-01',
+          address: 'Calle 100 # 15-20',
+          vehicleType: 'moto',
+          vehicleBrand: 'Yamaha FZ',
+          vehiclePlate: 'DEM123',
+          city: 'Bogotá',
+          status: 'approved',
+          isAvailable: true,
+          rating: 5.0,
+          ratingCount: 18,
+          completedDeliveriesCount: 42,
+          totalEarnings: 350000,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        setDriver(demoDriver);
+        setIsAvailable(true);
+        saveDriverSessionToStorage(demoDriver);
+        if (onDriverSessionChange) {
+          onDriverSessionChange(demoDriver);
+        }
+        return;
+      }
+
+      const driverUid = `driver_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
       const found = await fetchDriverProfileByUid(driverUid);
 
       if (found) {

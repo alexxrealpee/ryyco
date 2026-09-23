@@ -1517,6 +1517,11 @@ let nominatimDisabledUntil = 0;
     res.sendFile(path.join(process.cwd(), 'public', 'privacidad.html'));
   });
 
+  // Dedicated route for Google Play Store Account Deletion URL crawler and direct access
+  app.get(['/eliminar-cuenta', '/delete-account', '/borrar-cuenta', '/solicitud-eliminacion'], (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'public', 'eliminar-cuenta.html'));
+  });
+
   // Serve static files / Vite middleware
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

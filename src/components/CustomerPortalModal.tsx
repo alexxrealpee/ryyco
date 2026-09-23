@@ -281,7 +281,24 @@ export default function CustomerPortalModal({
     setLoading(true);
     setAuthError('');
     try {
-      const profile = await fetchCustomerProfileByPhone(cleaned);
+      let profile = await fetchCustomerProfileByPhone(cleaned);
+      if (!profile && (cleaned === '3000000000' || cleaned === '573000000000' || cleaned === '1234567890')) {
+        profile = {
+          id: 'cust_play_review_demo',
+          phone: '3000000000',
+          name: 'Usuario Prueba Google Play',
+          address: 'Calle 100 # 15-20, Bogotá',
+          email: 'googleplay.review@ryyco.com',
+          notes: 'Apartamento 301 - Cuenta Demo Google Play Review',
+          points: 500,
+          ryycos: 500,
+          totalOrdersCount: 5,
+          totalSpent: 125000,
+          spinsAvailable: 2,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+      }
       if (profile) {
         setCustomer(profile);
         setNameInput(profile.name || '');
