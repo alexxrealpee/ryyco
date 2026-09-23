@@ -46,6 +46,7 @@ import {
   Calendar,
   MessageSquare,
   Scale,
+  ShieldCheck,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -1351,6 +1352,18 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <Scale className="w-4 h-4 text-[#F4B400]" />
             <span>Términos Vendedores</span>
           </button>
+          <a
+            href="/privacidad"
+            onClick={(e) => {
+              e.preventDefault();
+              window.history.pushState({}, '', '/privacidad');
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-white font-extrabold text-xs transition bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2.5 rounded-xl border border-emerald-500/30 active:scale-[0.98] cursor-pointer"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>Política de Privacidad</span>
+          </a>
           <a 
             href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20Ryyco"
             target="_blank"

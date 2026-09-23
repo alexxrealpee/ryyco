@@ -32,11 +32,12 @@ import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
 import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
 import FirstVisitAddressModal from './components/FirstVisitAddressModal';
+import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
 const detectInitialRouteFromUrl = (): { 
-  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'; 
+  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad'; 
   username: string | null;
   reelId: string | null;
 } => {
@@ -81,12 +82,25 @@ const detectInitialRouteFromUrl = (): {
   while (hashUser.endsWith('/')) hashUser = hashUser.substring(0, hashUser.length - 1);
   if (hashUser.startsWith('@')) hashUser = hashUser.substring(1);
 
-  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets', 'registro-cliente'];
+  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets', 'registro-cliente', 'privacidad', 'politica-de-privacidad', 'privacy', 'privacy-policy', 'legal'];
 
   const pathLower = pathUser.toLowerCase();
   const hashLower = hashUser.toLowerCase();
   const searchTab = searchParams.get('tab')?.toLowerCase();
   const searchView = searchParams.get('view')?.toLowerCase();
+
+  // 0. Privacy Policy routes (Google Play Store compliance)
+  if (
+    ['privacidad', 'politica-de-privacidad', 'privacy', 'privacy-policy', 'legal'].includes(pathLower) ||
+    ['privacidad', 'politica-de-privacidad', 'privacy', 'privacy-policy', 'legal'].includes(hashLower) ||
+    searchView === 'privacidad' ||
+    searchView === 'privacy' ||
+    searchView === 'politica-de-privacidad' ||
+    searchParams.has('privacidad') ||
+    searchParams.has('privacy')
+  ) {
+    return { view: 'privacidad', username: null, reelId: null };
+  }
 
   // Route: Direct Customer Registration & Club Portal
   if (
@@ -206,7 +220,7 @@ export default function App() {
   const initialRoute = detectInitialRouteFromUrl();
   const initialDriverSession = getStoredDriverSession();
 
-  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc'>(() => {
+  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad'>(() => {
     if (initialRoute.view === 'driver-portal') return 'driver-portal';
     if (initialDriverSession && (window.location.pathname.toLowerCase().includes('domiciliario') || localStorage.getItem('ryyco_auth_mode') === 'driver')) {
       return 'driver-portal';
@@ -673,6 +687,12 @@ export default function App() {
             setTargetReelId(null);
             setView('tienda');
           }}
+        />
+      )}
+
+      {view === 'privacidad' && (
+        <PrivacyPolicyPage
+          onNavigateHome={handleNavigateHome}
         />
       )}
 

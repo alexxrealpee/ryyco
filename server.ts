@@ -1512,6 +1512,11 @@ let nominatimDisabledUntil = 0;
   // Serve static files from public directory
   app.use(express.static(path.join(process.cwd(), 'public')));
 
+  // Dedicated route for Google Play Store Privacy Policy crawler and direct access
+  app.get(['/privacidad', '/politica-de-privacidad', '/privacy', '/privacy-policy'], (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'public', 'privacidad.html'));
+  });
+
   // Serve static files / Vite middleware
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

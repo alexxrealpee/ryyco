@@ -2547,35 +2547,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-1.5 pt-2">
+                          <div className="grid grid-cols-2 gap-2 pt-2">
                             <button
                               type="button"
                               onClick={() => {
                                 setExtendModalMonths(1);
                                 setConfirmExtendModalUser(user);
                               }}
-                              title={`Extender 1 mes (+1) manteniendo el día de corte (${anchorDay})`}
-                              className="py-2.5 px-1 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1"
+                              title={`Ajustar mes (+1 / -1) manteniendo el día de corte (${anchorDay})`}
+                              className="py-2.5 px-2 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
                             >
-                              <Plus className="w-3.5 h-3.5" /> +1 Mes
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setExtendModalMonths(-1);
-                                setConfirmExtendModalUser(user);
-                              }}
-                              title={`Quitar 1 mes (-1) manteniendo el día de corte (${anchorDay})`}
-                              className="py-2.5 px-1 bg-rose-500/15 hover:bg-rose-500 text-rose-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-rose-500/25 transition cursor-pointer flex items-center justify-center gap-1"
-                            >
-                              <Minus className="w-3.5 h-3.5" /> -1 Mes
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>Ajustar Mes</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => handleDeletePage(user)}
                               disabled={deletingUserId === user.uid}
                               title="Eliminar esta página/tienda"
-                              className="py-2.5 px-1 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-red-500/25 transition cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50"
+                              className="py-2.5 px-2 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-red-500/25 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
                             >
                               {deletingUserId === user.uid ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -2787,21 +2777,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       setExtendModalMonths(1);
                                       setConfirmExtendModalUser(user);
                                     }}
-                                    title={`Extender 1 mes (+1) conservando el día de corte ${anchorDay}`}
-                                    className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-indigo-500/25 transition cursor-pointer flex items-center gap-1"
+                                    title={`Ajustar mes (+1 / -1) conservando el día de corte ${anchorDay}`}
+                                    className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-indigo-500/25 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
                                   >
-                                    <Plus className="w-3.5 h-3.5" /> +1 Mes
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setExtendModalMonths(-1);
-                                      setConfirmExtendModalUser(user);
-                                    }}
-                                    title={`Quitar 1 mes (-1) conservando el día de corte ${anchorDay}`}
-                                    className="px-2.5 py-1.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-rose-500/25 transition cursor-pointer flex items-center gap-1"
-                                  >
-                                    <Minus className="w-3.5 h-3.5" /> -1 Mes
+                                    <Calendar className="w-3.5 h-3.5" />
+                                    <span>Ajustar Mes</span>
                                   </button>
                                   <button
                                     type="button"
