@@ -1536,7 +1536,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
-                    {/* Item 2: Mis RYYCOS & Ruleta */}
+                    {/* Item 2: Mis Puntos Ryycos & Ruleta */}
                     <button
                       id="drawer-my-points-btn"
                       type="button"
@@ -1553,7 +1553,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span className="font-extrabold text-amber-300 text-xs block">
-                            Mis RYYCOS
+                            Puntos Ryycos
                           </span>
                           <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md">
                             Billetera
@@ -1779,15 +1779,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <span>Mis Pedidos</span>
             </button>
 
-            {/* Mis RYYCOS Button (Desktop & Tablet) */}
+            {/* Mis Puntos Ryycos Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-points-btn"
               onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
               className="hidden sm:flex px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-              title="Mis RYYCOS acumulados, Billetera y Transferencias"
+              title="Mis Puntos Ryycos acumulados, Billetera y Transferencias"
             >
               <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span>Mis RYYCOS</span>
+              <span>Puntos Ryycos</span>
             </button>
 
             {/* Dynamic Cart Button in Navbar */}
@@ -3443,7 +3443,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
                 >
                   <Crown className="w-4 h-4 text-black" />
-                  ¡Girar Ruleta de Platos Gratis & Ver Mis RYYCOS! 🎁
+                  ¡Girar Ruleta de Platos Gratis & Ver Mis Puntos Ryycos! 🎁
                 </button>
                 <button
                   onClick={() => {

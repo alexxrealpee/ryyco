@@ -1084,6 +1084,17 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 <ChevronRight className="w-4 h-4" />
               </button>
 
+              {/* Botón de Soporte WhatsApp para Domiciliarios */}
+              <a
+                href="https://wa.me/573106502043?text=%C2%A1Hola!%20Soy%20domiciliario%20de%20Ryyco%20y%20necesito%20soporte%20con%20mi%20cuenta%20o%20entregas."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/30 transition cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
+                <span>Soporte Domiciliarios (WhatsApp: 310 650 2043)</span>
+              </a>
+
               <button
                 type="button"
                 onClick={onNavigateHome}
@@ -1175,6 +1186,19 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
               </button>
             )}
 
+            {/* Botón WhatsApp Soporte Domiciliarios */}
+            <a
+              href="https://wa.me/573106502043?text=%C2%A1Hola!%20Soy%20domiciliario%20de%20Ryyco%20y%20necesito%20soporte%20con%20mi%20cuenta%20o%20entregas."
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Contactar a Soporte de Domiciliarios vía WhatsApp (310 650 2043)"
+              className="px-2.5 sm:px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-2xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+            >
+              <MessageSquare className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span className="hidden lg:inline">Soporte (310 650 2043)</span>
+              <span className="hidden sm:inline lg:hidden">Soporte</span>
+            </a>
+
             <button
               onClick={handleLogout}
               title="Cerrar sesión / Salir"
@@ -1215,7 +1239,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
               Mientras tu cuenta esté en revisión no podrás activar tu disponibilidad ni recibir solicitudes de pedidos.
             </p>
 
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 onClick={() => {
                   fetchDriverProfileByUid(driver.id).then(d => {
@@ -1231,6 +1255,16 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>Verificar Estado de Aprobación</span>
               </button>
+
+              <a
+                href="https://wa.me/573106502043?text=%C2%A1Hola!%20Mi%20cuenta%20de%20domiciliario%20est%C3%A1%20pendiente%20de%20aprobaci%C3%B3n.%20Mi%20correo%20es:%20"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/30 transition cursor-pointer inline-flex items-center gap-2"
+              >
+                <MessageSquare className="w-4 h-4 text-emerald-400" />
+                <span>Consultar Aprobación (WhatsApp: 310 650 2043)</span>
+              </a>
             </div>
           </div>
         )}
@@ -2448,8 +2482,32 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                   </button>
                 </form>
 
-                {/* Session Persistence & Explicit Logout Section */}
+                {/* Soporte WhatsApp para Domiciliarios */}
                 <div className="pt-6 border-t border-[#232B3A] max-w-xl">
+                  <div className="bg-[#090B12] border border-emerald-500/30 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                    <div>
+                      <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-emerald-400" />
+                        <span>Línea Directa de Soporte a Domiciliarios</span>
+                      </h4>
+                      <p className="text-[11px] text-[#A9B2C3] mt-0.5">
+                        ¿Dudas con una orden, cliente, pago o dirección? Escríbenos directamente por WhatsApp.
+                      </p>
+                    </div>
+                    <a
+                      href="https://wa.me/573106502043?text=%C2%A1Hola!%20Soy%20el%20domiciliario%20registrado%20con%20celular%20"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-black rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shrink-0 active:scale-95 shadow-md shadow-emerald-500/20"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>WhatsApp: 310 650 2043</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Session Persistence & Explicit Logout Section */}
+                <div className="pt-4 max-w-xl">
                   <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
                       <h4 className="text-xs font-bold text-white flex items-center gap-2">

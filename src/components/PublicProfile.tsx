@@ -3782,12 +3782,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-xs">
                   <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
-                  <span>¡Ganaste +500 RYYCOS ($500 COP)!</span>
+                  <span>¡Ganaste +500 Puntos Ryycos ($500 COP)!</span>
                 </div>
                 <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">+1 Giro Gratis</span>
               </div>
               <p className="text-[10px] text-gray-300 font-semibold leading-relaxed">
-                Por tu compra sumaste <strong>500 RYYCOS ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
+                Por tu compra sumaste <strong>500 Puntos Ryycos ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
               </p>
               <button
                 type="button"
@@ -3799,7 +3799,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
               >
                 <Sparkles className="w-3.5 h-3.5 text-black" />
-                ¡Girar Ruleta y Ver Mis RYYCOS Ahora!
+                ¡Girar Ruleta y Ver Mis Puntos Ryycos Ahora!
               </button>
             </div>
 

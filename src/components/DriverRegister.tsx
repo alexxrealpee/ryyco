@@ -27,7 +27,8 @@ import {
   Loader2,
   Trash2,
   ZoomIn,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import { registerDriverProfile } from '../lib/firebase';
 import { VehicleType, DriverProfile } from '../types';
@@ -368,6 +369,15 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                 <User className="w-4 h-4" />
                 <span>Ingresar al Portal de Domiciliarios</span>
               </button>
+              <a
+                href={`https://wa.me/573106502043?text=%C2%A1Hola!%20Acabo%20de%20enviar%20mi%20registro%20como%20domiciliario%20en%20Ryyco.%20Mi%20nombre%20es%20${encodeURIComponent(firstName + ' ' + lastName)}%20y%20mi%20correo%20es%20${encodeURIComponent(email)}.`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-black text-sm rounded-xl transition duration-150 cursor-pointer shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+              >
+                <MessageSquare className="w-4 h-4" />
+                <span>Consultar Soporte (310 650 2043)</span>
+              </a>
               <button
                 onClick={onNavigateHome}
                 className="px-6 py-3 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-sm rounded-xl border border-[#232B3A] transition duration-150 cursor-pointer"
@@ -1007,15 +1017,30 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                   )}
                 </button>
 
-                <div className="text-center pt-2">
-                  <span className="text-xs text-[#A9B2C3]">¿Ya tienes una cuenta de domiciliario? </span>
-                  <button
-                    type="button"
-                    onClick={onNavigateLogin}
-                    className="text-xs font-bold text-[#E63946] hover:underline cursor-pointer"
-                  >
-                    Ingresar al Portal de Domiciliarios
-                  </button>
+                <div className="text-center pt-2 space-y-3">
+                  <div>
+                    <span className="text-xs text-[#A9B2C3]">¿Ya tienes una cuenta de domiciliario? </span>
+                    <button
+                      type="button"
+                      onClick={onNavigateLogin}
+                      className="text-xs font-bold text-[#E63946] hover:underline cursor-pointer"
+                    >
+                      Ingresar al Portal de Domiciliarios
+                    </button>
+                  </div>
+
+                  {/* Soporte WhatsApp para Domiciliarios */}
+                  <div className="pt-2">
+                    <a
+                      href="https://wa.me/573106502043?text=%C2%A1Hola!%20Tengo%20preguntas%20sobre%20el%20registro%20como%20domiciliario%20en%20Ryyco."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition shadow-sm"
+                    >
+                      <MessageSquare className="w-4 h-4 text-emerald-400" />
+                      <span>¿Dudas con el registro? Soporte WhatsApp (310 650 2043)</span>
+                    </a>
+                  </div>
                 </div>
               </div>
             </form>

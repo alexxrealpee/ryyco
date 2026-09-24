@@ -454,7 +454,7 @@ export default function CustomerOrderAuthPromptModal({
               <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/40 rounded-2xl p-3 text-amber-300 space-y-1">
                 <div className="flex items-center gap-1.5 font-black text-[11px]">
                   <Sparkles className="w-4 h-4 text-amber-400 animate-bounce" />
-                  <span>¡Gana 1.000 RYYCOS ($1.000 COP) y 1 Giro Gratis! 🎁</span>
+                  <span>¡Gana 1.000 Puntos Ryycos ($1.000 COP) y 1 Giro Gratis! 🎁</span>
                 </div>
                 <p className="text-[10px] text-amber-200/90 font-medium leading-relaxed">
                   Crea tu clave en 1 segundo. Tu pedido continuará automáticamente y podrás rastrear su estado en vivo.

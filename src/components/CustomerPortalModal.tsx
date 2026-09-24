@@ -1137,7 +1137,7 @@ export default function CustomerPortalModal({
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-[11px] sm:text-xs font-mono shadow-sm whitespace-nowrap">
                 <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
-                <span>{(customer.points || 0).toLocaleString('es-CO')} <span className="text-[9.5px] text-amber-400/80">RYYCOS</span></span>
+                <span>{(customer.points || 0).toLocaleString('es-CO')} <span className="text-[9.5px] text-amber-400/90 font-bold">Puntos Ryycos</span></span>
               </div>
               <button
                 type="button"
@@ -2123,9 +2123,9 @@ export default function CustomerPortalModal({
                   <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 p-5 rounded-2xl text-black shadow-xl shadow-amber-500/10 flex flex-col justify-between relative overflow-hidden">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Billetera de RYYCOS</span>
+                        <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Billetera de Puntos Ryycos</span>
                         <h3 className="text-3xl font-black font-mono tracking-tight">
-                          {(customer.points || 0).toLocaleString('es-CO')} <span className="text-sm font-sans font-bold">RYYCOS</span>
+                          {(customer.points || 0).toLocaleString('es-CO')} <span className="text-sm font-sans font-bold">Puntos Ryycos</span>
                         </h3>
                         <p className="text-xs font-black text-black/80 mt-0.5">
                           = ${(customer.points || 0).toLocaleString('es-CO')} COP disponibles para comida y compras
@@ -2138,10 +2138,10 @@ export default function CustomerPortalModal({
 
                     <div className="mt-3 bg-black/15 rounded-xl p-2.5 flex flex-col gap-1 text-[11px] font-bold">
                       <div className="flex items-center justify-between">
-                        <span>⭐ Ganas 500 RYYCOS ($500 COP) por cada compra</span>
-                        <span>1 RYYCO = $1 COP</span>
+                        <span>⭐ Ganas 500 Puntos Ryycos ($500 COP) por cada compra</span>
+                        <span>1 Punto Ryyco = $1 COP</span>
                       </div>
-                      <span className="text-[10px] text-black/70 font-semibold">Tus RYYCOS se acumulan automáticamente, los puedes transferir a otros clientes o canjear por comida.</span>
+                      <span className="text-[10px] text-black/70 font-semibold">Tus Puntos Ryycos se acumulan automáticamente, los puedes transferir a otros clientes o canjear por comida.</span>
                     </div>
 
                     <div className="mt-3 pt-3 border-t border-black/15 flex justify-between items-center text-xs font-bold text-black/90">
@@ -2202,7 +2202,7 @@ export default function CustomerPortalModal({
                     <div className="space-y-4 animate-fade-in">
                       <div>
                         <h4 className="text-sm font-black text-white mb-1">Catálogo de Comida para Redimir</h4>
-                        <p className="text-xs text-gray-400">Canjea tus RYYCOS acumulados por bebidas, postres y platos completos sin pagar nada (1 RYYCO = $1 COP).</p>
+                        <p className="text-xs text-gray-400">Canjea tus Puntos Ryycos acumulados por bebidas, postres y platos completos sin pagar nada (1 Punto Ryyco = $1 COP).</p>
                       </div>
 
                       {/* REWARDS GRID */}
@@ -2223,7 +2223,7 @@ export default function CustomerPortalModal({
                                 <div className="flex justify-between items-start gap-2">
                                   <h5 className="text-xs font-black text-white">{reward.title}</h5>
                                   <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-black bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0">
-                                    {reward.pointsCost.toLocaleString('es-CO')} RYYCOS
+                                    {reward.pointsCost.toLocaleString('es-CO')} Puntos Ryycos
                                   </span>
                                 </div>
                                 <p className="text-[11px] text-gray-400 leading-relaxed">{reward.description}</p>
