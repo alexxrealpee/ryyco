@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, SubscriptionPayment } from '../types';
 import { saveSubscriptionPayment, saveProfile } from '../lib/firebase';
+import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 
 interface BasicPlanTrialModalProps {
   isOpen: boolean;
@@ -440,10 +441,15 @@ export const BasicPlanTrialModal: React.FC<BasicPlanTrialModalProps> = ({
 
                 <a
                   id="modal-whatsapp-help-btn"
-                  href="https://wa.me/573106502043?text=Hola%2C%20necesito%20ayuda%20con%20el%20pago%20de%20mi%20Plan%20B%C3%A1sico%20en%20la%20tienda"
+                  href={getPersonalWhatsAppUrl('573106502043', 'Hola, necesito ayuda con el pago de mi Plan Básico en la tienda')}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openPersonalWhatsApp('573106502043', 'Hola, necesito ayuda con el pago de mi Plan Básico en la tienda');
+                  }}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-400 font-bold text-xs py-2.5 px-4 rounded-xl border border-emerald-500/30 transition flex items-center justify-center gap-2 cursor-pointer"
+                  title="Contactar soporte por WhatsApp Messenger Personal (3106502043)"
                 >
                   <MessageCircle className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
                   <span>Ayuda por WhatsApp 3106502043</span>

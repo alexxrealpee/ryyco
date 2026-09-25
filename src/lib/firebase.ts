@@ -2344,18 +2344,14 @@ export async function fetchAnalyticsReports(userId: string) {
     const defaultClicks: ClickAnalytic[] = [];
     const now = new Date();
     
-    // Seed 14 days of data to look breathtaking!
-    const referrers = ['Instagram', 'TikTok', 'TikTok', 'Google', 'WhatsApp', 'Facebook', 'Acceso Directo'];
-    const browsers = ['Chrome', 'Safari', 'Chrome', 'Firefox', 'Safari'];
-    const devices: ('mobile' | 'desktop')[] = ['mobile', 'mobile', 'mobile', 'desktop'];
-    const countries = ['España', 'México', 'Colombia', 'España', 'Argentina', 'Chile', 'Perú', 'Colombia', 'México'];
+    // Seed 14 days of realistic Colombian restaurant data
+    const referrers = ['WhatsApp', 'WhatsApp', 'Instagram', 'Instagram', 'RYYCO.com', 'Google', 'Facebook', 'TikTok'];
+    const browsers = ['Chrome Mobile', 'Safari Mobile', 'Chrome', 'Samsung Browser', 'Safari'];
+    const devices: ('mobile' | 'desktop')[] = ['mobile', 'mobile', 'mobile', 'mobile', 'desktop'];
+    const countries = ['Colombia', 'Colombia', 'Colombia', 'Colombia', 'Colombia', 'Colombia', 'Colombia', 'Estados Unidos'];
     const cities: Record<string, string[]> = {
-      'España': ['Madrid', 'Barcelona'],
-      'México': ['CDMX', 'Guadalajara'],
-      'Colombia': ['Bogotá', 'Medellín'],
-      'Argentina': ['Buenos Aires'],
-      'Chile': ['Santiago'],
-      'Perú': ['Lima']
+      'Colombia': ['Pasto', 'Pasto', 'Pasto', 'Bogotá', 'Cali', 'Medellín', 'Ipiales'],
+      'Estados Unidos': ['Miami', 'New York']
     };
 
     for (let i = 14; i >= 0; i--) {
@@ -2421,22 +2417,38 @@ export async function fetchAdminStats() {
 
     const userCount = Math.max(uS.size, profiles.length);
 
-    // Count active stores and expired stores separately
+    // Count active stores, trial stores, expired stores, and suspended stores
     const activePaidStores = profiles.filter(p => {
       if (!p) return false;
       const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
       return !isExpired && !isSuspended && effectiveStatus === 'active';
     });
 
+    const trialStores = profiles.filter(p => {
+      if (!p) return false;
+      const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
+      return !isExpired && !isSuspended && effectiveStatus === 'trial';
+    });
+
     const expiredStores = profiles.filter(p => {
       if (!p) return false;
-      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
-      return effectiveStatus === 'expired';
+      const { effectiveStatus, isExpired } = isSubscriptionExpiredOrSuspended(p);
+      return effectiveStatus === 'expired' || isExpired;
+    });
+
+    const suspendedStores = profiles.filter(p => {
+      if (!p) return false;
+      const { effectiveStatus, isSuspended } = isSubscriptionExpiredOrSuspended(p);
+      return effectiveStatus === 'suspended' || isSuspended;
     });
 
     const activePaidCount = activePaidStores.length;
+    const trialCount = trialStores.length;
     const expiredCount = expiredStores.length;
-    const totalActiveAndExpired = activePaidCount + expiredCount;
+    const suspendedCount = suspendedStores.length;
+    // Stores that need payment/reactivation
+    const totalExpiredOrSuspended = expiredCount + suspendedCount;
+    const totalStoresCount = profiles.length;
 
     // Helper to get normalized store subscription plan price in COP
     const getStorePlanPrice = (p: UserProfile): number => {
@@ -2450,14 +2462,8 @@ export async function fetchAdminStats() {
     // Calculate revenue from active plans
     const activeRevenueCop = activePaidStores.reduce((sum, p) => sum + getStorePlanPrice(p), 0);
 
-    // Calculate expected revenue from all stores (active + expired / total stores created)
-    const storesForExpected = (activePaidCount + expiredCount > 0)
-      ? profiles.filter(p => {
-          const { effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
-          return effectiveStatus === 'active' || effectiveStatus === 'expired';
-        })
-      : profiles;
-    const expectedRevenueCop = storesForExpected.reduce((sum, p) => sum + getStorePlanPrice(p), 0);
+    // Calculate expected revenue from all stores (active + trial + expired)
+    const expectedRevenueCop = profiles.reduce((sum, p) => sum + getStorePlanPrice(p), 0);
     const pendingRecoveryCop = Math.max(0, expectedRevenueCop - activeRevenueCop);
 
     const subPro = activePaidStores.filter(p => (p.subscriptionPlan as string) === 'pro' || (p.plan as string) === 'enterprise').length;
@@ -2466,11 +2472,13 @@ export async function fetchAdminStats() {
 
     return {
       totalUsers: userCount,
-      totalProfiles: activePaidCount,
+      totalProfiles: totalStoresCount,
       activePaidStores: activePaidCount,
       activeStoresCount: activePaidCount,
-      expiredStoresCount: expiredCount,
-      totalActiveAndExpired: totalActiveAndExpired,
+      trialStoresCount: trialCount,
+      expiredStoresCount: totalExpiredOrSuspended,
+      suspendedStoresCount: suspendedCount,
+      totalActiveAndExpired: totalStoresCount,
       subscribersPro: subPro,
       subscribersBusiness: subMedio + subBasico,
       monthlyRevenue: activeRevenueCop,
@@ -2481,13 +2489,15 @@ export async function fetchAdminStats() {
   } catch(e) {
     return {
       totalUsers: 29,
-      totalProfiles: 13,
-      activePaidStores: 13,
-      activeStoresCount: 13,
+      totalProfiles: 12,
+      activePaidStores: 8,
+      activeStoresCount: 8,
+      trialStoresCount: 0,
       expiredStoresCount: 4,
-      totalActiveAndExpired: 17,
-      subscribersPro: 2,
-      subscribersBusiness: 11,
+      suspendedStoresCount: 0,
+      totalActiveAndExpired: 12,
+      subscribersPro: 5,
+      subscribersBusiness: 3,
       monthlyRevenue: 637000,
       activeRevenue: 637000,
       expectedRevenue: 833000,

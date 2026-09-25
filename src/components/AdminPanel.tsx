@@ -712,7 +712,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     if (loadingMoreSubs || !hasMoreSubs) return;
     setLoadingMoreSubs(true);
     try {
-      const res = await fetchAdminSubscriptionsBatch(7, lastSubDoc, users.length);
+      const res = await fetchAdminSubscriptionsBatch(50, lastSubDoc, users.length);
       if (res.users.length > 0) {
         setUsers(prev => {
           const existingUids = new Set(prev.map(u => u.uid));
@@ -815,9 +815,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const systemStats = await fetchAdminStats();
       setStats(systemStats);
 
-      // 2. Load initial 7 subscription records (Lazy loading / Infinite scroll)
+      // 2. Load initial 50 subscription records (Lazy loading / Infinite scroll)
       try {
-        const initialSubsBatch = await fetchAdminSubscriptionsBatch(7, null, 0);
+        const initialSubsBatch = await fetchAdminSubscriptionsBatch(50, null, 0);
         setUsers(initialSubsBatch.users as AdminUser[]);
         setLastSubDoc(initialSubsBatch.lastDoc);
         setHasMoreSubs(initialSubsBatch.hasMore);
@@ -1266,15 +1266,22 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         const currentExpired = (prev as any).expiredStoresCount ?? 0;
         const updatedActive = Math.max(0, currentActive + activeDiff);
         const updatedExpired = Math.max(0, currentExpired + expiredDiff);
-        const updatedTotal = updatedActive + updatedExpired;
+        const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
+        const revDiff = activeDiff * planPrice;
+        const updatedActiveRev = Math.max(0, ((prev as any).activeRevenue ?? prev.monthlyRevenue ?? 0) + revDiff);
+        const expectedRev = (prev as any).expectedRevenue ?? updatedActiveRev;
+        const updatedPending = Math.max(0, expectedRev - updatedActiveRev);
 
         return {
           ...prev,
-          totalProfiles: updatedActive,
+          totalProfiles: prev.totalProfiles,
           activePaidStores: updatedActive,
           activeStoresCount: updatedActive,
           expiredStoresCount: updatedExpired,
-          totalActiveAndExpired: updatedTotal
+          totalActiveAndExpired: prev.totalProfiles || (updatedActive + updatedExpired),
+          activeRevenue: updatedActiveRev,
+          monthlyRevenue: updatedActiveRev,
+          pendingRecovery: updatedPending
         };
       });
 
@@ -1987,18 +1994,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   }, [users, selectedSubscriptionStatusFilter]);
 
   const expiredSubscriptionsCount = useMemo(() => {
-    return users.filter(u => {
-      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(u);
-      return effectiveStatus === 'expired';
+    const listCount = users.filter(u => {
+      const { effectiveStatus, isExpired } = isSubscriptionExpiredOrSuspended(u);
+      return effectiveStatus === 'expired' || isExpired;
     }).length;
-  }, [users]);
+    return Math.max(listCount, (stats as any).expiredStoresCount || 0);
+  }, [users, stats]);
 
   const suspendedSubscriptionsCount = useMemo(() => {
-    return users.filter(u => {
-      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(u);
-      return effectiveStatus === 'suspended';
+    const listCount = users.filter(u => {
+      const { effectiveStatus, isSuspended } = isSubscriptionExpiredOrSuspended(u);
+      return effectiveStatus === 'suspended' || isSuspended;
     }).length;
-  }, [users]);
+    return Math.max(listCount, (stats as any).suspendedStoresCount || 0);
+  }, [users, stats]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
@@ -2482,15 +2491,23 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             {/* Global Dashboard Metrics Cards - Only visible in Suscripciones Activas & Registro */}
             {activeAdminTab === 'subscriptions' && (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 animate-fade-in">
-                <div className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg">
+                <div 
+                  onClick={() => handleSwitchTab('users')}
+                  className="bg-[#0b101d] border border-gray-800/80 p-4 rounded-2xl shadow-lg hover:border-gray-700 transition cursor-pointer group"
+                  title="Ver lista de usuarios registrados"
+                >
                   <div className="flex justify-between items-center text-gray-400 mb-1.5">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">USUARIOS TOTALES</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 group-hover:text-emerald-400 transition">
+                      USUARIOS TOTALES
+                    </span>
                     <Users className="w-4 h-4 text-emerald-400" />
                   </div>
-                  <p className="text-2xl font-black text-white mb-1">{stats.totalUsers}</p>
+                  <p className="text-2xl font-black text-white mb-1">
+                    {Math.max(stats.totalUsers, users.length)}
+                  </p>
                   <span className="text-[10px] text-emerald-400 font-bold font-mono flex items-center gap-1">
-                    <span>↑ 12%</span>
-                    <span className="text-gray-500">esta semana</span>
+                    <span>↑ Cuentas Registradas</span>
+                    <span className="text-gray-500">• Clientes y Tiendas</span>
                   </span>
                 </div>
 
@@ -2504,7 +2521,16 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </div>
                     
                     <div className="grid grid-cols-2 gap-2 my-1 bg-gray-900/60 p-2 rounded-xl border border-gray-800/70">
-                      <div className="flex flex-col">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubscriptionStatusFilter(selectedSubscriptionStatusFilter === 'active' ? 'all' : 'active')}
+                        className={`flex flex-col text-left p-1.5 rounded-lg transition cursor-pointer ${
+                          selectedSubscriptionStatusFilter === 'active' 
+                            ? 'bg-emerald-950/40 ring-1 ring-emerald-500/50' 
+                            : 'hover:bg-gray-800/50'
+                        }`}
+                        title="Filtrar tiendas activas"
+                      >
                         <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
                           Activas
@@ -2512,9 +2538,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono mt-0.5">
                           {(stats as any).activeStoresCount ?? stats.totalProfiles ?? 0}
                         </span>
-                      </div>
+                      </button>
 
-                      <div className="flex flex-col border-l border-gray-800/80 pl-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSubscriptionStatusFilter(selectedSubscriptionStatusFilter === 'expired' ? 'all' : 'expired')}
+                        className={`flex flex-col text-left border-l border-gray-800/80 pl-2 p-1.5 rounded-lg transition cursor-pointer ${
+                          selectedSubscriptionStatusFilter === 'expired' 
+                            ? 'bg-red-950/40 ring-1 ring-red-500/50' 
+                            : 'hover:bg-gray-800/50'
+                        }`}
+                        title="Filtrar tiendas expiradas para cobro"
+                      >
                         <span className="text-[9.5px] sm:text-[10px] font-bold text-gray-400 flex items-center gap-1 uppercase tracking-wide">
                           <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block"></span>
                           Expiradas
@@ -2522,15 +2557,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         <span className="text-lg sm:text-xl font-black text-red-400 font-mono mt-0.5">
                           {(stats as any).expiredStoresCount ?? 0}
                         </span>
-                      </div>
+                      </button>
                     </div>
                   </div>
 
                   <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
-                    <span className="text-gray-400 font-bold">Total:</span>
-                    <span className="text-white font-black bg-gray-900 px-2 py-0.5 rounded-md border border-gray-800 text-[11px]">
-                      {((stats as any).activeStoresCount ?? stats.totalProfiles ?? 0) + ((stats as any).expiredStoresCount ?? 0)} tiendas
-                    </span>
+                    <span className="text-gray-400 font-bold">Total Tiendas:</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubscriptionStatusFilter('all')}
+                      className={`text-white font-black px-2 py-0.5 rounded-md border text-[11px] transition cursor-pointer ${
+                        selectedSubscriptionStatusFilter === 'all'
+                          ? 'bg-indigo-600 border-indigo-400'
+                          : 'bg-gray-900 hover:bg-gray-800 border-gray-800'
+                      }`}
+                      title="Ver todas las tiendas registradas"
+                    >
+                      {Math.max(stats.totalProfiles, allStoresList.length, ((stats as any).activeStoresCount ?? 0) + ((stats as any).expiredStoresCount ?? 0))} tiendas
+                    </button>
                   </div>
                 </div>
 

@@ -57,6 +57,7 @@ import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
+import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import { 
   Share2, 
   Copy, 
@@ -1194,8 +1195,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   if (isStoreSuspended) {
     const whatsappContact = "3219730865";
     const waClean = "573219730865";
-    const waMsg = encodeURIComponent(`Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username} (${profile.displayName || 'Tienda'}).`);
-    const waUrl = `https://wa.me/${waClean}?text=${waMsg}`;
+    const waMsg = `Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username} (${profile.displayName || 'Tienda'}).`;
+    const personalWaUrl = getPersonalWhatsAppUrl(waClean, waMsg);
 
     return (
       <div className="min-h-screen bg-[#090b12] text-gray-100 flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
@@ -1233,12 +1234,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             </p>
           </div>
 
-          {/* WhatsApp Contact Action Button */}
+          {/* WhatsApp Contact Action Button - Opens WhatsApp Messenger Personal */}
           <a
-            href={waUrl}
+            href={personalWaUrl}
+            onClick={(e) => {
+              e.preventDefault();
+              openPersonalWhatsApp(waClean, waMsg);
+            }}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full py-4 px-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black text-sm rounded-2xl transition-all shadow-xl hover:shadow-emerald-500/20 flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+            title="Abrir WhatsApp Messenger Personal (3219730865)"
           >
             <MessageCircle className="w-5 h-5 fill-black stroke-none" />
             <span>Contactar WhatsApp: {whatsappContact}</span>
