@@ -30,7 +30,6 @@ import DriverRegister from './components/DriverRegister';
 import DriverPortal, { getStoredDriverSession } from './components/DriverPortal';
 import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
-import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
 import FirstVisitAddressModal from './components/FirstVisitAddressModal';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
 import { DriverProfile } from './types';
@@ -696,22 +695,7 @@ export default function App() {
         />
       )}
 
-      {/* LinnkPro AI Voice Assistant (Floating Button & Voice Shopping Modal) - Solo en página de inicio */}
-      {(view === 'tienda' || view === 'landing') && (
-        <LinnkProVoiceAssistant 
-          activeUsername={targetUsername}
-          onNavigateToStore={(storeUsername) => {
-            window.history.pushState({}, '', '/' + storeUsername);
-            setTargetUsername(storeUsername);
-            setView('profile');
-          }}
-          onNavigateToTienda={() => {
-            window.history.pushState({}, '', '/tienda');
-            setTargetUsername(null);
-            setView('tienda');
-          }}
-        />
-      )}
+// LinnkProVoiceAssistant removed from customer views - AI is strictly for the seller (Dashboard)
 
       {/* First-Visit / Customer Delivery Address Modal in Ipiales */}
       <FirstVisitAddressModal

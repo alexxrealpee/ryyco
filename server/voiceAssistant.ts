@@ -60,8 +60,27 @@ export interface MerchantAdminContext {
   totalOrdersCount: number;
   pendingOrdersCount: number;
   completedOrdersCount: number;
+  cancelledOrdersCount?: number;
   totalSalesAmount: number;
   todaySalesAmount?: number;
+  averageTicket?: number;
+  topSellingItems?: Array<{
+    name: string;
+    quantity: number;
+    revenue: number;
+  }>;
+  lowStockItems?: Array<{
+    name: string;
+    stock: number;
+    price: number;
+  }>;
+  averagePrepTimeMinutes?: number;
+  averageDeliveryTimeMinutes?: number;
+  cancellationReasons?: string[];
+  repeatCustomerRate?: number;
+  uniqueCustomersCount?: number;
+  peakHoursSummary?: string;
+  paymentMethodsSummary?: string;
   recentStoreOrders?: Array<{
     id: string;
     orderNumber: number;
@@ -865,6 +884,79 @@ export async function generateOpenAITTS(openai: OpenAI, text: string): Promise<{
   throw lastErr || new Error("Failed to generate OpenAI TTS");
 }
 
+export function buildEntrepreneurSystemPrompt(
+  storeInfo: MerchantAdminContext,
+  deliveryFee: number
+): string {
+  const topItemsText = (storeInfo.topSellingItems || []).length > 0
+    ? storeInfo.topSellingItems!.map((item, i) => `${i + 1}. ${item.name}: ${item.quantity} vendidos (${item.revenue.toLocaleString('es-CO')} pesos en ventas)`).join('\n')
+    : 'Aún no hay suficiente histórico para ranking de platos estrella.';
+
+  const lowStockText = (storeInfo.lowStockItems || []).length > 0
+    ? storeInfo.lowStockItems!.map(item => `- ${item.name}: ¡Quedan solo ${item.stock} unidades! (Precio: ${item.price.toLocaleString('es-CO')} pesos)`).join('\n')
+    : 'Inventario en buen nivel, sin alertas críticas inmediatas.';
+
+  const recentOrdersSummary = (storeInfo.recentStoreOrders || []).slice(0, 10).map((o: any) => {
+    return `- Pedido #${o.orderNumber || o.id}: Cliente ${o.customerName || 'Cliente'} (${o.customerPhone || 'Sin tel'}), Estado: "${o.status}", Total: ${(o.totalAmount || 0).toLocaleString('es-CO')} pesos, Fecha: ${o.createdAt || 'Hoy'}. ${o.itemsSummary ? `Platos: ${o.itemsSummary}` : ''}`;
+  }).join('\n') || 'No hay pedidos recientes registrados.';
+
+  const productsListSummary = (storeInfo.storeProducts || []).slice(0, 25).map((p: any) => {
+    return `- [ID: ${p.id}] ${p.name}: ${p.price?.toLocaleString('es-CO')} pesos (Stock: ${p.stock ?? 'N/A'}, Estado: ${p.active !== false ? 'Activo' : 'Pausado'}, Cat: ${p.category || 'General'})`;
+  }).join('\n') || 'No hay productos configurados en el catálogo.';
+
+  return `Eres el "Asesor IA Empresarial", el copiloto ejecutivo de gestión y análisis de negocios exclusivo para el VENDEDOR y EMPRESARIO dueño de "${storeInfo.storeName}" (@${storeInfo.storeUsername}) en RYYCO / LinnkPro.
+Habla en español colombiano natural, con un tono profesional, motivador, claro, analítico y ejecutivo de negocios.
+
+TU ENFOQUE Y MISIÓN EXCLUSIVA PARA EL VENDEDOR / EMPRESARIO:
+1. Proveer al vendedor todos los datos que necesita saber como empresario: ventas, rentabilidad, ticket promedio, tiempos en cocina, alertas de inventario, comportamiento de clientes y recomendaciones estratégicas.
+2. NUNCA tomes pedidos aquí ni actúes como mesero; tu único usuario es el EMPRESARIO / COMERCIANTE dueño del negocio.
+3. Pronuncia y escribe siempre los precios en PESOS COLOMBIANOS (ej: "45.000 pesos"). NUNCA uses el símbolo '$' ni hables de dólares.
+4. Entrega respuestas estructuradas, precisas y directamente accionables (con viñetas o números cuando se requiera listar recomendaciones o métricas).
+
+TABLERO EJECUTIVO Y DATOS EN TIEMPO REAL:
+• Negocio: ${storeInfo.storeName} (@${storeInfo.storeUsername})
+• Estado actual de la tienda: ${storeInfo.isClosed ? '🔴 CERRADA (Los clientes no pueden pedir)' : '🟢 ABIERTA (Recibiendo pedidos)'}
+${storeInfo.scheduleEnabled && storeInfo.openTime && storeInfo.closeTime ? `• Horario programado: ${storeInfo.openTime} a ${storeInfo.closeTime}` : ''}
+${storeInfo.phone || storeInfo.whatsapp ? `• Contacto comercial: ${storeInfo.whatsapp || storeInfo.phone}` : ''}
+
+📊 FINANZAS Y VENTAS:
+• Ventas acumuladas totales: ${(storeInfo.totalSalesAmount || 0).toLocaleString('es-CO')} pesos
+• Ventas del día de hoy: ${(storeInfo.todaySalesAmount || 0).toLocaleString('es-CO')} pesos
+• Ticket promedio por pedido (AOV): ${(storeInfo.averageTicket || 0).toLocaleString('es-CO')} pesos
+• Total de pedidos históricos: ${storeInfo.totalOrdersCount}
+• Pedidos completados con éxito: ${storeInfo.completedOrdersCount}
+• Pedidos pendientes por preparar/despachar: ${storeInfo.pendingOrdersCount}
+${storeInfo.cancelledOrdersCount !== undefined ? `• Pedidos cancelados: ${storeInfo.cancelledOrdersCount}` : ''}
+${storeInfo.paymentMethodsSummary ? `• Métodos de pago: ${storeInfo.paymentMethodsSummary}` : ''}
+
+⏱️ EFICIENCIA OPERATIVA Y TIEMPOS (RYYCO):
+• Tiempo promedio de preparación en cocina: ${storeInfo.averagePrepTimeMinutes ? `${storeInfo.averagePrepTimeMinutes} minutos` : 'Calculando con base en pedidos'}
+• Tiempo promedio total hasta entrega al cliente: ${storeInfo.averageDeliveryTimeMinutes ? `${storeInfo.averageDeliveryTimeMinutes} minutos` : 'Calculando con base en entregas'}
+${storeInfo.cancellationReasons && storeInfo.cancellationReasons.length > 0 ? `• Motivos recientes de cancelación: ${storeInfo.cancellationReasons.slice(0, 3).join(', ')}` : ''}
+
+🏆 PRODUCTOS ESTRELLA (MÁS VENDIDOS):
+${topItemsText}
+
+⚠️ ALERTAS DE INVENTARIO Y STOCK:
+${lowStockText}
+• Total productos en catálogo: ${storeInfo.totalProductsCount} (${storeInfo.activeProductsCount} activos para venta)
+
+👥 CLIENTES Y RETENCIÓN:
+• Clientes únicos: ${storeInfo.uniqueCustomersCount || 'Registrados'}
+• Tasa de recompra / clientes recurrentes: ${storeInfo.repeatCustomerRate || 0}%
+${storeInfo.peakHoursSummary ? `• Horas pico de demanda: ${storeInfo.peakHoursSummary}` : ''}
+
+ÚLTIMOS PEDIDOS REGISTRADOS:
+${recentOrdersSummary}
+
+PRODUCTOS DEL MENÚ:
+${productsListSummary}
+
+PAUTAS DE RESPUESTA:
+- Responde de forma ejecutiva, ágil y fundamentada en estos números reales.
+- Si te piden consejos o estrategias, dale 2 a 3 recomendaciones concretas (por ejemplo: combos para subir el ticket promedio, promociones para horas bajas, o alertar sobre insumos que se están agotando).`;
+}
+
 // Process voice assistant message using OpenAI ChatGPT (GPT-4o / GPT-4o-mini)
 export async function processOpenAIVoiceAssistantMessage(
   openai: OpenAI,
@@ -891,46 +983,7 @@ export async function processOpenAIVoiceAssistantMessage(
       todaySalesAmount: recentOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0)
     };
 
-    const recentOrdersSummary = (storeInfo.recentStoreOrders || recentOrders || []).slice(0, 10).map((o: any) => {
-      return `- Pedido #${o.orderNumber || o.id}: Cliente ${o.customerName || 'Cliente'} (${o.customerPhone || 'Sin tel'}), Estado: "${o.status}", Total: ${(o.totalAmount || 0).toLocaleString('es-CO')} pesos, Fecha: ${o.createdAt || 'Hoy'}. ${o.itemsSummary ? `Platos: ${o.itemsSummary}` : ''}`;
-    }).join('\n') || 'No hay pedidos recientes registrados.';
-
-    const productsListSummary = (storeInfo.storeProducts || products || []).slice(0, 25).map((p: any) => {
-      return `- [ID: ${p.id}] ${p.name}: ${p.price?.toLocaleString('es-CO')} pesos (Stock: ${p.stock ?? 'N/A'}, Estado: ${p.active !== false ? 'Activo' : 'Pausado'}, Cat: ${p.category || 'General'})`;
-    }).join('\n') || 'No hay productos configurados en el catálogo.';
-
-    const adminSystemPrompt = `Eres "Linnk Admin IA", el asesor y copiloto virtual de gestión exclusivo para el ADMINISTRADOR y DUEÑO del restaurante/tienda "${storeInfo.storeName}" (@${storeInfo.storeUsername}) en LinnkPro.
-Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
-
-TU ROL Y ENFOQUE EXCLUSIVO:
-- Eres el asistente del administrador del negocio. Tu única misión es INFORMAR Y ASISTIR SOBRE LA OPERACIÓN, VENTAS, PEDIDOS, PRODUCTOS, HORARIOS Y ESTADÍSTICAS DEL RESTAURANTE O TIENDA.
-- No eres un mesero de clientes ni tomas pedidos aquí; eres el gerente inteligente y analista del negocio.
-- Hablas con tono profesional, amable, claro, motivador y ejecutivo en español colombiano natural y cordial.
-
-DATOS OPERATIVOS EN TIEMPO REAL DE ESTE NEGOCIO:
-- Nombre del negocio: ${storeInfo.storeName} (@${storeInfo.storeUsername})
-- Estado actual de la tienda: ${storeInfo.isClosed ? '🔴 CERRADA (Los clientes no pueden pedir)' : '🟢 ABIERTA (Recibiendo pedidos)'}
-${storeInfo.scheduleEnabled && storeInfo.openTime && storeInfo.closeTime ? `- Horario automático: ${storeInfo.openTime} a ${storeInfo.closeTime}` : ''}
-${storeInfo.phone || storeInfo.whatsapp ? `- Teléfono/WhatsApp de contacto: ${storeInfo.whatsapp || storeInfo.phone}` : ''}
-${storeInfo.address ? `- Dirección registrada: ${storeInfo.address}` : ''}
-- Total de productos: ${storeInfo.totalProductsCount} (${storeInfo.activeProductsCount} activos en menú)
-- Total de pedidos acumulados: ${storeInfo.totalOrdersCount}
-- Pedidos pendientes por despachar: ${storeInfo.pendingOrdersCount}
-- Pedidos completados: ${storeInfo.completedOrdersCount}
-- Ventas totales acumuladas: ${(storeInfo.totalSalesAmount || 0).toLocaleString('es-CO')} pesos
-- Tarifa base de domicilio configurada en plataforma: ${deliveryFee.toLocaleString('es-CO')} pesos
-
-ÚLTIMOS PEDIDOS REGISTRADOS EN ESTA TIENDA:
-${recentOrdersSummary}
-
-PRODUCTOS DEL MENÚ DE ESTA TIENDA:
-${productsListSummary}
-
-PAUTAS DE RESPUESTA:
-1. Responde de forma directa, ágil y ejecutiva a lo que pregunte el administrador (ej: ventas del día, pedidos pendientes, productos con bajo stock, estado de la tienda, recomendaciones para vender más o resumen del negocio).
-2. Si te pregunta sobre pedidos o clientes, indícale detalles precisos basándote en los datos reales de arriba.
-3. Pronuncia y escribe siempre los precios en PESOS COLOMBIANOS (ej: "55.000 pesos"). NUNCA uses el símbolo '$' ni hables de dólares.
-4. Mantén las respuestas entre 1 y 4 frases bien estructuradas, precisas y accionables.`;
+    const adminSystemPrompt = buildEntrepreneurSystemPrompt(storeInfo, deliveryFee);
 
     const adminMessages: any[] = [
       { role: 'system', content: adminSystemPrompt }
@@ -1234,7 +1287,103 @@ export async function processVoiceAssistantMessage(
   history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [],
   context: VoiceAssistantContext
 ) {
-  let { products = [], stores = [], cart = [], deliveryFee = 4000, recentOrders = [] } = context;
+  const { role = 'customer', merchantContext } = context;
+  let { products = [], stores = [], cart = [], deliveryFee = 7000, recentOrders = [] } = context;
+
+  // IF ROLE IS ADMIN OR MERCHANT: Exclusively handle the business owner / seller entrepreneur flow
+  if (role === 'admin' || role === 'merchant' || merchantContext) {
+    const storeInfo = merchantContext || {
+      storeUid: '',
+      storeName: 'Mi Tienda',
+      storeUsername: 'tienda',
+      isClosed: false,
+      activeProductsCount: products.length,
+      totalProductsCount: products.length,
+      totalOrdersCount: recentOrders.length,
+      pendingOrdersCount: recentOrders.filter(o => o.status === 'pending' || o.status === 'processing').length,
+      completedOrdersCount: recentOrders.filter(o => o.status === 'completed' || o.status === 'delivered').length,
+      totalSalesAmount: recentOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0)
+    };
+
+    const entrepreneurPrompt = buildEntrepreneurSystemPrompt(storeInfo, deliveryFee);
+
+    const contentsPayload: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+    if (history && history.length > 0) {
+      for (const h of history.slice(-6)) {
+        if ((h.role === 'user' || h.role === 'model') && Array.isArray(h.parts)) {
+          const textPart = h.parts.map((p: any) => p?.text || '').join(' ').trim();
+          if (textPart) {
+            if (contentsPayload.length === 0 && h.role === 'model') continue;
+            if (contentsPayload.length > 0 && contentsPayload[contentsPayload.length - 1].role === h.role) {
+              contentsPayload[contentsPayload.length - 1].parts[0].text += `\n${textPart}`;
+            } else {
+              contentsPayload.push({
+                role: h.role,
+                parts: [{ text: textPart }]
+              });
+            }
+          }
+        }
+      }
+    }
+
+    const cleanUserMsg = userMessage.trim();
+    if (contentsPayload.length > 0 && contentsPayload[contentsPayload.length - 1].role === 'user') {
+      contentsPayload[contentsPayload.length - 1].parts[0].text += `\n${cleanUserMsg}`;
+    } else {
+      contentsPayload.push({
+        role: 'user',
+        parts: [{ text: cleanUserMsg }]
+      });
+    }
+
+    const candidateModels = [
+      'gemini-2.5-flash',
+      'gemini-flash-latest',
+      'gemini-3.1-flash-lite'
+    ];
+
+    let geminiResponse: any = null;
+    for (const modelName of candidateModels) {
+      try {
+        geminiResponse = await ai.models.generateContent({
+          model: modelName,
+          contents: contentsPayload,
+          config: {
+            systemInstruction: entrepreneurPrompt,
+            temperature: 0.6,
+          }
+        });
+        if (geminiResponse && geminiResponse.text) break;
+      } catch (err: any) {
+        console.warn(`Entrepreneur Gemini model ${modelName} error:`, err?.message || err);
+      }
+    }
+
+    if (geminiResponse && geminiResponse.text) {
+      const responseText = geminiResponse.text.trim();
+      const speechText = responseText
+        .replace(/\$\s*([0-9]+(?:[.,][0-9]+)*)\s*(?:COP|cop)?/gi, '$1 pesos')
+        .replace(/([0-9]+(?:[.,][0-9]+)*)\s*(?:COP|cop)/gi, '$1 pesos')
+        .replace(/\$/g, '')
+        .replace(/\bd[oó]lares\b/gi, 'pesos')
+        .replace(/\bd[oó]lar\b/gi, 'peso')
+        .replace(/[*_#`~]/g, '')
+        .replace(/https?:\/\/\S+/g, '')
+        .trim();
+
+      return {
+        text: responseText,
+        speechText,
+        actions: [],
+        functionCalls: []
+      };
+    }
+
+    // Fallback to local heuristic
+    return handleLocalAdminHeuristicResponse(userMessage, storeInfo, deliveryFee);
+  }
 
   // Filter only currently open stores strictly: isClosed === true means CLOSED; isClosed === false means OPEN
   const openStores = stores.filter(s => s.isClosed !== true && !s.suspended);
@@ -1723,44 +1872,74 @@ export function handleLocalAdminHeuristicResponse(
   const lower = userMessage.toLowerCase().trim();
   let responseText = '';
 
-  // 1. Inquiries about sales or revenue
-  if (lower.includes('venta') || lower.includes('vendido') || lower.includes('ingreso') || lower.includes('dinero') || lower.includes('ganancia') || lower.includes('cuanto he vendido') || lower.includes('cuánto he vendido')) {
-    const totalSales = (storeInfo.totalSalesAmount || 0).toLocaleString('es-CO');
-    const totalOrds = storeInfo.totalOrdersCount || 0;
-    const completedOrds = storeInfo.completedOrdersCount || 0;
-    responseText = `Tu negocio "${storeInfo.storeName}" registra ventas acumuladas de ${totalSales} pesos en ${totalOrds} pedidos recibidos (${completedOrds} completados).`;
+  const totalSales = (storeInfo.totalSalesAmount || 0).toLocaleString('es-CO');
+  const todaySales = (storeInfo.todaySalesAmount || 0).toLocaleString('es-CO');
+  const avgTicket = (storeInfo.averageTicket || 0).toLocaleString('es-CO');
+
+  // 1. Inquiries about average ticket / ticket promedio
+  if (lower.includes('ticket') || lower.includes('promedio') || lower.includes('aov')) {
+    responseText = `Tu ticket promedio actual es de ${avgTicket} pesos por pedido. Con ${storeInfo.completedOrdersCount} pedidos completados, has generado ${totalSales} pesos en ventas totales. Para elevar este ticket promedio, te sugiero crear combos de plato + bebida o postre con un incentivo del 10%.`;
   }
-  // 2. Inquiries about pending orders or current orders
-  else if (lower.includes('pedido') || lower.includes('orden') || lower.includes('despacho') || lower.includes('pendiente') || lower.includes('cocina')) {
+  // 2. Inquiries about best sellers / platos más vendidos / estrellas
+  else if (lower.includes('mas vendido') || lower.includes('más vendido') || lower.includes('estrella') || lower.includes('top') || lower.includes('ranking') || lower.includes('mejor')) {
+    if (storeInfo.topSellingItems && storeInfo.topSellingItems.length > 0) {
+      const topList = storeInfo.topSellingItems.slice(0, 3).map((it, idx) => `${idx + 1}. ${it.name} (${it.quantity} unidades vendidas, ${it.revenue.toLocaleString('es-CO')} pesos)`).join(', ');
+      responseText = `Tus productos estrella son: ${topList}. Te recomiendo mantener siempre abastecidos los insumos de estos platos clave para evitar perder pedidos en horas pico.`;
+    } else {
+      responseText = `Actualmente tu catálogo cuenta con ${storeInfo.totalProductsCount} productos. A medida que se entreguen pedidos, se actualizará el ranking automático de tus platos estrella.`;
+    }
+  }
+  // 3. Inquiries about prep times / cocina / tiempos de pedidos RYYCO
+  else if (lower.includes('tiempo') || lower.includes('cocina') || lower.includes('preparacion') || lower.includes('preparación') || lower.includes('despacho') || lower.includes('duracion') || lower.includes('duración')) {
+    const prepMin = storeInfo.averagePrepTimeMinutes || 0;
+    const totalMin = storeInfo.averageDeliveryTimeMinutes || 0;
+    const prepText = prepMin > 0 ? `${prepMin} minutos` : 'en medición continua';
+    const totalText = totalMin > 0 ? `${totalMin} minutos` : 'según distancia';
+    responseText = `Métricas de eficiencia de tu cocina: El tiempo promedio de preparación de tus pedidos es de ${prepText}, y el tiempo total promedio hasta la entrega al cliente es de ${totalText}. Tienes ${storeInfo.pendingOrdersCount} pedido(s) actualmente en cola.`;
+  }
+  // 4. Inquiries about stock alerts / inventario
+  else if (lower.includes('stock') || lower.includes('agotado') || lower.includes('inventario') || lower.includes('escasez') || lower.includes('quedan')) {
+    if (storeInfo.lowStockItems && storeInfo.lowStockItems.length > 0) {
+      const alerts = storeInfo.lowStockItems.slice(0, 3).map(it => `${it.name} (quedan ${it.stock})`).join(', ');
+      responseText = `¡Atención de inventario! Tienes productos con stock crítico: ${alerts}. Revisa y actualiza el stock desde tu Gestor de Productos para no pausar las ventas.`;
+    } else {
+      responseText = `Tu inventario se encuentra en niveles normales. Tienes ${storeInfo.totalProductsCount} productos registrados (${storeInfo.activeProductsCount} activos para venta al público).`;
+    }
+  }
+  // 5. Inquiries about customer retention / clientes recurrentes
+  else if (lower.includes('cliente') || lower.includes('fiel') || lower.includes('recurrente') || lower.includes('recompra') || lower.includes('retencion') || lower.includes('retención')) {
+    const rate = storeInfo.repeatCustomerRate || 0;
+    const count = storeInfo.uniqueCustomersCount || 0;
+    responseText = `Tu negocio cuenta con ${count} clientes únicos y una tasa de recompra del ${rate}%. Esto significa que ${rate}% de tus compradores han vuelto a pedir. Para fidelizar más, mantén la puntualidad en los despachos y envíales mensajes de agradecimiento.`;
+  }
+  // 6. Inquiries about peak hours / horas pico
+  else if (lower.includes('hora') || lower.includes('pico') || lower.includes('demanda') || lower.includes('horario')) {
+    const peak = storeInfo.peakHoursSummary || 'almuerzo (12:00 a 14:30) y cena (19:00 a 21:30)';
+    responseText = `Tus horas de mayor demanda se concentran habitualmente en: ${peak}. Te aconsejo tener la mise en place y los empaques listos 30 minutos antes para agilizar los despachos.`;
+  }
+  // 7. Inquiries about sales or revenue
+  else if (lower.includes('venta') || lower.includes('vendido') || lower.includes('ingreso') || lower.includes('dinero') || lower.includes('ganancia') || lower.includes('cuanto he vendido') || lower.includes('cuánto he vendido')) {
+    responseText = `Tu negocio "${storeInfo.storeName}" registra ventas acumuladas de ${totalSales} pesos en ${storeInfo.totalOrdersCount} pedidos (${storeInfo.completedOrdersCount} completados). Hoy llevas ${todaySales} pesos en ventas y tu ticket promedio se ubica en ${avgTicket} pesos.`;
+  }
+  // 8. Inquiries about pending orders or kitchen queue
+  else if (lower.includes('pedido') || lower.includes('orden') || lower.includes('despacho') || lower.includes('pendiente')) {
     const pending = storeInfo.pendingOrdersCount || 0;
     if (pending > 0) {
       const topOrders = (storeInfo.recentStoreOrders || []).filter(o => o.status === 'pending' || o.status === 'processing');
       const sample = topOrders.slice(0, 2).map(o => `Pedido #${o.orderNumber || o.id} de ${o.customerName} (${(o.totalAmount || 0).toLocaleString('es-CO')} pesos)`).join(', ');
-      responseText = `Tienes ${pending} pedido(s) pendiente(s) por despachar. ${sample ? `Por ejemplo: ${sample}.` : ''} Recuerda cambiar su estado en el panel cuando salgan a entrega.`;
+      responseText = `Tienes ${pending} pedido(s) pendientes por despachar. ${sample ? `Por ejemplo: ${sample}.` : ''} Recuerda marcar "Enviado" cuando el domiciliario lo recoja.`;
     } else {
-      responseText = `Actualmente no tienes pedidos pendientes por preparar. Tienes un total de ${storeInfo.totalOrdersCount} pedidos históricos registrados.`;
+      responseText = `Actualmente no tienes pedidos pendientes en cola. Cuentas con un acumulado histórico de ${storeInfo.totalOrdersCount} pedidos registrados.`;
     }
   }
-  // 3. Inquiries about store status (open/closed/hours)
-  else if (lower.includes('abierto') || lower.includes('cerrado') || lower.includes('horario') || lower.includes('estado')) {
-    const statusText = storeInfo.isClosed ? '🔴 CERRADA' : '🟢 ABIERTA y recibiendo pedidos de clientes';
-    const schedule = storeInfo.scheduleEnabled && storeInfo.openTime && storeInfo.closeTime
-      ? ` Tu horario automático es de ${storeInfo.openTime} a ${storeInfo.closeTime}.`
-      : '';
-    responseText = `Tu tienda "${storeInfo.storeName}" está actualmente ${statusText}.${schedule}`;
+  // 9. Inquiries about business strategies / advice
+  else if (lower.includes('estrategia') || lower.includes('consejo') || lower.includes('recomendacion') || lower.includes('recomendación') || lower.includes('crecer') || lower.includes('subir')) {
+    responseText = `3 recomendaciones clave para tu negocio: 1. Agrupa tus productos más vendidos con bebidas para subir tu ticket promedio de ${avgTicket} pesos. 2. Lanza promociones 2x1 o postre de cortesía en tus horas de menor demanda. 3. Monitorea los tiempos de preparación en cocina para mantener a tus clientes satisfechos y fieles.`;
   }
-  // 4. Inquiries about products, menu or stock
-  else if (lower.includes('producto') || lower.includes('menu') || lower.includes('menú') || lower.includes('plato') || lower.includes('stock') || lower.includes('inventario') || lower.includes('carta')) {
-    const total = storeInfo.totalProductsCount || 0;
-    const active = storeInfo.activeProductsCount || 0;
-    const sample = (storeInfo.storeProducts || []).slice(0, 3).map(p => `${p.name} (${p.price?.toLocaleString('es-CO')} pesos)`).join(', ');
-    responseText = `Tienes ${total} producto(s) en tu catálogo (${active} activos en el menú público). ${sample ? `Platos destacados: ${sample}.` : ''}`;
-  }
-  // 5. Default executive overview
+  // 10. Default executive overview
   else {
-    const totalSales = (storeInfo.totalSalesAmount || 0).toLocaleString('es-CO');
     const pending = storeInfo.pendingOrdersCount || 0;
-    responseText = `Hola, Administrador de "${storeInfo.storeName}". Tu tienda está ${storeInfo.isClosed ? 'cerrada' : 'abierta'}. Tienes ${pending} pedido(s) pendientes y ventas acumuladas de ${totalSales} pesos. ¿En qué aspecto del negocio deseas que te informe?`;
+    responseText = `Hola, Empresario de "${storeInfo.storeName}". Tu tienda está ${storeInfo.isClosed ? '🔴 cerrada' : '🟢 abierta'}. Tienes ${pending} pedido(s) pendientes, ventas acumuladas de ${totalSales} pesos y un ticket promedio de ${avgTicket} pesos. ¿Deseas consultar finanzas, tiempos de cocina, productos estrella o alertas de stock?`;
   }
 
   const speechText = responseText

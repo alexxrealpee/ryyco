@@ -18,6 +18,7 @@ import {
   Copy, 
   LogOut, 
   Sparkles, 
+  Bot,
   TrendingUp, 
   Package, 
   MessageCircle, 
@@ -1735,6 +1736,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
           >
             <TrendingUp className="w-4 h-4" />
             Resumen del Negocio
+          </button>
+
+          {/* Asesor IA Empresarial - Exclusivo para el Vendedor */}
+          <button
+            type="button"
+            onClick={() => setIsAdminVoiceAssistantOpen(true)}
+            className="w-auto md:w-full text-start py-2 px-2 md:px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shrink-0 transition bg-gradient-to-r from-indigo-950/70 via-purple-950/40 to-indigo-900/30 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-400/60 shadow-sm"
+          >
+            <span className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-indigo-400" />
+              <span>Asesor IA Empresarial</span>
+            </span>
+            <span className="text-[9px] bg-indigo-500/30 text-indigo-200 px-1.5 py-0.5 rounded-full font-extrabold uppercase">
+              IA
+            </span>
           </button>
 
           <button
@@ -6214,7 +6230,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         }}
       />
 
-      {/* Floating Fixed IA Administrador Button (Bottom Left) */}
+      {/* Floating Fixed Asesor IA Button (Bottom Left) */}
       <motion.button
         type="button"
         initial={{ scale: 0.8, opacity: 0 }}
@@ -6222,10 +6238,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsAdminVoiceAssistantOpen(true)}
-        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 w-11 h-11 bg-gradient-to-tr from-indigo-600 via-purple-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-400 text-white rounded-full font-black text-sm flex items-center justify-center shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition tracking-wider"
-        title="Abrir IA Administrador"
+        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 w-12 h-12 bg-gradient-to-tr from-indigo-600 via-purple-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-400 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition"
+        title="Asesor IA (Solo Vendedor)"
       >
-        IA
+        <Bot className="w-5 h-5 text-white" />
       </motion.button>
 
       {/* LinnkAdminVoiceAssistant Modal (Specialized AI for Store & Restaurant Managers) */}

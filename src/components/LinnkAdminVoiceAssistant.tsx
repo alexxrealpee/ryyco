@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bot, 
@@ -18,10 +18,14 @@ import {
   ShoppingBag, 
   Package, 
   Store, 
-  RefreshCw,
-  Clock,
-  ArrowRight,
-  DollarSign
+  Clock, 
+  DollarSign,
+  Award,
+  AlertTriangle,
+  Users,
+  Lightbulb,
+  PieChart,
+  RotateCcw
 } from 'lucide-react';
 import { UserProfile, ProductItem, OrderItem } from '../types';
 import { smartApiFetch } from '../lib/apiConfig';
@@ -61,25 +65,140 @@ export default function LinnkAdminVoiceAssistant({
   const recognitionRef = useRef<any>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Initialize welcoming message when opened
+  // Business Analytics Computation for the Entrepreneur
+  const businessMetrics = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing');
+    const completedOrders = orders.filter(o => o.status === 'delivered' || o.status === 'shipped');
+    const cancelledOrders = orders.filter(o => o.status === 'cancelled');
+
+    // Total sales (excluding cancelled orders)
+    const totalSales = orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? (o.totalAmount || 0) : 0), 0);
+
+    // Today sales
+    const todayOrders = orders.filter(o => o.createdAt && o.createdAt.startsWith(todayStr) && o.status !== 'cancelled');
+    const todaySales = todayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+    // Ticket promedio (AOV)
+    const validOrdersCount = orders.filter(o => o.status !== 'cancelled').length;
+    const averageTicket = validOrdersCount > 0 ? Math.round(totalSales / validOrdersCount) : 0;
+
+    // Top selling items aggregation
+    const itemSalesMap: Record<string, { quantity: number; revenue: number }> = {};
+    orders.forEach(o => {
+      if (o.status !== 'cancelled' && Array.isArray(o.items)) {
+        o.items.forEach(it => {
+          const name = it.name || 'Producto';
+          if (!itemSalesMap[name]) itemSalesMap[name] = { quantity: 0, revenue: 0 };
+          itemSalesMap[name].quantity += (it.quantity || 1);
+          itemSalesMap[name].revenue += ((it.price || 0) * (it.quantity || 1));
+        });
+      }
+    });
+
+    const topSellingItems = Object.entries(itemSalesMap)
+      .map(([name, val]) => ({ name, ...val }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 5);
+
+    // Low stock items alerts (stock <= 5)
+    const lowStockItems = products
+      .filter(p => typeof p.stock === 'number' && p.stock <= 5)
+      .map(p => ({ name: p.name, stock: p.stock, price: p.price }));
+
+    // Operational times calculation (preparation and total delivery)
+    const prepOrders = orders.filter(o => typeof o.processingDuration === 'number' && o.processingDuration > 0);
+    const avgPrepMinutes = prepOrders.length > 0
+      ? Math.round(prepOrders.reduce((acc, o) => acc + (o.processingDuration || 0), 0) / prepOrders.length / 60)
+      : 0;
+
+    const deliveryOrders = orders.filter(o => typeof o.totalDuration === 'number' && o.totalDuration > 0);
+    const avgDeliveryMinutes = deliveryOrders.length > 0
+      ? Math.round(deliveryOrders.reduce((acc, o) => acc + (o.totalDuration || 0), 0) / deliveryOrders.length / 60)
+      : 0;
+
+    // Customer retention & loyalty
+    const customerMap: Record<string, number> = {};
+    orders.forEach(o => {
+      const key = o.customerPhone || o.customerName;
+      if (key) customerMap[key] = (customerMap[key] || 0) + 1;
+    });
+    const uniqueCustomersCount = Object.keys(customerMap).length;
+    const repeatCount = Object.values(customerMap).filter(c => c > 1).length;
+    const repeatCustomerRate = uniqueCustomersCount > 0 ? Math.round((repeatCount / uniqueCustomersCount) * 100) : 0;
+
+    // Peak hours analysis
+    let lunchOrders = 0;
+    let dinnerOrders = 0;
+    let otherOrders = 0;
+    orders.forEach(o => {
+      if (o.createdAt) {
+        const hour = new Date(o.createdAt).getHours();
+        if (hour >= 11 && hour <= 15) lunchOrders++;
+        else if (hour >= 18 && hour <= 23) dinnerOrders++;
+        else otherOrders++;
+      }
+    });
+    const peakHoursSummary = `Almuerzo (${lunchOrders} pedidos), Cena (${dinnerOrders} pedidos), Tarde (${otherOrders} pedidos)`;
+
+    // Payment methods breakdown
+    let cashOrders = 0;
+    let digitalOrders = 0;
+    orders.forEach(o => {
+      if (o.paymentMethod === 'delivery_cash' || o.paymentMethod === 'cod') cashOrders++;
+      else digitalOrders++;
+    });
+    const totalPayments = cashOrders + digitalOrders;
+    const paymentMethodsSummary = totalPayments > 0
+      ? `${Math.round((cashOrders / totalPayments) * 100)}% Efectivo contra entrega, ${Math.round((digitalOrders / totalPayments) * 100)}% Transferencia/Digital`
+      : 'Efectivo / Transferencia';
+
+    // Cancellation reasons
+    const cancellationReasons = orders
+      .filter(o => o.status === 'cancelled' && o.cancellationReason)
+      .map(o => o.cancellationReason as string);
+
+    return {
+      pendingOrders,
+      completedOrders,
+      cancelledOrders,
+      totalSales,
+      todaySales,
+      averageTicket,
+      topSellingItems,
+      lowStockItems,
+      avgPrepMinutes,
+      avgDeliveryMinutes,
+      uniqueCustomersCount,
+      repeatCustomerRate,
+      peakHoursSummary,
+      paymentMethodsSummary,
+      cancellationReasons
+    };
+  }, [orders, products]);
+
+  // Welcome message tailored for the business owner
   useEffect(() => {
     if (isOpen && messages.length === 0) {
-      const pendingCount = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
-      const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
       const isClosed = Boolean(profile.isClosed);
-
-      const welcomeText = `¡Hola, ${profile.displayName}! Soy tu Asesor IA exclusivo para la gestión de tu restaurante. Tu tienda está actualmente ${isClosed ? '🔴 CERRADA' : '🟢 ABIERTA'}. Tienes ${pendingCount} pedido(s) pendientes y ventas acumuladas de ${totalSales.toLocaleString('es-CO')} pesos. ¿Qué información deseas consultar hoy?`;
+      const prepText = businessMetrics.avgPrepMinutes > 0 ? `${businessMetrics.avgPrepMinutes} minutos` : 'medición activa';
+      const welcomeText = `¡Hola, ${profile.displayName || 'Empresario'}! Soy tu Asesor IA Empresarial exclusivo para el vendedor.
+Tu negocio está actualmente ${isClosed ? '🔴 CERRADO' : '🟢 ABIERTO'}.
+Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ventas y un ticket promedio de ${businessMetrics.averageTicket.toLocaleString('es-CO')} pesos. Tienes ${businessMetrics.pendingOrders.length} pedido(s) en curso y tu cocina tiene un tiempo promedio de preparación de ${prepText}.
+¿Qué métricas o estrategias deseas consultar hoy?`;
 
       setMessages([
         {
-          id: 'welcome-admin',
+          id: 'welcome-entrepreneur',
           sender: 'assistant',
           text: welcomeText,
           timestamp: new Date()
         }
       ]);
     }
-  }, [isOpen, profile, orders]);
+  }, [isOpen, profile, businessMetrics, messages.length]);
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -88,7 +207,7 @@ export default function LinnkAdminVoiceAssistant({
     }
   }, [messages, isOpen]);
 
-  // Handle Speech Recognition setup (Web Speech API)
+  // Speech Recognition setup (Web Speech API)
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -106,7 +225,7 @@ export default function LinnkAdminVoiceAssistant({
       };
 
       recognition.onerror = (err: any) => {
-        console.warn("Admin Speech recognition notice:", err);
+        console.warn("Entrepreneur Speech recognition notice:", err);
         setIsListening(false);
       };
 
@@ -148,6 +267,7 @@ export default function LinnkAdminVoiceAssistant({
 
   const playVoiceResponse = async (textToSpeak: string) => {
     if (audioMuted) return;
+
     try {
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -207,11 +327,7 @@ export default function LinnkAdminVoiceAssistant({
     setMessages(newMessages);
     setIsProcessing(true);
 
-    // Build rich merchant context for the server
-    const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing');
-    const completedOrders = orders.filter(o => o.status === 'delivered' || o.status === 'shipped');
-    const totalSales = orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-
+    // Comprehensive Merchant Admin Context for the AI Server
     const merchantContextPayload = {
       storeUid: profile.uid || '',
       storeName: profile.displayName || profile.username || 'Mi Restaurante',
@@ -226,9 +342,21 @@ export default function LinnkAdminVoiceAssistant({
       activeProductsCount: products.filter(p => p.active !== false).length,
       totalProductsCount: products.length,
       totalOrdersCount: orders.length,
-      pendingOrdersCount: pendingOrders.length,
-      completedOrdersCount: completedOrders.length,
-      totalSalesAmount: totalSales,
+      pendingOrdersCount: businessMetrics.pendingOrders.length,
+      completedOrdersCount: businessMetrics.completedOrders.length,
+      cancelledOrdersCount: businessMetrics.cancelledOrders.length,
+      totalSalesAmount: businessMetrics.totalSales,
+      todaySalesAmount: businessMetrics.todaySales,
+      averageTicket: businessMetrics.averageTicket,
+      topSellingItems: businessMetrics.topSellingItems,
+      lowStockItems: businessMetrics.lowStockItems,
+      averagePrepTimeMinutes: businessMetrics.avgPrepMinutes,
+      averageDeliveryTimeMinutes: businessMetrics.avgDeliveryMinutes,
+      cancellationReasons: businessMetrics.cancellationReasons,
+      repeatCustomerRate: businessMetrics.repeatCustomerRate,
+      uniqueCustomersCount: businessMetrics.uniqueCustomersCount,
+      peakHoursSummary: businessMetrics.peakHoursSummary,
+      paymentMethodsSummary: businessMetrics.paymentMethodsSummary,
       recentStoreOrders: orders.slice(0, 10).map(o => ({
         id: o.id,
         orderNumber: o.orderNumber || 0,
@@ -275,7 +403,7 @@ export default function LinnkAdminVoiceAssistant({
       });
 
       const data = await response.json();
-      const botResponse = data.text || data.speechText || 'He analizado la información de tu negocio.';
+      const botResponse = data.text || data.speechText || 'He analizado las métricas de tu negocio.';
       const speechToPlay = data.speechText || botResponse;
 
       setMessages(prev => [
@@ -290,8 +418,8 @@ export default function LinnkAdminVoiceAssistant({
 
       playVoiceResponse(speechToPlay);
     } catch (err) {
-      console.error("Error communicating with Admin AI Assistant:", err);
-      const fallbackReply = `Disculpa, tuve un inconveniente temporal al consultar las métricas. Tu negocio cuenta actualmente con ${orders.length} pedidos y ${products.length} productos en menú.`;
+      console.error("Error communicating with Entrepreneur AI Assistant:", err);
+      const fallbackReply = `Disculpa, tuve un inconveniente de conexión. Tu negocio registra ventas acumuladas de ${businessMetrics.totalSales.toLocaleString('es-CO')} pesos, ${businessMetrics.pendingOrders.length} pedido(s) en curso y un ticket promedio de ${businessMetrics.averageTicket.toLocaleString('es-CO')} pesos.`;
       setMessages(prev => [
         ...prev,
         {
@@ -306,47 +434,60 @@ export default function LinnkAdminVoiceAssistant({
     }
   };
 
+  // Quick action prompts designed for the Entrepreneur / Store Owner
   const quickPrompts = [
-    { label: '📊 Ventas y Resumen', text: '¿Cuánto he vendido en total y cuál es el resumen de ventas?' },
-    { label: '📦 Pedidos Pendientes', text: '¿Cuáles pedidos tengo pendientes por despachar?' },
-    { label: '🍔 Platos y Menú', text: '¿Cuántos productos tengo en el menú y cuáles están activos?' },
-    { label: '🕒 Estado de mi Tienda', text: '¿Mi tienda está abierta o cerrada actualmente?' }
+    { label: '📊 Diagnóstico Financiero', icon: TrendingUp, text: '¿Cuál es mi balance de ventas totales, ventas de hoy y ticket promedio?' },
+    { label: '🏆 Platos Más Vendidos', icon: Award, text: '¿Cuáles son mis productos estrella más vendidos y cuáles no se venden?' },
+    { label: '⏱️ Tiempos de Cocina', icon: Clock, text: '¿Cómo van los tiempos promedio de preparación en cocina y entrega de pedidos?' },
+    { label: '⚠️ Alertas de Stock', icon: AlertTriangle, text: '¿Cuáles productos están con stock crítico o agotados en el inventario?' },
+    { label: '👥 Clientes y Retención', icon: Users, text: '¿Cuál es mi tasa de recompra de clientes y en qué horas hay mayor demanda?' },
+    { label: '💡 Estrategias de Venta', icon: Lightbulb, text: 'Dame 3 estrategias concretas para subir mi ticket promedio y facturación esta semana.' }
   ];
 
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
-          className="bg-[#0e131f] border border-indigo-500/30 rounded-3xl w-full max-w-2xl h-[90vh] max-h-[720px] flex flex-col shadow-2xl overflow-hidden relative"
+          className="bg-[#0b0f19] border border-indigo-500/30 rounded-3xl w-full max-w-2xl h-[92vh] max-h-[760px] flex flex-col shadow-2xl overflow-hidden relative"
         >
-          {/* Header */}
-          <div className="px-6 py-4 bg-gradient-to-r from-indigo-950/80 via-purple-950/40 to-[#0e131f] border-b border-indigo-500/20 flex items-center justify-between">
+          {/* Header with Entrepreneur Identity */}
+          <div className="px-5 py-3.5 bg-gradient-to-r from-indigo-950/90 via-purple-950/50 to-[#0b0f19] border-b border-indigo-500/20 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-2xl relative">
-                <Bot className="w-5 h-5" />
+              <div className="p-2.5 bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 rounded-2xl relative shadow-md shadow-indigo-900/40">
+                <Bot className="w-5 h-5 text-indigo-400" />
                 {isSpeaking && (
                   <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-ping" />
                 )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-extrabold text-white tracking-tight">IA Administrador</h2>
-                  <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border border-indigo-500/30">
-                    Negocio & Gestión
+                  <h2 className="text-sm font-extrabold text-white tracking-tight">Asesor IA Empresarial</h2>
+                  <span className="text-[9px] bg-gradient-to-r from-indigo-500/30 to-purple-500/30 text-indigo-200 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider border border-indigo-500/40">
+                    Solo Vendedor
                   </span>
                 </div>
                 <p className="text-[11px] text-gray-400 font-medium">
-                  {profile.displayName || 'Mi Restaurante'} • Datos de ventas, pedidos y catálogo
+                  {profile.displayName || 'Mi Restaurante'} • Datos de ventas, ticket promedio, cocina e inventario
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5">
+              {/* Reset Conversation */}
+              <button
+                type="button"
+                onClick={() => setMessages([])}
+                className="p-2 bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition cursor-pointer"
+                title="Reiniciar conversación"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+
               {/* Audio mute toggle */}
               <button
                 type="button"
@@ -360,7 +501,7 @@ export default function LinnkAdminVoiceAssistant({
                 className={`p-2 rounded-xl border transition cursor-pointer ${
                   audioMuted 
                     ? 'bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20' 
-                    : 'bg-gray-900 border-gray-800 text-gray-300 hover:text-white'
+                    : 'bg-gray-900/80 border-gray-800 text-gray-300 hover:text-white'
                 }`}
                 title={audioMuted ? "Activar audio" : "Silenciar voz"}
               >
@@ -371,43 +512,69 @@ export default function LinnkAdminVoiceAssistant({
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition cursor-pointer"
+                className="p-2 bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           </div>
 
-          {/* Quick Metrics Ribbon */}
-          <div className="px-6 py-2.5 bg-black/40 border-b border-gray-800/80 flex items-center justify-between text-[11px] overflow-x-auto gap-4">
-            <div className="flex items-center gap-1.5 text-gray-400 shrink-0">
-              <Store className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Tienda:</span>
-              <span className={`font-bold ${profile.isClosed ? 'text-red-400' : 'text-emerald-400'}`}>
-                {profile.isClosed ? 'Cerrada' : 'Abierta'}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 text-gray-400 shrink-0">
-              <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
-              <span>Pendientes:</span>
-              <span className="font-bold text-white">
-                {orders.filter(o => o.status === 'pending' || o.status === 'processing').length}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 text-gray-400 shrink-0">
+          {/* Entrepreneur Executive Metrics Ribbon */}
+          <div className="px-4 py-2.5 bg-black/50 border-b border-gray-800/80 flex items-center justify-between text-[11px] overflow-x-auto gap-3 no-scrollbar">
+            {/* Sales */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-900/70 border border-gray-800/80 text-gray-400 shrink-0">
               <DollarSign className="w-3.5 h-3.5 text-indigo-400" />
               <span>Ventas:</span>
               <span className="font-bold text-indigo-300">
-                {orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString('es-CO')} pesos
+                {businessMetrics.totalSales.toLocaleString('es-CO')}
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5 text-gray-400 shrink-0">
-              <Package className="w-3.5 h-3.5 text-purple-400" />
-              <span>Productos:</span>
-              <span className="font-bold text-white">{products.length}</span>
+            {/* Ticket Promedio */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-900/70 border border-gray-800/80 text-gray-400 shrink-0">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Ticket Prom:</span>
+              <span className="font-bold text-emerald-300">
+                {businessMetrics.averageTicket.toLocaleString('es-CO')}
+              </span>
+            </div>
+
+            {/* Cocina Prep Time */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-900/70 border border-gray-800/80 text-gray-400 shrink-0">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              <span>Cocina:</span>
+              <span className="font-bold text-amber-300">
+                {businessMetrics.avgPrepMinutes > 0 ? `${businessMetrics.avgPrepMinutes}m` : 'En cola'}
+              </span>
+            </div>
+
+            {/* Pending Orders */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-900/70 border border-gray-800/80 text-gray-400 shrink-0">
+              <ShoppingBag className="w-3.5 h-3.5 text-purple-400" />
+              <span>Pendientes:</span>
+              <span className="font-bold text-white">
+                {businessMetrics.pendingOrders.length}
+              </span>
+            </div>
+
+            {/* Low stock alert */}
+            {businessMetrics.lowStockItems.length > 0 && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-red-950/40 border border-red-500/30 text-red-300 shrink-0">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                <span>Stock bajo:</span>
+                <span className="font-bold text-red-200">
+                  {businessMetrics.lowStockItems.length}
+                </span>
+              </div>
+            )}
+
+            {/* Repeat customer rate */}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gray-900/70 border border-gray-800/80 text-gray-400 shrink-0">
+              <Users className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Recompra:</span>
+              <span className="font-bold text-cyan-300">
+                {businessMetrics.repeatCustomerRate}%
+              </span>
             </div>
           </div>
 
@@ -427,10 +594,10 @@ export default function LinnkAdminVoiceAssistant({
                 )}
 
                 <div
-                  className={`max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-3 text-xs sm:text-[13px] leading-relaxed ${
+                  className={`max-w-[88%] sm:max-w-[80%] rounded-2xl px-4 py-3 text-xs sm:text-[13px] leading-relaxed ${
                     msg.sender === 'user'
-                      ? 'bg-indigo-600 text-white font-medium shadow-md'
-                      : 'bg-[#151b2c] text-gray-200 border border-gray-800 shadow-sm'
+                      ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white font-medium shadow-md shadow-indigo-900/30'
+                      : 'bg-[#131929] text-gray-200 border border-indigo-500/10 shadow-sm'
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{msg.text}</p>
@@ -450,9 +617,9 @@ export default function LinnkAdminVoiceAssistant({
                 <div className="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
                   <Bot className="w-4 h-4" />
                 </div>
-                <div className="bg-[#151b2c] border border-indigo-500/20 rounded-2xl px-4 py-2.5 text-xs text-indigo-300 flex items-center gap-2">
+                <div className="bg-[#131929] border border-indigo-500/20 rounded-2xl px-4 py-2.5 text-xs text-indigo-300 flex items-center gap-2">
                   <Sparkles className="w-3.5 h-3.5 animate-spin" />
-                  <span>Respondiendo...</span>
+                  <span>Analizando datos de tu negocio...</span>
                 </div>
               </motion.div>
             )}
@@ -460,23 +627,27 @@ export default function LinnkAdminVoiceAssistant({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Quick Prompts */}
-          <div className="px-4 py-2 bg-[#090c14] border-t border-gray-800/80 flex items-center gap-2 overflow-x-auto no-scrollbar">
-            {quickPrompts.map((q, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleSendMessage(q.text)}
-                disabled={isProcessing}
-                className="px-3 py-1.5 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-xl text-[11px] font-semibold text-gray-300 hover:text-white whitespace-nowrap transition cursor-pointer disabled:opacity-50 shrink-0"
-              >
-                {q.label}
-              </button>
-            ))}
+          {/* Quick Action Prompts for the Entrepreneur */}
+          <div className="px-4 py-2.5 bg-[#080b12] border-t border-gray-800/80 flex items-center gap-2 overflow-x-auto no-scrollbar">
+            {quickPrompts.map((q, idx) => {
+              const IconComp = q.icon;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSendMessage(q.text)}
+                  disabled={isProcessing}
+                  className="px-3 py-1.5 bg-gray-900/90 hover:bg-gray-800 border border-gray-800/80 hover:border-indigo-500/40 rounded-xl text-[11px] font-semibold text-gray-300 hover:text-white whitespace-nowrap transition cursor-pointer disabled:opacity-50 shrink-0 flex items-center gap-1.5"
+                >
+                  <IconComp className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>{q.label}</span>
+                </button>
+              );
+            })}
           </div>
 
-          {/* Input Box */}
-          <div className="p-4 bg-[#090c14] border-t border-gray-800">
+          {/* Input Box with Voice & Send Controls */}
+          <div className="p-3.5 sm:p-4 bg-[#080b12] border-t border-gray-800">
             <form
               onSubmit={(e) => {
                 e.preventDefault();
@@ -489,9 +660,9 @@ export default function LinnkAdminVoiceAssistant({
                   type="text"
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  placeholder="Pregúntale a la IA sobre pedidos, ventas, productos..."
+                  placeholder="Pregúntale a tu Asesor IA sobre ventas, ticket promedio, cocina..."
                   disabled={isProcessing}
-                  className="w-full h-11 bg-gray-900/90 border border-gray-800 focus:border-indigo-500 px-4 rounded-xl text-xs sm:text-sm text-white placeholder-gray-500 outline-none transition pr-10"
+                  className="w-full h-11 bg-gray-900/90 border border-gray-800 focus:border-indigo-500 px-4 rounded-xl text-xs sm:text-sm text-white placeholder-gray-500 outline-none transition"
                 />
               </div>
 
@@ -513,7 +684,7 @@ export default function LinnkAdminVoiceAssistant({
               <button
                 type="submit"
                 disabled={!inputText.trim() || isProcessing}
-                className="w-11 h-11 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-xl flex items-center justify-center transition cursor-pointer shrink-0"
+                className="w-11 h-11 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-xl flex items-center justify-center transition cursor-pointer shrink-0 shadow-md shadow-indigo-900/30"
               >
                 <Send className="w-4 h-4" />
               </button>
