@@ -34,8 +34,13 @@ import AdminReferralsManager from './AdminReferralsManager';
 import AdminStoresManager from './AdminStoresManager';
 import AdminSalesStats from './AdminSalesStats';
 import AdminCustomersRanking from './AdminCustomersRanking';
+import AdminWhatsAppDriversModal from './AdminWhatsAppDriversModal';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
-import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule } from '../types';
+import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile } from '../types';
+import { 
+  subscribeToActiveDrivers, 
+  notifyActiveDriversViaServer 
+} from '../lib/whatsappDriverNotifications';
 import { 
   Users, 
   Settings, 
@@ -287,7 +292,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     customerName: string;
     storeName: string;
     totalAmount: number;
+    orderObj?: OrderItem;
   } | null>(null);
+
+  // Active delivery drivers state for real-time WhatsApp order dispatch
+  const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
+  const [allApprovedDrivers, setAllApprovedDrivers] = useState<DriverProfile[]>([]);
+  const [whatsAppDispatchOrder, setWhatsAppDispatchOrder] = useState<OrderItem | null>(null);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
   const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
   const [isRequestingFCM, setIsRequestingFCM] = useState<boolean>(false);
@@ -464,6 +475,22 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
+  // Real-time listener for active delivery drivers across the platform
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    try {
+      unsub = subscribeToActiveDrivers((active, all) => {
+        setActiveDrivers(active);
+        setAllApprovedDrivers(all);
+      });
+    } catch (err) {
+      console.warn("Error subscribing to active drivers:", err);
+    }
+    return () => {
+      if (unsub) unsub();
+    };
+  }, []);
+
   // Fire sound, vibration and FCM push notification when a new order arrives from ANY restaurant
   const triggerNewOrderAlert = (order: OrderItem) => {
     const store = storesMap[order.storeOwnerId || ''] || allStoresList.find(s => s.uid === order.storeOwnerId);
@@ -472,13 +499,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     // Dispatch full FCM & Web Push notification with ServiceWorker, vibration, audio chime & backend broadcast
     triggerAdminOrderPush(order, storeName);
 
+    // Notify backend and active delivery drivers via WhatsApp notification pipeline
+    const isDeliveryOrder = order.orderType !== 'table' && order.orderType !== 'pickup' && !checkIsTableOrder(order) && !checkIsPickupOrder(order);
+    if (isDeliveryOrder && activeDrivers.length > 0) {
+      notifyActiveDriversViaServer(order, activeDrivers, storeName).catch(() => {});
+    }
+
     setNewIncomingOrderAlert({
       id: order.id,
       orderNumber: order.orderNumber,
       customerName: order.customerName || 'Cliente',
       storeName,
-      totalAmount: order.totalAmount || 0
+      totalAmount: order.totalAmount || 0,
+      orderObj: order
     });
+
+    // If auto-open is enabled in settings, open WhatsApp drivers dispatch modal right away
+    if (systemSettings?.autoNotifyActiveDriversWhatsApp && isDeliveryOrder) {
+      setWhatsAppDispatchOrder(order);
+    }
   };
 
   // Test push notification simulation with sound and vibration
@@ -528,7 +567,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [storesMap, allStoresList]);
+  }, [storesMap, allStoresList, activeDrivers, systemSettings]);
 
   // Intelligent lazy loading state for subscriptions (7 items per batch)
   const [lastSubDoc, setLastSubDoc] = useState<any | null>(null);
@@ -688,10 +727,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       await updateSystemSettings({
         defaultDeliveryFee: numFee,
         supportPhone: systemSettings.supportPhone || '3219730865',
-        supportEmail: systemSettings.supportEmail || 'soporte@ryyco.com'
+        supportEmail: systemSettings.supportEmail || 'soporte@ryyco.com',
+        driversWhatsAppGroupUrl: systemSettings.driversWhatsAppGroupUrl || '',
+        autoNotifyActiveDriversWhatsApp: Boolean(systemSettings.autoNotifyActiveDriversWhatsApp),
+        whatsappDriverTemplate: systemSettings.whatsappDriverTemplate || ''
       });
-      setSystemSettings(prev => ({ ...prev, defaultDeliveryFee: numFee }));
-      setNotif(`🟢 Costo general de domicilio actualizado a $${numFee.toLocaleString('es-CO')} COP correctamente.`);
+      setSystemSettings(prev => ({ 
+        ...prev, 
+        defaultDeliveryFee: numFee,
+        driversWhatsAppGroupUrl: prev.driversWhatsAppGroupUrl || '',
+        autoNotifyActiveDriversWhatsApp: Boolean(prev.autoNotifyActiveDriversWhatsApp),
+        whatsappDriverTemplate: prev.whatsappDriverTemplate || ''
+      }));
+      setNotif(`🟢 Configuración de sistema y WhatsApp de domiciliarios actualizada correctamente.`);
       setTimeout(() => setNotif(''), 5000);
     } catch (err) {
       console.error("Error guardando ajustes del sistema:", err);
@@ -3314,37 +3362,63 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
             {/* New Incoming Order Floating Banner */}
             {newIncomingOrderAlert && (
-              <div className="bg-gradient-to-r from-emerald-950/90 via-emerald-900/70 to-emerald-950/90 border-2 border-emerald-500/50 p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-3 animate-pulse">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/40 shrink-0">
+              <div className="bg-gradient-to-r from-emerald-950/95 via-emerald-900/85 to-emerald-950/95 border-2 border-emerald-500/60 p-3.5 sm:p-4 rounded-2xl shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 animate-pulse">
+                <div className="flex items-start gap-3 min-w-0 flex-1">
+                  <div className="p-2 sm:p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/40 shrink-0 mt-0.5">
                     <Bell className="w-5 h-5 animate-bounce" />
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2 truncate">
-                      <span>🚨 ¡NUEVO PEDIDO RECIBIDO!</span>
-                      <span className="text-amber-400 font-mono">#{newIncomingOrderAlert.orderNumber || ''}</span>
-                    </h4>
-                    <p className="text-xs text-gray-300 truncate">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-1.5 flex-wrap">
+                        <span>🚨 ¡NUEVO PEDIDO RECIBIDO!</span>
+                        <span className="text-amber-400 font-mono">#{newIncomingOrderAlert.orderNumber || ''}</span>
+                      </h4>
+                      {/* Mobile close button */}
+                      <button
+                        type="button"
+                        onClick={() => setNewIncomingOrderAlert(null)}
+                        className="md:hidden p-1 text-gray-400 hover:text-white rounded-lg transition cursor-pointer shrink-0 -mr-1 -mt-1"
+                        title="Cerrar alerta"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-200 mt-1 leading-relaxed break-words">
                       Tienda: <span className="text-emerald-300 font-bold">{newIncomingOrderAlert.storeName}</span> • Cliente: <span className="text-white font-bold">{newIncomingOrderAlert.customerName}</span> • Total: <span className="text-emerald-400 font-bold">${newIncomingOrderAlert.totalAmount.toLocaleString('es-CO')} COP</span>
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+
+                <div className="flex items-center gap-2 w-full md:w-auto shrink-0 pt-1 md:pt-0 border-t border-emerald-800/40 md:border-t-0">
                   <button
                     type="button"
                     onClick={() => {
-                      const targetOrder = allOrders.find(o => o.id === newIncomingOrderAlert.id);
-                      if (targetOrder) setViewingOrder(targetOrder);
-                      setNewIncomingOrderAlert(null);
+                      const targetOrder = allOrders.find(o => o.id === newIncomingOrderAlert.id) || newIncomingOrderAlert.orderObj;
+                      if (targetOrder) setWhatsAppDispatchOrder(targetOrder);
                     }}
-                    className="px-3.5 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer"
+                    className="flex-1 md:flex-initial px-3.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 active:scale-98 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 border border-emerald-400/40 text-center"
+                    title={`Avisar por WhatsApp a ${activeDrivers.length} domiciliarios activos`}
                   >
-                    Ver Pedido
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
+                    <span>Avisar Domiciliarios ({activeDrivers.length} activos)</span>
                   </button>
                   <button
                     type="button"
+                    onClick={() => {
+                      const targetOrder = allOrders.find(o => o.id === newIncomingOrderAlert.id) || newIncomingOrderAlert.orderObj;
+                      if (targetOrder) setViewingOrder(targetOrder);
+                      setNewIncomingOrderAlert(null);
+                    }}
+                    className="px-3.5 py-2.5 bg-gray-800 hover:bg-gray-700 active:scale-98 text-white font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer shrink-0 text-center"
+                  >
+                    Ver Pedido
+                  </button>
+                  {/* Desktop close button */}
+                  <button
+                    type="button"
                     onClick={() => setNewIncomingOrderAlert(null)}
-                    className="p-1.5 text-gray-400 hover:text-white rounded-lg transition cursor-pointer"
+                    className="hidden md:inline-flex p-2 text-gray-400 hover:text-white rounded-lg transition cursor-pointer shrink-0"
+                    title="Cerrar alerta"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -3650,6 +3724,17 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <MessageCircle className="w-4 h-4 text-emerald-400" />
                             <span>WhatsApp Cliente</span>
                           </button>
+                          {!checkIsTableOrder(order) && !checkIsPickupOrder(order) && effectiveStatus === 'pending' && (
+                            <button
+                              type="button"
+                              onClick={() => setWhatsAppDispatchOrder(order)}
+                              className="col-span-2 py-2 px-3 bg-gradient-to-r from-emerald-950/90 to-emerald-900/90 hover:from-emerald-900 hover:to-emerald-800 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-emerald-500/40 transition active:scale-98 shadow-sm cursor-pointer"
+                              title="Avisar por WhatsApp a los domiciliarios activos"
+                            >
+                              <Bike className="w-4 h-4 text-emerald-400" />
+                              <span>Avisar Domiciliarios por WhatsApp ({activeDrivers.length} activos)</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -3679,6 +3764,26 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           minute: '2-digit',
                           hour12: true
                         }).replace(/\./g, '').toUpperCase();
+                        const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
+                                          Boolean(order.driverId && order.driverId.trim() !== '') ||
+                                          Boolean(order.deliveryStep);
+                        const isDeliveredOrCancelled = order.status === 'delivered' || order.status === 'cancelled';
+                        const isPickedUpAtStore = !isDeliveredOrCancelled && (
+                          order.status === 'shipped' ||
+                          order.status === 'delivering' ||
+                          order.status === 'picked_up' ||
+                          order.deliveryStep === 'picked_up' ||
+                          order.deliveryStep === 'to_client' ||
+                          order.deliveryStep === 'at_destination'
+                        );
+                        const effectiveStatus = isDeliveredOrCancelled
+                          ? order.status
+                          : isPickedUpAtStore
+                          ? 'shipped'
+                          : (hasDriver && (order.status === 'pending' || order.status === 'confirmed'))
+                          ? 'processing'
+                          : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
+                        const isPending = effectiveStatus === 'pending';
                         return (
                           <tr key={order.id} className="hover:bg-gray-900/30 group transition-colors">
                             <td className="py-3.5 px-3 align-top w-[80px]">
@@ -3871,6 +3976,16 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </td>
                             <td className="py-3.5 px-3 align-top text-right sticky right-0 bg-[#090b14] group-hover:bg-[#0f1424] z-10 border-l border-gray-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.35)] transition-colors">
                               <div className="flex items-center justify-end gap-1.5">
+                                {!checkIsTableOrder(order) && !checkIsPickupOrder(order) && isPending && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setWhatsAppDispatchOrder(order)}
+                                    className="p-1.5 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-400 hover:text-white rounded-lg border border-emerald-500/30 transition inline-flex items-center justify-center cursor-pointer active:scale-95"
+                                    title={`Avisar a ${activeDrivers.length} domiciliarios activos por WhatsApp`}
+                                  >
+                                    <Bike className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   onClick={() => setViewingOrder(order)}
@@ -4257,6 +4372,57 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
                 </div>
 
+                {/* WhatsApp Driver Notifications Settings Card */}
+                <div className="bg-[#0b101d] border border-emerald-500/25 p-5 rounded-2xl space-y-4 shadow-xl">
+                  <div className="flex items-center gap-2.5 border-b border-gray-800/80 pb-3">
+                    <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                      <MessageCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-white uppercase tracking-tight">Avisos por WhatsApp a Domiciliarios</h4>
+                      <p className="text-[10px] text-gray-400">Automatización y avisos a domiciliarios que estén activos al ingresar pedidos</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Auto-open toggle */}
+                    <div className="flex items-center justify-between p-3.5 bg-gray-950/80 border border-gray-800 rounded-xl">
+                      <div className="space-y-0.5 pr-3">
+                        <span className="text-xs font-bold text-white block">Abrir panel de WhatsApp automáticamente al ingresar un pedido</span>
+                        <span className="text-[11px] text-gray-400 block">
+                          Al entrar un nuevo pedido de entrega a la administración general, se desplegará de inmediato la opción de enviar la alerta por WhatsApp a los domiciliarios que estén activos en ese momento.
+                        </span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input 
+                          type="checkbox"
+                          checked={Boolean(systemSettings.autoNotifyActiveDriversWhatsApp)}
+                          onChange={(e) => setSystemSettings(prev => ({ ...prev, autoNotifyActiveDriversWhatsApp: e.target.checked }))}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                      </label>
+                    </div>
+
+                    {/* WhatsApp group link */}
+                    <div>
+                      <label className="text-xs font-bold text-gray-300 block mb-1.5">
+                        Enlace de Grupo Oficial de WhatsApp de Domiciliarios (Opcional)
+                      </label>
+                      <input 
+                        type="url"
+                        value={systemSettings.driversWhatsAppGroupUrl || ''}
+                        onChange={(e) => setSystemSettings(prev => ({ ...prev, driversWhatsAppGroupUrl: e.target.value }))}
+                        placeholder="https://chat.whatsapp.com/..."
+                        className="w-full bg-gray-950 border border-gray-800 focus:border-emerald-500 text-white font-medium text-xs rounded-xl p-3 outline-none transition font-mono"
+                      />
+                      <p className="text-[10px] text-gray-500 mt-1">
+                        Si tienes un grupo de WhatsApp con todos tus repartidores, pega el link aquí para abrirlo con 1 clic al recibir pedidos.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Save button for General Contact and Delivery Settings */}
                 <div className="pt-1">
                   <button
@@ -4417,7 +4583,29 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         </div>
 
         {/* High resolution Proof Image Modal Overlay */}
-        {viewingOrder && (
+        {viewingOrder && (() => {
+          const viewingOrderHasDriver = Boolean(viewingOrder.deliveryDriverId && viewingOrder.deliveryDriverId.trim() !== '') ||
+                                        Boolean(viewingOrder.driverId && viewingOrder.driverId.trim() !== '') ||
+                                        Boolean(viewingOrder.deliveryStep);
+          const viewingOrderIsDeliveredOrCancelled = viewingOrder.status === 'delivered' || viewingOrder.status === 'cancelled';
+          const viewingOrderIsPickedUpAtStore = !viewingOrderIsDeliveredOrCancelled && (
+            viewingOrder.status === 'shipped' ||
+            viewingOrder.status === 'delivering' ||
+            viewingOrder.status === 'picked_up' ||
+            viewingOrder.deliveryStep === 'picked_up' ||
+            viewingOrder.deliveryStep === 'to_client' ||
+            viewingOrder.deliveryStep === 'at_destination'
+          );
+          const viewingOrderEffectiveStatus = viewingOrderIsDeliveredOrCancelled
+            ? viewingOrder.status
+            : viewingOrderIsPickedUpAtStore
+            ? 'shipped'
+            : (viewingOrderHasDriver && (viewingOrder.status === 'pending' || viewingOrder.status === 'confirmed'))
+            ? 'processing'
+            : (viewingOrder.status === 'confirmed' ? 'processing' : viewingOrder.status || 'pending');
+          const isViewingOrderPending = viewingOrderEffectiveStatus === 'pending';
+
+          return (
           <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in">
             <div className="relative max-w-xl w-full bg-gray-950 border border-gray-800 rounded-3xl p-5 sm:p-6 flex flex-col max-h-[92vh] shadow-2xl space-y-4 text-left">
               {/* Header */}
@@ -4700,7 +4888,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <Trash2 className="w-4 h-4" />
                   <span>Eliminar Pedido</span>
                 </button>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {!checkIsTableOrder(viewingOrder) && !checkIsPickupOrder(viewingOrder) && isViewingOrderPending && (
+                    <button
+                      type="button"
+                      onClick={() => setWhatsAppDispatchOrder(viewingOrder)}
+                      className="py-2.5 px-3.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/40 transition cursor-pointer"
+                      title="Avisar a todos los domiciliarios activos por WhatsApp"
+                    >
+                      <Bike className="w-4 h-4" />
+                      <span>Avisar Domiciliarios ({activeDrivers.length} activos)</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => triggerWhatsAppMessage(viewingOrder)}
@@ -4720,7 +4919,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* High resolution Proof Image Modal Overlay */}
         {viewingProofImg && (
@@ -5157,6 +5357,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </div>
           );
         })()}
+
+        {/* Modal de envío de alerta de pedido por WhatsApp a Domiciliarios Activos */}
+        {whatsAppDispatchOrder && (
+          <AdminWhatsAppDriversModal
+            order={whatsAppDispatchOrder}
+            activeDrivers={activeDrivers}
+            allDrivers={allApprovedDrivers}
+            systemSettings={systemSettings}
+            storeNameFallback={getStoreNameForOrder(whatsAppDispatchOrder)}
+            onClose={() => setWhatsAppDispatchOrder(null)}
+          />
+        )}
 
       </div>
     </div>

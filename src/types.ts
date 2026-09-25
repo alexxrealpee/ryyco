@@ -11,6 +11,10 @@ export interface SystemSettings {
   supportPhone?: string;
   supportEmail?: string;
   adminEmails?: string[];
+  driversWhatsAppGroupUrl?: string;
+  autoNotifyActiveDriversWhatsApp?: boolean;
+  whatsappDriverTemplate?: string;
+  whatsappWebhookUrl?: string;
   updatedAt?: string;
 }
 

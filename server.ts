@@ -852,6 +852,52 @@ Formatos válidos para:
     }
   });
 
+  // API Route: WhatsApp notification dispatcher for active delivery drivers
+  app.post('/api/whatsapp/notify-active-drivers', async (req, res) => {
+    try {
+      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, totalAmount, activeDrivers } = req.body || {};
+      const driversList = Array.isArray(activeDrivers) ? activeDrivers : [];
+      console.log(`[WHATSAPP-DISPATCH] 🛵 Notificación WhatsApp de Nuevo Pedido #${orderNumber || 'S/N'} ("${storeName || 'Tienda'}") para ${driversList.length} domiciliarios activos`);
+
+      // If an external webhook or WhatsApp gateway URL is configured (e.g. WHATSAPP_WEBHOOK_URL)
+      const webhookUrl = process.env.WHATSAPP_WEBHOOK_URL || process.env.EVOLUTION_API_URL;
+      if (webhookUrl && driversList.length > 0) {
+        try {
+          fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              ...(process.env.WHATSAPP_API_TOKEN ? { 'Authorization': `Bearer ${process.env.WHATSAPP_API_TOKEN}` } : {})
+            },
+            body: JSON.stringify({
+              event: 'ORDER_AVAILABLE_FOR_DRIVERS',
+              orderId,
+              orderNumber,
+              storeName,
+              customerAddress,
+              deliveryCost,
+              totalAmount,
+              activeDrivers: driversList
+            })
+          }).catch(e => console.warn('[WHATSAPP-DISPATCH] Webhook call error:', e));
+        } catch (e) {}
+      }
+
+      res.json({
+        status: 'ok',
+        orderId,
+        orderNumber,
+        activeDriversCount: driversList.length,
+        deliveredCount: driversList.length,
+        message: `Aviso WhatsApp registrado para ${driversList.length} domiciliarios activos`,
+        timestamp: new Date().toISOString()
+      });
+    } catch (err: any) {
+      console.error('[WHATSAPP-DISPATCH] Error notifying active drivers:', err);
+      res.status(500).json({ error: err.message || 'Error processing WhatsApp dispatch' });
+    }
+  });
+
   // Broadcast new delivery request to connected Delivery Drivers (Domiciliarios)
   app.post('/api/fcm/broadcast-driver-request', async (req, res) => {
     try {

@@ -1559,6 +1559,40 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
             tokens: activeTokens
           })
         }).catch(() => {});
+
+        // Also notify active drivers through the WhatsApp dispatch channel
+        try {
+          const driversSnap = await getDocs(collection(db, 'drivers'));
+          const onlineDrivers: any[] = [];
+          driversSnap.forEach(d => {
+            const dt = d.data() as any;
+            if (dt?.status === 'approved' && dt?.isAvailable && dt?.isOnline !== false) {
+              onlineDrivers.push({
+                id: d.id,
+                firstName: dt.firstName,
+                lastName: dt.lastName,
+                phone: dt.phone,
+                vehicleType: dt.vehicleType
+              });
+            }
+          });
+          if (onlineDrivers.length > 0) {
+            fetch('/api/whatsapp/notify-active-drivers', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId: result.id,
+                orderNumber: result.orderNumber,
+                storeName: result.storeName,
+                customerAddress: result.customerAddress,
+                customerName: result.customerName,
+                deliveryCost: result.deliveryCost || result.deliveryFee || 3000,
+                totalAmount: result.totalAmount,
+                activeDrivers: onlineDrivers
+              })
+            }).catch(() => {});
+          }
+        } catch (waErr) {}
       })();
     }
   } catch (e) {}
