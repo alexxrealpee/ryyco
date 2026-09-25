@@ -44,6 +44,7 @@ import {
   subscribeToActiveDrivers, 
   notifyActiveDriversViaServer 
 } from '../lib/whatsappDriverNotifications';
+import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import { 
   Users, 
   Settings, 
@@ -56,6 +57,7 @@ import {
   ArrowLeft, 
   DollarSign, 
   AlertTriangle, 
+  AlertCircle,
   RefreshCw, 
   Check, 
   X, 
@@ -134,9 +136,7 @@ const formatWhatsAppDisplay = (raw?: string | null) => {
 
 const getWhatsAppUrl = (raw?: string | null) => {
   if (!raw) return '#';
-  const digits = raw.replace(/\D/g, '');
-  const fullNumber = digits.startsWith('57') ? digits : `57${digits}`;
-  return `https://wa.me/${fullNumber}`;
+  return getPersonalWhatsAppUrl(raw);
 };
 
 interface AdminUser {
@@ -163,6 +163,123 @@ interface AdminUser {
   weeklySchedule?: WeeklySchedule;
   restaurantDaysOpen?: string[];
 }
+
+// Generates persuasive, professional WhatsApp messages to collect payment for expired/due subscriptions
+export function generateSubscriptionCobroMessageByType(
+  user: AdminUser, 
+  templateType: 'standard' | 'urgent' | 'promo' | 'trial' = 'standard'
+): string {
+  const storeName = user.storeName || user.username || 'Tu tienda';
+  const username = user.username ? `@${user.username}` : '';
+  const planName = user.subscriptionPlan === 'pro' 
+    ? 'Plan Avanzado / Pro' 
+    : user.subscriptionPlan === 'medio' 
+    ? 'Plan Medio' 
+    : 'Plan Básico';
+  const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
+  const planPriceFormatted = `$${planPrice.toLocaleString('es-CO')} COP`;
+  const anchorDay = getSubscriptionAnchorDay(user);
+  const { effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
+
+  if (templateType === 'urgent') {
+    return (
+      `⚠️ *AVISO URGENTE DE COBRO - RYYCO.com* ⚠️\n\n` +
+      `Hola *${storeName}* ${username ? `(${username})` : ''}, te saludamos de la administración de *RYYCO.com* 🍔🛵\n\n` +
+      `Te informamos que la mensualidad de tu tienda se encuentra actualmente *EXPIRADA / VENCIDA* y tu catálogo ha sido pausado temporalmente para los clientes 🛑.\n\n` +
+      `¡No detengas tus ventas! Con solo renovar tu plan activo tu tienda volverá a recibir pedidos al instante.\n\n` +
+      `📋 *Datos de Renovación:*\n` +
+      `• Tienda: *${storeName}*\n` +
+      `• Plan: *${planName}*\n` +
+      `• Monto a pagar: *${planPriceFormatted}*\n` +
+      `• Día de corte: *Día ${anchorDay} de cada mes*\n\n` +
+      `💳 *Medios de Pago Inmediatos:*\n` +
+      `• *Nequi:* 3219730865\n` +
+      `• *Bancolombia (Ahorros):* 3219730865\n` +
+      `• *A nombre de:* RYYCO Administración\n\n` +
+      `Envíanos la foto o captura del comprobante por este chat y reactivaremos tu catálogo en https://ryyco.com/ en menos de 2 minutos 🚀`
+    );
+  }
+
+  if (templateType === 'promo') {
+    return (
+      `¡Hola equipo de *${storeName}*! 🌟\n\n` +
+      `Te saludamos de *RYYCO.com*. Valoramos mucho tu presencia en nuestra plataforma y queremos que sigas vendiendo sin interrupciones 🍕🥗\n\n` +
+      `Notamos que tu suscripción mensual venció (*${planName}* - *${planPriceFormatted}*). Tus clientes te buscan y queremos ayudarte a seguir facturando.\n\n` +
+      `💳 *Revalida tu plan transfiriendo a:*\n` +
+      `• *Nequi / Bancolombia:* 3219730865\n` +
+      `• *Valor:* *${planPriceFormatted}*\n` +
+      `• *A nombre de:* RYYCO Administración\n\n` +
+      `📲 Envíanos tu soporte de pago por este WhatsApp y reactivaremos tu tienda de inmediato en https://ryyco.com/ ✨ ¡Quedamos muy atentos!`
+    );
+  }
+
+  if (templateType === 'trial') {
+    return (
+      `¡Hola equipo de *${storeName}*! 🎉\n\n` +
+      `Esperamos que hayan tenido una gran experiencia en sus 7 días de prueba gratuita en *RYYCO.com* 🍔.\n\n` +
+      `Tu período de prueba ha culminado con éxito. Para mantener tus productos visibles, seguir recibiendo pedidos de clientes y disfrutando de todas las herramientas de la plataforma, por favor realiza el pago de tu primera mensualidad:\n\n` +
+      `📋 *Detalles del Plan:*\n` +
+      `• Plan: *${planName}*\n` +
+      `• Valor: *${planPriceFormatted} / mes*\n` +
+      `• Día de corte mensual: *Día ${anchorDay} de cada mes*\n\n` +
+      `💳 *Cuentas Oficiales de Pago:*\n` +
+      `• *Nequi:* 3219730865\n` +
+      `• *Bancolombia (Ahorros):* 3219730865\n` +
+      `• *A nombre de:* RYYCO Administración\n\n` +
+      `Envíanos tu comprobante por este chat para dejar tu cuenta 100% activa en https://ryyco.com/ 🚀`
+    );
+  }
+
+  // Standard template
+  let statusBadge = '🔴 EXPIRADA / VENCIDA';
+  let statusExplanation = 'Te informamos que la suscripción de tu tienda en la plataforma se encuentra actualmente *EXPIRADA / VENCIDA* ⚠️.\n\nAl estar vencida, tu catálogo y productos se ocultan para los clientes y tus pedidos no pueden procesarse con normalidad.';
+
+  if (effectiveStatus === 'suspended') {
+    statusBadge = '⚠️ SUSPENDIDA';
+    statusExplanation = 'Te informamos que tu tienda se encuentra *SUSPENDIDA TEMPORALMENTE* por pago pendiente de mensualidad ⚠️.';
+  } else if (effectiveStatus === 'trial') {
+    statusBadge = '🆓 PERÍODO DE PRUEBA FINALIZADO';
+    statusExplanation = 'Tu semana de prueba gratuita de 7 días ha concluido con éxito. Para que tus productos continúen visibles y actives tu tienda en RYYCO, requerimos la confirmación de pago de tu mensualidad.';
+  } else if (effectiveStatus === 'pending_payment') {
+    statusBadge = '🟡 PENDIENTE DE PAGO';
+    statusExplanation = 'Te recordamos que tenemos pendiente la validación del pago mensual de tu suscripción en la plataforma.';
+  } else if (effectiveStatus === 'active') {
+    statusBadge = '🟢 RECORDATORIO DE CORTE';
+    statusExplanation = `Te saludamos cordialmente para compartirte los datos de renovación de tu suscripción mensual (Día de corte: ${anchorDay}).`;
+  }
+
+  return (
+    `¡Hola estimado equipo de *${storeName}*! 👋\n\n` +
+    `Te saludamos desde la administración de *RYYCO.com* 🍔🍕\n\n` +
+    `🔔 *Estado de tu cuenta:* ${statusBadge}\n\n` +
+    `${statusExplanation}\n\n` +
+    `📋 *Detalles de tu Plan:*\n` +
+    `• Tienda: *${storeName}* ${username ? `(${username})` : ''}\n` +
+    `• Plan: *${planName}*\n` +
+    `• Valor a pagar: *${planPriceFormatted} / mes*\n` +
+    `• Día de corte mensual: *Día ${anchorDay} de cada mes*\n\n` +
+    `💳 *Medios de Pago para Reactivación Inmediata:*\n` +
+    `• *Nequi:* 3219730865\n` +
+    `• *Bancolombia (Ahorros):* 3219730865\n` +
+    `• *A nombre de:* RYYCO Administración\n\n` +
+    `📲 *¿Cómo reactivar tu tienda?*\n` +
+    `1. Realiza tu transferencia por *${planPriceFormatted}*.\n` +
+    `2. Envíanos la captura o foto del comprobante respondiendo a este chat.\n` +
+    `3. Nuestro equipo reactivará tu catálogo y visibilidad al instante en https://ryyco.com/ 🚀\n\n` +
+    `¡Muchas gracias por ser parte de RYYCO y quedamos atentos a tu comprobante! 🙏`
+  );
+}
+
+const buildSubscriptionCobroMessage = (user: AdminUser, templateType: 'standard' | 'urgent' | 'promo' | 'trial' = 'standard'): string => {
+  return generateSubscriptionCobroMessageByType(user, templateType);
+};
+
+const getSubscriptionCobroWhatsAppUrl = (user: AdminUser, templateType: 'standard' | 'urgent' | 'promo' | 'trial' = 'standard', customPhone?: string, customMessage?: string) => {
+  const rawPhone = customPhone || user.ownerWhatsapp || user.whatsapp || user.phone;
+  if (!rawPhone) return '#';
+  const message = customMessage || buildSubscriptionCobroMessage(user, templateType);
+  return getPersonalWhatsAppUrl(rawPhone, message);
+};
 
 const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' => {
   try {
@@ -1219,6 +1336,54 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
+  // State & Handlers for Cobro de Suscripción WhatsApp Modal
+  const [cobroModalUser, setCobroModalUser] = useState<AdminUser | null>(null);
+  const [cobroCustomPhone, setCobroCustomPhone] = useState<string>('');
+  const [cobroCustomMessage, setCobroCustomMessage] = useState<string>('');
+  const [cobroTemplateType, setCobroTemplateType] = useState<'standard' | 'urgent' | 'promo' | 'trial'>('standard');
+  const [copiedCobroText, setCopiedCobroText] = useState<boolean>(false);
+  const [copiedCobroPhone, setCopiedCobroPhone] = useState<boolean>(false);
+
+  const handleOpenCobroModal = (user: AdminUser, template: 'standard' | 'urgent' | 'promo' | 'trial' = 'standard') => {
+    const rawPhone = user.ownerWhatsapp || user.whatsapp || user.phone || '';
+    const digits = rawPhone.replace(/\D/g, '').replace(/^0+/, '');
+    const cleanNumber = digits.startsWith('57') && digits.length >= 12 ? digits.slice(2) : digits;
+
+    const { effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
+    const chosenTemplate: 'standard' | 'urgent' | 'promo' | 'trial' = effectiveStatus === 'trial' ? 'trial' : template;
+
+    setCobroModalUser(user);
+    setCobroCustomPhone(cleanNumber);
+    setCobroTemplateType(chosenTemplate);
+    setCopiedCobroText(false);
+    setCopiedCobroPhone(false);
+
+    const initialMsg = generateSubscriptionCobroMessageByType(user, chosenTemplate);
+    setCobroCustomMessage(initialMsg);
+  };
+
+  const handleSelectCobroTemplate = (template: 'standard' | 'urgent' | 'promo' | 'trial') => {
+    if (!cobroModalUser) return;
+    setCobroTemplateType(template);
+    const msg = generateSubscriptionCobroMessageByType(cobroModalUser, template);
+    setCobroCustomMessage(msg);
+    setCopiedCobroText(false);
+  };
+
+  const handleCopyCobroMessage = () => {
+    if (!cobroCustomMessage) return;
+    navigator.clipboard.writeText(cobroCustomMessage);
+    setCopiedCobroText(true);
+    setTimeout(() => setCopiedCobroText(false), 3000);
+  };
+
+  const handleCopyCobroPhone = () => {
+    if (!cobroCustomPhone) return;
+    navigator.clipboard.writeText(cobroCustomPhone);
+    setCopiedCobroPhone(true);
+    setTimeout(() => setCopiedCobroPhone(false), 2500);
+  };
+
   const DAYS_OF_WEEK_LIST: Array<{ id: string; label: string; shortLabel: string }> = [
     { id: 'lunes', label: 'Lunes', shortLabel: 'Lun' },
     { id: 'martes', label: 'Martes', shortLabel: 'Mar' },
@@ -1820,6 +1985,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       return effectiveStatus === selectedSubscriptionStatusFilter;
     });
   }, [users, selectedSubscriptionStatusFilter]);
+
+  const expiredSubscriptionsCount = useMemo(() => {
+    return users.filter(u => {
+      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(u);
+      return effectiveStatus === 'expired';
+    }).length;
+  }, [users]);
+
+  const suspendedSubscriptionsCount = useMemo(() => {
+    return users.filter(u => {
+      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(u);
+      return effectiveStatus === 'suspended';
+    }).length;
+  }, [users]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
@@ -2486,6 +2665,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 </div>
               </div>
 
+              {/* Banner de alerta para tiendas con plan expirado / pendientes de cobro */}
+              {expiredSubscriptionsCount > 0 && (
+                <div className="bg-gradient-to-r from-red-950/40 via-red-900/25 to-amber-950/30 border border-red-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-5 h-5 text-red-400 animate-bounce" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                          {expiredSubscriptionsCount} {expiredSubscriptionsCount === 1 ? 'Tienda con Plan Expirado' : 'Tiendas con Planes Expirados'}
+                        </h4>
+                        <span className="px-2 py-0.5 bg-red-500/20 text-red-300 border border-red-500/30 rounded-full text-[10px] font-black font-mono">
+                          Requieren Cobro
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-0.5">
+                        Estas tiendas tienen su suscripción vencida. Envíales el mensaje de cobro por WhatsApp con los datos de Nequi / Bancolombia para reactivar su catálogo.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSubscriptionStatusFilter('expired')}
+                      className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 border shadow-sm ${
+                        selectedSubscriptionStatusFilter === 'expired'
+                          ? 'bg-red-600 text-white border-red-400 shadow-red-950/50'
+                          : 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
+                      }`}
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                      <span>Ver Solo Expiradas ({expiredSubscriptionsCount})</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR */}
               <div className="space-y-4">
                 <h4 className="text-xs font-black uppercase text-amber-400 tracking-wider flex items-center gap-2">
@@ -2524,20 +2741,33 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               {/* WhatsApp Contact Badges */}
                               <div className="mt-2 space-y-1">
                                 {(user.ownerWhatsapp || user.whatsapp || user.phone) ? (
-                                  <a
-                                    href={getWhatsAppUrl(user.ownerWhatsapp || user.whatsapp || user.phone)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-lg text-[10px] font-bold transition shadow-sm active:scale-95"
-                                    title="Contactar al Propietario / Administrador"
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCobroModal(user)}
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition shadow-sm active:scale-95 border cursor-pointer ${
+                                      effectiveStatus === 'expired' || effectiveStatus === 'suspended'
+                                        ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-400/40'
+                                        : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/25'
+                                    }`}
+                                    title="Abrir cobro / mensaje por WhatsApp al Propietario"
                                   >
                                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                                     <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
-                                  </a>
+                                    {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
+                                      <span className="ml-1 px-1.5 py-0.2 bg-red-500/25 text-red-300 rounded text-[9px] font-black border border-red-500/40 uppercase">
+                                        Cobrar
+                                      </span>
+                                    )}
+                                  </button>
                                 ) : (
-                                  <span className="inline-block text-[9.5px] text-gray-600 font-mono italic">
-                                    Sin WhatsApp del dueño
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCobroModal(user)}
+                                    className="inline-block text-[9.5px] text-amber-500/80 hover:text-amber-400 font-mono italic cursor-pointer"
+                                    title="Clic para ingresar teléfono y cobrar"
+                                  >
+                                    Sin WhatsApp (clic para cobrar)
+                                  </button>
                                 )}
 
                                 {user.customerServiceWhatsapp && (
@@ -2668,6 +2898,36 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </div>
                           </div>
 
+                          {/* Botón Destacado para Cobrar Plan por WhatsApp */}
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCobroModal(user)}
+                              className={`w-full py-2.5 px-3 rounded-xl text-[11px] font-black uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] border shadow-md ${
+                                effectiveStatus === 'expired' || effectiveStatus === 'suspended'
+                                  ? 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-950/50 animate-pulse hover:animate-none'
+                                  : effectiveStatus === 'trial'
+                                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white border-cyan-400/50 shadow-cyan-950/40'
+                                  : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                              }`}
+                              title={`Abrir panel de cobro por WhatsApp a ${user.storeName || user.username} ($${planPrice.toLocaleString('es-CO')} COP)`}
+                            >
+                              <MessageCircle className="w-4 h-4 fill-current shrink-0" />
+                              <span>
+                                {effectiveStatus === 'expired'
+                                  ? `Cobrar Plan Vencido ($${planPrice.toLocaleString('es-CO')} COP)`
+                                  : effectiveStatus === 'suspended'
+                                  ? `Cobrar Reactivación ($${planPrice.toLocaleString('es-CO')} COP)`
+                                  : effectiveStatus === 'trial'
+                                  ? `Cobrar Activación Plan ($${planPrice.toLocaleString('es-CO')} COP)`
+                                  : `Cobrar Plan / Recordatorio ($${planPrice.toLocaleString('es-CO')} COP)`}
+                              </span>
+                              {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
+                                <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 animate-ping ml-1" />
+                              )}
+                            </button>
+                          </div>
+
                           <div className="pt-2">
                             <button
                               type="button"
@@ -2758,20 +3018,33 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 {/* WhatsApp badges */}
                                 <div className="mt-1.5 space-y-1">
                                   {(user.ownerWhatsapp || user.whatsapp || user.phone) ? (
-                                    <a
-                                      href={getWhatsAppUrl(user.ownerWhatsapp || user.whatsapp || user.phone)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/25 rounded-md text-[9.5px] font-bold transition shadow-sm"
-                                      title="Contactar al Propietario / Administrador"
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCobroModal(user)}
+                                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[9.5px] font-bold transition shadow-sm border cursor-pointer ${
+                                        effectiveStatus === 'expired' || effectiveStatus === 'suspended'
+                                          ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border-emerald-400/40'
+                                          : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/25'
+                                      }`}
+                                      title="Abrir cobro / mensaje por WhatsApp al Propietario"
                                     >
                                       <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
                                       <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
-                                    </a>
+                                      {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
+                                        <span className="ml-1 px-1 py-0.2 bg-red-500/25 text-red-300 rounded text-[8.5px] font-black border border-red-500/40 uppercase">
+                                          Cobrar
+                                        </span>
+                                      )}
+                                    </button>
                                   ) : (
-                                    <div className="text-[9.5px] text-gray-600 italic">
-                                      Sin WhatsApp
-                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenCobroModal(user)}
+                                      className="text-[9.5px] text-amber-500/80 hover:text-amber-400 font-mono italic cursor-pointer block"
+                                      title="Clic para ingresar teléfono y cobrar"
+                                    >
+                                      Sin WhatsApp (cobrar)
+                                    </button>
                                   )}
 
                                   {user.customerServiceWhatsapp && (
@@ -2903,6 +3176,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               </td>
                               <td className="py-3.5 px-4 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCobroModal(user)}
+                                    title={`Cobrar plan por WhatsApp a ${user.storeName || user.username} ($${planPrice.toLocaleString('es-CO')} COP)`}
+                                    className={`px-2.5 py-1.5 font-black text-[10px] tracking-wider uppercase rounded-lg border transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                                      effectiveStatus === 'expired' || effectiveStatus === 'suspended'
+                                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-950/40 animate-pulse hover:animate-none'
+                                        : effectiveStatus === 'trial'
+                                        ? 'bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border-cyan-500/30'
+                                        : 'bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-400 border-emerald-500/25'
+                                    }`}
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                                    <span>Cobrar</span>
+                                    {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                                    )}
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -5475,6 +5766,298 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     )}
                     <span>{isAdding ? 'Confirmar +1 Mes' : 'Confirmar -1 Mes'}</span>
                   </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Modal de Cobro de Suscripción por WhatsApp para Tiendas Expiradas */}
+        {cobroModalUser && (() => {
+          const user = cobroModalUser;
+          const { effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
+          const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
+          const planPriceFormatted = `$${planPrice.toLocaleString('es-CO')} COP`;
+          const planName = user.subscriptionPlan === 'pro' 
+            ? 'Plan Avanzado / Pro' 
+            : user.subscriptionPlan === 'medio' 
+            ? 'Plan Medio' 
+            : 'Plan Básico';
+          const anchorDay = getSubscriptionAnchorDay(user);
+          
+          const rawDigits = cobroCustomPhone.replace(/\D/g, '').replace(/^0+/, '');
+          const cleanPhone = rawDigits.startsWith('57') && rawDigits.length >= 12 ? rawDigits.slice(2) : rawDigits;
+          const fullDestinationNumber = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+          const personalWhatsAppUrl = cleanPhone ? getPersonalWhatsAppUrl(fullDestinationNumber, cobroCustomMessage) : '#';
+          const webWhatsAppUrl = cleanPhone ? `https://wa.me/${fullDestinationNumber}?text=${encodeURIComponent(cobroCustomMessage)}` : '#';
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-[#0f1422] border border-emerald-500/40 rounded-3xl w-full max-w-xl p-5 sm:p-6 shadow-2xl shadow-emerald-950/40 space-y-4 max-h-[92vh] overflow-y-auto">
+                {/* Encabezado */}
+                <div className="flex items-center justify-between border-b border-gray-800 pb-3.5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                      <MessageCircle className="w-5 h-5 fill-current" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        <span>Cobro de Suscripción WhatsApp</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase font-mono border ${
+                          effectiveStatus === 'expired'
+                            ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                            : effectiveStatus === 'suspended'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                            : effectiveStatus === 'trial'
+                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        }`}>
+                          {effectiveStatus === 'expired' ? '🔴 Expirada' : effectiveStatus === 'suspended' ? '⚠️ Suspendida' : effectiveStatus === 'trial' ? '🆓 Prueba' : '🟢 Activa'}
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-gray-400">
+                        Enviar mensaje personalizado de cobro al propietario para reactivar su tienda
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setCobroModalUser(null)}
+                    className="p-1.5 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Tarjeta Resumen de la Tienda */}
+                <div className="bg-gray-950/80 border border-gray-800/80 rounded-2xl p-3.5 space-y-2 text-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-extrabold text-white text-sm block">
+                        {user.storeName || user.username || 'Tienda sin nombre'}
+                      </span>
+                      <span className="text-[10.5px] text-gray-500 font-mono">@{user.username} • {user.email}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xs font-black text-emerald-400 font-mono block">
+                        {planPriceFormatted}
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">{planName}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-900 text-[11px]">
+                    <div>
+                      <span className="text-gray-500 font-mono block text-[10px]">Día de Corte Mensual:</span>
+                      <span className="text-gray-300 font-bold font-mono">Día {anchorDay} de cada mes</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 font-mono block text-[10px]">Cuentas de Pago:</span>
+                      <span className="text-emerald-400 font-bold font-mono">Nequi: 3219730865</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Campo Teléfono WhatsApp */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Número de WhatsApp del Dueño:</span>
+                    </label>
+                    {cleanPhone && (
+                      <button
+                        type="button"
+                        onClick={handleCopyCobroPhone}
+                        className="text-[10px] font-mono text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+                      >
+                        {copiedCobroPhone ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedCobroPhone ? '¡Copiado!' : 'Copiar número'}</span>
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-2 bg-gray-950 border border-gray-800 rounded-xl text-gray-400 font-mono text-xs font-bold shrink-0">
+                      🇨🇴 +57
+                    </span>
+                    <input
+                      type="text"
+                      value={cobroCustomPhone}
+                      onChange={(e) => setCobroCustomPhone(e.target.value)}
+                      placeholder="Ej: 3176926116"
+                      className="flex-1 bg-gray-950 border border-gray-800 focus:border-emerald-500 text-white text-xs font-mono rounded-xl px-3 py-2 outline-none"
+                    />
+                  </div>
+
+                  {!cleanPhone && (
+                    <p className="text-[10.5px] text-amber-400 flex items-center gap-1 font-medium pt-0.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Esta tienda no tiene número registrado. Escribe el número arriba para enviar el mensaje por WhatsApp.</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* Selector de Plantillas Rápidas */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider block">
+                    Seleccionar Plantilla de Cobro:
+                  </label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 bg-gray-950 p-1 rounded-xl border border-gray-800">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectCobroTemplate('standard')}
+                      className={`py-2 px-2 rounded-lg text-[10px] font-black transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                        cobroTemplateType === 'standard'
+                          ? 'bg-emerald-600 text-white shadow-md shadow-emerald-900/40'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                      }`}
+                    >
+                      <span>🔴 Vencido</span>
+                      <span className="text-[8.5px] font-normal opacity-80">Estándar</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectCobroTemplate('urgent')}
+                      className={`py-2 px-2 rounded-lg text-[10px] font-black transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                        cobroTemplateType === 'urgent'
+                          ? 'bg-rose-600 text-white shadow-md shadow-rose-900/40'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                      }`}
+                    >
+                      <span>⚡ Urgente</span>
+                      <span className="text-[8.5px] font-normal opacity-80">Catálogo Pausado</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectCobroTemplate('promo')}
+                      className={`py-2 px-2 rounded-lg text-[10px] font-black transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                        cobroTemplateType === 'promo'
+                          ? 'bg-amber-600 text-white shadow-md shadow-amber-900/40'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                      }`}
+                    >
+                      <span>🌟 Reactivar</span>
+                      <span className="text-[8.5px] font-normal opacity-80">Clientes Frecuentes</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectCobroTemplate('trial')}
+                      className={`py-2 px-2 rounded-lg text-[10px] font-black transition cursor-pointer flex flex-col items-center gap-0.5 ${
+                        cobroTemplateType === 'trial'
+                          ? 'bg-cyan-600 text-white shadow-md shadow-cyan-900/40'
+                          : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                      }`}
+                    >
+                      <span>🆓 Fin Prueba</span>
+                      <span className="text-[8.5px] font-normal opacity-80">7 Días Gratis</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Textarea editable del mensaje */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider">
+                      Contenido del Mensaje (Editable):
+                    </label>
+                    <span className="text-[10px] text-gray-500 font-mono">
+                      {cobroCustomMessage.length} caracteres
+                    </span>
+                  </div>
+                  <textarea
+                    rows={8}
+                    value={cobroCustomMessage}
+                    onChange={(e) => setCobroCustomMessage(e.target.value)}
+                    className="w-full bg-gray-950 border border-gray-800 focus:border-emerald-500 rounded-xl p-3 text-xs text-gray-200 font-mono leading-relaxed outline-none resize-none shadow-inner"
+                    placeholder="Escribe el mensaje de cobro..."
+                  />
+                  <p className="text-[10px] text-gray-500 italic">
+                    💡 El mensaje incluye formato para WhatsApp (*negrita*), cuentas de Nequi / Bancolombia y enlace a https://ryyco.com/.
+                  </p>
+                </div>
+
+                {/* Botones de Acción */}
+                <div className="space-y-2 pt-2 border-t border-gray-800">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {cleanPhone ? (
+                      <div className="flex flex-col gap-1.5 w-full">
+                        <button
+                          type="button"
+                          onClick={() => openPersonalWhatsApp(fullDestinationNumber, cobroCustomMessage)}
+                          className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 active:scale-[0.98]"
+                          title="Abrir directamente en WhatsApp Messenger Personal (no Business)"
+                        >
+                          <MessageCircle className="w-4 h-4 fill-current shrink-0" />
+                          <span>Abrir WhatsApp Personal</span>
+                        </button>
+                        <a
+                          href={webWhatsAppUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-gray-400 hover:text-white underline text-center transition"
+                          title="Abrir en WhatsApp Web en el navegador"
+                        >
+                          🌐 O abrir en WhatsApp Web (Navegador)
+                        </a>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="py-3 px-4 bg-gray-800 text-gray-500 text-xs font-black uppercase tracking-wider rounded-xl cursor-not-allowed flex items-center justify-center gap-2 opacity-60"
+                      >
+                        <MessageCircle className="w-4 h-4 shrink-0" />
+                        <span>Escribe un Teléfono</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleCopyCobroMessage}
+                      className={`py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center justify-center gap-2 border shadow-sm ${
+                        copiedCobroText
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-400/40'
+                          : 'bg-gray-900 hover:bg-gray-800 text-gray-200 border-gray-750'
+                      }`}
+                    >
+                      {copiedCobroText ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400" />
+                          <span>¡Mensaje Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 text-gray-400" />
+                          <span>Copiar Mensaje</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = cobroModalUser;
+                        setCobroModalUser(null);
+                        setExtendModalMonths(1);
+                        setConfirmExtendModalUser(target);
+                      }}
+                      className="text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 cursor-pointer transition"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>¿El cliente ya pagó? Ajustar Mes (+1)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setCobroModalUser(null)}
+                      className="text-gray-500 hover:text-gray-300 transition cursor-pointer font-medium"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

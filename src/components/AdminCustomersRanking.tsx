@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { OrderItem, UserProfile, CustomerProfile } from '../types';
 import { subscribeToAllCustomerProfiles, adjustCustomerRyycosByAdmin } from '../lib/firebase';
+import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 
 interface AdminCustomersRankingProps {
   allOrders: OrderItem[];
@@ -78,37 +79,105 @@ type SortOrderOption = 'orders_desc' | 'orders_asc' | 'spent_desc' | 'recent_des
 type CustomerSegmentFilter = 'all' | 'vip' | 'frequent' | 'new' | 'has_whatsapp' | 'has_ryycos';
 type TimeRangeFilter = 'all' | 'this_month' | 'last_30_days' | 'last_7_days';
 
-// Helper to normalize phone numbers
-function cleanPhoneNumber(phone?: string): string {
+// Helper to normalize phone numbers canonically (removes country code +57, leading zeros, non-digits)
+export function getCanonicalPhone(phone?: string): string {
   if (!phone) return '';
-  return phone.replace(/\D/g, '');
+  let digits = phone.replace(/\D/g, '');
+  // Remove leading zeros: 0057... -> 57... or 0310... -> 310...
+  digits = digits.replace(/^0+/, '');
+  // If Colombia mobile or landline with country code 57:
+  // Mobile: 57 + 10 digits = 12 digits (starts with 573...)
+  // Landline: 57 + 10 digits = 12 digits (starts with 5760...)
+  if (digits.length === 12 && digits.startsWith('57')) {
+    digits = digits.slice(2);
+  } else if (digits.length === 11 && digits.startsWith('57')) {
+    digits = digits.slice(2);
+  } else if (digits.length > 10 && digits.startsWith('573')) {
+    digits = digits.slice(2);
+  }
+  return digits;
+}
+
+function cleanPhoneNumber(phone?: string): string {
+  return getCanonicalPhone(phone);
+}
+
+function normalizeCustomerName(name?: string): string {
+  if (!name) return '';
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isPlaceholderName(name?: string): boolean {
+  if (!name) return true;
+  const norm = normalizeCustomerName(name);
+  return (
+    !norm ||
+    norm === 'cliente' ||
+    norm === 'cliente sin nombre' ||
+    norm === 'sin nombre' ||
+    norm === 'usuario' ||
+    norm === 'comensal' ||
+    norm === 'anonimo' ||
+    norm === 'cliente registrado' ||
+    norm === 'consumidor final'
+  );
 }
 
 function formatPhoneDisplay(phone?: string): string {
   if (!phone) return 'Sin teléfono';
-  const clean = cleanPhoneNumber(phone);
-  if (clean.length === 10 && clean.startsWith('3')) {
-    // Standard Colombian mobile: 3XX XXX XXXX
-    return `+57 ${clean.slice(0, 3)} ${clean.slice(3, 6)} ${clean.slice(6)}`;
+  const canonical = getCanonicalPhone(phone);
+  if (canonical.length === 10 && canonical.startsWith('3')) {
+    // Standard Colombian mobile: +57 3XX XXX XXXX
+    return `+57 ${canonical.slice(0, 3)} ${canonical.slice(3, 6)} ${canonical.slice(6)}`;
   }
-  if (clean.startsWith('57') && clean.length === 12) {
-    return `+57 ${clean.slice(2, 5)} ${clean.slice(5, 8)} ${clean.slice(8)}`;
+  if (canonical.length === 10) {
+    // Standard Colombian landline: +57 XXX XXX XXXX
+    return `+57 ${canonical.slice(0, 3)} ${canonical.slice(3, 6)} ${canonical.slice(6)}`;
+  }
+  if (canonical.length >= 7) {
+    return `+57 ${canonical}`;
   }
   return phone.trim();
 }
 
 function buildWhatsAppUrl(cleanPhone: string, customerName: string, orderCount: number, customMessage?: string, ryycos?: number): string {
-  if (!cleanPhone) return '';
-  let waNumber = cleanPhone;
+  const canonical = getCanonicalPhone(cleanPhone);
+  if (!canonical || canonical.length < 7) return '';
+  let waNumber = canonical;
   // If 10 digits starting with 3 (Colombia mobile), prepend 57
-  if (waNumber.length === 10 && waNumber.startsWith('3')) {
+  if (waNumber.length === 10) {
     waNumber = '57' + waNumber;
   }
-  const ryycosMention = (ryycos !== undefined && ryycos > 0)
-    ? ` 🪙 Tienes ${ryycos.toLocaleString('es-CO')} RYYCOS disponibles.`
-    : '';
-  const defaultText = customMessage || `¡Hola ${customerName || ''}! Te saludamos de RYYCO. 🌟 Eres uno de nuestros clientes destacados con ${orderCount} pedido${orderCount > 1 ? 's' : ''}.${ryycosMention} ¡Muchas gracias por tu preferencia! ¿En qué podemos ayudarte hoy?`;
-  return `https://wa.me/${waNumber}?text=${encodeURIComponent(defaultText)}`;
+
+  const cleanName = customerName && !isPlaceholderName(customerName) ? customerName.trim() : '';
+  const greeting = cleanName ? `¡Hola ${cleanName}! 👋` : '¡Hola! 👋';
+  const ryycosVal = Number(ryycos || 0);
+  const ryycosFormatted = ryycosVal.toLocaleString('es-CO');
+
+  const coinsHighlight = ryycosVal > 0
+    ? `🪙 *¡Tienes ${ryycosFormatted} monedas RYYCOS disponibles ($${ryycosFormatted} COP)!*\nRecuerda que cada moneda RYYCO es dinero real para descontar en tus hamburguesas, pizzas, almuerzos y comidas favoritas.`
+    : `🪙 *¡Pide hoy en RYYCO y gana monedas RYYCOS!*\nPor cada compra acumulas saldo en comida para ahorrar en tus próximos pedidos.`;
+
+  const orderHighlight = orderCount > 0
+    ? `🌟 Te agradecemos por tu preferencia: eres de nuestros clientes más especiales con *${orderCount} pedido${orderCount > 1 ? 's' : ''}* en la plataforma.`
+    : `🌟 Te damos la bienvenida a la comunidad gastronómica de RYYCO.`;
+
+  const defaultText = customMessage || (
+    `${greeting} Te saludamos con mucho aprecio de *RYYCO.com* 🍔🍕\n\n` +
+    `${orderHighlight}\n\n` +
+    `${coinsHighlight}\n\n` +
+    `🍽️ *Haz tu pedido hoy y usa tus RYYCOS aquí:*\n` +
+    `👉 https://ryyco.com/\n\n` +
+    `¡Estamos listos para atenderte con domicilios rápidos a tu puerta! 🚀`
+  );
+
+  return getPersonalWhatsAppUrl(waNumber, defaultText);
 }
 
 export default function AdminCustomersRanking({
@@ -143,25 +212,28 @@ export default function AdminCustomersRanking({
     return () => unsub();
   }, []);
 
-  // Map of customer profiles for fast lookup by phone
+  // Map of customer profiles for fast lookup by phone, name, email or ID
   const customerProfilesMap = useMemo(() => {
     const map = new Map<string, CustomerProfile>();
     customerProfiles.forEach(p => {
       if (p.phone) {
-        const clean = cleanPhoneNumber(p.phone);
-        if (clean) {
-          map.set(clean, p);
-          if (clean.length === 10 && clean.startsWith('3')) {
-            map.set('57' + clean, p);
-          } else if (clean.startsWith('57') && clean.length === 12) {
-            map.set(clean.slice(2), p);
-          }
+        const canonical = getCanonicalPhone(p.phone);
+        if (canonical) {
+          map.set(canonical, p);
+          map.set('57' + canonical, p);
         }
+        map.set(p.phone, p);
       }
       if (p.id) {
-        const cleanId = cleanPhoneNumber(p.id);
+        const cleanId = getCanonicalPhone(p.id);
         if (cleanId) map.set(cleanId, p);
         map.set(p.id, p);
+      }
+      if (p.name && !isPlaceholderName(p.name)) {
+        map.set(normalizeCustomerName(p.name), p);
+      }
+      if (p.email) {
+        map.set(p.email.toLowerCase().trim(), p);
       }
     });
     return map;
@@ -170,7 +242,7 @@ export default function AdminCustomersRanking({
   // Copy phone handler
   const handleCopyPhone = (customer: CustomerAggregated, e: React.MouseEvent) => {
     e.stopPropagation();
-    const phoneToCopy = customer.cleanPhone.length === 10 && customer.cleanPhone.startsWith('3') 
+    const phoneToCopy = customer.cleanPhone && customer.cleanPhone.length === 10 && customer.cleanPhone.startsWith('3') 
       ? `+57${customer.cleanPhone}` 
       : customer.rawPhone || customer.cleanPhone;
     
@@ -207,7 +279,7 @@ export default function AdminCustomersRanking({
     });
   }, [allOrders, timeRange]);
 
-  // Aggregate orders by customer (identified by normalized phone or name)
+  // Aggregate orders by customer (identified by normalized phone or name) without duplicates
   const aggregatedCustomers = useMemo(() => {
     const map = new Map<string, {
       name: string;
@@ -216,7 +288,13 @@ export default function AdminCustomersRanking({
       addresses: Set<string>;
       orders: OrderItem[];
       storeCounts: Map<string, { name: string; count: number; totalSpent: number }>;
+      emails: Set<string>;
     }>();
+
+    // Secondary lookup maps to guarantee all orders of the same customer map to ONE masterKey
+    const phoneToKeyMap = new Map<string, string>();
+    const nameToKeyMap = new Map<string, string>();
+    const emailToKeyMap = new Map<string, string>();
 
     filteredOrdersByTime.forEach(order => {
       // If store filter is applied, only consider orders from that store
@@ -225,41 +303,80 @@ export default function AdminCustomersRanking({
       }
 
       const rawPhone = (order.customerPhone || '').trim();
-      const cleanPhone = cleanPhoneNumber(rawPhone);
-      const name = (order.customerName || 'Cliente sin nombre').trim();
+      const canonicalPhone = getCanonicalPhone(rawPhone);
+      const rawName = (order.customerName || '').trim();
+      const normName = normalizeCustomerName(rawName);
+      const isPlaceholder = isPlaceholderName(rawName);
+      const email = (order.customerEmail || '').toLowerCase().trim();
 
-      // Determine unique grouping key:
-      // Prefer clean phone if 7+ digits; otherwise fallback to normalized name
-      let key = '';
-      if (cleanPhone.length >= 7) {
-        key = `phone_${cleanPhone}`;
-      } else if (name.length > 0 && name.toLowerCase() !== 'cliente' && name.toLowerCase() !== 'cliente sin nombre') {
-        key = `name_${name.toLowerCase()}`;
-      } else {
-        key = `order_${order.id || Math.random().toString()}`;
+      // Find if we already have an existing masterKey for this customer:
+      let masterKey: string | undefined = undefined;
+
+      // 1. Match by canonical phone if 7+ digits
+      if (canonicalPhone && canonicalPhone.length >= 7) {
+        masterKey = phoneToKeyMap.get(canonicalPhone);
       }
 
-      if (!map.has(key)) {
-        map.set(key, {
-          name: name || 'Cliente',
+      // 2. Match by email if valid
+      if (!masterKey && email && email.includes('@')) {
+        masterKey = emailToKeyMap.get(email);
+      }
+
+      // 3. Match by normalized name (if not a placeholder and already mapped)
+      if (!masterKey && !isPlaceholder && normName) {
+        masterKey = nameToKeyMap.get(normName);
+      }
+
+      // If no existing master key, generate one
+      if (!masterKey) {
+        if (canonicalPhone && canonicalPhone.length >= 7) {
+          masterKey = `phone_${canonicalPhone}`;
+        } else if (email && email.includes('@')) {
+          masterKey = `email_${email}`;
+        } else if (!isPlaceholder && normName) {
+          masterKey = `name_${normName}`;
+        } else {
+          masterKey = `order_${order.id || Math.random().toString(36).substring(2, 7)}`;
+        }
+      }
+
+      // Register cross-indexes for this customer
+      if (canonicalPhone && canonicalPhone.length >= 7) {
+        phoneToKeyMap.set(canonicalPhone, masterKey);
+      }
+      if (email && email.includes('@')) {
+        emailToKeyMap.set(email, masterKey);
+      }
+      if (!isPlaceholder && normName) {
+        nameToKeyMap.set(normName, masterKey);
+      }
+
+      if (!map.has(masterKey)) {
+        map.set(masterKey, {
+          name: isPlaceholder ? (rawName || 'Cliente') : rawName,
           rawPhone,
-          cleanPhone,
+          cleanPhone: canonicalPhone,
           addresses: new Set<string>(),
           orders: [],
-          storeCounts: new Map()
+          storeCounts: new Map(),
+          emails: new Set<string>()
         });
       }
 
-      const record = map.get(key)!;
-      // Update with more descriptive name if current was placeholder
-      if ((record.name === 'Cliente' || record.name.length < name.length) && name) {
-        record.name = name;
+      const record = map.get(masterKey)!;
+      // Update with more descriptive name if current was placeholder or shorter
+      if (isPlaceholderName(record.name) && !isPlaceholder) {
+        record.name = rawName;
+      } else if (!isPlaceholder && rawName.length > record.name.length) {
+        record.name = rawName;
       }
-      if (!record.rawPhone && rawPhone) {
+      // Enrich phone if record lacked valid phone but order has it
+      if ((!record.cleanPhone || record.cleanPhone.length < 7) && canonicalPhone && canonicalPhone.length >= 7) {
+        record.cleanPhone = canonicalPhone;
         record.rawPhone = rawPhone;
-        record.cleanPhone = cleanPhone;
       }
 
+      if (email) record.emails.add(email);
       if (order.customerAddress && order.customerAddress.trim()) {
         record.addresses.add(order.customerAddress.trim());
       }
@@ -331,14 +448,13 @@ export default function AdminCustomersRanking({
 
       const firstOrderDate = sortedOrders[sortedOrders.length - 1]?.createdAt || '';
       const lastOrderDate = sortedOrders[0]?.createdAt || '';
-      const formattedPhone = formatPhoneDisplay(data.rawPhone || data.cleanPhone);
+      const formattedPhone = formatPhoneDisplay(data.cleanPhone || data.rawPhone);
 
       // Match with customer profiles for real-time RYYCOS points balance
       const foundProfile = 
-        customerProfilesMap.get(data.cleanPhone) ||
-        (data.rawPhone ? customerProfilesMap.get(cleanPhoneNumber(data.rawPhone)) : undefined) ||
-        (data.cleanPhone.length === 10 ? customerProfilesMap.get('57' + data.cleanPhone) : undefined) ||
-        (data.cleanPhone.startsWith('57') ? customerProfilesMap.get(data.cleanPhone.slice(2)) : undefined);
+        (data.cleanPhone ? customerProfilesMap.get(data.cleanPhone) : undefined) ||
+        (data.rawPhone ? customerProfilesMap.get(getCanonicalPhone(data.rawPhone)) : undefined) ||
+        (data.name && !isPlaceholderName(data.name) ? customerProfilesMap.get(normalizeCustomerName(data.name)) : undefined);
 
       let ryycos = 0;
       let spinsAvailable = 0;
@@ -358,7 +474,7 @@ export default function AdminCustomersRanking({
         isRegisteredProfile = false;
       }
 
-      const whatsappUrl = buildWhatsAppUrl(data.cleanPhone, data.name, totalOrders, undefined, ryycos);
+      const whatsappUrl = buildWhatsAppUrl(data.cleanPhone || data.rawPhone, data.name, totalOrders, undefined, ryycos);
 
       list.push({
         key,
@@ -388,46 +504,201 @@ export default function AdminCustomersRanking({
 
     // Also include registered customer profiles who don't have orders yet (if viewing all stores and all time)
     if (selectedStore === 'all' && timeRange === 'all') {
-      customerProfiles.forEach(p => {
-        const clean = cleanPhoneNumber(p.phone || p.id);
-        if (!clean) return;
-        const key = `phone_${clean}`;
-        if (!map.has(key)) {
-          const rawPhone = p.phone || p.id;
-          const formattedPhone = formatPhoneDisplay(rawPhone);
-          const ryycos = p.points !== undefined ? Number(p.points) : (p.ryycos !== undefined ? Number(p.ryycos) : 0);
-          const spinsAvailable = Number(p.spinsAvailable) || 0;
-          const whatsappUrl = buildWhatsAppUrl(clean, p.name || 'Cliente', 0, undefined, ryycos);
+      const addedProfilePhones = new Set<string>();
+      const addedProfileNames = new Set<string>();
 
-          list.push({
-            key,
-            name: p.name || 'Cliente Registrado',
-            rawPhone,
-            cleanPhone: clean,
-            formattedPhone,
-            whatsappUrl,
-            addresses: p.address ? [p.address] : [],
-            totalOrders: p.totalOrdersCount || 0,
-            completedOrders: p.totalOrdersCount || 0,
-            cancelledOrders: 0,
-            activeOrders: 0,
-            totalSpent: p.totalSpent || 0,
-            averageTicket: 0,
-            firstOrderDate: p.createdAt || '',
-            lastOrderDate: p.updatedAt || p.createdAt || '',
-            favoriteStoreName: 'Sin pedidos aún',
-            favoriteStoreId: undefined,
-            storeBreakdown: [],
-            orders: [],
-            ryycos,
-            spinsAvailable,
-            isRegisteredProfile: true
-          });
+      customerProfiles.forEach(p => {
+        const rawPhone = p.phone || p.id || '';
+        const canonical = getCanonicalPhone(rawPhone);
+        const normName = normalizeCustomerName(p.name);
+        const isPlaceholder = isPlaceholderName(p.name);
+
+        // Check if this profile ALREADY matched an order-based customer
+        if (canonical && canonical.length >= 7 && phoneToKeyMap.has(canonical)) {
+          return;
         }
+        if (!isPlaceholder && normName && nameToKeyMap.has(normName)) {
+          return;
+        }
+        if (p.email && emailToKeyMap.has(p.email.toLowerCase().trim())) {
+          return;
+        }
+
+        // Prevent adding duplicate profiles in this loop
+        if (canonical && canonical.length >= 7) {
+          if (addedProfilePhones.has(canonical)) return;
+          addedProfilePhones.add(canonical);
+        } else if (!isPlaceholder && normName) {
+          if (addedProfileNames.has(normName)) return;
+          addedProfileNames.add(normName);
+        }
+
+        const key = canonical && canonical.length >= 7 ? `phone_${canonical}` : `prof_${p.id || normName}`;
+        const formattedPhone = formatPhoneDisplay(rawPhone || canonical);
+        const ryycos = p.points !== undefined ? Number(p.points) : (p.ryycos !== undefined ? Number(p.ryycos) : 0);
+        const spinsAvailable = Number(p.spinsAvailable) || 0;
+        const whatsappUrl = buildWhatsAppUrl(canonical || rawPhone, p.name || 'Cliente', 0, undefined, ryycos);
+
+        list.push({
+          key,
+          name: p.name || 'Cliente Registrado',
+          rawPhone,
+          cleanPhone: canonical,
+          formattedPhone,
+          whatsappUrl,
+          addresses: p.address ? [p.address] : [],
+          totalOrders: p.totalOrdersCount || 0,
+          completedOrders: p.totalOrdersCount || 0,
+          cancelledOrders: 0,
+          activeOrders: 0,
+          totalSpent: p.totalSpent || 0,
+          averageTicket: 0,
+          firstOrderDate: p.createdAt || '',
+          lastOrderDate: p.updatedAt || p.createdAt || '',
+          favoriteStoreName: 'Sin pedidos aún',
+          favoriteStoreId: undefined,
+          storeBreakdown: [],
+          orders: [],
+          ryycos,
+          spinsAvailable,
+          isRegisteredProfile: true
+        });
       });
     }
 
-    return list;
+    // Final foolproof deduplication pass:
+    // If any two entries in list share the same valid canonical phone (>= 7 digits)
+    // or the exact same normalized non-placeholder name, merge them together into one unified customer.
+    const dedupedList: CustomerAggregated[] = [];
+    const phoneIndex = new Map<string, number>(); // canonicalPhone -> index in dedupedList
+    const nameIndex = new Map<string, number>();  // normalizedName -> index in dedupedList
+
+    list.forEach(c => {
+      const canonical = c.cleanPhone && c.cleanPhone.length >= 7 ? c.cleanPhone : '';
+      const normName = !isPlaceholderName(c.name) ? normalizeCustomerName(c.name) : '';
+
+      let targetIdx = -1;
+      if (canonical && phoneIndex.has(canonical)) {
+        targetIdx = phoneIndex.get(canonical)!;
+      } else if (!canonical && normName && nameIndex.has(normName)) {
+        targetIdx = nameIndex.get(normName)!;
+      }
+
+      if (targetIdx === -1) {
+        // New unique customer
+        const newIdx = dedupedList.length;
+        dedupedList.push(c);
+        if (canonical) phoneIndex.set(canonical, newIdx);
+        if (normName) nameIndex.set(normName, newIdx);
+      } else {
+        // Merge with existing customer
+        const existing = dedupedList[targetIdx];
+
+        // Merge orders deduplicating by order ID
+        const existingOrderIds = new Set(existing.orders.map(o => o.id));
+        const newOrdersToAdd = c.orders.filter(o => !existingOrderIds.has(o.id));
+        const mergedOrders = [...existing.orders, ...newOrdersToAdd].sort((a, b) => {
+          const da = new Date(a.createdAt || '').getTime();
+          const db = new Date(b.createdAt || '').getTime();
+          return db - da;
+        });
+
+        // Recalculate stats
+        let totalSpent = 0;
+        let completedOrders = 0;
+        let cancelledOrders = 0;
+        let activeOrders = 0;
+        mergedOrders.forEach(o => {
+          if (o.status === 'delivered') completedOrders++;
+          else if (o.status === 'cancelled') cancelledOrders++;
+          else activeOrders++;
+          if (o.status !== 'cancelled') {
+            totalSpent += Number(o.totalAmount) || 0;
+          }
+        });
+        const totalOrders = mergedOrders.length > 0 
+          ? mergedOrders.length 
+          : Math.max(existing.totalOrders, c.totalOrders);
+        const validOrdersCount = totalOrders - cancelledOrders;
+        const averageTicket = validOrdersCount > 0 ? Math.round(totalSpent / validOrdersCount) : 0;
+
+        // Merge addresses
+        const addressSet = new Set([...existing.addresses, ...c.addresses]);
+
+        // Better name
+        const bestName = (!isPlaceholderName(c.name) && c.name.length > existing.name.length) 
+          ? c.name 
+          : existing.name;
+
+        // Better phone
+        const bestCleanPhone = (existing.cleanPhone && existing.cleanPhone.length >= 7)
+          ? existing.cleanPhone
+          : c.cleanPhone;
+        const bestRawPhone = (existing.rawPhone && existing.rawPhone.length >= 7)
+          ? existing.rawPhone
+          : c.rawPhone;
+
+        // Better RYYCOS
+        const bestRyycos = Math.max(existing.ryycos || 0, c.ryycos || 0);
+        const bestSpins = Math.max(existing.spinsAvailable || 0, c.spinsAvailable || 0);
+
+        // Dates
+        const dates = [existing.lastOrderDate, c.lastOrderDate, existing.firstOrderDate, c.firstOrderDate]
+          .filter(Boolean)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+        const lastOrderDate = dates[0] || '';
+        const firstOrderDate = dates[dates.length - 1] || '';
+
+        // Store breakdown
+        const storeMap = new Map<string, { storeId: string; storeName: string; count: number; totalSpent: number }>();
+        [...existing.storeBreakdown, ...c.storeBreakdown].forEach(st => {
+          if (!storeMap.has(st.storeId)) {
+            storeMap.set(st.storeId, { ...st });
+          } else {
+            const cur = storeMap.get(st.storeId)!;
+            cur.count += st.count;
+            cur.totalSpent += st.totalSpent;
+          }
+        });
+        const storeBreakdown = Array.from(storeMap.values()).sort((a, b) => b.count - a.count);
+        const favoriteStoreName = storeBreakdown[0]?.storeName || existing.favoriteStoreName;
+        const favoriteStoreId = storeBreakdown[0]?.storeId || existing.favoriteStoreId;
+
+        const formattedPhone = formatPhoneDisplay(bestCleanPhone || bestRawPhone);
+        const whatsappUrl = buildWhatsAppUrl(bestCleanPhone || bestRawPhone, bestName, totalOrders, undefined, bestRyycos);
+
+        dedupedList[targetIdx] = {
+          ...existing,
+          name: bestName,
+          rawPhone: bestRawPhone,
+          cleanPhone: bestCleanPhone,
+          formattedPhone,
+          whatsappUrl,
+          addresses: Array.from(addressSet),
+          totalOrders,
+          completedOrders,
+          cancelledOrders,
+          activeOrders,
+          totalSpent,
+          averageTicket,
+          firstOrderDate,
+          lastOrderDate,
+          favoriteStoreName,
+          favoriteStoreId,
+          storeBreakdown,
+          orders: mergedOrders,
+          ryycos: bestRyycos,
+          spinsAvailable: bestSpins,
+          isRegisteredProfile: existing.isRegisteredProfile || c.isRegisteredProfile
+        };
+
+        if (bestCleanPhone && !phoneIndex.has(bestCleanPhone)) {
+          phoneIndex.set(bestCleanPhone, targetIdx);
+        }
+      }
+    });
+
+    return dedupedList;
   }, [filteredOrdersByTime, selectedStore, storesMap, customerProfilesMap, customerProfiles, timeRange]);
 
   // Apply filters and sorting
@@ -437,10 +708,12 @@ export default function AdminCustomersRanking({
     // Filter by search
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim();
-      const qClean = cleanPhoneNumber(q);
+      const qCanonical = getCanonicalPhone(q);
       result = result.filter(c => {
         const nameMatch = c.name.toLowerCase().includes(q);
-        const phoneMatch = c.cleanPhone.includes(qClean) || c.rawPhone.toLowerCase().includes(q);
+        const phoneMatch = (qCanonical && c.cleanPhone.includes(qCanonical)) || 
+                           c.cleanPhone.includes(q) || 
+                           c.rawPhone.toLowerCase().includes(q);
         const addressMatch = c.addresses.some(a => a.toLowerCase().includes(q));
         const storeMatch = c.favoriteStoreName.toLowerCase().includes(q);
         return nameMatch || phoneMatch || addressMatch || storeMatch;
@@ -1227,7 +1500,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 🪙 Te recordamos desde RYYCO que tienes un saldo acumulado de ${customer.ryycos.toLocaleString('es-CO')} RYYCOS ($${customer.ryycos.toLocaleString('es-CO')} COP) listos para usar en tus próximos pedidos de comida. ¡Aprovéchalos hoy mismo! 🍕🍔`
+                              `¡Hola ${customer.name}! 👋 🪙 Te recordamos desde *RYYCO* que tienes un saldo de *${customer.ryycos.toLocaleString('es-CO')} RYYCOS ($${customer.ryycos.toLocaleString('es-CO')} COP)* listos para descontar en tus comidas favoritas.\n\n🍽️ *¡Haz tu pedido hoy y usa tus monedas RYYCOS aquí:*\n👉 https://ryyco.com/ 🍕🍔`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1238,7 +1511,7 @@ export default function AdminCustomersRanking({
                               Aviso Saldo RYYCOS
                             </div>
                             <div className="text-[11px] text-gray-400 line-clamp-2">
-                              "Tienes un saldo de {customer.ryycos.toLocaleString('es-CO')} RYYCOS listos para usar..."
+                              "Tienes {customer.ryycos.toLocaleString('es-CO')} RYYCOS para pedir en https://ryyco.com/..."
                             </div>
                           </a>
 
@@ -1247,7 +1520,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 🌟 Te saludamos con mucho aprecio desde RYYCO. Queremos agradecerte por ser uno de nuestros clientes más especiales con ${customer.totalOrders} pedidos realizados. ¡Tu lealtad hace grande a nuestra comunidad! ¿Hay algo nuevo que te gustaría ver en nuestra plataforma?`
+                              `¡Hola ${customer.name}! 🌟 Te saludamos con mucho aprecio desde *RYYCO*. Queremos agradecerte por ser de nuestros clientes más especiales con *${customer.totalOrders} pedidos realizados*. ¡Tienes *${customer.ryycos.toLocaleString('es-CO')} RYYCOS* para disfrutar hoy!\n\n🍽️ *Pide tus platos preferidos aquí:* 👉 https://ryyco.com/ 🚀`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1258,7 +1531,7 @@ export default function AdminCustomersRanking({
                               Agradecimiento VIP
                             </div>
                             <div className="text-[11px] text-gray-400 line-clamp-2">
-                              "Queremos agradecerte por ser uno de nuestros clientes más especiales con {customer.totalOrders} pedidos..."
+                              "Agradecimiento por {customer.totalOrders} pedidos. Redime RYYCOS en https://ryyco.com/..."
                             </div>
                           </a>
 
@@ -1267,7 +1540,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 🎁 Por ser un cliente destacado en RYYCO con ${customer.totalOrders} pedidos, tenemos un descuento especial para tu próximo antojo. ¡Escríbenos para aplicarlo en tu tienda favorita!`
+                              `¡Hola ${customer.name}! 🎁 Por ser un cliente destacado en *RYYCO* con ${customer.totalOrders} pedidos, tienes *${customer.ryycos.toLocaleString('es-CO')} RYYCOS* acumulados para ahorrar en tu próximo antojo.\n\n🍽️ *Ingresa a pedir con tus RYYCOS aquí:* 👉 https://ryyco.com/`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1278,7 +1551,7 @@ export default function AdminCustomersRanking({
                               Cupón / Promoción
                             </div>
                             <div className="text-[11px] text-gray-400 line-clamp-2">
-                              "Por ser un cliente destacado en RYYCO, tenemos un descuento especial para tu próximo antojo..."
+                              "Aprovecha tus RYYCOS para tu próximo antojo en https://ryyco.com/..."
                             </div>
                           </a>
 
@@ -1287,7 +1560,7 @@ export default function AdminCustomersRanking({
                               customer.cleanPhone,
                               customer.name,
                               customer.totalOrders,
-                              `¡Hola ${customer.name}! 👋 En RYYCO queremos asegurarnos de que siempre recibas el mejor servicio. ¿Cómo ha sido tu experiencia con las entregas y la comida en tus últimos pedidos? Nos encantaría escucharte.`
+                              `¡Hola ${customer.name}! 👋 En *RYYCO* queremos consentirte. Tienes *${customer.ryycos.toLocaleString('es-CO')} RYYCOS* para tu próximo pedido. ¿Cómo ha sido tu experiencia con las entregas y la comida?\n\n🍽️ *Visítanos y pide de nuevo con tus RYYCOS en:* 👉 https://ryyco.com/`
                             )}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1298,7 +1571,7 @@ export default function AdminCustomersRanking({
                               Encuesta de Servicio
                             </div>
                             <div className="text-[11px] text-gray-400 line-clamp-2">
-                              "Queremos asegurarnos de que siempre recibas el mejor servicio. ¿Cómo ha sido tu experiencia?..."
+                              "Experiencia con tus pedidos. Pide de nuevo en https://ryyco.com/..."
                             </div>
                           </a>
                         </div>

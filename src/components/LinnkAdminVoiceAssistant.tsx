@@ -122,7 +122,10 @@ export default function LinnkAdminVoiceAssistant({
     // Customer retention & loyalty
     const customerMap: Record<string, number> = {};
     orders.forEach(o => {
-      const key = o.customerPhone || o.customerName;
+      let rawPhone = (o.customerPhone || '').replace(/\D/g, '').replace(/^0+/, '');
+      if (rawPhone.length === 12 && rawPhone.startsWith('57')) rawPhone = rawPhone.slice(2);
+      else if (rawPhone.length > 10 && rawPhone.startsWith('573')) rawPhone = rawPhone.slice(2);
+      const key = (rawPhone && rawPhone.length >= 7) ? rawPhone : (o.customerName || '').toLowerCase().trim();
       if (key) customerMap[key] = (customerMap[key] || 0) + 1;
     });
     const uniqueCustomersCount = Object.keys(customerMap).length;

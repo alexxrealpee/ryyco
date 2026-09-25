@@ -5482,7 +5482,16 @@ export const REDEEMABLE_FOOD_REWARDS: RedeemableFoodReward[] = [
 export function sanitizeCustomerPhone(phone: string): string {
   if (!phone) return '';
   let cleaned = phone.replace(/[^0-9]/g, '');
+  // Remove leading zeros: 0057... -> 57... or 0310... -> 310...
+  cleaned = cleaned.replace(/^0+/, '');
+  // If Colombia mobile or landline with country code 57:
+  // Mobile: 57 + 10 digits = 12 digits (starts with 573...)
+  // Landline: 57 + 10 digits = 12 digits (starts with 5760...)
   if (cleaned.length === 12 && cleaned.startsWith('57')) {
+    cleaned = cleaned.substring(2);
+  } else if (cleaned.length === 11 && cleaned.startsWith('57')) {
+    cleaned = cleaned.substring(2);
+  } else if (cleaned.length > 10 && cleaned.startsWith('573')) {
     cleaned = cleaned.substring(2);
   }
   return cleaned;
@@ -5641,21 +5650,41 @@ export function subscribeToAllCustomerProfiles(
     return onSnapshot(
       collection(db, 'customers'),
       (snapshot) => {
-        const list: CustomerProfile[] = [];
+        const map = new Map<string, CustomerProfile>();
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as CustomerProfile;
           const pointsVal = data.points !== undefined 
             ? Number(data.points) 
             : (data.ryycos !== undefined ? Number(data.ryycos) : 0);
-          list.push({
-            ...data,
-            id: docSnap.id,
-            phone: data.phone || docSnap.id,
-            points: pointsVal,
-            ryycos: pointsVal,
-          });
+          const rawPhone = data.phone || docSnap.id;
+          const canonicalPhone = sanitizeCustomerPhone(rawPhone);
+          const key = canonicalPhone && canonicalPhone.length >= 7 ? canonicalPhone : docSnap.id;
+
+          if (!map.has(key)) {
+            map.set(key, {
+              ...data,
+              id: docSnap.id,
+              phone: canonicalPhone || rawPhone,
+              points: pointsVal,
+              ryycos: pointsVal,
+            });
+          } else {
+            const existing = map.get(key)!;
+            const existingPoints = Number(existing.points) || 0;
+            const higherPoints = Math.max(existingPoints, pointsVal);
+            map.set(key, {
+              ...existing,
+              ...data,
+              id: existing.id || docSnap.id,
+              phone: canonicalPhone || existing.phone || rawPhone,
+              name: (data.name && data.name.length > (existing.name || '').length) ? data.name : existing.name,
+              points: higherPoints,
+              ryycos: higherPoints,
+              spinsAvailable: Math.max(Number(existing.spinsAvailable) || 0, Number(data.spinsAvailable) || 0)
+            });
+          }
         });
-        callback(list);
+        callback(Array.from(map.values()));
       },
       (err) => {
         console.warn("Could not subscribe to all customer profiles:", err);

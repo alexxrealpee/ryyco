@@ -123,6 +123,7 @@ import {
   SystemSettings
 } from '../types';
 import BankSettings from './BankSettings';
+import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
 import { smartApiFetch } from '../lib/apiConfig';
 import LinnkProIsotype from './LinnkProIsotype';
@@ -1706,10 +1707,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             </div>
           </div>
           <a
-            href={`https://wa.me/573219730865?text=${encodeURIComponent(`Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`)}`}
+            href={getPersonalWhatsAppUrl('573219730865', `Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`)}
+            onClick={(e) => {
+              e.preventDefault();
+              openPersonalWhatsApp('573219730865', `Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`);
+            }}
             target="_blank"
             rel="noopener noreferrer"
             className="w-full md:w-auto px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs rounded-xl transition-all shadow-lg hover:shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer shrink-0"
+            title="Pagar por WhatsApp Messenger Personal (3219730865)"
           >
             <MessageCircle className="w-4 h-4 fill-black stroke-none" />
             <span>Pagar por WhatsApp: 3219730865</span>
@@ -1997,10 +2003,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             
                             {isSuspended ? (
                               <a
-                                href={`https://wa.me/573219730865?text=${encodeURIComponent(`Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`)}`}
+                                href={getPersonalWhatsAppUrl('573219730865', `Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`)}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  openPersonalWhatsApp('573219730865', `Hola, realizo la consulta sobre el pago para reactivar mi tienda @${profile.username}`);
+                                }}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/25 ring-2 ring-amber-400/30 transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 active:scale-95 shrink-0"
+                                title="Reactivar tienda por WhatsApp Messenger Personal (3219730865)"
                               >
                                 Reactivar Tienda
                               </a>

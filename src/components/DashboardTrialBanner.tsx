@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, AlertTriangle, ArrowRight, UploadCloud, Sparkles, MessageCircle } from 'lucide-react';
 import { UserProfile } from '../types';
+import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 
 interface DashboardTrialBannerProps {
   profile: UserProfile;
@@ -162,11 +163,15 @@ export const DashboardTrialBanner: React.FC<DashboardTrialBannerProps> = ({
 
           <a
             id="banner-whatsapp-support-btn"
-            href="https://wa.me/573106502043?text=Hola%2C%20necesito%20ayuda%20con%20mi%20tienda%20y%20el%20pago%20de%20mi%20Plan%20B%C3%A1sico"
+            href={getPersonalWhatsAppUrl('573106502043', 'Hola, necesito ayuda con mi tienda y el pago de mi Plan Básico')}
+            onClick={(e) => {
+              e.preventDefault();
+              openPersonalWhatsApp('573106502043', 'Hola, necesito ayuda con mi tienda y el pago de mi Plan Básico');
+            }}
             target="_blank"
             rel="noopener noreferrer"
             className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs py-2.5 px-3.5 rounded-xl transition flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
-            title="Contactar soporte por WhatsApp"
+            title="Contactar soporte por WhatsApp Messenger Personal (3106502043)"
           >
             <MessageCircle className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
             <span>Ayuda por WhatsApp 3106502043</span>
