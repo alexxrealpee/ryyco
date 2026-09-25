@@ -225,8 +225,14 @@ export interface OrderStatusHistoryItem {
   status: OrderStatus;
   timestamp: string;
   note?: string;
-  updatedBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+  updatedBy?: 'customer' | 'restaurant' | 'driver' | 'admin' | 'system';
+  userId?: string;
+  userRole?: 'customer' | 'restaurant' | 'driver' | 'admin' | 'system';
+  restaurantId?: string;
+  driverId?: string;
 }
+
+export type OrderStatusHistoryRecord = OrderStatusHistoryItem;
 
 export interface OrderItem {
   id: string;
@@ -251,9 +257,23 @@ export interface OrderItem {
   status: OrderStatus;
   deliveryType?: 'restaurant' | 'ryyco';
   driverId?: string; // Standard identifier of the assigned driver
-  cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+  cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'admin' | 'system';
   cancellationReason?: string;
   cancelledAt?: string;
+
+  // Official RYYCO Order Time Measurement & Status Lifecycle (Firebase Timestamps & Durations in seconds)
+  pendingAt?: string;
+  processingAt?: string;
+  shippedAt?: string;
+  deliveredAt?: string;
+
+  pendingDuration?: number;     // seconds: pendingAt -> processingAt
+  processingDuration?: number;  // seconds: processingAt -> shippedAt
+  shippingDuration?: number;    // seconds: shippedAt -> deliveredAt
+  totalDuration?: number;       // seconds: pendingAt -> deliveredAt
+  cancellationDuration?: number;// seconds: pendingAt -> cancelledAt
+
+  orderStatusHistory?: OrderStatusHistoryItem[];
   statusHistory?: OrderStatusHistoryItem[];
   items: CartItem[];
   totalAmount: number;

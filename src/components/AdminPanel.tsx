@@ -35,6 +35,9 @@ import AdminStoresManager from './AdminStoresManager';
 import AdminSalesStats from './AdminSalesStats';
 import AdminCustomersRanking from './AdminCustomersRanking';
 import AdminWhatsAppDriversModal from './AdminWhatsAppDriversModal';
+import AdminOrderTimesManager from './AdminOrderTimesManager';
+import OrderTimeTimeline from './OrderTimeTimeline';
+import { getActiveOrderElapsed, applyOrderTimeTransition } from '../lib/orderTimeTracking';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile } from '../types';
 import { 
@@ -70,6 +73,7 @@ import {
   FileText, 
   Phone, 
   Clock, 
+  Timer,
   Share2, 
   Mail, 
   Plus, 
@@ -160,14 +164,15 @@ interface AdminUser {
   restaurantDaysOpen?: string[];
 }
 
-const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' => {
+const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' => {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTab = urlParams.get('tab')?.toLowerCase();
-    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores'> = [
-      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores'
+    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times'> = [
+      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores', 'order_times'
     ];
     if (queryTab === 'tiendas') return 'stores';
+    if (queryTab === 'tiempos' || queryTab === 'tiempos_pedidos' || queryTab === 'tiempos-pedidos' || queryTab === 'order_times' || queryTab === 'times') return 'order_times';
     if (queryTab === 'ventas' || queryTab === 'estadisticas' || queryTab === 'stats' || queryTab === 'sales' || queryTab === 'sales_stats') return 'sales_stats';
     if (queryTab === 'clientes' || queryTab === 'customers' || queryTab === 'top_customers' || queryTab === 'whatsapp' || queryTab === 'clientes_whatsapp') return 'top_customers';
     if (queryTab && validTabs.includes(queryTab as any)) {
@@ -177,6 +182,7 @@ const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders'
     if (hash.startsWith('admin/')) {
       const hashTab = hash.split('/')[1];
       if (hashTab === 'tiendas') return 'stores';
+      if (hashTab === 'tiempos' || hashTab === 'tiempos_pedidos' || hashTab === 'tiempos-pedidos' || hashTab === 'order_times' || hashTab === 'times') return 'order_times';
       if (hashTab === 'ventas' || hashTab === 'estadisticas' || hashTab === 'stats' || hashTab === 'sales' || hashTab === 'sales_stats') return 'sales_stats';
       if (hashTab === 'clientes' || hashTab === 'customers' || hashTab === 'top_customers' || hashTab === 'whatsapp' || hashTab === 'clientes_whatsapp') return 'top_customers';
       if (hashTab && validTabs.includes(hashTab as any)) {
@@ -185,6 +191,7 @@ const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders'
     }
     const storedTab = localStorage.getItem('ryyco_admin_active_tab');
     if (storedTab === 'tiendas') return 'stores';
+    if (storedTab === 'tiempos' || storedTab === 'tiempos_pedidos' || storedTab === 'tiempos-pedidos' || storedTab === 'order_times' || storedTab === 'times') return 'order_times';
     if (storedTab === 'ventas' || storedTab === 'estadisticas' || storedTab === 'stats' || storedTab === 'sales' || storedTab === 'sales_stats') return 'sales_stats';
     if (storedTab === 'clientes' || storedTab === 'customers' || storedTab === 'top_customers' || storedTab === 'whatsapp' || storedTab === 'clientes_whatsapp') return 'top_customers';
     if (storedTab && validTabs.includes(storedTab as any)) {
@@ -214,13 +221,22 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [notif, setNotif] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores'>(getInitialAdminTab());
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
 
+  // Live timer tick for active order elapsed time calculation without page reload (every 15s)
+  const [nowMs, setNowMs] = useState<number>(Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNowMs(Date.now());
+    }, 15000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Tab switching with instant URL query and storage synchronization
-  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores') => {
+  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times') => {
     setActiveAdminTab(tab);
     try {
       localStorage.setItem('ryyco_admin_active_tab', tab);
@@ -1598,13 +1614,52 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const handleUpdateOrderStatus = async (orderId: string, storeOwnerId: string, newStatus: OrderItem['status']) => {
     try {
+      let cancellationReason: string | undefined = undefined;
+      if (newStatus === 'cancelled') {
+        const inputReason = window.prompt("Ingrese el motivo de cancelación del pedido (opcional):", "Cancelado por administración");
+        cancellationReason = inputReason?.trim() || "Cancelado por administración";
+      }
+
       await updateOrderStatus(orderId, storeOwnerId, newStatus, {
-        updatedBy: 'system',
+        updatedBy: 'admin',
+        cancelledBy: 'admin',
+        cancellationReason,
         allowAdminOverride: true,
-        note: `Estado actualizado por administración a ${newStatus}`
+        note: newStatus === 'cancelled' 
+          ? (cancellationReason || 'Cancelado por administración') 
+          : `Estado actualizado por administración a ${newStatus}`
       });
-      setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
-      setViewingOrder(prev => prev && prev.id === orderId ? { ...prev, status: newStatus } : prev);
+
+      const currentOrder = allOrders.find(o => o.id === orderId);
+      if (currentOrder) {
+        const timeUpdates = applyOrderTimeTransition(currentOrder, newStatus, {
+          userRole: 'admin',
+          cancelledBy: 'admin',
+          reason: cancellationReason,
+          restaurantId: storeOwnerId,
+          note: newStatus === 'cancelled' 
+            ? (cancellationReason || 'Cancelado por administración') 
+            : `Estado actualizado por administración a ${newStatus}`
+        });
+
+        const mergedOrder: OrderItem = {
+          ...currentOrder,
+          status: newStatus,
+          ...timeUpdates,
+          ...(newStatus === 'cancelled' ? {
+            cancelledBy: 'admin',
+            cancellationReason: cancellationReason || 'Cancelado por administración',
+            cancelledAt: new Date().toISOString()
+          } : {})
+        };
+
+        setAllOrders(prev => prev.map(o => o.id === orderId ? mergedOrder : o));
+        setViewingOrder(prev => prev && prev.id === orderId ? mergedOrder : prev);
+      } else {
+        setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+        setViewingOrder(prev => prev && prev.id === orderId ? { ...prev, status: newStatus } : prev);
+      }
+
       setNotif(`¡Estado del pedido actualizado a ${newStatus.toUpperCase()} correctamente!`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err: any) {
@@ -1954,6 +2009,23 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
+                    onClick={() => handleSwitchTab('order_times')}
+                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                      activeAdminTab === 'order_times' 
+                        ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Timer className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="truncate">Tiempos de Pedidos</span>
+                    </div>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold px-1.5 py-0.5 rounded-md border border-amber-500/30 shrink-0">
+                      KPI
+                    </span>
+                  </button>
+
+                  <button
                     onClick={() => handleSwitchTab('drivers')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'drivers' 
@@ -2124,6 +2196,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 )}
               </div>
               <span className="text-[10px] font-medium leading-none whitespace-nowrap">Pedidos</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab('order_times')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
+                activeAdminTab === 'order_times'
+                  ? 'text-amber-400 font-bold bg-amber-500/10 border border-amber-500/20'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <Timer className="w-5 h-5 text-amber-400" />
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">Tiempos</span>
             </button>
 
             <button
@@ -3559,6 +3643,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       ? 'processing'
                       : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
 
+                    const activeElapsed = !isDeliveredOrCancelled ? getActiveOrderElapsed(order, nowMs) : null;
+
                     const statusBadge = {
                       delivered: { bg: 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60', label: 'ENTREGADO' },
                       pending: { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', label: 'PENDIENTE' },
@@ -3585,9 +3671,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           <span className="text-white font-extrabold text-base tracking-tight font-mono">
                             #{order.orderNumber || 'S/N'}
                           </span>
-                          <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider ${statusBadge.bg}`}>
-                            {statusBadge.label}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                            {activeElapsed && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[10px] font-black text-amber-300 font-mono shadow-sm">
+                                <span className="relative flex h-1.5 w-1.5">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-400"></span>
+                                </span>
+                                <span>{activeElapsed.elapsedFormatted}</span>
+                              </span>
+                            )}
+                            <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider ${statusBadge.bg}`}>
+                              {statusBadge.label}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Customer & Location Info */}
@@ -3938,39 +4035,54 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   ? 'processing'
                                   : (order.status === 'confirmed' ? 'processing' : order.status || 'pending');
 
-                                return checkIsTableOrder(order) ? (
-                                  <select
-                                    value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus}
-                                    onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                    className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2 cursor-pointer outline-none w-full max-w-[120px]"
-                                  >
-                                    <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
-                                    <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
-                                    <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
-                                    <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
-                                  </select>
-                                ) : (
-                                  <select
-                                    value={effectiveStatus}
-                                    onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
-                                    className={`rounded-lg py-1 px-2 text-[10px] uppercase font-black border cursor-pointer outline-none w-full max-w-[120px] ${
-                                      effectiveStatus === 'delivered'
-                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                        : effectiveStatus === 'processing'
-                                        ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-                                        : effectiveStatus === 'shipped'
-                                        ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
-                                        : effectiveStatus === 'cancelled'
-                                        ? 'bg-red-500/10 text-red-400 border-red-500/20'
-                                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                                    }`}
-                                  >
-                                    <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
-                                    <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
-                                    <option value="shipped" className="bg-gray-950 text-white">🟣 Enviado</option>
-                                    <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
-                                    <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
-                                  </select>
+                                const activeElapsed = !isDeliveredOrCancelled ? getActiveOrderElapsed(order, nowMs) : null;
+
+                                return (
+                                  <div className="flex flex-col items-center gap-1">
+                                    {checkIsTableOrder(order) ? (
+                                      <select
+                                        value={effectiveStatus === 'shipped' ? 'processing' : effectiveStatus}
+                                        onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                                        className="bg-amber-950/80 border border-amber-500/40 text-amber-300 text-[10px] uppercase font-black rounded-lg py-1 px-2 cursor-pointer outline-none w-full max-w-[120px]"
+                                      >
+                                        <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
+                                        <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
+                                        <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                        <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
+                                      </select>
+                                    ) : (
+                                      <select
+                                        value={effectiveStatus}
+                                        onChange={(e) => handleUpdateOrderStatus(order.id, order.storeOwnerId, e.target.value as any)}
+                                        className={`rounded-lg py-1 px-2 text-[10px] uppercase font-black border cursor-pointer outline-none w-full max-w-[120px] ${
+                                          effectiveStatus === 'delivered'
+                                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                            : effectiveStatus === 'processing'
+                                            ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+                                            : effectiveStatus === 'shipped'
+                                            ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
+                                            : effectiveStatus === 'cancelled'
+                                            ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                            : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                        }`}
+                                      >
+                                        <option value="pending" className="bg-gray-950 text-white">🟡 Pendiente</option>
+                                        <option value="processing" className="bg-gray-950 text-white">🔵 Procesando</option>
+                                        <option value="shipped" className="bg-gray-950 text-white">🟣 Enviado</option>
+                                        <option value="delivered" className="bg-gray-950 text-white">🟢 Entregado</option>
+                                        <option value="cancelled" className="bg-gray-950 text-white">🔴 Cancelado</option>
+                                      </select>
+                                    )}
+                                    {activeElapsed && (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-bold font-mono text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded px-1.5 py-0.5">
+                                        <span className="relative flex h-1 w-1">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                          <span className="relative inline-flex rounded-full h-1 w-1 bg-amber-400"></span>
+                                        </span>
+                                        <span>{activeElapsed.elapsedFormatted}</span>
+                                      </span>
+                                    )}
+                                  </div>
                                 );
                               })()}
                             </td>
@@ -4040,6 +4152,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             )}
           </div>
+        ) : activeAdminTab === 'order_times' ? (
+          <AdminOrderTimesManager
+            orders={allOrders}
+            storesMap={storesMap}
+            allStoresList={allStoresList}
+            onViewOrder={(order) => setViewingOrder(order)}
+            onRefreshOrders={loadAdminData}
+          />
         ) : activeAdminTab === 'users' ? (
           <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-6 backdrop-blur-sm">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -4776,6 +4896,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </div>
                   </div>
                 )}
+
+                {/* RYYCO Official Order Times & Lifecycle Timeline */}
+                <OrderTimeTimeline order={viewingOrder} />
 
                 {/* Items List */}
                 <div className="p-4 bg-gray-900/60 border border-gray-850 rounded-2xl space-y-2.5">

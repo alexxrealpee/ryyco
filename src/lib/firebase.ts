@@ -47,6 +47,7 @@ import { safeSetItem } from './safeStorage';
 import { extractCoordinates } from './coordinateUtils';
 import { generateRyycoImageName } from './seoImageRenamer';
 import { orderProductBatch } from './productUtils';
+import { applyOrderTimeTransition } from './orderTimeTracking';
 
 // Concrete public config from firebase-applet-config.json
 const firebaseConfig = {
@@ -1344,16 +1345,22 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   result.status = 'pending';
   const orderCreatedAt = result.createdAt || new Date().toISOString();
   result.createdAt = orderCreatedAt;
-  if (!result.statusHistory || !result.statusHistory.length) {
-    result.statusHistory = [
-      {
-        status: 'pending',
-        timestamp: orderCreatedAt,
-        note: 'Esperando confirmación',
-        updatedBy: 'customer'
-      }
-    ];
-  }
+  result.pendingAt = result.pendingAt || orderCreatedAt;
+
+  const initialStatusRecord: OrderStatusHistoryItem = {
+    status: 'pending',
+    timestamp: orderCreatedAt,
+    note: 'Pedido recibido - Pendiente',
+    updatedBy: 'customer',
+    userRole: 'customer',
+    userId: result.customerPhone || 'customer',
+    restaurantId: result.storeOwnerId
+  };
+
+  result.orderStatusHistory = result.orderStatusHistory && result.orderStatusHistory.length > 0
+    ? result.orderStatusHistory
+    : [initialStatusRecord];
+  result.statusHistory = result.orderStatusHistory;
 
   // Auto-resolve store name and store contact/location details with exact coordinates
   if (result.storeOwnerId && result.storeOwnerId !== 'store_general') {
@@ -1749,9 +1756,9 @@ export async function updateOrderStatus(
   status: OrderItem['status'],
   options?: string | {
     note?: string;
-    cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+    cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'system' | 'admin';
     cancellationReason?: string;
-    updatedBy?: 'customer' | 'restaurant' | 'driver' | 'system';
+    updatedBy?: 'customer' | 'restaurant' | 'driver' | 'system' | 'admin';
     allowAdminOverride?: boolean;
   }
 ): Promise<void> {
@@ -1789,21 +1796,32 @@ export async function updateOrderStatus(
     status === 'cancelled' ? (opts.cancellationReason || 'Pedido cancelado') :
     `Estado actualizado a ${status}`;
 
-  const historyItem: OrderStatusHistoryItem = {
-    status,
-    timestamp: now,
-    note: opts.note || defaultNote,
-    updatedBy: opts.updatedBy || opts.cancelledBy || 'restaurant'
+  const baseOrder: OrderItem = currentOrder || {
+    id: orderId,
+    storeOwnerId,
+    status: 'pending',
+    createdAt: now,
+    pendingAt: now,
+    orderNumber: 0,
+    customerName: '',
+    customerPhone: '',
+    customerAddress: '',
+    paymentMethod: 'whatsapp',
+    items: [],
+    totalAmount: 0
   };
+
+  const timeUpdates = applyOrderTimeTransition(baseOrder, status, {
+    userRole: (opts.updatedBy || opts.cancelledBy || 'admin') as any,
+    restaurantId: storeOwnerId,
+    note: opts.note || defaultNote,
+    reason: opts.cancellationReason,
+    cancelledBy: (opts.cancelledBy || opts.updatedBy || 'admin') as any
+  });
 
   const updates: Partial<OrderItem> = {
     status,
-    statusHistory: [
-      ...(currentOrder?.statusHistory || [
-        { status: currentOrder?.status || 'pending', timestamp: currentOrder?.createdAt || now, note: 'Inicio de pedido' }
-      ]),
-      historyItem
-    ]
+    ...timeUpdates
   };
 
   if (status === 'cancelled') {
@@ -1889,24 +1907,18 @@ export async function confirmOrderRestaurantTransaction(
       }
 
       const now = new Date().toISOString();
-      const historyItem: OrderStatusHistoryItem = {
-        status: 'confirmed',
-        timestamp: now,
-        note: notes || 'Confirmado por el restaurante con domiciliario propio',
-        updatedBy: 'restaurant'
-      };
+      const timeUpdates = applyOrderTimeTransition(orderData, 'processing', {
+        userRole: 'restaurant',
+        restaurantId: orderData.storeOwnerId,
+        note: notes || 'Confirmado por el restaurante con domiciliario propio'
+      });
 
       const restaurantUpdates: Partial<OrderItem> = {
         deliveryType: 'restaurant',
         status: 'confirmed',
         deliveryStep: 'accepted' as const,
         deliveryStepUpdatedAt: now,
-        statusHistory: [
-          ...(orderData.statusHistory || [
-            { status: 'pending', timestamp: orderData.createdAt || now, note: 'Esperando confirmación', updatedBy: 'customer' }
-          ]),
-          historyItem
-        ]
+        ...timeUpdates
       };
 
       transaction.update(orderRef, restaurantUpdates);
@@ -1988,24 +2000,21 @@ export async function cancelOrderTransaction(
         'Cancelado por el sistema';
 
       const finalReason = reason || defaultReason;
-      const historyItem: OrderStatusHistoryItem = {
-        status: 'cancelled',
-        timestamp: now,
+      const timeUpdates = applyOrderTimeTransition(orderData, 'cancelled', {
+        userRole: cancelledBy,
+        cancelledBy,
+        reason: finalReason,
         note: finalReason,
-        updatedBy: cancelledBy
-      };
+        restaurantId: orderData.storeOwnerId
+      });
 
       const cancelUpdates: Partial<OrderItem> = {
         status: 'cancelled',
         cancelledBy,
         cancellationReason: finalReason,
         cancelledAt: now,
-        statusHistory: [
-          ...(orderData.statusHistory || [
-            { status: orderData.status, timestamp: orderData.createdAt || now, note: 'Inicio de pedido' }
-          ]),
-          historyItem
-        ]
+        deliveryStep: undefined,
+        ...timeUpdates
       };
 
       transaction.update(orderRef, cancelUpdates);
@@ -4512,12 +4521,12 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
 
       const now = new Date().toISOString();
       const effectiveFee = systemFee || 7000;
-      const historyItem: OrderStatusHistoryItem = {
-        status: 'confirmed',
-        timestamp: now,
-        note: `Pedido confirmado y aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName}`,
-        updatedBy: 'driver'
-      };
+      const timeUpdates = applyOrderTimeTransition(orderData, 'processing', {
+        userRole: 'driver',
+        driverId: driver.id,
+        restaurantId: orderData.storeOwnerId,
+        note: `Pedido confirmado y aceptado por domiciliario RYYCO: ${driver.firstName} ${driver.lastName}`
+      });
 
       const driverDataUpdates: Partial<OrderItem> = {
         deliveryFee: effectiveFee,
@@ -4532,12 +4541,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         deliveryStep: 'accepted' as const,
         deliveryStepUpdatedAt: now,
         status: 'confirmed',
-        statusHistory: [
-          ...(orderData.statusHistory || [
-            { status: 'pending', timestamp: orderData.createdAt || now, note: 'Esperando confirmación', updatedBy: 'customer' }
-          ]),
-          historyItem
-        ]
+        ...timeUpdates
       };
 
       // Enrich with store reference and GPS if missing on the order
@@ -4643,23 +4647,33 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
     historyNote = '¡Pedido entregado exitosamente!';
   }
 
-  const historyItem: OrderStatusHistoryItem = {
-    status: nextStatus,
-    timestamp: now,
-    note: historyNote || `Paso: ${step}`,
-    updatedBy: 'driver'
+  const baseOrder = currentOrder || {
+    id: orderId,
+    storeOwnerId: '',
+    status: 'processing',
+    createdAt: now,
+    pendingAt: now,
+    orderNumber: 0,
+    customerName: '',
+    customerPhone: '',
+    customerAddress: '',
+    paymentMethod: 'whatsapp',
+    items: [],
+    totalAmount: 0
   };
+
+  const timeUpdates = applyOrderTimeTransition(baseOrder, nextStatus, {
+    userRole: 'driver',
+    driverId: driverId || currentOrder?.deliveryDriverId || currentOrder?.driverId,
+    restaurantId: currentOrder?.storeOwnerId,
+    note: historyNote || `Paso: ${step}`
+  });
 
   const updates: Partial<OrderItem> = {
     deliveryStep: step,
     deliveryStepUpdatedAt: now,
     status: nextStatus,
-    statusHistory: [
-      ...(currentOrder?.statusHistory || [
-        { status: currentOrder?.status || 'pending', timestamp: currentOrder?.createdAt || now, note: 'Inicio de pedido' }
-      ]),
-      historyItem
-    ]
+    ...timeUpdates
   };
 
   await updateDoc(orderRef, updates);
