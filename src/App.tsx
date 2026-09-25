@@ -695,8 +695,6 @@ export default function App() {
         />
       )}
 
-// LinnkProVoiceAssistant removed from customer views - AI is strictly for the seller (Dashboard)
-
       {/* First-Visit / Customer Delivery Address Modal in Ipiales */}
       <FirstVisitAddressModal
         isOpen={isFirstVisitAddressOpen}

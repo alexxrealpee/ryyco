@@ -542,6 +542,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     const handleFgOrder = (e: any) => {
       const { payload } = e.detail || {};
       if (payload) {
+        const orderStatus = payload.data?.status;
+        if (orderStatus && orderStatus !== 'pending') return;
         setNotif(`🚨 ¡Nuevo Pedido FCM detectado! #${payload.data?.orderNumber || ''}`);
         setTimeout(() => setNotif(''), 6000);
       }
@@ -551,6 +553,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     // Connect to real-time SSE stream for Admin
     const cleanupSSE = connectFCMStream('admin', undefined, (data) => {
       if (data.type === 'ADMIN_ORDER_PUSH') {
+        if (data.status && data.status !== 'pending') return;
         setNotif(`🚨 ¡Nuevo Pedido #${data.orderNumber || ''} en "${data.storeName || 'Tienda'}"!`);
         setTimeout(() => setNotif(''), 6000);
       }
@@ -624,9 +627,36 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     };
   }, []);
 
+  // References to volatile states so the orders listener never restarts unnecessarily
+  const storesMapRef = useRef(storesMap);
+  storesMapRef.current = storesMap;
+  const allStoresListRef = useRef(allStoresList);
+  allStoresListRef.current = allStoresList;
+  const activeDriversRef = useRef(activeDrivers);
+  activeDriversRef.current = activeDrivers;
+  const systemSettingsRef = useRef(systemSettings);
+  systemSettingsRef.current = systemSettings;
+
   // Fire sound, vibration and FCM push notification when a new order arrives from ANY restaurant
   const triggerNewOrderAlert = (order: OrderItem) => {
-    const store = storesMap[order.storeOwnerId || ''] || allStoresList.find(s => s.uid === order.storeOwnerId);
+    // STRICT RULE: Only orders that are pending and unassigned trigger notifications!
+    if (!order || order.status !== 'pending') {
+      return;
+    }
+
+    const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||
+                      Boolean(order.driverId && order.driverId.trim() !== '') ||
+                      Boolean(order.deliveryStep);
+    if (hasDriver) {
+      return;
+    }
+
+    const currentStoresMap = storesMapRef.current;
+    const currentAllStoresList = allStoresListRef.current;
+    const currentActiveDrivers = activeDriversRef.current;
+    const currentSystemSettings = systemSettingsRef.current;
+
+    const store = currentStoresMap[order.storeOwnerId || ''] || currentAllStoresList.find(s => s.uid === order.storeOwnerId);
     const storeName = store?.name || order.storeName || 'Tienda en RYYCO';
 
     // Dispatch full FCM & Web Push notification with ServiceWorker, vibration, audio chime & backend broadcast
@@ -634,8 +664,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
     // Notify backend and active delivery drivers via WhatsApp notification pipeline
     const isDeliveryOrder = order.orderType !== 'table' && order.orderType !== 'pickup' && !checkIsTableOrder(order) && !checkIsPickupOrder(order);
-    if (isDeliveryOrder && activeDrivers.length > 0) {
-      notifyActiveDriversViaServer(order, activeDrivers, storeName).catch(() => {});
+    if (isDeliveryOrder && currentActiveDrivers.length > 0) {
+      notifyActiveDriversViaServer(order, currentActiveDrivers, storeName).catch(() => {});
     }
 
     setNewIncomingOrderAlert({
@@ -648,7 +678,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     });
 
     // If auto-open is enabled in settings, open WhatsApp drivers dispatch modal right away
-    if (systemSettings?.autoNotifyActiveDriversWhatsApp && isDeliveryOrder) {
+    if (currentSystemSettings?.autoNotifyActiveDriversWhatsApp && isDeliveryOrder) {
       setWhatsAppDispatchOrder(order);
     }
   };
@@ -687,10 +717,42 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     try {
       unsubscribe = subscribeToAllOrders((updatedOrders, newIncoming) => {
         setAllOrders(updatedOrders);
+
+        // Calculate strictly pending, unassigned orders across the entire platform
+        const genuinelyPending = updatedOrders.filter(o => {
+          const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
+                            Boolean(o.driverId && o.driverId.trim() !== '') ||
+                            Boolean(o.deliveryStep);
+          const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
+          return o.status === 'pending' && !hasDriver && !isPickedUp;
+        });
+
+        // 1. AUTO-CLEAR banner if there are NO pending orders anywhere in the system!
+        if (genuinelyPending.length === 0) {
+          setNewIncomingOrderAlert(null);
+        } else {
+          // If the banner was showing an order, make sure that order is still pending
+          setNewIncomingOrderAlert(prev => {
+            if (!prev) return null;
+            const isStillPending = genuinelyPending.some(p => p.id === prev.id);
+            return isStillPending ? prev : null;
+          });
+        }
+
+        // 2. STRICT RULE: ONLY alert if there are incoming orders that are ACTUALLY PENDING!
         if (newIncoming && newIncoming.length > 0) {
-          const pendingIncoming = newIncoming.filter(o => o.status === 'pending');
-          const alertTarget = pendingIncoming.length > 0 ? pendingIncoming[0] : newIncoming[0];
-          triggerNewOrderAlert(alertTarget);
+          const pendingIncoming = newIncoming.filter(o => {
+            const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
+                              Boolean(o.driverId && o.driverId.trim() !== '') ||
+                              Boolean(o.deliveryStep);
+            const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
+            return o.status === 'pending' && !hasDriver && !isPickedUp;
+          });
+
+          // NEVER notify if there are no pending orders!
+          if (pendingIncoming.length > 0) {
+            triggerNewOrderAlert(pendingIncoming[0]);
+          }
         }
       });
     } catch (err) {
@@ -700,7 +762,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [storesMap, allStoresList, activeDrivers, systemSettings]);
+  }, []);
 
   // Intelligent lazy loading state for subscriptions (7 items per batch)
   const [lastSubDoc, setLastSubDoc] = useState<any | null>(null);
@@ -1988,26 +2050,43 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       return sorted;
     }
     return sorted.filter(u => {
-      const { effectiveStatus } = isSubscriptionExpiredOrSuspended(u);
+      const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
+      if (selectedSubscriptionStatusFilter === 'expired') {
+        return effectiveStatus === 'expired' || isExpired;
+      }
+      if (selectedSubscriptionStatusFilter === 'suspended') {
+        return effectiveStatus === 'suspended' || isSuspended;
+      }
+      if (selectedSubscriptionStatusFilter === 'active') {
+        return !isExpired && !isSuspended && effectiveStatus === 'active';
+      }
+      if (selectedSubscriptionStatusFilter === 'trial') {
+        return !isExpired && !isSuspended && effectiveStatus === 'trial';
+      }
       return effectiveStatus === selectedSubscriptionStatusFilter;
     });
   }, [users, selectedSubscriptionStatusFilter]);
 
   const expiredSubscriptionsCount = useMemo(() => {
-    const listCount = users.filter(u => {
+    return users.filter(u => {
       const { effectiveStatus, isExpired } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'expired' || isExpired;
     }).length;
-    return Math.max(listCount, (stats as any).expiredStoresCount || 0);
-  }, [users, stats]);
+  }, [users]);
 
   const suspendedSubscriptionsCount = useMemo(() => {
-    const listCount = users.filter(u => {
+    return users.filter(u => {
       const { effectiveStatus, isSuspended } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'suspended' || isSuspended;
     }).length;
-    return Math.max(listCount, (stats as any).suspendedStoresCount || 0);
-  }, [users, stats]);
+  }, [users]);
+
+  const activeSubscriptionsCount = useMemo(() => {
+    return users.filter(u => {
+      const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
+      return !isExpired && !isSuspended && effectiveStatus === 'active';
+    }).length;
+  }, [users]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
@@ -2536,7 +2615,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           Activas
                         </span>
                         <span className="text-lg sm:text-xl font-black text-emerald-400 font-mono mt-0.5">
-                          {(stats as any).activeStoresCount ?? stats.totalProfiles ?? 0}
+                          {users.length > 0 ? activeSubscriptionsCount : ((stats as any).activeStoresCount ?? stats.totalProfiles ?? 0)}
                         </span>
                       </button>
 
@@ -2555,7 +2634,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           Expiradas
                         </span>
                         <span className="text-lg sm:text-xl font-black text-red-400 font-mono mt-0.5">
-                          {(stats as any).expiredStoresCount ?? 0}
+                          {users.length > 0 ? expiredSubscriptionsCount : ((stats as any).expiredStoresCount ?? 0)}
                         </span>
                       </button>
                     </div>
@@ -2573,7 +2652,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       }`}
                       title="Ver todas las tiendas registradas"
                     >
-                      {Math.max(stats.totalProfiles, allStoresList.length, ((stats as any).activeStoresCount ?? 0) + ((stats as any).expiredStoresCount ?? 0))} tiendas
+                      {users.length > 0 ? users.length : Math.max(stats.totalProfiles, allStoresList.length)} tiendas
                     </button>
                   </div>
                 </div>
@@ -3779,8 +3858,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             )}
 
-            {/* New Incoming Order Floating Banner */}
-            {newIncomingOrderAlert && (
+            {/* New Incoming Order Floating Banner - Strictly only rendered when there are pending orders */}
+            {newIncomingOrderAlert && pendingOrdersCount > 0 && (
               <div className="bg-gradient-to-r from-emerald-950/95 via-emerald-900/85 to-emerald-950/95 border-2 border-emerald-500/60 p-3.5 sm:p-4 rounded-2xl shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 animate-pulse">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className="p-2 sm:p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/40 shrink-0 mt-0.5">

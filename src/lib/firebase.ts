@@ -1508,6 +1508,7 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
             storeName: result.storeName,
             customerName: result.customerName,
             totalAmount: result.totalAmount,
+            status: result.status || 'pending',
             itemsCount: result.items?.length || 1,
             tokens: adminTokens
           })
@@ -2412,12 +2413,29 @@ export async function fetchAdminStats() {
     
     const profiles: UserProfile[] = [];
     pS.forEach(docSnap => {
-      profiles.push({ ...docSnap.data(), uid: docSnap.id } as UserProfile);
+      const d = docSnap.data() as any;
+      let createdAtStr = '';
+      if (d.createdAt) {
+        if (typeof d.createdAt === 'string') {
+          createdAtStr = d.createdAt;
+        } else if (typeof d.createdAt?.toDate === 'function') {
+          createdAtStr = d.createdAt.toDate().toISOString();
+        } else if (typeof d.createdAt?.seconds === 'number') {
+          createdAtStr = new Date(d.createdAt.seconds * 1000).toISOString();
+        }
+      }
+      profiles.push({
+        ...d,
+        uid: docSnap.id,
+        createdAt: createdAtStr || d.createdAt || '',
+        subscriptionStatus: d.subscriptionStatus,
+        suspended: d.suspended || false
+      } as UserProfile);
     });
 
     const userCount = Math.max(uS.size, profiles.length);
 
-    // Count active stores, trial stores, expired stores, and suspended stores
+    // Count active stores, trial stores, expired stores, and suspended stores accurately
     const activePaidStores = profiles.filter(p => {
       if (!p) return false;
       const { isExpired, isSuspended, effectiveStatus } = isSubscriptionExpiredOrSuspended(p);
@@ -2446,8 +2464,6 @@ export async function fetchAdminStats() {
     const trialCount = trialStores.length;
     const expiredCount = expiredStores.length;
     const suspendedCount = suspendedStores.length;
-    // Stores that need payment/reactivation
-    const totalExpiredOrSuspended = expiredCount + suspendedCount;
     const totalStoresCount = profiles.length;
 
     // Helper to get normalized store subscription plan price in COP
@@ -2476,9 +2492,9 @@ export async function fetchAdminStats() {
       activePaidStores: activePaidCount,
       activeStoresCount: activePaidCount,
       trialStoresCount: trialCount,
-      expiredStoresCount: totalExpiredOrSuspended,
+      expiredStoresCount: expiredCount,
       suspendedStoresCount: suspendedCount,
-      totalActiveAndExpired: totalStoresCount,
+      totalActiveAndExpired: activePaidCount + expiredCount,
       subscribersPro: subPro,
       subscribersBusiness: subMedio + subBasico,
       monthlyRevenue: activeRevenueCop,
@@ -2802,7 +2818,10 @@ export function subscribeToAllOrders(
         const order = normalizeOrderDriverStatus(rawOrder, true);
         result.push(order);
         if (!isInitial && !knownIds.has(docSnap.id)) {
-          newIncoming.push(order);
+          // Strictly only notify for orders with pending status
+          if (order.status === 'pending') {
+            newIncoming.push(order);
+          }
         }
         knownIds.add(docSnap.id);
       }

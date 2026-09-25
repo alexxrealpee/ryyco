@@ -701,7 +701,13 @@ Formatos válidos para:
   // Firebase Cloud Messaging (FCM) Order Notification Broadcast Endpoint
   app.post('/api/fcm/broadcast-order', async (req, res) => {
     try {
-      const { orderId, orderNumber, storeName, customerName, totalAmount, itemsCount, tokens: incomingTokens } = req.body || {};
+      const { orderId, orderNumber, storeName, customerName, totalAmount, itemsCount, status, tokens: incomingTokens } = req.body || {};
+      
+      // STRICT REQUIREMENT: Only pending orders trigger notifications
+      if (status && status !== 'pending') {
+        return res.json({ success: true, message: 'Non-pending order ignored for notifications' });
+      }
+
       console.log(`[FCM-SERVER] 🚨 Nuevo pedido para administración general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);
       
       // Relay to connected Admin clients (SSE)
@@ -713,6 +719,7 @@ Formatos válidos para:
         customerName,
         totalAmount,
         itemsCount,
+        status: status || 'pending',
         timestamp: new Date().toISOString()
       };
 

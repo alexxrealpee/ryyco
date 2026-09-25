@@ -195,6 +195,11 @@ export async function initializeFCM(): Promise<boolean> {
       const isDriver = payload.data?.isDriver === 'true' || payload.data?.role === 'driver' || payload.data?.type === 'DRIVER_REQUEST';
       const isSeller = !isDriver && (payload.data?.isSeller === 'true' || Boolean(payload.data?.storeOwnerId));
       
+      // STRICT REQUIREMENT: Only pending orders trigger notifications
+      if (!isDriver && payload.data?.status && payload.data?.status !== 'pending') {
+        return;
+      }
+      
       let defaultTitle = '🚨 ¡Nuevo Pedido en RYYCO!';
       let defaultBody = 'Ha llegado un nuevo pedido a la administración general.';
       let clickUrl = '/?view=admin&tab=orders';
@@ -413,6 +418,11 @@ export async function triggerAdminOrderPush(
 ) {
   if (typeof window === 'undefined') return;
 
+  // STRICT REQUIREMENT: Only pending orders trigger notifications and sound alerts!
+  if (!order || order.status !== 'pending') {
+    return;
+  }
+
   const orderNum = order.orderNumber ? `#${order.orderNumber}` : 'S/N';
   const storeName = order.storeName || storeNameFallback || 'Restaurante en RYYCO';
   const customer = order.customerName || 'Cliente';
@@ -507,6 +517,7 @@ export async function triggerAdminOrderPush(
         storeName,
         customerName: customer,
         totalAmount: order.totalAmount,
+        status: order.status || 'pending',
         itemsCount,
         tokens: adminTokens
       })
@@ -1267,6 +1278,10 @@ export function connectFCMStream(
             }));
           }
         } else if (data.type === 'ADMIN_ORDER_PUSH' && role === 'admin') {
+          // Strictly only alert if order is pending
+          if (data.status && data.status !== 'pending') {
+            return;
+          }
           playOrderAlertChime();
           speakOrderVoiceAlert(`¡Nuevo pedido número ${data.orderNumber || ''} en RYYCO!`);
           window.dispatchEvent(new CustomEvent('ryyco:new-admin-order', {
