@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage({ onNavigateHome }: PrivacyPolicyPageP
     if (onNavigateHome) {
       onNavigateHome();
     } else {
-      window.location.href = '/tienda';
+      window.location.href = '/';
     }
   };
 

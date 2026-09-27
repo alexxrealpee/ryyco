@@ -36,6 +36,7 @@ import AdminSalesStats from './AdminSalesStats';
 import AdminCustomersRanking from './AdminCustomersRanking';
 import AdminWhatsAppDriversModal from './AdminWhatsAppDriversModal';
 import AdminOrderTimesManager from './AdminOrderTimesManager';
+import AdminProductImagesOptimizer from './AdminProductImagesOptimizer';
 import OrderTimeTimeline from './OrderTimeTimeline';
 import { getActiveOrderElapsed, applyOrderTimeTransition } from '../lib/orderTimeTracking';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
@@ -281,17 +282,18 @@ const getSubscriptionCobroWhatsAppUrl = (user: AdminUser, templateType: 'standar
   return getPersonalWhatsAppUrl(rawPhone, message);
 };
 
-const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' => {
+const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images' => {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTab = urlParams.get('tab')?.toLowerCase();
-    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times'> = [
-      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores', 'order_times'
+    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'> = [
+      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores', 'order_times', 'product_images'
     ];
     if (queryTab === 'tiendas') return 'stores';
     if (queryTab === 'tiempos' || queryTab === 'tiempos_pedidos' || queryTab === 'tiempos-pedidos' || queryTab === 'order_times' || queryTab === 'times') return 'order_times';
     if (queryTab === 'ventas' || queryTab === 'estadisticas' || queryTab === 'stats' || queryTab === 'sales' || queryTab === 'sales_stats') return 'sales_stats';
     if (queryTab === 'clientes' || queryTab === 'customers' || queryTab === 'top_customers' || queryTab === 'whatsapp' || queryTab === 'clientes_whatsapp') return 'top_customers';
+    if (queryTab === 'imagenes' || queryTab === 'product_images' || queryTab === 'fotos' || queryTab === 'optimizar' || queryTab === 'images' || queryTab === 'image_optimizer') return 'product_images';
     if (queryTab && validTabs.includes(queryTab as any)) {
       return queryTab as any;
     }
@@ -302,6 +304,7 @@ const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders'
       if (hashTab === 'tiempos' || hashTab === 'tiempos_pedidos' || hashTab === 'tiempos-pedidos' || hashTab === 'order_times' || hashTab === 'times') return 'order_times';
       if (hashTab === 'ventas' || hashTab === 'estadisticas' || hashTab === 'stats' || hashTab === 'sales' || hashTab === 'sales_stats') return 'sales_stats';
       if (hashTab === 'clientes' || hashTab === 'customers' || hashTab === 'top_customers' || hashTab === 'whatsapp' || hashTab === 'clientes_whatsapp') return 'top_customers';
+      if (hashTab === 'imagenes' || hashTab === 'product_images' || hashTab === 'fotos' || hashTab === 'optimizar' || hashTab === 'images' || hashTab === 'image_optimizer') return 'product_images';
       if (hashTab && validTabs.includes(hashTab as any)) {
         return hashTab as any;
       }
@@ -311,6 +314,7 @@ const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders'
     if (storedTab === 'tiempos' || storedTab === 'tiempos_pedidos' || storedTab === 'tiempos-pedidos' || storedTab === 'order_times' || storedTab === 'times') return 'order_times';
     if (storedTab === 'ventas' || storedTab === 'estadisticas' || storedTab === 'stats' || storedTab === 'sales' || storedTab === 'sales_stats') return 'sales_stats';
     if (storedTab === 'clientes' || storedTab === 'customers' || storedTab === 'top_customers' || storedTab === 'whatsapp' || storedTab === 'clientes_whatsapp') return 'top_customers';
+    if (storedTab === 'imagenes' || storedTab === 'product_images' || storedTab === 'fotos' || storedTab === 'optimizar' || storedTab === 'images' || storedTab === 'image_optimizer') return 'product_images';
     if (storedTab && validTabs.includes(storedTab as any)) {
       return storedTab as any;
     }
@@ -338,7 +342,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [notif, setNotif] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times'>(getInitialAdminTab());
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
@@ -353,7 +357,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   }, []);
 
   // Tab switching with instant URL query and storage synchronization
-  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times') => {
+  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images') => {
     setActiveAdminTab(tab);
     try {
       localStorage.setItem('ryyco_admin_active_tab', tab);
@@ -2372,6 +2376,23 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
+                    onClick={() => handleSwitchTab('product_images')}
+                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                      activeAdminTab === 'product_images' 
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <ImageIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate">Imágenes de Productos</span>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/15 text-emerald-300 font-mono font-bold px-1.5 py-0.5 rounded-md border border-emerald-500/30 shrink-0">
+                      WebP
+                    </span>
+                  </button>
+
+                  <button
                     onClick={() => handleSwitchTab('general')}
                     className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'general' 
@@ -2542,6 +2563,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 )}
               </div>
               <span className="text-[10px] font-medium leading-none whitespace-nowrap">Usuarios</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab('product_images')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
+                activeAdminTab === 'product_images'
+                  ? 'text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <ImageIcon className="w-5 h-5 text-emerald-400" />
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">Imágenes</span>
             </button>
 
             <button
@@ -2787,44 +2820,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </select>
                 </div>
               </div>
-
-              {/* Banner de alerta para tiendas con plan expirado / pendientes de cobro */}
-              {expiredSubscriptionsCount > 0 && (
-                <div className="bg-gradient-to-r from-red-950/40 via-red-900/25 to-amber-950/30 border border-red-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
-                  <div className="flex items-start sm:items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center shrink-0">
-                      <AlertTriangle className="w-5 h-5 text-red-400 animate-bounce" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-xs font-black text-white uppercase tracking-wider">
-                          {expiredSubscriptionsCount} {expiredSubscriptionsCount === 1 ? 'Tienda con Plan Expirado' : 'Tiendas con Planes Expirados'}
-                        </h4>
-                        <span className="px-2 py-0.5 bg-red-500/20 text-red-300 border border-red-500/30 rounded-full text-[10px] font-black font-mono">
-                          Requieren Cobro
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-gray-400 mt-0.5">
-                        Estas tiendas tienen su suscripción vencida. Envíales el mensaje de cobro por WhatsApp con los datos de Nequi / Bancolombia para reactivar su catálogo.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSubscriptionStatusFilter('expired')}
-                      className={`px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 border shadow-sm ${
-                        selectedSubscriptionStatusFilter === 'expired'
-                          ? 'bg-red-600 text-white border-red-400 shadow-red-950/50'
-                          : 'bg-red-500/15 hover:bg-red-500/25 text-red-300 border-red-500/30'
-                      }`}
-                    >
-                      <Search className="w-3.5 h-3.5" />
-                      <span>Ver Solo Expiradas ({expiredSubscriptionsCount})</span>
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR */}
               <div className="space-y-4">
@@ -4771,6 +4766,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </table>
             </div>
           </div>
+        ) : activeAdminTab === 'product_images' ? (
+          <AdminProductImagesOptimizer 
+            storesMap={storesMap}
+            allStores={allStoresList}
+          />
         ) : activeAdminTab === 'general' ? (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-6 backdrop-blur-sm space-y-6">

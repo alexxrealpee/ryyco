@@ -1567,7 +1567,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       ? window.location.origin
       : 'https://ryyco.com';
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/tienda`;
+    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/`;
     const ryycoHomeUrl = `${cleanBaseUrl}/`;
     const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'nuestra tienda')).trim();
 

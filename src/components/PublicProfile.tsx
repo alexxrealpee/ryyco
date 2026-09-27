@@ -1116,7 +1116,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       ? window.location.origin
       : 'https://ryyco.com';
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/tienda`;
+    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/`;
     const ryycoHomeUrl = `${cleanBaseUrl}/`;
     const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'el restaurante')).trim();
 
@@ -1164,7 +1164,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           </button>
           
           <button 
-            onClick={() => onNavigateHome ? onNavigateHome() : window.location.href = '/tienda'}
+            onClick={() => onNavigateHome ? onNavigateHome() : window.location.href = '/'}
             className="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl px-5 py-3 text-sm border border-slate-700 transition-all"
           >
             Ir a Tiendas Disponibles

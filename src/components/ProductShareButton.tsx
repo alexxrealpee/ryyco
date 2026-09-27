@@ -44,7 +44,7 @@ export const ProductShareButton: React.FC<ProductShareButtonProps> = ({
     if (cleanUsername) {
       return `${origin}/@${encodeURIComponent(cleanUsername)}?product=${encodeURIComponent(product.id)}`;
     }
-    return `${origin}/tienda?product=${encodeURIComponent(product.id)}`;
+    return `${origin}/?product=${encodeURIComponent(product.id)}`;
   };
 
   // Build attractive message for WhatsApp and social platforms

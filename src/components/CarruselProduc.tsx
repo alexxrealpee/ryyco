@@ -548,7 +548,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     } else if (onNavigateHome) {
       onNavigateHome();
     } else {
-      window.location.href = '/tienda';
+      window.location.href = '/';
     }
   };
 

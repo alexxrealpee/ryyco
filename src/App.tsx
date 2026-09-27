@@ -200,6 +200,13 @@ const detectInitialRouteFromUrl = (): {
   } catch (e) {}
 
   if (['tienda', 'tiendas', 'catalogo', ''].includes(pathLower) || ['tienda', 'tiendas', 'catalogo'].includes(hashLower)) {
+    if (typeof window !== 'undefined' && ['tienda', 'tiendas', 'catalogo'].includes(pathLower)) {
+      try {
+        const search = window.location.search || '';
+        const hash = window.location.hash || '';
+        window.history.replaceState({}, document.title, '/' + search + hash);
+      } catch (e) {}
+    }
     return { view: 'tienda', username: null, reelId: null };
   }
 
@@ -245,6 +252,12 @@ export default function App() {
   // 2. React to URL Changes dynamically
   useEffect(() => {
     const handleUrlRouteCheck = () => {
+      const currentPath = window.location.pathname.toLowerCase();
+      if (currentPath === '/tienda' || currentPath === '/tiendas' || currentPath === '/catalogo') {
+        const search = window.location.search || '';
+        const hash = window.location.hash || '';
+        window.history.replaceState({}, document.title, '/' + search + hash);
+      }
       const route = detectInitialRouteFromUrl();
       setView(route.view);
       setTargetUsername(route.username);
@@ -507,7 +520,7 @@ export default function App() {
         // Return back to tienda general if user was inside protected views
         setView(prev => {
           if (prev === 'dashboard' || prev === 'admin') {
-            window.history.pushState({}, document.title, '/tienda');
+            window.history.pushState({}, document.title, '/');
             return 'tienda';
           }
           return prev;
@@ -524,7 +537,7 @@ export default function App() {
       localStorage.removeItem('ryyco_auth_mode');
       await signOut(auth);
       setUserProfile(null);
-      window.history.pushState({}, document.title, '/tienda');
+      window.history.pushState({}, document.title, '/');
       setView('tienda');
     } catch (e) {
       console.error(e);
@@ -532,8 +545,8 @@ export default function App() {
   };
 
   const handleNavigateHome = (claimUsername?: string) => {
-    // Return to /tienda as the primary landing address
-    window.history.pushState({}, document.title, '/tienda');
+    // Return to root / as the primary landing address
+    window.history.pushState({}, document.title, '/');
     setTargetUsername(null);
     if (claimUsername && typeof claimUsername === 'string') {
       setClaimedUsername(claimUsername);
@@ -559,7 +572,7 @@ export default function App() {
         <LandingPage 
           onNavigate={(targetView, customUser) => {
             if (targetView === 'tienda') {
-              window.history.pushState({}, '', '/tienda');
+              window.history.pushState({}, '', '/');
               setView('tienda');
             } else if (targetView === 'profile' && customUser) {
               window.history.pushState({}, '', `/${customUser}`);
@@ -584,7 +597,7 @@ export default function App() {
           usernameClaimed={claimedUsername}
           onNavigate={(targetView) => {
             if (targetView === 'tienda') {
-              window.history.pushState({}, '', '/tienda');
+              window.history.pushState({}, '', '/');
               setView('tienda');
             } else if (targetView === 'landing') {
               window.history.pushState({}, '', '/landing');
@@ -669,7 +682,7 @@ export default function App() {
         <CarruselProduc
           initialReelId={targetReelId}
           onNavigateHome={() => {
-            window.history.pushState({}, '', '/tienda');
+            window.history.pushState({}, '', '/');
             setTargetUsername(null);
             setTargetReelId(null);
             setView('tienda');
@@ -681,7 +694,7 @@ export default function App() {
             setView('profile');
           }}
           onNavigateToTienda={() => {
-            window.history.pushState({}, '', '/tienda');
+            window.history.pushState({}, '', '/');
             setTargetUsername(null);
             setTargetReelId(null);
             setView('tienda');
