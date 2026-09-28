@@ -32,6 +32,7 @@ import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import { getVariantPrice } from '../lib/variantHelper';
+import { ReelShareModal } from './ReelShareModal';
 import { 
   addProductToCart, 
   getStoredCart, 
@@ -121,6 +122,10 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
   
   // Likes storage & state
   const [likesMap, setLikesMap] = useState<Record<string, LikeState>>({});
+  
+  // Reel Share & Story Extraction Modal
+  const [shareModalProduct, setShareModalProduct] = useState<ProductItem | null>(null);
+  const [shareModalProfile, setShareModalProfile] = useState<UserProfile | null>(null);
   
   // Double tap heart burst animations
   const [heartBursts, setHeartBursts] = useState<Array<{ id: number; x: number; y: number }>>([]);
@@ -451,31 +456,10 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
     }
   };
 
-  // 8. Share Reel directly with deep-link to the exact dish/reel
-  const handleShare = async (product: ProductItem, profile?: UserProfile | null) => {
-    const url = `${window.location.origin}/reels?id=${encodeURIComponent(product.id)}`;
-    const text = `🔥 Mira este reel gastronómico en Ryyco: ${product.name} de ${profile?.displayName || 'Ryyco'}`;
-
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: product.name, text, url });
-      } catch (err: any) {
-        // Fallback to clipboard if share cancelled or unavailable
-        if (err?.name !== 'AbortError') {
-          try {
-            await navigator.clipboard.writeText(url);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          } catch (e) {}
-        }
-      }
-    } else {
-      try {
-        await navigator.clipboard.writeText(url);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      } catch (e) {}
-    }
+  // 8. Share Reel directly with deep-link & Story Dish Extractor Modal
+  const handleShare = (product: ProductItem, profile?: UserProfile | null) => {
+    setShareModalProduct(product);
+    setShareModalProfile(profile || null);
   };
 
   // 9. Cart handlers inside Reels
@@ -1331,6 +1315,14 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
             <ChevronDown className="w-6 h-6" />
           </button>
         </div>
+
+        {/* Reel Share & Story Dish Extractor Modal */}
+        <ReelShareModal
+          isOpen={!!shareModalProduct}
+          onClose={() => setShareModalProduct(null)}
+          product={shareModalProduct}
+          profile={shareModalProfile}
+        />
 
       </div>
 

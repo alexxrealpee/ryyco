@@ -1282,6 +1282,41 @@ function parseColombianAddressToCoords(query: string): { formattedTitle: string;
 let photonDisabledUntil = 0;
 let nominatimDisabledUntil = 0;
 
+  // Secure image proxy for Canvas Story generation & Web Share API with permissive CORS
+  app.get('/api/proxy-image', async (req, res) => {
+    const rawUrl = req.query.url as string | undefined;
+    if (!rawUrl) {
+      return res.status(400).send('Missing url parameter');
+    }
+    try {
+      const parsed = new URL(rawUrl);
+      if (!['http:', 'https:'].includes(parsed.protocol)) {
+        return res.status(400).send('Invalid protocol');
+      }
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      const upstream = await fetch(rawUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; RyycoProxy/1.0)'
+        }
+      });
+      clearTimeout(timeout);
+      if (!upstream.ok) {
+        return res.status(upstream.status).send('Upstream image error');
+      }
+      const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      const buffer = await upstream.arrayBuffer();
+      return res.send(Buffer.from(buffer));
+    } catch (e: any) {
+      return res.status(500).send('Error proxying image');
+    }
+  });
+
   // Google Maps Platform Geocoding endpoint (handles forward and reverse geocoding with server-side API key proxy and fast fallbacks)
   app.get(['/api/maps/geocode', '/api/maps-geocode.php'], async (req, res) => {
     const lat = req.query.lat as string | undefined;

@@ -1720,8 +1720,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 window.scrollTo({ top: 0, behavior: 'smooth' });
                 onNavigateHome();
               }} 
-              height={40}
-              imgClassName="h-7 sm:h-[38px] md:h-[42px]"
+              height={42}
+              imgClassName="h-8 sm:h-[38px] md:h-[42px]"
             />
           </div>
 
@@ -1893,7 +1893,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#E63946] hover:bg-[#E63946]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
                 >
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" viewBox="0 0 24 24">
-                    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 3.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6zm0 3.8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+                    <path
+                      fillRule="evenodd"
+                      clipRule="evenodd"
+                      d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 4.2a5.8 5.8 0 1 0 0 11.6 5.8 5.8 0 0 0 0-11.6z"
+                    />
                   </svg>
                 </a>
               </div>
@@ -1901,16 +1905,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.08] font-sans">
               <span className="block text-white">¿Qué piensas</span>
-              <span className="block text-[#E63946]">pedir</span>
-              <span className="inline-flex items-center gap-1.5 text-[#F4B400] relative">
-                hoy?
-                {/* Decorative radiating lines accent */}
-                <span className="inline-flex flex-col gap-0.5 ml-1 text-[#E63946] select-none">
-                  <span className="w-2.5 h-0.5 bg-[#E63946] rounded-full transform rotate-45"></span>
-                  <span className="w-3.5 h-0.5 bg-[#E63946] rounded-full"></span>
-                  <span className="w-2.5 h-0.5 bg-[#E63946] rounded-full transform -rotate-45"></span>
-                </span>
-              </span>
+              <span className="block text-[#E63946]">pedir?</span>
             </h1>
           </div>
 
