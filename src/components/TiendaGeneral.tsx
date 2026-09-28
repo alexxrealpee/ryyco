@@ -1890,16 +1890,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   rel="noopener noreferrer"
                   aria-label="Linnk Pro Ryyco"
                   title="Visitar linnk.pro/ryyco"
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#E63946] hover:bg-[#E63946]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95 overflow-hidden p-1.5"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#E63946] hover:bg-[#E63946]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
                 >
-                  <img
-                    src="/linnk-pro-icon.png"
-                    alt="Linnk Pro Ryyco"
-                    className="w-full h-full object-contain rounded-full select-none pointer-events-none brightness-0 invert filter"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = 'https://linnk.pro/wp-content/uploads/2024/10/cropped-linnk.pro-icono-192x192.png';
-                    }}
-                  />
+                  <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" viewBox="0 0 24 24">
+                    <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 3.2a6.8 6.8 0 1 0 0 13.6 6.8 6.8 0 0 0 0-13.6zm0 3.8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+                  </svg>
                 </a>
               </div>
             </div>
