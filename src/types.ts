@@ -504,6 +504,7 @@ export interface CustomerProfile {
   totalSpent: number;
   spinsAvailable: number; // Tiros o giros disponibles en la ruleta de platos gratis
   wonPrizes?: CustomerPrize[];
+  welcomeMessageSentAt?: string; // Fecha en que se envió el mensaje de bienvenida por WhatsApp (En visto ✓✓)
   createdAt: string;
   updatedAt: string;
 }

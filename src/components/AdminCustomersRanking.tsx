@@ -36,11 +36,25 @@ import {
   Gift,
   Coins,
   X,
-  Plus
+  Plus,
+  CheckCheck
 } from 'lucide-react';
 import { OrderItem, UserProfile, CustomerProfile } from '../types';
-import { subscribeToAllCustomerProfiles, adjustCustomerRyycosByAdmin } from '../lib/firebase';
+import { subscribeToAllCustomerProfiles, adjustCustomerRyycosByAdmin, markCustomerWelcomeMessageSent } from '../lib/firebase';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
+
+// Mensaje de bienvenida oficial para clientes en la ciudad de Ipiales
+export const RYYCO_WELCOME_MESSAGE = `🎉 ¡Bienvenido a RYYCO! 💚
+
+Nos alegra tenerte con nosotros. 😋
+
+📲 Guárdanos en tus contactos para seguir descubriendo nuevos platos, restaurantes y promociones en la ciudad de Ipiales.
+
+👉 https://ryyco.com/
+
+🍔🌮🍕 ¡Nos vemos pronto!
+
+RYYCO — Pide lo que se te antoje. 🚀`;
 
 interface AdminCustomersRankingProps {
   allOrders: OrderItem[];
@@ -73,10 +87,13 @@ export interface CustomerAggregated {
   ryycos: number;
   spinsAvailable: number;
   isRegisteredProfile: boolean;
+  // WhatsApp Welcome Message Status (En visto ✓✓)
+  welcomeMessageSentAt?: string;
+  isWelcomeSent: boolean;
 }
 
 type SortOrderOption = 'orders_desc' | 'orders_asc' | 'spent_desc' | 'recent_desc' | 'ryycos_desc' | 'ryycos_asc';
-type CustomerSegmentFilter = 'all' | 'vip' | 'frequent' | 'new' | 'has_whatsapp' | 'has_ryycos';
+type CustomerSegmentFilter = 'all' | 'vip' | 'frequent' | 'new' | 'has_whatsapp' | 'has_ryycos' | 'welcome_pending' | 'welcome_sent';
 type TimeRangeFilter = 'all' | 'this_month' | 'last_30_days' | 'last_7_days';
 
 // Helper to normalize phone numbers canonically (removes country code +57, leading zeros, non-digits)
@@ -195,6 +212,20 @@ export default function AdminCustomersRanking({
   const [copiedPhoneKey, setCopiedPhoneKey] = useState<string | null>(null);
   const [activeMessageTemplate, setActiveMessageTemplate] = useState<{ customerKey: string; type: 'vip' | 'discount' | 'checkup' } | null>(null);
 
+  // WhatsApp Welcome Message Tracker state (En visto ✓✓)
+  const [welcomeSentMap, setWelcomeSentMap] = useState<Record<string, { sentAt: string }>>(() => {
+    try {
+      const raw = localStorage.getItem('ryyco_welcome_sent_map_v1');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [confirmResendCustomer, setConfirmResendCustomer] = useState<CustomerAggregated | null>(null);
+  const [toastFeedback, setToastFeedback] = useState<string | null>(null);
+  const [showWelcomeMessageBanner, setShowWelcomeMessageBanner] = useState<boolean>(true);
+  const [copiedWelcomeMessage, setCopiedWelcomeMessage] = useState<boolean>(false);
+
   // Real-time customer profiles from Firestore
   const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
   const [adjustingRyycosCustomer, setAdjustingRyycosCustomer] = useState<CustomerAggregated | null>(null);
@@ -251,6 +282,78 @@ export default function AdminCustomersRanking({
       setCopiedPhoneKey(customer.key);
       setTimeout(() => setCopiedPhoneKey(null), 2000);
     }
+  };
+
+  // Enviar mensaje de bienvenida por WhatsApp y marcar como En Visto ✓✓
+  const handleSendWelcomeMessage = (customer: CustomerAggregated, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const phone = customer.cleanPhone || customer.rawPhone;
+    if (!phone) return;
+
+    const canonical = getCanonicalPhone(phone);
+    const nowIso = new Date().toISOString();
+
+    // 1. Guardar inmediatamente en estado y localStorage para actualizar interfaz al instante
+    setWelcomeSentMap(prev => {
+      const next = { ...prev, [canonical]: { sentAt: nowIso } };
+      if (customer.key) next[customer.key] = { sentAt: nowIso };
+      try {
+        localStorage.setItem('ryyco_welcome_sent_map_v1', JSON.stringify(next));
+      } catch (err) {}
+      return next;
+    });
+
+    // 2. Persistir en Firestore en segundo plano
+    markCustomerWelcomeMessageSent(canonical, nowIso).catch(() => {});
+
+    // 3. Abrir WhatsApp personal con el mensaje oficial de bienvenida
+    openPersonalWhatsApp(phone, RYYCO_WELCOME_MESSAGE);
+
+    // 4. Feedback visual
+    setToastFeedback(`🎉 ¡Mensaje de bienvenida preparado para ${customer.name || customer.formattedPhone} y marcado como En Visto ✓✓!`);
+    setTimeout(() => setToastFeedback(null), 4000);
+    setConfirmResendCustomer(null);
+  };
+
+  // Desmarcar visto en caso de querer reenviar o corregir
+  const handleUnmarkWelcomeSent = (customer: CustomerAggregated) => {
+    const phone = customer.cleanPhone || customer.rawPhone;
+    const canonical = getCanonicalPhone(phone);
+
+    setWelcomeSentMap(prev => {
+      const next = { ...prev };
+      delete next[canonical];
+      if (customer.key) delete next[customer.key];
+      try {
+        localStorage.setItem('ryyco_welcome_sent_map_v1', JSON.stringify(next));
+      } catch (err) {}
+      return next;
+    });
+
+    markCustomerWelcomeMessageSent(canonical, '').catch(() => {});
+    setToastFeedback(`Se ha desmarcado como visto para ${customer.name || customer.formattedPhone}.`);
+    setTimeout(() => setToastFeedback(null), 3000);
+    setConfirmResendCustomer(null);
+  };
+
+  // Copiar texto oficial del mensaje de bienvenida al portapapeles
+  const handleCopyWelcomeMessage = () => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(RYYCO_WELCOME_MESSAGE);
+      setCopiedWelcomeMessage(true);
+      setTimeout(() => setCopiedWelcomeMessage(false), 2500);
+    }
+  };
+
+  // Enviar mensaje de bienvenida al siguiente cliente pendiente
+  const handleSendNextPendingCustomer = () => {
+    const nextPending = aggregatedCustomers.find(c => !c.isWelcomeSent && c.cleanPhone.length >= 7);
+    if (!nextPending) {
+      setToastFeedback('🎉 ¡Excelente! Todos los clientes con WhatsApp registrado ya tienen el mensaje de bienvenida enviado.');
+      setTimeout(() => setToastFeedback(null), 4000);
+      return;
+    }
+    handleSendWelcomeMessage(nextPending);
   };
 
   // Date filtering logic
@@ -475,6 +578,11 @@ export default function AdminCustomersRanking({
       }
 
       const whatsappUrl = buildWhatsAppUrl(data.cleanPhone || data.rawPhone, data.name, totalOrders, undefined, ryycos);
+      const canonical = getCanonicalPhone(data.cleanPhone || data.rawPhone);
+      const profileSentAt = foundProfile?.welcomeMessageSentAt;
+      const localSentAt = welcomeSentMap[canonical]?.sentAt || welcomeSentMap[key]?.sentAt;
+      const welcomeMessageSentAt = profileSentAt || localSentAt || undefined;
+      const isWelcomeSent = !!welcomeMessageSentAt;
 
       list.push({
         key,
@@ -498,7 +606,9 @@ export default function AdminCustomersRanking({
         orders: sortedOrders,
         ryycos,
         spinsAvailable,
-        isRegisteredProfile
+        isRegisteredProfile,
+        welcomeMessageSentAt,
+        isWelcomeSent
       });
     });
 
@@ -538,6 +648,10 @@ export default function AdminCustomersRanking({
         const ryycos = p.points !== undefined ? Number(p.points) : (p.ryycos !== undefined ? Number(p.ryycos) : 0);
         const spinsAvailable = Number(p.spinsAvailable) || 0;
         const whatsappUrl = buildWhatsAppUrl(canonical || rawPhone, p.name || 'Cliente', 0, undefined, ryycos);
+        const profileSentAt = p.welcomeMessageSentAt;
+        const localSentAt = welcomeSentMap[canonical]?.sentAt || welcomeSentMap[key]?.sentAt;
+        const welcomeMessageSentAt = profileSentAt || localSentAt || undefined;
+        const isWelcomeSent = !!welcomeMessageSentAt;
 
         list.push({
           key,
@@ -561,7 +675,9 @@ export default function AdminCustomersRanking({
           orders: [],
           ryycos,
           spinsAvailable,
-          isRegisteredProfile: true
+          isRegisteredProfile: true,
+          welcomeMessageSentAt,
+          isWelcomeSent
         });
       });
     }
@@ -667,6 +783,11 @@ export default function AdminCustomersRanking({
         const formattedPhone = formatPhoneDisplay(bestCleanPhone || bestRawPhone);
         const whatsappUrl = buildWhatsAppUrl(bestCleanPhone || bestRawPhone, bestName, totalOrders, undefined, bestRyycos);
 
+        const targetCanonical = getCanonicalPhone(bestCleanPhone || bestRawPhone);
+        const targetProfile = customerProfilesMap.get(targetCanonical) || customerProfilesMap.get(bestRawPhone) || customerProfilesMap.get(bestName);
+        const welcomeMessageSentAt = targetProfile?.welcomeMessageSentAt || existing.welcomeMessageSentAt || c.welcomeMessageSentAt || welcomeSentMap[targetCanonical]?.sentAt || undefined;
+        const isWelcomeSent = !!welcomeMessageSentAt;
+
         dedupedList[targetIdx] = {
           ...existing,
           name: bestName,
@@ -689,7 +810,9 @@ export default function AdminCustomersRanking({
           orders: mergedOrders,
           ryycos: bestRyycos,
           spinsAvailable: bestSpins,
-          isRegisteredProfile: existing.isRegisteredProfile || c.isRegisteredProfile
+          isRegisteredProfile: existing.isRegisteredProfile || c.isRegisteredProfile,
+          welcomeMessageSentAt,
+          isWelcomeSent
         };
 
         if (bestCleanPhone && !phoneIndex.has(bestCleanPhone)) {
@@ -699,7 +822,7 @@ export default function AdminCustomersRanking({
     });
 
     return dedupedList;
-  }, [filteredOrdersByTime, selectedStore, storesMap, customerProfilesMap, customerProfiles, timeRange]);
+  }, [filteredOrdersByTime, selectedStore, storesMap, customerProfilesMap, customerProfiles, timeRange, welcomeSentMap]);
 
   // Apply filters and sorting
   const processedCustomers = useMemo(() => {
@@ -731,6 +854,10 @@ export default function AdminCustomersRanking({
       result = result.filter(c => c.cleanPhone.length >= 7);
     } else if (segmentFilter === 'has_ryycos') {
       result = result.filter(c => c.ryycos > 0);
+    } else if (segmentFilter === 'welcome_pending') {
+      result = result.filter(c => !c.isWelcomeSent && c.cleanPhone.length >= 7);
+    } else if (segmentFilter === 'welcome_sent') {
+      result = result.filter(c => c.isWelcomeSent);
     }
 
     // Sort strictly as requested:
@@ -774,6 +901,8 @@ export default function AdminCustomersRanking({
     const recurringCustomers = aggregatedCustomers.filter(c => c.totalOrders > 1).length;
     const totalPlatformSpent = aggregatedCustomers.reduce((acc, c) => acc + c.totalSpent, 0);
     const totalPlatformRyycos = aggregatedCustomers.reduce((acc, c) => acc + (c.ryycos || 0), 0);
+    const welcomeSentCount = aggregatedCustomers.filter(c => c.isWelcomeSent).length;
+    const welcomePendingCount = aggregatedCustomers.filter(c => !c.isWelcomeSent && c.cleanPhone.length >= 7).length;
     const topCustomer = aggregatedCustomers.length > 0
       ? [...aggregatedCustomers].sort((a, b) => b.totalOrders - a.totalOrders)[0]
       : null;
@@ -787,7 +916,9 @@ export default function AdminCustomersRanking({
       totalPlatformSpent,
       totalPlatformRyycos,
       topCustomer,
-      maxOrders
+      maxOrders,
+      welcomeSentCount,
+      welcomePendingCount
     };
   }, [aggregatedCustomers]);
 
@@ -904,7 +1035,7 @@ export default function AdminCustomersRanking({
         </div>
 
         {/* Global Summary KPI Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-400">Clientes Totales</span>
@@ -954,7 +1085,7 @@ export default function AdminCustomersRanking({
 
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-amber-300">Total RYYCOS Clientes</span>
+              <span className="text-xs font-medium text-amber-300">Total RYYCOS</span>
               <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400">
                 <Sparkles className="w-4 h-4 fill-amber-400/20" />
               </div>
@@ -963,13 +1094,13 @@ export default function AdminCustomersRanking({
               {summaryStats.totalPlatformRyycos.toLocaleString('es-CO')}
             </div>
             <div className="mt-1 text-[11px] text-amber-500/80 font-medium">
-              🪙 ${summaryStats.totalPlatformRyycos.toLocaleString('es-CO')} COP en comida
+              🪙 Saldo disponible
             </div>
           </div>
 
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-400">Gasto Total Clientes</span>
+              <span className="text-xs font-medium text-gray-400">Gasto Total</span>
               <div className="w-8 h-8 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
                 <DollarSign className="w-4 h-4" />
               </div>
@@ -978,8 +1109,145 @@ export default function AdminCustomersRanking({
               ${summaryStats.totalPlatformSpent.toLocaleString('es-CO')}
             </div>
             <div className="mt-1 text-[11px] text-gray-400 font-medium">
-              Volumen acumulado COP
+              Volumen acumulado
             </div>
+          </div>
+
+          <div className="bg-gray-900/80 border border-sky-500/30 rounded-xl p-3.5 sm:p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-sky-300">Bienvenidas ✓✓</span>
+              <div className="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400">
+                <CheckCheck className="w-4 h-4 text-sky-400" />
+              </div>
+            </div>
+            <div className="mt-2 text-xl sm:text-2xl font-black text-sky-400 font-mono">
+              {summaryStats.welcomeSentCount} <span className="text-xs text-gray-500 font-normal">/ {summaryStats.withWhatsApp}</span>
+            </div>
+            <div className="mt-1 text-[11px] text-amber-400 flex items-center gap-1 font-medium">
+              <Clock className="w-3 h-3 text-amber-400" />
+              <span>{summaryStats.welcomePendingCount} pendientes</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Campaña de Mensaje de Bienvenida WhatsApp a Todos los Clientes */}
+      <div className="bg-gradient-to-r from-emerald-950/40 via-gray-900 to-sky-950/30 border border-emerald-500/30 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4 relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Campaña Oficial de Fidelización • WhatsApp Ipiales</span>
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+              <span>Mensaje de Bienvenida a Clientes</span>
+              <span className="text-xs font-bold text-sky-300 bg-sky-500/20 border border-sky-500/40 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <CheckCheck className="w-3.5 h-3.5 text-sky-400" />
+                <span>Control «En visto ✓✓» con color</span>
+              </span>
+            </h2>
+            <p className="text-xs sm:text-sm text-gray-400 max-w-3xl leading-relaxed">
+              Envía este mensaje de bienvenida a todos los clientes por WhatsApp. Cada cliente al que le envíes el mensaje quedará automáticamente marcado con el símbolo de <strong className="text-sky-300">«En visto ✓✓» en color</strong> para no volverse a enviar ni duplicar mensajes.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              onClick={handleCopyWelcomeMessage}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition border border-gray-700 hover:text-white cursor-pointer shadow-sm"
+              title="Copiar texto oficial del mensaje de bienvenida al portapapeles"
+            >
+              {copiedWelcomeMessage ? (
+                <>
+                  <Check className="w-4 h-4 text-emerald-400" />
+                  <span className="text-emerald-300">¡Mensaje Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-4 h-4 text-gray-400" />
+                  <span>Copiar Mensaje</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() => setShowWelcomeMessageBanner(!showWelcomeMessageBanner)}
+              className="px-3 py-2 rounded-xl bg-gray-950 border border-gray-800 hover:bg-gray-800 text-gray-400 hover:text-white text-xs font-medium transition cursor-pointer"
+            >
+              {showWelcomeMessageBanner ? 'Ocultar Texto' : 'Ver Texto Completo'}
+            </button>
+          </div>
+        </div>
+
+        {/* Message Preview Box */}
+        {showWelcomeMessageBanner && (
+          <div className="bg-gray-950/80 border border-gray-800 rounded-xl p-4 sm:p-5 relative group">
+            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center justify-between">
+              <span>Texto que recibirá el cliente en WhatsApp:</span>
+              <span className="text-emerald-400 font-mono text-[10.5px]">Ipiales • RYYCO.com</span>
+            </div>
+            <div className="bg-emerald-950/20 border border-emerald-900/40 rounded-xl p-4 text-xs sm:text-sm text-gray-200 font-sans whitespace-pre-line leading-relaxed select-all">
+              {RYYCO_WELCOME_MESSAGE}
+            </div>
+          </div>
+        )}
+
+        {/* Progress & Batch Actions Bar */}
+        <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-gray-800/80">
+          <div className="flex-1 max-w-md space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-400">Progreso de bienvenida:</span>
+              <span className="text-sky-300 font-mono font-bold">
+                {summaryStats.welcomeSentCount} de {summaryStats.withWhatsApp} contactados
+                {summaryStats.withWhatsApp > 0 && ` (${Math.round((summaryStats.welcomeSentCount / summaryStats.withWhatsApp) * 100)}%)`}
+              </span>
+            </div>
+            <div className="w-full bg-gray-950 rounded-full h-2 overflow-hidden border border-gray-800">
+              <div
+                className="h-full bg-gradient-to-r from-emerald-500 to-sky-400 transition-all duration-500 rounded-full"
+                style={{
+                  width: `${summaryStats.withWhatsApp > 0 ? Math.min(100, Math.round((summaryStats.welcomeSentCount / summaryStats.withWhatsApp) * 100)) : 0}%`
+                }}
+              ></div>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setSegmentFilter('welcome_pending')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                segmentFilter === 'welcome_pending'
+                  ? 'bg-amber-500 text-gray-950 shadow-md shadow-amber-500/30'
+                  : 'bg-amber-950/40 text-amber-300 border border-amber-600/40 hover:bg-amber-900/50'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Ver Pendientes ({summaryStats.welcomePendingCount})</span>
+            </button>
+
+            <button
+              onClick={handleSendNextPendingCustomer}
+              disabled={summaryStats.welcomePendingCount === 0}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-emerald-700/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
+              title="Abrir WhatsApp con el siguiente cliente pendiente de la lista"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Enviar al Siguiente Pendiente 🚀</span>
+            </button>
+
+            {summaryStats.welcomeSentCount > 0 && (
+              <button
+                onClick={() => setSegmentFilter('welcome_sent')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  segmentFilter === 'welcome_sent'
+                    ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                    : 'bg-sky-950/40 text-sky-300 border border-sky-600/40 hover:bg-sky-900/50'
+                }`}
+              >
+                <CheckCheck className="w-3.5 h-3.5 text-sky-400" />
+                <span>Ver En Visto ({summaryStats.welcomeSentCount})</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1148,6 +1416,38 @@ export default function AdminCustomersRanking({
               ({summaryStats.withWhatsApp})
             </span>
           </button>
+
+          <button
+            onClick={() => setSegmentFilter('welcome_pending')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              segmentFilter === 'welcome_pending'
+                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30'
+                : 'bg-gray-950 text-amber-400 hover:text-amber-200 border border-amber-900/50'
+            }`}
+            title="Clientes con WhatsApp que aún no han recibido el mensaje de bienvenida"
+          >
+            <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <span>Pendientes Bienvenida</span>
+            <span className="text-[10px] font-mono font-bold opacity-90">
+              ({summaryStats.welcomePendingCount})
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSegmentFilter('welcome_sent')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              segmentFilter === 'welcome_sent'
+                ? 'bg-sky-600 text-white shadow-md shadow-sky-600/30'
+                : 'bg-gray-950 text-sky-400 hover:text-sky-200 border border-sky-900/50'
+            }`}
+            title="Clientes que ya recibieron el mensaje oficial de bienvenida (En visto ✓✓)"
+          >
+            <CheckCheck className="w-3.5 h-3.5 text-sky-400" />
+            <span>En Visto ✓✓</span>
+            <span className="text-[10px] font-mono font-bold opacity-90">
+              ({summaryStats.welcomeSentCount})
+            </span>
+          </button>
         </div>
       </div>
 
@@ -1226,6 +1526,30 @@ export default function AdminCustomersRanking({
                         <h2 className="text-base font-bold text-white truncate hover:text-emerald-300 transition">
                           {customer.name}
                         </h2>
+
+                        {/* WhatsApp Welcome Message Status Pill (En visto ✓✓) */}
+                        {customer.isWelcomeSent ? (
+                          <span 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmResendCustomer(customer);
+                            }}
+                            className="px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-400/50 text-sky-300 text-[10.5px] font-bold flex items-center gap-1 shrink-0 shadow-sm cursor-pointer hover:bg-sky-500/30 transition group"
+                            title={`Bienvenida enviada el ${customer.welcomeMessageSentAt ? new Date(customer.welcomeMessageSentAt).toLocaleDateString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'recientemente'} (En visto ✓✓) - Toca para ver detalles`}
+                          >
+                            <CheckCheck className="w-3.5 h-3.5 text-sky-400 group-hover:scale-110 transition" />
+                            <span className="text-sky-300">En visto ✓✓</span>
+                          </span>
+                        ) : hasWhatsApp ? (
+                          <span 
+                            onClick={(e) => handleSendWelcomeMessage(customer, e)}
+                            className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[10px] font-medium flex items-center gap-1 shrink-0 cursor-pointer hover:bg-amber-500/20 transition"
+                            title="Toca para enviar mensaje oficial de bienvenida"
+                          >
+                            <Clock className="w-2.5 h-2.5 text-amber-400" />
+                            <span>Bienvenida pendiente</span>
+                          </span>
+                        ) : null}
 
                         {/* RYYCOS Balance Pill in Customer Title Bar */}
                         <div 
@@ -1374,19 +1698,46 @@ export default function AdminCustomersRanking({
                       )}
                     </div>
 
-                    {/* WhatsApp Direct Action Button */}
+                    {/* WhatsApp Action Buttons */}
                     <div className="flex items-center gap-2 shrink-0">
                       {hasWhatsApp ? (
-                        <a
-                          href={customer.whatsappUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-600/30 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-                          title="Abrir chat en WhatsApp Web o móvil"
-                        >
-                          <MessageCircle className="w-4 h-4 fill-current" />
-                          <span className="hidden md:inline">WhatsApp</span>
-                        </a>
+                        <>
+                          {/* Welcome Message Action / Protected Status (En visto ✓✓) */}
+                          {customer.isWelcomeSent ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setConfirmResendCustomer(customer);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-sky-950/70 hover:bg-sky-900/80 border border-sky-500/50 text-sky-300 text-xs font-bold transition shadow-sm shadow-sky-900/30 cursor-pointer hover:border-sky-400 group"
+                              title={`Mensaje enviado el ${customer.welcomeMessageSentAt ? new Date(customer.welcomeMessageSentAt).toLocaleDateString('es-CO') : ''}. Toca para opciones o para no volver a enviar por error.`}
+                            >
+                              <CheckCheck className="w-4 h-4 text-sky-400 shrink-0 group-hover:scale-110 transition" />
+                              <span>En visto ✓✓</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => handleSendWelcomeMessage(customer, e)}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition shadow-md shadow-emerald-700/30 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                              title="Enviar mensaje oficial de bienvenida por WhatsApp y marcar como En Visto ✓✓"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>Enviar Bienvenida</span>
+                            </button>
+                          )}
+
+                          {/* Regular WhatsApp Chat Icon */}
+                          <a
+                            href={customer.whatsappUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 rounded-xl bg-gray-800/90 hover:bg-emerald-600/30 border border-gray-700 hover:border-emerald-500/40 text-gray-300 hover:text-emerald-300 transition cursor-pointer"
+                            title="Abrir chat regular en WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </a>
+                        </>
                       ) : (
                         <button
                           disabled
@@ -1480,6 +1831,68 @@ export default function AdminCustomersRanking({
                         </button>
                       </div>
                     </div>
+
+                    {/* Official Welcome Message Box */}
+                    {hasWhatsApp && (
+                      <div className="bg-gradient-to-r from-emerald-950/40 via-gray-900 to-sky-950/30 border border-emerald-700/40 rounded-xl p-4 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+                              <Sparkles className="w-4 h-4 text-emerald-400" />
+                              <span>Mensaje Oficial de Bienvenida RYYCO (Ipiales)</span>
+                            </span>
+                            {customer.isWelcomeSent ? (
+                              <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 border border-sky-400/40 text-sky-300 text-[11px] font-bold flex items-center gap-1">
+                                <CheckCheck className="w-3.5 h-3.5 text-sky-400" />
+                                <span>En visto ✓✓ {customer.welcomeMessageSentAt ? `(${new Date(customer.welcomeMessageSentAt).toLocaleDateString('es-CO')})` : ''}</span>
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] font-medium flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-amber-400" />
+                                <span>Pendiente de enviar</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {customer.isWelcomeSent ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUnmarkWelcomeSent(customer)}
+                                  className="px-2.5 py-1 text-[11px] font-semibold text-gray-400 hover:text-amber-300 underline cursor-pointer"
+                                  title="Quitar la marca de visto para volver a dejarlo como pendiente"
+                                >
+                                  Desmarcar visto
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmResendCustomer(customer)}
+                                  className="px-3 py-1.5 rounded-lg bg-sky-900/50 hover:bg-sky-900/80 border border-sky-600/40 text-sky-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                >
+                                  <CheckCheck className="w-3.5 h-3.5 text-sky-400" />
+                                  <span>Reenviar o Gestionar</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => handleSendWelcomeMessage(customer, e)}
+                                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition shadow-md shadow-emerald-700/30 flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                              >
+                                <Send className="w-3.5 h-3.5" />
+                                <span>Enviar Bienvenida a WhatsApp</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Message Preview in quote bubble */}
+                        <div className="bg-gray-950/70 border border-gray-800 rounded-lg p-3 text-xs text-gray-300 font-sans whitespace-pre-line leading-relaxed select-all">
+                          {RYYCO_WELCOME_MESSAGE}
+                        </div>
+                      </div>
+                    )}
 
                     {/* WhatsApp Quick Message Bar */}
                     {hasWhatsApp && (
@@ -1884,6 +2297,127 @@ export default function AdminCustomersRanking({
               </form>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Modal de Protección Contra Reenvío / Gestión de En Visto (✓✓) */}
+      {confirmResendCustomer && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-gray-900 border border-sky-500/40 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-5 animate-scale-up">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-sky-500/20 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0 shadow-lg shadow-sky-500/20">
+                  <CheckCheck className="w-6 h-6 text-sky-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <span>Mensaje ya Enviado</span>
+                    <span className="text-[11px] bg-sky-500/20 text-sky-300 font-mono font-bold px-2 py-0.5 rounded-full border border-sky-500/40">
+                      En visto ✓✓
+                    </span>
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Protección activada para no volver a enviar el mensaje
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setConfirmResendCustomer(null)}
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Info Card */}
+            <div className="bg-gray-950/70 border border-gray-800 rounded-xl p-3.5 space-y-2 text-xs">
+              <div className="flex items-center justify-between text-gray-300">
+                <span className="text-gray-500">Cliente:</span>
+                <strong className="text-white font-semibold">{confirmResendCustomer.name}</strong>
+              </div>
+              <div className="flex items-center justify-between text-gray-300">
+                <span className="text-gray-500">WhatsApp:</span>
+                <span className="font-mono text-emerald-400 font-bold">{confirmResendCustomer.formattedPhone}</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-300">
+                <span className="text-gray-500">Fecha de envío:</span>
+                <span className="font-mono text-sky-300 font-medium">
+                  {confirmResendCustomer.welcomeMessageSentAt 
+                    ? new Date(confirmResendCustomer.welcomeMessageSentAt).toLocaleString('es-CO', { 
+                        year: 'numeric', 
+                        month: 'short', 
+                        day: 'numeric', 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })
+                    : 'Recientemente registrado'}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Este cliente ya tiene el símbolo de <strong className="text-sky-300">«En visto ✓✓»</strong> registrado para evitar enviarle mensajes de bienvenida repetidos. ¿Qué deseas hacer?
+            </p>
+
+            {/* Actions */}
+            <div className="space-y-2 pt-1">
+              <button
+                onClick={() => handleSendWelcomeMessage(confirmResendCustomer)}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-emerald-700/30 cursor-pointer"
+              >
+                <Send className="w-4 h-4" />
+                <span>Reenviar Mensaje de Bienvenida de todos modos</span>
+              </button>
+
+              <a
+                href={confirmResendCustomer.whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setConfirmResendCustomer(null)}
+                className="w-full py-2.5 px-4 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-200 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer hover:text-white"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                <span>Abrir Chat de WhatsApp Regular (Sin Bienvenida)</span>
+              </a>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => handleUnmarkWelcomeSent(confirmResendCustomer)}
+                  className="text-xs text-amber-400 hover:text-amber-300 underline font-medium cursor-pointer"
+                >
+                  Desmarcar como visto (dejar pendiente)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setConfirmResendCustomer(null)}
+                  className="px-4 py-2 rounded-xl bg-gray-950 border border-gray-800 hover:bg-gray-800 text-gray-300 text-xs font-semibold transition cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast Feedback */}
+      {toastFeedback && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-gray-900/95 border border-emerald-500/50 text-white rounded-2xl p-4 shadow-2xl shadow-emerald-950/60 flex items-start gap-3 backdrop-blur-md animate-slide-up">
+          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+            <CheckCheck className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="flex-1 text-xs text-gray-200 leading-relaxed pr-2">
+            {toastFeedback}
+          </div>
+          <button
+            onClick={() => setToastFeedback(null)}
+            className="text-gray-500 hover:text-gray-300 p-1 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
     </div>

@@ -5951,6 +5951,7 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     totalSpent: cust.totalSpent !== undefined ? cust.totalSpent : (existing?.totalSpent || 0),
     spinsAvailable: cust.spinsAvailable !== undefined ? cust.spinsAvailable : (existing?.spinsAvailable !== undefined ? existing.spinsAvailable : 1), // 1 free welcome spin!
     wonPrizes: cust.wonPrizes !== undefined ? cust.wonPrizes : (existing?.wonPrizes || []),
+    welcomeMessageSentAt: cust.welcomeMessageSentAt !== undefined ? cust.welcomeMessageSentAt : (existing?.welcomeMessageSentAt || undefined),
     createdAt: existing?.createdAt || now,
     updatedAt: now
   };
@@ -5978,6 +5979,23 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   } catch (e) {}
 
   return customerData;
+}
+
+/**
+ * Mark a customer as having received the welcome WhatsApp message (en visto ✓✓)
+ */
+export async function markCustomerWelcomeMessageSent(phone: string, sentAt?: string | null): Promise<void> {
+  const cleanPhone = sanitizeCustomerPhone(phone);
+  if (!cleanPhone) return;
+  const timestamp = (sentAt === '' || sentAt === null) ? null : (sentAt || new Date().toISOString());
+  try {
+    await setDoc(doc(db, 'customers', cleanPhone), { 
+      welcomeMessageSentAt: timestamp, 
+      updatedAt: new Date().toISOString() 
+    }, { merge: true });
+  } catch (err) {
+    console.warn("Could not save welcomeMessageSentAt to Firestore:", err);
+  }
 }
 
 /**
