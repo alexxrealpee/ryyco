@@ -9,12 +9,11 @@ import {
   Sparkles, 
   MessageCircle, 
   ExternalLink, 
-  Image as ImageIcon, 
   Flame, 
   CheckCircle2, 
-  HelpCircle,
-  Smartphone,
-  ChevronDown
+  HelpCircle, 
+  Smartphone, 
+  ChevronDown 
 } from 'lucide-react';
 import { ProductItem, UserProfile } from '../types';
 
@@ -33,7 +32,6 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
-  const [isDownloadingRaw, setIsDownloadingRaw] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
   const [showGuide, setShowGuide] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -87,49 +85,108 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
 
-      // 1. Background gradient (Deep Dark Slate with ambient warmth)
+      // Preload image first so we can extract its palette for the background
+      let img: HTMLImageElement | null = null;
+      if (dishImage) {
+        try {
+          img = await loadSafeImage(dishImage);
+        } catch (err) {
+          console.warn('Could not preload dish image:', err);
+        }
+      }
+
+      // Default harmonious culinary palette
+      let topColor = [25, 30, 48];
+      let midColor = [225, 95, 30];
+      let botColor = [18, 24, 38];
+
+      // Extract colors from the dish image
+      if (img) {
+        try {
+          const sCanvas = document.createElement('canvas');
+          sCanvas.width = 32;
+          sCanvas.height = 32;
+          const sCtx = sCanvas.getContext('2d');
+          if (sCtx) {
+            sCtx.drawImage(img, 0, 0, 32, 32);
+            const data = sCtx.getImageData(0, 0, 32, 32).data;
+
+            let rT = 0, gT = 0, bT = 0, cT = 0;
+            let rM = 0, gM = 0, bM = 0, cM = 0;
+            let rB = 0, gB = 0, bB = 0, cB = 0;
+
+            for (let y = 0; y < 32; y++) {
+              for (let x = 0; x < 32; x++) {
+                const idx = (y * 32 + x) * 4;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                const a = data[idx + 3];
+                if (a < 120) continue;
+
+                if (y < 10) {
+                  rT += r; gT += g; bT += b; cT++;
+                } else if (y < 22) {
+                  rM += r; gM += g; bM += b; cM++;
+                } else {
+                  rB += r; gB += g; bB += b; cB++;
+                }
+              }
+            }
+
+            if (cT > 0) topColor = [Math.round(rT / cT), Math.round(gT / cT), Math.round(bT / cT)];
+            if (cM > 0) midColor = [Math.round(rM / cM), Math.round(gM / cM), Math.round(bM / cM)];
+            if (cB > 0) botColor = [Math.round(rB / cB), Math.round(gB / cB), Math.round(bB / cB)];
+          }
+        } catch (colorErr) {
+          console.warn('Could not extract image colors:', colorErr);
+        }
+      }
+
+      // 1. Adaptive Background gradient attuned to image colors
       const bgGrad = ctx.createLinearGradient(0, 0, 0, 1920);
-      bgGrad.addColorStop(0, '#090D16');
-      bgGrad.addColorStop(0.3, '#131A29');
-      bgGrad.addColorStop(0.7, '#111827');
+      bgGrad.addColorStop(0, `rgb(${Math.round(topColor[0] * 0.35 + 8)}, ${Math.round(topColor[1] * 0.35 + 10)}, ${Math.round(topColor[2] * 0.35 + 14)})`);
+      bgGrad.addColorStop(0.35, `rgb(${Math.round(midColor[0] * 0.50 + 10)}, ${Math.round(midColor[1] * 0.50 + 10)}, ${Math.round(midColor[2] * 0.50 + 12)})`);
+      bgGrad.addColorStop(0.72, `rgb(${Math.round(botColor[0] * 0.28 + 8)}, ${Math.round(botColor[1] * 0.28 + 10)}, ${Math.round(botColor[2] * 0.28 + 12)})`);
       bgGrad.addColorStop(1, '#05070B');
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, 1080, 1920);
 
-      // 2. Ambient Food Glow behind dish
-      const radialGlow = ctx.createRadialGradient(540, 920, 50, 540, 920, 600);
-      radialGlow.addColorStop(0, 'rgba(230, 57, 70, 0.45)');
-      radialGlow.addColorStop(0.4, 'rgba(244, 180, 0, 0.25)');
+      const imgSize = 880;
+      const imgX = (1080 - imgSize) / 2;
+      const imgY = 200; // Positioned cleanly at top, leaving safe space for Instagram Story UI
+
+      // 2. Soft atmospheric blurred aura behind the dish
+      if (img) {
+        try {
+          ctx.save();
+          ctx.filter = 'blur(75px) brightness(0.65) saturate(1.35)';
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(img, -100, imgY - 80, 1280, 1280);
+          ctx.restore();
+        } catch (e) {}
+      }
+
+      // 3. Radiant ambient glow centered directly behind the dish matching image colors
+      const radialGlow = ctx.createRadialGradient(
+        540,
+        imgY + imgSize / 2,
+        60,
+        540,
+        imgY + imgSize / 2,
+        640
+      );
+      radialGlow.addColorStop(0, `rgba(${midColor[0]}, ${midColor[1]}, ${midColor[2]}, 0.55)`);
+      radialGlow.addColorStop(0.5, `rgba(${topColor[0]}, ${topColor[1]}, ${topColor[2]}, 0.28)`);
       radialGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = radialGlow;
-      ctx.fillRect(0, 300, 1080, 1200);
+      ctx.fillRect(0, 0, 1080, 1500);
 
-      // 3. Top Header: Store Info & Ryyco Branding
-      ctx.save();
-      // Ryyco Header Badge
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(140, 140, 800, 100, 50);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '900 38px system-ui, -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`🔥 REEL GASTRONÓMICO • ${storeHandle}`, 540, 190);
-      ctx.restore();
+      // (Notice: Top header badge circled in red has been completely removed as requested)
 
       // 4. Hero Dish Image (Centered, with rounded corners & shadow)
-      if (dishImage) {
+      if (img) {
         try {
-          const img = await loadSafeImage(dishImage);
-          const imgSize = 880;
-          const imgX = (1080 - imgSize) / 2;
-          const imgY = 360;
-
           // Shadow
           ctx.save();
           ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
@@ -172,22 +229,22 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
       }
 
       // 5. Dish Details Card (Bottom Section)
-      const cardY = 1320;
+      const cardY = 1150;
       ctx.save();
       // Glassmorphism background
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.roundRect(100, cardY, 880, 440, 48);
+      ctx.roundRect(100, cardY, 880, 470, 48);
       ctx.fill();
       ctx.stroke();
 
       // Store title & verification
       ctx.fillStyle = '#F4B400';
-      ctx.font = '700 32px system-ui, -apple-system, sans-serif';
+      ctx.font = '800 32px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(`${storeName.toUpperCase()}`, 150, cardY + 70);
+      ctx.fillText(`${storeName.toUpperCase()}`, 150, cardY + 75);
 
       // Dish Title (with truncation if long)
       ctx.fillStyle = '#FFFFFF';
@@ -200,28 +257,28 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
         }
         displayTitle += '...';
       }
-      ctx.fillText(displayTitle, 150, cardY + 145);
+      ctx.fillText(displayTitle, 150, cardY + 155);
 
       // Price Tag Pill
       ctx.fillStyle = '#E63946';
       ctx.beginPath();
-      ctx.roundRect(150, cardY + 195, 340, 75, 24);
+      ctx.roundRect(150, cardY + 210, 340, 78, 26);
       ctx.fill();
 
       ctx.fillStyle = '#FFFFFF';
-      ctx.font = '900 40px system-ui, -apple-system, sans-serif';
-      ctx.fillText(priceFormatted, 180, cardY + 248);
+      ctx.font = '900 42px system-ui, -apple-system, sans-serif';
+      ctx.fillText(priceFormatted, 180, cardY + 265);
 
       // Link Sticker Call To Action
       ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
       ctx.beginPath();
-      ctx.roundRect(150, cardY + 310, 780, 85, 28);
+      ctx.roundRect(150, cardY + 330, 780, 88, 28);
       ctx.fill();
 
       ctx.fillStyle = '#F8FAFC';
       ctx.font = '800 34px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('🔗 Toca el sticker de enlace para pedir en Ryyco', 540, cardY + 364);
+      ctx.fillText('🔗 Toca el sticker de enlace para pedir en Ryyco', 540, cardY + 386);
 
       ctx.restore();
 
@@ -316,39 +373,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
     }
   };
 
-  // 4. Download Raw Original Dish Photo
-  const handleDownloadRawImage = async () => {
-    if (!dishImage) {
-      showFeedback('Este plato no cuenta con foto disponible.');
-      return;
-    }
-    setIsDownloadingRaw(true);
-    try {
-      const response = await fetch(
-        dishImage.startsWith('http') ? `/api/proxy-image?url=${encodeURIComponent(dishImage)}` : dishImage
-      );
-      const blob = await response.blob();
-      const fileName = `plato-${product.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`;
-      const downloadUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(downloadUrl);
-
-      showFeedback('¡Foto del plato descargada en alta resolución!');
-    } catch (e) {
-      // Fallback: open image in new tab
-      window.open(dishImage, '_blank');
-      showFeedback('Abriendo foto original...');
-    } finally {
-      setIsDownloadingRaw(false);
-    }
-  };
-
-  // 5. Copy Link to clipboard
+  // 4. Copy Link to clipboard
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(reelUrl);
@@ -360,7 +385,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
     }
   };
 
-  // 6. Share on WhatsApp
+  // 5. Share on WhatsApp
   const handleWhatsAppShare = () => {
     const text = `🔥 Mira este delicioso plato de *${storeName}* en Ryyco:\n*${product.name}* (${priceFormatted})\n👉 Pide aquí: ${reelUrl}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
@@ -469,38 +494,28 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
             </button>
 
             {/* Extraction & Download Options */}
-            <div className="grid grid-cols-2 gap-2.5">
-              {/* Option A: Download 9:16 Story Card */}
+            <div>
+              {/* Option: Download 9:16 Story Card */}
               <button
                 onClick={handleDownloadStoryCard}
                 disabled={isGeneratingStory}
-                className="flex flex-col items-center justify-center text-center p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-white/30 rounded-2xl text-white transition active:scale-95 group cursor-pointer"
+                className="w-full flex items-center justify-between p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-white/30 rounded-2xl text-white transition active:scale-[0.99] group cursor-pointer"
               >
-                <div className="w-9 h-9 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 mb-2 group-hover:scale-110 transition">
-                  <Download className="w-4 h-4" />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 group-hover:scale-110 transition shrink-0">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-xs font-black text-white block">
+                      Tarjeta 9:16 HD
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      Imagen vertical con diseño lista para Historias
+                    </span>
+                  </div>
                 </div>
-                <span className="text-xs font-black text-white">
-                  Tarjeta 9:16 HD
-                </span>
-                <span className="text-[10px] text-gray-400 mt-0.5">
-                  Lista para Historias
-                </span>
-              </button>
-
-              {/* Option B: Download Raw Dish Photo */}
-              <button
-                onClick={handleDownloadRawImage}
-                disabled={isDownloadingRaw}
-                className="flex flex-col items-center justify-center text-center p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-white/30 rounded-2xl text-white transition active:scale-95 group cursor-pointer"
-              >
-                <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-[#F4B400] mb-2 group-hover:scale-110 transition">
-                  <ImageIcon className="w-4 h-4" />
-                </div>
-                <span className="text-xs font-black text-white">
-                  Foto del Plato
-                </span>
-                <span className="text-[10px] text-gray-400 mt-0.5">
-                  Imagen limpia original
+                <span className="text-[11px] font-bold text-purple-400 bg-purple-500/10 px-2.5 py-1 rounded-lg border border-purple-500/20 group-hover:bg-purple-500/20 transition">
+                  Descargar
                 </span>
               </button>
             </div>
