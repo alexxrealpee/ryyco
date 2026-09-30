@@ -189,6 +189,8 @@ export default function LinnkProVoiceAssistant({
   const userSpeechCheckFrameRef = useRef<number | null>(null);
   const lastUserSpeechTimeRef = useRef<number>(0);
   const isUserSpeakingRef = useRef<boolean>(false);
+  const ambientNoiseFloorRef = useRef<number>(14);
+  const consecutiveSpeechFramesRef = useRef<number>(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Real-time conversation loop & VAD refs
@@ -298,6 +300,21 @@ export default function LinnkProVoiceAssistant({
     }
   }, [messages, isOpen, activeTab]);
 
+  // 4b. Listen for external open chat events (e.g. from navbar or buttons)
+  useEffect(() => {
+    const handleExternalOpenChat = () => {
+      setIsOpen(true);
+      setIsMinimized(false);
+      setActiveTab('chat');
+    };
+    window.addEventListener('open_ryyco_chat', handleExternalOpenChat);
+    window.addEventListener('open_linnkpro_chat', handleExternalOpenChat);
+    return () => {
+      window.removeEventListener('open_ryyco_chat', handleExternalOpenChat);
+      window.removeEventListener('open_linnkpro_chat', handleExternalOpenChat);
+    };
+  }, []);
+
   // 5. Initialize Web Audio Visualizer (Dynamic Pulse Simulation without blocking hardware mic)
   const initAudioAnalyser = () => {
     let t = 0;
@@ -321,7 +338,7 @@ export default function LinnkProVoiceAssistant({
     animFrameRef.current = requestAnimationFrame(updateLevel);
   };
 
-  // Real-time microphone audio volume and voice activity detector (VAD)
+  // Real-time microphone audio volume and robust vocal activity detector (VAD)
   const startAudioVolumeDetection = (stream: MediaStream) => {
     try {
       const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -343,13 +360,14 @@ export default function LinnkProVoiceAssistant({
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.2;
+      analyser.smoothingTimeConstant = 0.25;
       source.connect(analyser);
 
       micSourceRef.current = source;
       micAnalyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      consecutiveSpeechFramesRef.current = 0;
 
       const checkSpeech = () => {
         if (!isInVoiceCallRef.current || !micAnalyserRef.current) {
@@ -362,29 +380,61 @@ export default function LinnkProVoiceAssistant({
 
         micAnalyserRef.current.getByteFrequencyData(dataArray);
 
-        // Analyze frequency bins in typical human speech range (bins 2 through 36)
-        let sum = 0;
-        const startBin = 2;
-        const endBin = Math.min(dataArray.length, 36);
-        for (let i = startBin; i < endBin; i++) {
-          sum += dataArray[i];
+        // 1. Analyze frequency bins in primary human vowel and consonant formant range (~300 Hz to 3200 Hz)
+        let speechSum = 0;
+        const startSpeechBin = 2;
+        const endSpeechBin = Math.min(dataArray.length, 20);
+        for (let i = startSpeechBin; i < endSpeechBin; i++) {
+          speechSum += dataArray[i];
         }
-        const avgVoiceVolume = sum / (endBin - startBin);
+        const avgVoiceVolume = speechSum / (endSpeechBin - startSpeechBin);
+
+        // 2. High-frequency noise band (air hiss, typing, fan blade whir: >4500 Hz)
+        let highNoiseSum = 0;
+        const startHighBin = 26;
+        const endHighBin = Math.min(dataArray.length, 55);
+        for (let i = startHighBin; i < endHighBin; i++) {
+          highNoiseSum += dataArray[i];
+        }
+        const avgHighNoiseVolume = highNoiseSum / (endHighBin - startHighBin);
 
         const isMuted = isMicMutedRef.current;
         const isAssistantTalking = assistantStateRef.current === 'speaking';
-        // Voice threshold: ambient noise is usually < 12-14; user speech reaches 20-140
-        const VOICE_THRESHOLD = 16;
 
-        if (!isMuted && !isAssistantTalking && avgVoiceVolume > VOICE_THRESHOLD) {
-          lastUserSpeechTimeRef.current = Date.now();
-          if (!isUserSpeakingRef.current) {
-            isUserSpeakingRef.current = true;
-            setIsUserSpeaking(true);
+        // 3. Dynamic adaptive noise floor: Tracks room noise (fans, background AC, street ambience)
+        // Normal human speech into mic reaches 45-140; fans and ambient noise stay at 12-24
+        const dynamicThreshold = Math.max(30, ambientNoiseFloorRef.current + 16);
+
+        // Human speech criteria:
+        // - Volume must clearly exceed dynamic noise floor (> dynamicThreshold)
+        // - Energy in vocal formant band must exceed flat high-frequency hiss
+        const isVoiceCandidate = 
+          !isMuted && 
+          !isAssistantTalking && 
+          avgVoiceVolume > dynamicThreshold && 
+          avgVoiceVolume > avgHighNoiseVolume * 1.1;
+
+        if (isVoiceCandidate) {
+          consecutiveSpeechFramesRef.current++;
+          // Require at least 4 consecutive frames (~65ms of sustained phoneme)
+          // Instantaneous acoustic spikes (desk knocks, coughs, clicks) only last 1-2 frames and are completely ignored
+          if (consecutiveSpeechFramesRef.current >= 4) {
+            lastUserSpeechTimeRef.current = Date.now();
+            if (!isUserSpeakingRef.current) {
+              isUserSpeakingRef.current = true;
+              setIsUserSpeaking(true);
+            }
           }
         } else {
-          // Allow 380ms sustain after voice drops so slight syllable pauses don't cut the pulse
-          if (isUserSpeakingRef.current && Date.now() - lastUserSpeechTimeRef.current > 380) {
+          consecutiveSpeechFramesRef.current = Math.max(0, consecutiveSpeechFramesRef.current - 1);
+
+          // Update background noise floor when user is not actively speaking
+          if (!isUserSpeakingRef.current && !isAssistantTalking) {
+            ambientNoiseFloorRef.current = ambientNoiseFloorRef.current * 0.96 + avgVoiceVolume * 0.04;
+          }
+
+          // Allow natural 420ms sustain after vocal pause so syllables don't flicker
+          if (isUserSpeakingRef.current && Date.now() - lastUserSpeechTimeRef.current > 420) {
             isUserSpeakingRef.current = false;
             setIsUserSpeaking(false);
           }
@@ -418,6 +468,8 @@ export default function LinnkProVoiceAssistant({
       micSourceRef.current = null;
     }
     micAnalyserRef.current = null;
+    consecutiveSpeechFramesRef.current = 0;
+    ambientNoiseFloorRef.current = 14;
     isUserSpeakingRef.current = false;
     setIsUserSpeaking(false);
     setMicAudioLevel(0);
@@ -1507,25 +1559,31 @@ export default function LinnkProVoiceAssistant({
           </motion.button>
         ) : !isOpen ? (
           <div className="flex items-center gap-3">
-            {/* 1. BOTÓN INICIAL (MINIMALISTA) */}
-            <button
+            {/* 1. BOTÓN INICIAL (CIRCULAR MINIMALISTA CON ÍCONO) */}
+            <motion.button
               id="linnkpro-voice-fab"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => {
                 setIsOpen(true);
                 setIsMinimized(false);
+                setActiveTab('chat');
               }}
-              className="relative w-14 h-14 rounded-full border-2 border-[#EF4444] bg-[#0E131F]/95 shadow-[0_0_25px_rgba(239,68,68,0.45)] hover:shadow-[0_0_35px_rgba(239,68,68,0.7)] flex items-center justify-center transition-all duration-300 transform active:scale-95 group hover:scale-105 flex-shrink-0"
-              aria-label="Invocar Mesero IA"
-              title="Pulsa para invocar a tu mesero IA"
+              className="relative w-14 h-14 rounded-full border-2 border-[#EF4444] bg-[#0E131F]/95 shadow-[0_0_25px_rgba(239,68,68,0.45)] hover:shadow-[0_0_35px_rgba(239,68,68,0.7)] flex items-center justify-center transition-all duration-300 backdrop-blur-md cursor-pointer group flex-shrink-0"
+              aria-label="Abrir Chat de Ryyco"
+              title="Abrir Chat de Ryyco y Mesero Virtual"
             >
-              {/* 2. ANIMACIÓN AL ACTIVAR: Subtle expanding concentric ripple */}
+              {/* Subtle expanding concentric ripple */}
               <span className="absolute -inset-1 rounded-full border border-red-500/40 animate-ping pointer-events-none opacity-40"></span>
               <span className="absolute -inset-2 rounded-full bg-red-600/10 blur-sm group-hover:bg-red-600/20 transition"></span>
 
               <div className="relative flex items-center justify-center">
                 <ChefCapSparkIcon size={28} fill="#ffffff" className="group-hover:scale-105 transition-transform" />
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-[#0E131F] animate-pulse"></span>
               </div>
-            </button>
+            </motion.button>
 
             {/* 4. OPCIÓN ALTERNATIVA: Friendly Speech Bubble Tooltip */}
             {showFloatingTooltip && (
@@ -1533,12 +1591,12 @@ export default function LinnkProVoiceAssistant({
                 initial={{ opacity: 0, x: -15, scale: 0.95 }}
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="relative hidden sm:flex items-center bg-[#161D2B]/95 border border-red-500/40 text-white text-xs px-3.5 py-2 rounded-2xl shadow-xl backdrop-blur-md gap-2"
+                className="relative hidden md:flex items-center bg-[#161D2B]/95 border border-red-500/40 text-white text-xs px-3.5 py-2 rounded-2xl shadow-xl backdrop-blur-md gap-2"
               >
                 {/* Speech Bubble Tail pointing left */}
                 <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 bg-[#161D2B] border-b border-l border-red-500/40 rotate-45"></div>
                 <Sparkles className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 animate-pulse" />
-                <span className="font-medium text-slate-200">¿Necesitas ayuda para pedir algo?</span>
+                <span className="font-medium text-slate-200">¿Qué se te antoja hoy? Chatea con tu mesero</span>
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();

@@ -413,13 +413,8 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
               />
             </motion.span>
             <span className="font-semibold whitespace-nowrap">
-              {percentageDisplay ? `${percentageDisplay}` : (stats.count > 0 ? `${stats.count}` : 'Recomendar')}
+              {stats.count > 0 ? `${stats.count}` : 'Recomendar'}
             </span>
-            {stats.count > 0 && (
-              <span className="hidden sm:inline text-[10px] text-stone-500 dark:text-stone-400 font-normal">
-                ({stats.count})
-              </span>
-            )}
           </motion.button>
         </div>
 
@@ -472,13 +467,8 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
               }`} 
             />
             <span className="font-semibold whitespace-nowrap">
-              {percentageDisplay ? `${percentageDisplay} lo recomienda` : (stats.count > 0 ? `${stats.count} recomendaciones` : 'Sé el primero en recomendar')}
+              {stats.count > 0 ? `${stats.count} ${stats.count === 1 ? 'corazón' : 'corazones'}` : 'Recomendar'}
             </span>
-            {stats.count > 0 && percentageDisplay && (
-              <span className="text-stone-400 dark:text-stone-500 font-normal">
-                • {stats.count}
-              </span>
-            )}
           </div>
         </div>
 

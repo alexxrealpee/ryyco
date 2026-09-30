@@ -433,7 +433,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
           />
           {stats.count > 0 && (
             <span className="text-[10px] font-black tracking-tight font-mono">
-              {percentageDisplay || stats.count}
+              {stats.count}
             </span>
           )}
         </motion.button>
@@ -485,13 +485,8 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
             }`} 
           />
           <span>
-            {percentageDisplay ? `${percentageDisplay} lo recomienda` : (stats.count > 0 ? `${stats.count} recomiendan` : 'Recomendar')}
+            {stats.count > 0 ? `${stats.count} ${stats.count === 1 ? 'corazón' : 'corazones'}` : 'Recomendar'}
           </span>
-          {stats.count > 0 && (
-            <span className="text-stone-400 font-normal">
-              ({stats.count})
-            </span>
-          )}
         </button>
 
         {renderModalsAndToasts()}

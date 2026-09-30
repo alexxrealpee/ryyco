@@ -1416,9 +1416,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
         )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
-          {/* Left: 3-Dots Menu Dropdown Button */}
-          <div className="flex-1 flex items-center justify-start z-30 min-w-0">
-            <div className="relative" ref={mobileMenuRef}>
+          {/* Left: 3-Dots Menu Dropdown Button & Customer Session Status on Desktop */}
+          <div className="flex-1 flex items-center justify-start z-30 min-w-0 gap-2">
+            <div className="relative shrink-0" ref={mobileMenuRef}>
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -1708,26 +1708,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 )}
               </AnimatePresence>
             </div>
-          </div>
 
-          {/* Center: Centered Logo with Dedicated Protected Clearance */}
-          <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
-            <LinnkProLogo 
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedCategory('all');
-                setSelectedStore('all');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                onNavigateHome();
-              }} 
-              height={42}
-              imgClassName="h-8 sm:h-[38px] md:h-[42px]"
-            />
-          </div>
-
-          {/* Right: Action Buttons */}
-          <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
-            {/* Customer Session Status (Desktop) */}
+            {/* Customer Session Status (Moved to Left on PC/Desktop) */}
             {activeCustomer ? (
               <div className="hidden lg:flex items-center gap-1.5 bg-[#111827] border border-slate-700/80 rounded-xl p-1 shrink-0">
                 <button
@@ -1767,7 +1749,25 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <span>Ingresar</span>
               </button>
             )}
+          </div>
 
+          {/* Center: Centered Logo with Dedicated Protected Clearance */}
+          <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
+            <LinnkProLogo 
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('all');
+                setSelectedStore('all');
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                onNavigateHome();
+              }} 
+              height={42}
+              imgClassName="h-8 sm:h-[38px] md:h-[42px]"
+            />
+          </div>
+
+          {/* Right: Action Buttons */}
+          <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
             {/* Mis Pedidos Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-orders-btn"

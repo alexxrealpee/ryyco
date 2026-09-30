@@ -32,6 +32,7 @@ import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
 import FirstVisitAddressModal from './components/FirstVisitAddressModal';
 import PrivacyPolicyPage from './components/PrivacyPolicyPage';
+import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
 import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
@@ -705,6 +706,23 @@ export default function App() {
       {view === 'privacidad' && (
         <PrivacyPolicyPage
           onNavigateHome={handleNavigateHome}
+        />
+      )}
+
+      {/* Ryyco Chat & Mesero Virtual Assistant for Shoppers and Visitors */}
+      {['tienda', 'profile', 'landing', 'carruselproduc'].includes(view) && (
+        <LinnkProVoiceAssistant
+          activeUsername={targetUsername}
+          onNavigateToStore={(username) => {
+            window.history.pushState({}, '', '/' + username);
+            setTargetUsername(username);
+            setView('profile');
+          }}
+          onNavigateToTienda={() => {
+            window.history.pushState({}, '', '/');
+            setTargetUsername(null);
+            setView('tienda');
+          }}
         />
       )}
 

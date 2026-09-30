@@ -36,14 +36,88 @@ export interface RealtimeMeseroCallbacks {
 
 export class RealtimeMeseroManager {
   private session: RealtimeSession | null = null;
+  private rawStream: MediaStream | null = null;
   private localStream: MediaStream | null = null;
   private remoteAudioElement: HTMLAudioElement | null = null;
   private callbacks: RealtimeMeseroCallbacks;
   private isConnected: boolean = false;
   private currentAssistantTranscript: string = '';
+  private preprocessorCleanup: (() => void) | null = null;
+  private processingWatchdogTimer: any = null;
 
   constructor(callbacks: RealtimeMeseroCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  /**
+   * Pre-processes microphone input using Web Audio API to strip out acoustic noise:
+   * 1. 115 Hz High-pass filter: Cuts sub-bass rumble (motorcycle/moto exhaust, fan motor hum, desk knocks, air puffs).
+   * 2. 7500 Hz Low-pass filter: Eliminates electrical hiss, air whistling, and high-frequency clicks.
+   * 3. Gentle Dynamics Compressor: Prevents sudden amplitude peaks (dropping objects, coughs) from blowing out VAD.
+   */
+  private createCleanVoiceStream(rawStream: MediaStream): { cleanStream: MediaStream; cleanup: () => void } {
+    try {
+      const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtxClass) {
+        return { cleanStream: rawStream, cleanup: () => {} };
+      }
+
+      const audioCtx = new AudioCtxClass();
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+
+      const sourceNode = audioCtx.createMediaStreamSource(rawStream);
+
+      // 1. High-pass filter at 115 Hz (Butterworth response)
+      // Strips sub-100Hz rumble from vehicles/motos, ceiling fans, table knocks and room acoustic resonance
+      const highpassFilter = audioCtx.createBiquadFilter();
+      highpassFilter.type = 'highpass';
+      highpassFilter.frequency.value = 115;
+      highpassFilter.Q.value = 0.707;
+
+      // 2. Low-pass filter at 7500 Hz
+      // Removes high-frequency fan hiss, computer fan rush, and key/mouse click spikes
+      const lowpassFilter = audioCtx.createBiquadFilter();
+      lowpassFilter.type = 'lowpass';
+      lowpassFilter.frequency.value = 7500;
+      lowpassFilter.Q.value = 0.707;
+
+      // 3. Dynamics Compressor (acts as an acoustic limiter and voice stabilizer)
+      const compressor = audioCtx.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-28, audioCtx.currentTime);
+      compressor.knee.setValueAtTime(8, audioCtx.currentTime);
+      compressor.ratio.setValueAtTime(3.5, audioCtx.currentTime);
+      compressor.attack.setValueAtTime(0.005, audioCtx.currentTime);
+      compressor.release.setValueAtTime(0.08, audioCtx.currentTime);
+
+      // 4. Output to MediaStreamDestination for WebRTC peer connection
+      const destination = audioCtx.createMediaStreamDestination();
+
+      sourceNode.connect(highpassFilter);
+      highpassFilter.connect(lowpassFilter);
+      lowpassFilter.connect(compressor);
+      compressor.connect(destination);
+
+      const cleanStream = destination.stream;
+
+      const cleanup = () => {
+        try {
+          sourceNode.disconnect();
+          highpassFilter.disconnect();
+          lowpassFilter.disconnect();
+          compressor.disconnect();
+          if (audioCtx.state !== 'closed') {
+            audioCtx.close().catch(() => {});
+          }
+        } catch (e) {}
+      };
+
+      return { cleanStream, cleanup };
+    } catch (e) {
+      console.warn("Audio pre-processing notice, using direct stream:", e);
+      return { cleanStream: rawStream, cleanup: () => {} };
+    }
   }
 
   // Define the 12 Realtime Tools with @openai/agents tool and zod schema
@@ -642,7 +716,8 @@ export class RealtimeMeseroManager {
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: true,
+            channelCount: 1
           } 
         });
       } catch (micErr: any) {
@@ -658,9 +733,15 @@ export class RealtimeMeseroManager {
         throw new Error(micErr?.message || "No se pudo acceder al micrófono del dispositivo.");
       }
 
-      this.localStream = mediaStream;
+      this.rawStream = mediaStream;
+
+      // Filter sub-bass mechanical rumble (<115 Hz) & high-pitch noise (>7500 Hz) with dynamic compression
+      const { cleanStream, cleanup } = this.createCleanVoiceStream(mediaStream);
+      this.preprocessorCleanup = cleanup;
+      this.localStream = cleanStream;
+
       try {
-        this.callbacks.onLocalStreamCreated?.(mediaStream);
+        this.callbacks.onLocalStreamCreated?.(cleanStream);
       } catch (e) {}
 
       // 2. Fetch ephemeral Realtime session token from our secure backend
@@ -749,18 +830,37 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
         this.remoteAudioElement.autoplay = true;
       }
 
-      // 5. Connect RealtimeSession with WebRTC
+      // 5. Connect RealtimeSession with WebRTC, robust server VAD and Spanish transcription
       this.session = new RealtimeSession(agent, {
         transport: 'webrtc',
         apiKey: ephemeralKey,
         model: chosenModel as any,
         config: {
-          voice: 'marin'
+          voice: 'marin',
+          audio: {
+            input: {
+              turnDetection: {
+                type: 'server_vad',
+                threshold: 0.78,
+                prefixPaddingMs: 300,
+                silenceDurationMs: 650,
+                createResponse: true
+              },
+              transcription: {
+                model: 'whisper-1',
+                language: 'es'
+              }
+            }
+          }
         }
       });
 
       // 6. Listen to RealtimeSession lifecycle events for continuous hands-free voice
       this.session.on('audio_start', () => {
+        if (this.processingWatchdogTimer) {
+          clearTimeout(this.processingWatchdogTimer);
+          this.processingWatchdogTimer = null;
+        }
         this.callbacks.onStateChange('speaking');
       });
 
@@ -773,10 +873,18 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
       });
 
       this.session.on('agent_start', () => {
+        if (this.processingWatchdogTimer) {
+          clearTimeout(this.processingWatchdogTimer);
+          this.processingWatchdogTimer = null;
+        }
         this.callbacks.onStateChange('processing');
       });
 
       this.session.on('agent_end', (_ctx: any, _agent: any, output: string) => {
+        if (this.processingWatchdogTimer) {
+          clearTimeout(this.processingWatchdogTimer);
+          this.processingWatchdogTimer = null;
+        }
         if (output && output.trim()) {
           this.callbacks.onTranscriptDelta(output.trim(), true, 'assistant');
         }
@@ -785,6 +893,10 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
 
       this.session.on('error', (err: any) => {
         console.warn("Realtime session error:", err);
+        if (this.processingWatchdogTimer) {
+          clearTimeout(this.processingWatchdogTimer);
+          this.processingWatchdogTimer = null;
+        }
         if (this.callbacks.onError) {
           this.callbacks.onError(err?.message || 'Error en la sesión de voz Realtime');
         }
@@ -794,7 +906,18 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
         if (!ev || !ev.type) return;
 
         switch (ev.type) {
+          case 'response.created': {
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+              this.processingWatchdogTimer = null;
+            }
+            break;
+          }
           case 'response.audio_transcript.delta': {
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+              this.processingWatchdogTimer = null;
+            }
             const delta = ev.delta || '';
             this.currentAssistantTranscript += delta;
             this.callbacks.onTranscriptDelta(this.currentAssistantTranscript, false, 'assistant');
@@ -802,6 +925,10 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
             break;
           }
           case 'response.audio_transcript.done': {
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+              this.processingWatchdogTimer = null;
+            }
             const finalTranscript = ev.transcript || this.currentAssistantTranscript;
             if (finalTranscript) {
               this.callbacks.onTranscriptDelta(finalTranscript, true, 'assistant');
@@ -811,6 +938,10 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
             break;
           }
           case 'input_audio_buffer.speech_started': {
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+              this.processingWatchdogTimer = null;
+            }
             this.callbacks.onUserSpeechChange?.(true);
             this.callbacks.onStateChange('listening');
             break;
@@ -818,6 +949,15 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
           case 'input_audio_buffer.speech_stopped': {
             this.callbacks.onUserSpeechChange?.(false);
             this.callbacks.onStateChange('processing');
+            // Watchdog: If OpenAI detects no actual message/intent after speech stops (e.g. ambient thump or noise discarded),
+            // safely return the interface back to 'listening' after 1500ms rather than staying stuck in processing
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+            }
+            this.processingWatchdogTimer = setTimeout(() => {
+              this.callbacks.onStateChange('listening');
+              this.processingWatchdogTimer = null;
+            }, 1500);
             break;
           }
           case 'conversation.item.input_audio_transcription.completed': {
@@ -825,6 +965,22 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
             if (transcript.trim()) {
               this.callbacks.onTranscriptDelta(transcript.trim(), true, 'user');
             }
+            break;
+          }
+          case 'conversation.item.input_audio_transcription.failed': {
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+              this.processingWatchdogTimer = null;
+            }
+            this.callbacks.onStateChange('listening');
+            break;
+          }
+          case 'response.done': {
+            if (this.processingWatchdogTimer) {
+              clearTimeout(this.processingWatchdogTimer);
+              this.processingWatchdogTimer = null;
+            }
+            this.callbacks.onStateChange('listening');
             break;
           }
           case 'error': {
@@ -850,6 +1006,28 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
         audioElement: this.remoteAudioElement
       } as any);
 
+      // Explicitly enforce server VAD and Spanish Whisper transcription on the active session
+      try {
+        (this.session as any).sendMessage?.({
+          type: 'session.update',
+          session: {
+            turn_detection: {
+              type: 'server_vad',
+              threshold: 0.78,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 650,
+              create_response: true
+            },
+            input_audio_transcription: {
+              model: 'whisper-1',
+              language: 'es'
+            }
+          }
+        });
+      } catch (e) {
+        console.warn("session.update notice:", e);
+      }
+
       this.isConnected = true;
       this.callbacks.onStateChange('listening');
     } catch (error: any) {
@@ -862,6 +1040,17 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
   }
 
   public stop(): void {
+    if (this.processingWatchdogTimer) {
+      clearTimeout(this.processingWatchdogTimer);
+      this.processingWatchdogTimer = null;
+    }
+    if (this.preprocessorCleanup) {
+      try {
+        this.preprocessorCleanup();
+      } catch (e) {}
+      this.preprocessorCleanup = null;
+    }
+
     try {
       if (this.session) {
         (this.session as any).close?.();
@@ -870,6 +1059,10 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
       if (this.localStream) {
         this.localStream.getTracks().forEach(track => track.stop());
         this.localStream = null;
+      }
+      if (this.rawStream) {
+        this.rawStream.getTracks().forEach(track => track.stop());
+        this.rawStream = null;
       }
       if (this.remoteAudioElement) {
         this.remoteAudioElement.pause();
