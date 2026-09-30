@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, HeartCrack, Sparkles, LogIn, Phone, X, Check, ShieldCheck } from 'lucide-react';
+import { Heart, HeartCrack, Sparkles, LogIn, Phone, X, Check, ShieldCheck, User } from 'lucide-react';
 import { CustomerProfile, StoreRecommendationStats } from '../types';
 import { 
   fetchStoreRecommendations, 
@@ -11,8 +11,10 @@ import {
   googleProvider, 
   fetchCustomerProfileByEmail, 
   fetchCustomerProfileByPhone, 
+  fetchCustomerProfileByUid,
   saveCustomerProfile, 
-  sanitizeCustomerPhone 
+  sanitizeCustomerPhone,
+  setActiveCustomerSession 
 } from '../lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
 
@@ -238,19 +240,28 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
     }
   };
 
-  // Google 1-Click Login from Auth Modal
+  // Google 1-Click Login from Auth Modal (strictly as buyer customer)
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     try {
+      // 1. Explicitly designate authentication mode as customer (buyer)
+      localStorage.setItem('ryyco_auth_mode', 'customer');
+
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
-      const gEmail = user.email || '';
-      const gName = user.displayName || 'Cliente';
+      const gEmail = (user.email || '').toLowerCase().trim();
+      const gName = user.displayName || 'Cliente Comprador';
       const gAvatar = user.photoURL || '';
 
-      // Sync customer profile
+      // Re-assert customer mode immediately
+      localStorage.setItem('ryyco_auth_mode', 'customer');
+
+      // 2. Sync customer profile
       let existingProfile: CustomerProfile | null = null;
-      if (gEmail) {
+      if (user.uid) {
+        existingProfile = await fetchCustomerProfileByUid(user.uid);
+      }
+      if (!existingProfile && gEmail) {
         existingProfile = await fetchCustomerProfileByEmail(gEmail);
       }
 
@@ -263,7 +274,6 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
           authUid: user.uid,
           name: existingProfile.name || gName
         });
-        localStorage.setItem('ryyco_active_customer_phone', finalCustomer.phone);
       } else {
         // Create quick customer record
         const tempPhone = 'g_' + user.uid.substring(0, 10);
@@ -275,14 +285,17 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
           avatarUrl: gAvatar,
           authUid: user.uid,
           points: 1000,
+          ryycos: 1000,
           totalOrdersCount: 0,
           totalSpent: 0,
           spinsAvailable: 1,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         });
-        localStorage.setItem('ryyco_active_customer_phone', tempPhone);
       }
+
+      // 3. Set global active customer buyer session
+      setActiveCustomerSession(finalCustomer);
 
       if (onCustomerUpdate) {
         onCustomerUpdate(finalCustomer);
@@ -312,7 +325,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
           userHasRecommended: false
         }));
 
-        setShowFeedbackToast(`¡Bienvenido ${gName}! Marcaste con corazón roto 💔`);
+        setShowFeedbackToast(`¡Bienvenido ${gName}! Sesión iniciada como cliente comprador 💔`);
       } else {
         await toggleStoreRecommendation({
           storeId,
@@ -334,7 +347,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
           userHasDisliked: false
         }));
 
-        setShowFeedbackToast(`¡Bienvenido ${gName}! Recomendaste a ${storeName} ❤️`);
+        setShowFeedbackToast(`¡Bienvenido ${gName}! Sesión iniciada como cliente comprador ❤️`);
       }
       setTimeout(() => setShowFeedbackToast(null), 3500);
     } catch (err: any) {
@@ -350,6 +363,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
 
   // Switch to standard customer portal
   const handleOpenPhoneRegister = () => {
+    localStorage.setItem('ryyco_auth_mode', 'customer');
     setShowAuthModal(false);
     if (onOpenCustomerPortal) {
       onOpenCustomerPortal();
@@ -382,7 +396,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
             }`}
             title={stats.userHasDisliked ? 'Has marcado con corazón roto (Click para retirar)' : 'Marcar con corazón roto 💔'}
           >
-            <HeartCrack className={`w-3.5 h-3.5 ${stats.userHasDisliked ? 'text-rose-400 fill-rose-950' : 'text-stone-400'}`} />
+            <HeartCrack className={`w-3.5 h-3.5 ${stats.userHasDisliked ? 'text-rose-400 fill-rose-950' : 'text-rose-500'}`} />
             {(stats.dislikeCount || 0) > 0 && (
               <span className="font-semibold text-[11px] text-rose-300">{stats.dislikeCount}</span>
             )}
@@ -396,8 +410,8 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
             whileTap={{ scale: 0.92 }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors shadow-sm cursor-pointer ${
               stats.userHasRecommended
-                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900/60'
-                : 'bg-white/80 dark:bg-stone-900/80 backdrop-blur-md text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-800 hover:border-rose-300 hover:text-rose-600'
+                ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/60'
+                : 'bg-white/80 dark:bg-stone-900/80 backdrop-blur-md text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-800 hover:border-red-300 hover:text-red-600'
             }`}
             title={stats.userHasRecommended ? 'Has recomendado este restaurante (Click para retirar)' : 'Recomendar restaurante con ❤️'}
           >
@@ -406,11 +420,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
               transition={{ duration: 0.3 }}
             >
               <Heart 
-                className={`w-3.5 h-3.5 transition-transform ${
-                  stats.userHasRecommended 
-                    ? 'fill-rose-500 text-rose-500' 
-                    : 'text-rose-500 hover:scale-110'
-                }`} 
+                className="w-3.5 h-3.5 transition-transform fill-red-500 text-red-500 hover:scale-110 drop-shadow-[0_0_5px_rgba(239,68,68,0.6)]" 
               />
             </motion.span>
             <span className="font-semibold whitespace-nowrap">
@@ -455,17 +465,13 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
             onClick={handleHeartClick}
             className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs cursor-pointer select-none transition-all ${
               stats.userHasRecommended
-                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60'
-                : 'bg-stone-100 dark:bg-stone-800/70 text-stone-700 dark:text-stone-300 border border-stone-200/80 dark:border-stone-700 hover:border-rose-300'
+                ? 'bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60'
+                : 'bg-stone-100 dark:bg-stone-800/70 text-stone-700 dark:text-stone-300 border border-stone-200/80 dark:border-stone-700 hover:border-red-400'
             }`}
             title={stats.userHasRecommended ? 'Recomendado por ti' : 'Toca para recomendar'}
           >
             <Heart 
-              className={`w-3.5 h-3.5 ${
-                stats.userHasRecommended 
-                  ? 'fill-rose-500 text-rose-500' 
-                  : 'text-rose-500'
-              }`} 
+              className="w-3.5 h-3.5 fill-red-500 text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.6)]" 
             />
             <span className="font-semibold whitespace-nowrap">
               {stats.count > 0 ? `${stats.count} ${stats.count === 1 ? 'corazón' : 'corazones'}` : 'Recomendar'}
@@ -487,8 +493,8 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-stone-900 border border-stone-200/90 dark:border-stone-800 shadow-sm">
         {/* Left info: Icon, Percentage and count */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center shrink-0 border border-rose-100 dark:border-rose-900/50">
-            <Heart className="w-5 h-5 text-rose-500 fill-rose-500" />
+          <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/50 flex items-center justify-center shrink-0 border border-red-100 dark:border-red-900/50">
+            <Heart className="w-5 h-5 text-red-500 fill-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.7)]" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -564,11 +570,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
               transition={{ duration: 0.3 }}
             >
               <Heart 
-                className={`w-4 h-4 ${
-                  stats.userHasRecommended 
-                    ? 'fill-rose-500 text-rose-500' 
-                    : 'text-rose-400 dark:text-rose-600'
-                }`} 
+                className="w-4 h-4 fill-red-500 text-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.7)]" 
               />
             </motion.span>
             <span className="whitespace-nowrap">
@@ -598,11 +600,12 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 15, scale: 0.95 }}
               className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-2.5 px-4 py-3 bg-stone-900/95 text-white dark:bg-white dark:text-stone-900 rounded-2xl shadow-xl backdrop-blur-md text-sm font-medium border border-stone-800 dark:border-stone-200 pointer-events-auto"
+              style={{ zIndex: 999999 }}
             >
               {authModalContext === 'dislike' ? (
                 <HeartCrack className="w-4 h-4 text-rose-400 shrink-0" />
               ) : (
-                <Heart className="w-4 h-4 text-rose-500 fill-rose-500 shrink-0" />
+                <Heart className="w-4 h-4 text-red-500 fill-red-500 shrink-0" />
               )}
               <span>{showFeedbackToast}</span>
             </motion.div>
@@ -612,12 +615,16 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
         {/* Modal: Must be logged in to recommend or dislike */}
         <AnimatePresence>
           {showAuthModal && (
-            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div 
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+              style={{ zIndex: 999999 }}
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="w-full max-w-md bg-white dark:bg-stone-900 rounded-3xl p-6 sm:p-7 shadow-2xl border border-stone-200 dark:border-stone-800 relative overflow-hidden"
+                style={{ zIndex: 1000000 }}
               >
                 {/* Close button */}
                 <button
@@ -628,22 +635,27 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
                 </button>
 
                 {/* Header icon */}
-                <div className="w-14 h-14 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-100 dark:border-rose-900/50 flex items-center justify-center mb-5 mx-auto">
+                <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-950/60 border border-red-100 dark:border-red-900/50 flex items-center justify-center mb-3 mx-auto">
                   {authModalContext === 'dislike' ? (
                     <HeartCrack className="w-7 h-7 text-rose-400 animate-pulse" />
                   ) : (
-                    <Heart className="w-7 h-7 text-rose-500 fill-rose-500 animate-pulse" />
+                    <Heart className="w-7 h-7 text-red-500 fill-red-500 animate-pulse drop-shadow-[0_0_12px_rgba(239,68,68,0.7)]" />
                   )}
                 </div>
 
                 <div className="text-center">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-bold mb-3 mx-auto shadow-sm">
+                    <User className="w-3.5 h-3.5" />
+                    <span>Cuenta de Cliente Comprador</span>
+                  </div>
+
                   <h3 className="text-xl font-bold text-stone-900 dark:text-stone-100">
                     {authModalContext === 'dislike' ? `¿Tuviste una mala experiencia en ${storeName || 'este restaurante'}?` : `¿Te gustó ${storeName || 'este restaurante'}?`}
                   </h3>
                   <p className="text-sm text-stone-600 dark:text-stone-400 mt-2 leading-relaxed">
                     {authModalContext === 'dislike' 
-                      ? 'Para calificar este restaurante con un corazón roto 💔 y compartir tu opinión honesta, debes iniciar sesión.' 
-                      : <>Para recomendar este restaurante con un corazón <span className="text-rose-500 font-bold">❤️</span> e inspirar a la comunidad de Ryyco, debes estar registrado e iniciar sesión.</>}
+                      ? 'Para calificar este restaurante con un corazón roto 💔 y compartir tu opinión honesta, ingresa como cliente comprador.' 
+                      : <>Para recomendar este restaurante con un corazón <span className="text-red-500 font-bold">❤️</span> e inspirar a la comunidad de Ryyco, ingresa como cliente comprador.</>}
                   </p>
                 </div>
 
@@ -651,7 +663,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
                 <div className="my-5 p-3 rounded-2xl bg-stone-50 dark:bg-stone-800/60 border border-stone-200/70 dark:border-stone-700/60 space-y-2">
                   <div className="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-300">
                     <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                    <span>Cada cliente puede recomendar 1 sola vez</span>
+                    <span>Registro verificado como cliente comprador</span>
                   </div>
                   <div className="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-300">
                     <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
@@ -673,7 +685,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
                       <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
                       <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
                     </svg>
-                    <span>{isGoogleLoading ? 'Iniciando sesión...' : 'Continuar con Google'}</span>
+                    <span>{isGoogleLoading ? 'Iniciando como Cliente...' : 'Continuar con Google (Cliente Comprador)'}</span>
                   </button>
 
                   <button
@@ -682,7 +694,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
                     className="w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 font-medium text-sm transition-all shadow-sm"
                   >
                     <Phone className="w-4 h-4" />
-                    <span>Ingresar con Celular / WhatsApp</span>
+                    <span>Registrarme / Ingresar con Celular (Cliente Comprador)</span>
                   </button>
                 </div>
 
@@ -702,12 +714,16 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
         {/* Modal: Confirm Withdraw Recommendation */}
         <AnimatePresence>
           {showWithdrawConfirm && (
-            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <div 
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+              style={{ zIndex: 999999 }}
+            >
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="w-full max-w-sm bg-white dark:bg-stone-900 rounded-3xl p-6 shadow-2xl border border-stone-200 dark:border-stone-800 text-center"
+                style={{ zIndex: 1000000 }}
               >
                 <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-stone-800 flex items-center justify-center mx-auto mb-4">
                   <Heart className="w-6 h-6 text-stone-400" />

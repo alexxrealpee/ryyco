@@ -6,9 +6,10 @@
 import { tool } from '@openai/agents';
 import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
 import { z } from 'zod';
-import { saveOrder } from './firebase';
+import { saveOrder, checkIsStoreClosed } from './firebase';
 import { 
   getClientAvailableCatalog, 
+  loadOpenStoresCatalogInBackground,
   validateStoreAndProductBeforeCart, 
   validateCartBeforeOrder 
 } from './catalogManager';
@@ -131,7 +132,7 @@ export class RealtimeMeseroManager {
       execute: async ({ query }) => {
         try {
           const catalog = getClientAvailableCatalog();
-          const openStores = catalog.stores || [];
+          const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
 
           let filtered = openStores;
           if (query && query.trim()) {
@@ -147,7 +148,7 @@ export class RealtimeMeseroManager {
           if (filtered.length === 0) {
             if (openStores.length === 0) {
               return {
-                resultado: "En este momento no hay restaurantes abiertos.",
+                resultado: "En este momento todos los restaurantes se encuentran cerrados.",
                 restaurantesDisponibles: []
               };
             }
@@ -162,7 +163,7 @@ export class RealtimeMeseroManager {
             restaurantes: filtered.map(s => ({
               nombre: s.displayName || s.username,
               usuario: s.username,
-              descripcion: s.bio || 'Restaurante asociado a RYYCO',
+              descripcion: s.bio || 'Restaurante abierto en RYYCO',
               estado: 'Abierto y disponible para pedidos'
             }))
           };
@@ -174,7 +175,7 @@ export class RealtimeMeseroManager {
 
     const buscarProductosTool = tool({
       name: 'buscarProductos',
-      description: 'Busca platos, bebidas o productos en el menú de tiendas abiertas (isClosed === false).',
+      description: 'Busca platos, bebidas o productos en el menú EXCLUSIVAMENTE de tiendas que están actualmente ABIERTAS (isClosed === false).',
       parameters: z.object({
         query: z.string().describe('Término de búsqueda (ej: hamburguesa, limonada, pizza)'),
         categoria: z.string().optional().describe('Categoría opcional')
@@ -182,15 +183,26 @@ export class RealtimeMeseroManager {
       execute: async ({ query, categoria }) => {
         try {
           const catalog = getClientAvailableCatalog();
-          const availableProducts = catalog.products || [];
+          const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
+          const openStoreUids = new Set(openStores.map(s => s.uid));
+          const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
           const q = query.toLowerCase().trim();
           
-          let matches = availableProducts.filter(p => 
-            p.active !== false && 
-            (p.name.toLowerCase().includes(q) || 
-             (p.description && p.description.toLowerCase().includes(q)) || 
-             (p.category && p.category.toLowerCase().includes(q)))
-          );
+          let matches = (catalog.products || []).filter(p => {
+            if (p.active === false) return false;
+            // CRITICAL: Product must strictly belong to an open store
+            const belongsToOpenStore = 
+              (p.userId && openStoreUids.has(p.userId)) ||
+              (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase()));
+            if (!belongsToOpenStore) return false;
+
+            return (
+              p.name.toLowerCase().includes(q) || 
+              (p.description && p.description.toLowerCase().includes(q)) || 
+              (p.category && p.category.toLowerCase().includes(q))
+            );
+          });
 
           if (categoria && categoria.trim()) {
             const c = categoria.toLowerCase().trim();
@@ -200,7 +212,7 @@ export class RealtimeMeseroManager {
           if (matches.length === 0) {
             return {
               encontrados: 0,
-              mensaje: `No encontré ningún plato disponible llamado "${query}" en las tiendas abiertas actualmente.`
+              mensaje: `No encontré ningún plato disponible llamado "${query}" en los restaurantes abiertos en este momento.`
             };
           }
 
@@ -213,32 +225,43 @@ export class RealtimeMeseroManager {
               precioNumero: p.price,
               descripcion: p.description || 'Sin descripción',
               categoria: p.category || 'General',
-              restaurante: p.storeName || 'Restaurante Asociado',
+              restaurante: p.storeName || 'Restaurante Abierto',
               disponible: true
             }))
           };
         } catch (e: any) {
-          return { error: "Error al buscar los platos en el catálogo disponible." };
+          return { error: "Error al buscar los platos en los restaurantes abiertos." };
         }
       }
     });
 
     const buscarProductoTool = tool({
       name: 'buscarProducto',
-      description: 'Obtiene los detalles precisos e ingredientes de un plato específico disponible en availableCatalog.',
+      description: 'Obtiene los detalles precisos e ingredientes de un plato específico disponible en restaurantes abiertos.',
       parameters: z.object({
         nombreOId: z.string().describe('Nombre o ID del producto')
       }),
       execute: async ({ nombreOId }) => {
         try {
           const catalog = getClientAvailableCatalog();
+          const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
+          const openStoreUids = new Set(openStores.map(s => s.uid));
+          const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
           const target = nombreOId.toLowerCase().trim();
-          const found = catalog.products.find(p => p.id === nombreOId || p.name.toLowerCase().includes(target));
+          const found = (catalog.products || []).find(p => {
+            if (p.active === false) return false;
+            const belongsToOpenStore = 
+              (p.userId && openStoreUids.has(p.userId)) ||
+              (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase()));
+            if (!belongsToOpenStore) return false;
+            return p.id === nombreOId || p.name.toLowerCase().includes(target);
+          });
 
           if (!found) {
             return { 
               encontrado: false, 
-              mensaje: `El plato "${nombreOId}" no se encuentra disponible actualmente en ninguna tienda abierta.` 
+              mensaje: `El plato "${nombreOId}" no se encuentra disponible actualmente porque el restaurante está cerrado o no existe en el menú.` 
             };
           }
 
@@ -268,9 +291,10 @@ export class RealtimeMeseroManager {
       execute: async ({ restaurante }) => {
         try {
           const catalog = getClientAvailableCatalog();
+          const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
           const rQuery = restaurante.toLowerCase().trim();
           
-          const targetStore = catalog.stores.find(s => 
+          const targetStore = openStores.find(s => 
             (s.displayName && s.displayName.toLowerCase().includes(rQuery)) ||
             (s.username && s.username.toLowerCase().includes(rQuery))
           );
@@ -278,13 +302,14 @@ export class RealtimeMeseroManager {
           if (!targetStore) {
             return {
               encontrado: false,
-              mensaje: `El restaurante "${restaurante}" se encuentra cerrado en este momento o no está disponible.`
+              mensaje: `El restaurante "${restaurante}" se encuentra cerrado en este momento y no puede recibir pedidos.`
             };
           }
 
           const storeProducts = catalog.products.filter(p => 
-            p.userId === targetStore.uid || 
-            (p.storeUsername && p.storeUsername.toLowerCase() === targetStore.username?.toLowerCase())
+            p.active !== false &&
+            (p.userId === targetStore.uid || 
+            (p.storeUsername && p.storeUsername.toLowerCase() === targetStore.username?.toLowerCase()))
           );
 
           return {
@@ -306,13 +331,23 @@ export class RealtimeMeseroManager {
 
     const obtenerCategoriasTool = tool({
       name: 'obtenerCategorias',
-      description: 'Obtiene las categorías gastronómicas disponibles de las tiendas actualmente abiertas.',
+      description: 'Obtiene las categorías gastronómicas disponibles EXCLUSIVAMENTE de las tiendas actualmente abiertas.',
       parameters: z.object({}),
       execute: async () => {
         try {
           const catalog = getClientAvailableCatalog();
+          const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
+          const openStoreUids = new Set(openStores.map(s => s.uid));
+          const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
+          const availableProducts = (catalog.products || []).filter(p => 
+            p.active !== false &&
+            ((p.userId && openStoreUids.has(p.userId)) ||
+             (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase())))
+          );
+
           const catSet = new Set<string>();
-          catalog.products.forEach(p => {
+          availableProducts.forEach(p => {
             if (p.category && p.category.trim()) catSet.add(p.category.trim());
           });
           const list = Array.from(catSet);
@@ -337,17 +372,26 @@ export class RealtimeMeseroManager {
         try {
           const count = typeof cantidad === 'number' && cantidad > 0 ? cantidad : 1;
           const catalog = getClientAvailableCatalog();
+          const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
+          const openStoreUids = new Set(openStores.map(s => s.uid));
+          const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
+          const availableProducts = (catalog.products || []).filter(p => 
+            p.active !== false &&
+            ((p.userId && openStoreUids.has(p.userId)) ||
+             (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase())))
+          );
+
           const target = nombreProducto.toLowerCase().trim();
-          
-          let productToAdd = catalog.products.find(p => p.name.toLowerCase() === target);
+          let productToAdd = availableProducts.find(p => p.name.toLowerCase() === target);
           if (!productToAdd) {
-            productToAdd = catalog.products.find(p => p.name.toLowerCase().includes(target));
+            productToAdd = availableProducts.find(p => p.name.toLowerCase().includes(target));
           }
 
           if (!productToAdd) {
             return {
               exito: false,
-              mensaje: `No fue posible agregar "${nombreProducto}" porque no se encuentra en el catálogo de tiendas abiertas actualmente.`
+              mensaje: `No fue posible agregar "${nombreProducto}" porque no pertenece a ningún restaurante abierto actualmente.`
             };
           }
 
@@ -800,17 +844,37 @@ export class RealtimeMeseroManager {
       }
 
       // 3. Build Realtime Agent with all 12 tools and strict availableCatalog directive
+      const catalog = getClientAvailableCatalog();
+      const openStores = (catalog.stores || []).filter(s => s.isClosed !== true && !checkIsStoreClosed(s) && !s.suspended);
+      const openStoreUids = new Set(openStores.map(s => s.uid));
+      const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
+      const openProducts = (catalog.products || []).filter(p => 
+        p.active !== false &&
+        ((p.userId && openStoreUids.has(p.userId)) ||
+         (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase())))
+      );
+
+      const openStoresSummary = openStores.slice(0, 15).map(s => {
+        const storeProds = openProducts.filter(p => p.userId === s.uid || (p.storeUsername && p.storeUsername.toLowerCase() === s.username?.toLowerCase()));
+        const prodsList = storeProds.slice(0, 5).map(p => `${p.name} ($${p.price.toLocaleString('es-CO')})`).join(', ');
+        return `• ${s.displayName || s.username}: ${prodsList || 'Consultar platos con herramientas'}`;
+      }).join('\n');
+
       const tools = this.buildTools();
       const agent = new RealtimeAgent({
         name: 'Mesero IA Ryyco',
         instructions: `Eres "IAMesero", la mesera virtual de Ryyco (ryyco.com).
 Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
 
-DIRECTIVA OBLIGATORIA DE CATÁLOGO DISPONIBLE (availableCatalog):
-- Solo puedes recomendar, mencionar, agregar al carrito o vender productos presentes en availableCatalog.
-- Si un producto no aparece en availableCatalog, debes asumir que actualmente no está disponible.
-- NUNCA inventes productos, precios, ingredientes ni disponibilidad.
-- NUNCA menciones ni vendas productos pertenecientes a tiendas cerradas (isClosed === true).
+REGLA SUPREMA Y OBLIGATORIA (SOLO PLATOS DE RESTAURANTES ABIERTOS):
+- ÚNICAMENTE Y EXCLUSIVAMENTE PUEDES OFRECER, RECOMENDAR, MENCIONAR O AGREGAR AL CARRITO PLATOS DE RESTAURANTES ABIERTOS.
+- NUNCA inventes productos ni ofrezcas platos de restaurantes cerrados.
+- Si el usuario te pregunta "¿qué tienes para comer?", "¿qué me recomiendas?" o pide sugerencias, SOLO debes ofrecer opciones de los restaurantes abiertos a continuación o consultar tus herramientas 'buscarProductos' y 'buscarRestaurantes'.
+- Si el cliente pregunta por un restaurante cerrado o pide un plato que no pertenece a ningún restaurante abierto, dile con amabilidad: "Ese restaurante se encuentra cerrado en este momento. Te puedo ofrecer platos de los restaurantes que sí están abiertos como [menciona 1 o 2 restaurantes abiertos]".
+
+RESTAURANTES ABIERTOS ACTUALMENTE (${openStores.length} abiertos):
+${openStoresSummary || 'En este momento todos los restaurantes se encuentran cerrados.'}
 
 PAUTAS DE LENGUAJE HABLADO NATURAL:
 1. Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.

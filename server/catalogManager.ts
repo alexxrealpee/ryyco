@@ -90,6 +90,153 @@ let rawProductsMap: Map<string, CatalogProduct> = new Map();
 let isInitialized = false;
 let refreshInterval: NodeJS.Timeout | null = null;
 
+function getColombiaCurrentDayAndMinutes(): { dayId: string; dayIndex: number; currentMinutes: number } {
+  const DAY_IDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Bogota',
+      hour: 'numeric',
+      minute: 'numeric',
+      hourCycle: 'h23',
+      weekday: 'short'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const weekdayPart = parts.find(p => p.type === 'weekday')?.value;
+    const hourPart = parts.find(p => p.type === 'hour')?.value;
+    const minutePart = parts.find(p => p.type === 'minute')?.value;
+    
+    const weekdayMap: Record<string, number> = {
+      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6
+    };
+    const dayIndex = (weekdayPart && weekdayMap[weekdayPart] !== undefined) ? weekdayMap[weekdayPart] : new Date().getDay();
+    const dayId = DAY_IDS[dayIndex] || 'lunes';
+    
+    const bH = hourPart ? parseInt(hourPart, 10) : new Date().getHours();
+    const bM = minutePart ? parseInt(minutePart, 10) : new Date().getMinutes();
+    const currentMinutes = (!isNaN(bH) && !isNaN(bM)) ? (bH % 24) * 60 + bM : (new Date().getHours() * 60 + new Date().getMinutes());
+
+    return { dayId, dayIndex, currentMinutes };
+  } catch {
+    const now = new Date();
+    const dayIndex = now.getDay();
+    const dayId = DAY_IDS[dayIndex] || 'lunes';
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    return { dayId, dayIndex, currentMinutes };
+  }
+}
+
+export function isStoreCurrentlyClosed(profile: any): boolean {
+  if (!profile) return true;
+
+  // 1. Explicitly suspended or expired subscription
+  if (
+    profile.suspended === true || 
+    profile.subscriptionStatus === 'suspended' || 
+    profile.subscriptionStatus === 'expired'
+  ) {
+    return true;
+  }
+
+  // 2. Paid subscription expiration check
+  const now = Date.now();
+  const hasValidPaidUntil = !!(
+    profile.subscriptionPaidUntil && 
+    !isNaN(new Date(profile.subscriptionPaidUntil).getTime()) && 
+    new Date(profile.subscriptionPaidUntil).getTime() >= now
+  );
+
+  if (!hasValidPaidUntil) {
+    if (profile.subscriptionStatus !== 'active' && profile.subscriptionStatus !== 'under_review') {
+      if (profile.subscriptionTrialExpires) {
+        const trialExp = new Date(profile.subscriptionTrialExpires).getTime();
+        if (!isNaN(trialExp) && trialExp < now) {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 3. Manual override
+  if (profile.isClosed === true) return true;
+
+  // 4. Operating hours schedule check
+  if (profile.scheduleEnabled === true) {
+    try {
+      const { dayId, dayIndex, currentMinutes } = getColombiaCurrentDayAndMinutes();
+      const DAY_IDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
+      // Custom weeklySchedule
+      if (profile.weeklySchedule && typeof profile.weeklySchedule === 'object') {
+        const todaySched = profile.weeklySchedule[dayId];
+        
+        // Check overnight shift from yesterday
+        const prevDayIndex = (dayIndex + 6) % 7;
+        const prevDayId = DAY_IDS[prevDayIndex];
+        const prevSched = profile.weeklySchedule[prevDayId];
+        let coveredByPrevDayOvernight = false;
+
+        if (prevSched && prevSched.isOpen && prevSched.openTime && prevSched.closeTime) {
+          const [pO_H, pO_M] = prevSched.openTime.split(':').map((n: string) => parseInt(n, 10));
+          const [pC_H, pC_M] = prevSched.closeTime.split(':').map((n: string) => parseInt(n, 10));
+          if (!isNaN(pO_H) && !isNaN(pO_M) && !isNaN(pC_H) && !isNaN(pC_M)) {
+            const prevOpenM = pO_H * 60 + pO_M;
+            const prevCloseM = pC_H * 60 + pC_M;
+            if (prevCloseM < prevOpenM && currentMinutes < prevCloseM) {
+              coveredByPrevDayOvernight = true;
+            }
+          }
+        }
+
+        if (coveredByPrevDayOvernight) {
+          return false; // Open right now!
+        }
+
+        if (!todaySched || !todaySched.isOpen) {
+          return true; // Closed today
+        }
+
+        if (todaySched.openTime && todaySched.closeTime) {
+          const [oH, oM] = todaySched.openTime.split(':').map((n: string) => parseInt(n, 10));
+          const [cH, cM] = todaySched.closeTime.split(':').map((n: string) => parseInt(n, 10));
+          if (!isNaN(oH) && !isNaN(oM) && !isNaN(cH) && !isNaN(cM)) {
+            const openM = oH * 60 + oM;
+            const closeM = cH * 60 + cM;
+            if (closeM < openM) {
+              if (currentMinutes < openM && currentMinutes >= closeM) {
+                return true;
+              }
+            } else {
+              if (currentMinutes < openM || currentMinutes >= closeM) {
+                return true;
+              }
+            }
+          }
+        }
+      } else if (profile.openTime && profile.closeTime) {
+        const [oH, oM] = profile.openTime.split(':').map((n: string) => parseInt(n, 10));
+        const [cH, cM] = profile.closeTime.split(':').map((n: string) => parseInt(n, 10));
+        if (!isNaN(oH) && !isNaN(oM) && !isNaN(cH) && !isNaN(cM)) {
+          const openM = oH * 60 + oM;
+          const closeM = cH * 60 + cM;
+          if (closeM < openM) {
+            if (currentMinutes < openM && currentMinutes >= closeM) {
+              return true;
+            }
+          } else {
+            if (currentMinutes < openM || currentMinutes >= closeM) {
+              return true;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error evaluating store schedule on backend:", e);
+    }
+  }
+
+  return false;
+}
+
 /**
  * Builds the available catalog by strictly filtering:
  * 1. ONLY stores where isClosed === false (strictly excludes isClosed === true)
@@ -168,8 +315,8 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
       profilesSnap.forEach(docSnap => {
         const data = docSnap.data() as any;
         const uid = data.uid || docSnap.id;
+        const isClosed = isStoreCurrentlyClosed(data);
         const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-        const isClosed = isSuspended || data.isClosed === true;
         const { coverURL, bannerURL, ...cleanData } = data;
         rawStoresMap.set(uid, {
           ...cleanData,

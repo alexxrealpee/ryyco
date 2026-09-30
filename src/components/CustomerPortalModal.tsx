@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, User, Phone, MapPin, Gift, Trophy, Sparkles, 
@@ -1094,8 +1095,11 @@ export default function CustomerPortalModal({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+  const modalBody = (
+    <div 
+      className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+      style={{ zIndex: 999999 }}
+    >
       <div className="bg-[#0b0f19] border border-gray-800 rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-gray-100 animate-fade-in my-auto">
         
         {/* Glow ambient decoration */}
@@ -1160,9 +1164,13 @@ export default function CustomerPortalModal({
         ) : (
           <div className="p-5 sm:p-6 pb-2 flex items-start justify-between relative z-20">
             <div className="pr-3 text-left">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold mb-1.5 shadow-sm">
+                <User className="w-3.5 h-3.5" />
+                <span>Cuenta de Cliente Comprador</span>
+              </div>
               <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">Bienvenido a RYYCO</h3>
               <p className="text-xs sm:text-sm text-gray-400 mt-1 font-medium leading-relaxed">
-                Inicia sesión para ver tus pedidos, ganar premios y acumular RYYCOS.
+                Inicia sesión o regístrate como <strong className="text-white">cliente comprador</strong> para hacer pedidos, calificar y recomendar con ❤️, y ganar RYYCOS.
               </p>
             </div>
             <button
@@ -1225,7 +1233,7 @@ export default function CustomerPortalModal({
                     <GoogleIcon />
                     <div className="text-left flex-1">
                       <div className="text-xs sm:text-sm font-black text-slate-900">
-                        {isRegisterMode ? 'Registrarme como Cliente con Google' : 'Ingresar como Cliente con Google'}
+                        {isRegisterMode ? 'Registrarme como Cliente Comprador con Google' : 'Ingresar como Cliente Comprador con Google'}
                       </div>
                       <div className="text-[10px] text-slate-500 font-semibold">
                         Acceso a RYYCOS, ruleta de premios y pedidos
@@ -1486,12 +1494,12 @@ export default function CustomerPortalModal({
                 ) : isRegisterMode ? (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Crear Cuenta y Ganar 1.000 RYYCOS ($1.000 COP) 🎁
+                    Registrarme como Cliente Comprador (+1.000 RYYCOS) 🎁
                   </>
                 ) : (
                   <>
                     <ArrowRight className="w-4 h-4" />
-                    Ingresar a Mi Cuenta
+                    Ingresar como Cliente Comprador
                   </>
                 )}
               </button>
@@ -3162,4 +3170,10 @@ export default function CustomerPortalModal({
 
     </div>
   );
+
+  if (typeof document !== 'undefined') {
+    return createPortal(modalBody, document.body);
+  }
+
+  return modalBody;
 }

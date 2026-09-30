@@ -1634,6 +1634,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
+                    {/* Acceso Cliente Comprador */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setCustomerPortalTab('profile');
+                        setIsCustomerPortalOpen(true);
+                      }}
+                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                        <User className="w-4 h-4 text-emerald-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-bold text-xs text-white block group-hover:text-emerald-300 transition">
+                          {activeCustomer ? `Mi Cuenta de Cliente (${activeCustomer.name.split(' ')[0]})` : 'Iniciar Sesión / Registro (Cliente Comprador)'}
+                        </span>
+                        <p className="text-[10px] text-gray-400 leading-tight">
+                          {activeCustomer ? 'Ver billetera Ryycos, pedidos y perfil' : 'Ingresa para pedir, acumular puntos y recomendar'}
+                        </p>
+                      </div>
+                    </button>
+
                     {/* Acceso Vendedores / Iniciar Sesión */}
                     <button
                       type="button"
@@ -2240,6 +2263,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       storeId={currentStore.uid}
                       storeName={currentStore.displayName || `@${currentStore.username}`}
                       storeUsername={currentStore.username}
+                      activeCustomer={activeCustomer}
+                      onCustomerUpdate={setActiveCustomer}
+                      onOpenCustomerPortal={() => {
+                        setCustomerPortalTab('rewards');
+                        setIsCustomerPortalOpen(true);
+                      }}
                       variant="compact"
                     />
                   </div>
@@ -2362,7 +2391,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   className="bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/50 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
                 >
                   {/* Store source badge on top left */}
-                  <div className="absolute top-3 left-3 z-20 max-w-[85%]">
+                  <div className="absolute top-3 left-3 z-10 max-w-[85%]">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -2386,7 +2415,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     className="relative aspect-square w-full bg-[#090B12] overflow-hidden shrink-0 cursor-pointer"
                   >
                     {product.allowsHalfAndHalf && product.flavorsText && (
-                      <div className="absolute top-3 right-3 z-20">
+                      <div className="absolute top-3 right-3 z-10">
                         <span className="bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-white/20 flex items-center gap-1">
                           <span>{product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
                         </span>
@@ -2394,7 +2423,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     )}
                     {/* Top right badges: Sale badge */}
                     {isOnSale && !product.allowsHalfAndHalf && (
-                      <div className="absolute top-3 right-3 z-20">
+                      <div className="absolute top-3 right-3 z-10">
                         <span className="bg-[#E63946] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
                           -{discountPercentage}%
                         </span>
