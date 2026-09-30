@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, HeartCrack, Sparkles, Phone, X, Check, ShieldCheck, Award } from 'lucide-react';
 import { CustomerProfile, ProductRecommendationStats } from '../types';
@@ -619,7 +620,9 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
   );
 
   function renderModalsAndToasts() {
-    return (
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
       <>
         {/* Floating Notification Toast */}
         <AnimatePresence>
@@ -628,7 +631,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 15, scale: 0.95 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-2xl shadow-2xl backdrop-blur-md text-xs sm:text-sm font-bold border border-stone-700"
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-2.5 px-4 py-3 bg-stone-900 text-white rounded-2xl shadow-2xl backdrop-blur-md text-xs sm:text-sm font-bold border border-stone-700 pointer-events-auto"
             >
               {showFeedbackToast.includes('💔') ? (
                 <HeartCrack className="w-4 h-4 text-rose-400 shrink-0" />
@@ -643,7 +646,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
         {/* Modal: Must be logged in to react */}
         <AnimatePresence>
           {showAuthModal && (
-            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -737,7 +740,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
         {/* Modal: Confirm Withdraw Recommendation */}
         <AnimatePresence>
           {showWithdrawConfirm && (
-            <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -776,7 +779,8 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
             </div>
           )}
         </AnimatePresence>
-      </>
+      </>,
+      document.body
     );
   }
 };

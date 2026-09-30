@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Heart, HeartCrack, Sparkles, LogIn, Phone, X, Check, ShieldCheck } from 'lucide-react';
 import { CustomerProfile, StoreRecommendationStats } from '../types';
@@ -585,7 +586,9 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
   // Helper: Modals and Feedback Toasts
   // ----------------------------------------------------
   function renderModalsAndToasts() {
-    return (
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
       <>
         {/* Floating Notification Toast */}
         <AnimatePresence>
@@ -594,7 +597,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
               initial={{ opacity: 0, y: 20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 15, scale: 0.95 }}
-              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-4 py-3 bg-stone-900/95 text-white dark:bg-white dark:text-stone-900 rounded-2xl shadow-xl backdrop-blur-md text-sm font-medium border border-stone-800 dark:border-stone-200"
+              className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[99999] flex items-center gap-2.5 px-4 py-3 bg-stone-900/95 text-white dark:bg-white dark:text-stone-900 rounded-2xl shadow-xl backdrop-blur-md text-sm font-medium border border-stone-800 dark:border-stone-200 pointer-events-auto"
             >
               {authModalContext === 'dislike' ? (
                 <HeartCrack className="w-4 h-4 text-rose-400 shrink-0" />
@@ -609,7 +612,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
         {/* Modal: Must be logged in to recommend or dislike */}
         <AnimatePresence>
           {showAuthModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -699,7 +702,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
         {/* Modal: Confirm Withdraw Recommendation */}
         <AnimatePresence>
           {showWithdrawConfirm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -736,7 +739,8 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
             </div>
           )}
         </AnimatePresence>
-      </>
+      </>,
+      document.body
     );
   }
 };
