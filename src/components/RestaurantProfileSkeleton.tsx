@@ -149,7 +149,7 @@ export default function RestaurantProfileSkeleton({ username }: RestaurantProfil
           
           <div className="flex items-center gap-4 w-full sm:w-auto">
             <div className="w-12 h-12 rounded-2xl bg-red-500/15 border border-red-500/25 flex items-center justify-center shrink-0">
-              <Heart className="w-6 h-6 text-red-400 animate-pulse fill-red-400/30" />
+              <Heart className="w-6 h-6 text-red-400 animate-pulse fill-none stroke-[2]" />
             </div>
             <div className="space-y-1.5 flex-1">
               <div className="h-4 w-40 sm:w-52 bg-white/15 rounded-md relative overflow-hidden">

@@ -48,7 +48,10 @@ import {
   Radio,
   ChevronDown,
   ChevronUp,
-  AlertCircle
+  AlertCircle,
+  Key,
+  X,
+  MessageCircle
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { 
@@ -63,6 +66,8 @@ import {
   fetchDriverOrdersHistory, 
   fetchDriverRatings, 
   updateDriverProfile,
+  findDriverByCredentials,
+  resetDriverPassword,
   registerDriverProfile,
   fetchSystemSettings,
   listenToSystemSettings
@@ -149,6 +154,16 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string>('');
   const [authLoading, setAuthLoading] = useState<boolean>(false);
+
+  // Forgot Password / Recovery Modal State
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState<boolean>(false);
+  const [forgotEmail, setForgotEmail] = useState<string>('');
+  const [forgotDocNumber, setForgotDocNumber] = useState<string>('');
+  const [forgotNewPassword, setForgotNewPassword] = useState<string>('');
+  const [forgotShowPass, setForgotShowPass] = useState<boolean>(false);
+  const [forgotLoading, setForgotLoading] = useState<boolean>(false);
+  const [forgotErrorMsg, setForgotErrorMsg] = useState<string>('');
+  const [forgotSuccessMsg, setForgotSuccessMsg] = useState<string>('');
 
   // Active view tab inside portal
   const [activeTab, setActiveTab] = useState<'deliveries' | 'history' | 'profile'>('deliveries');
@@ -624,6 +639,55 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     };
   }, [activeDelivery?.id]);
 
+  // Forgot Password / Self-service reset handler
+  const handleRecoverPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotErrorMsg('');
+    setForgotSuccessMsg('');
+
+    const cleanEmail = forgotEmail.trim().toLowerCase();
+    const cleanDoc = forgotDocNumber.trim();
+    const newPass = forgotNewPassword.trim();
+
+    if (!cleanEmail || !cleanDoc) {
+      setForgotErrorMsg('Por favor ingresa tu correo y número de documento registrados.');
+      return;
+    }
+    if (!newPass || newPass.length < 4) {
+      setForgotErrorMsg('Por favor ingresa una nueva contraseña de al menos 4 caracteres.');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const driverFound = await findDriverByCredentials(cleanEmail, cleanDoc);
+      if (!driverFound) {
+        setForgotErrorMsg('No se encontró ningún domiciliario con ese correo y número de documento. Verifica tus datos o contáctanos por WhatsApp.');
+        setForgotLoading(false);
+        return;
+      }
+
+      const ok = await resetDriverPassword(driverFound.id, newPass);
+      if (ok) {
+        setForgotSuccessMsg('¡Contraseña restablecida con éxito! Ya puedes ingresar con tu nueva clave.');
+        setLoginEmail(cleanEmail);
+        setLoginDocNumber(cleanDoc);
+        setLoginPassword(newPass);
+        setTimeout(() => {
+          setShowForgotPasswordModal(false);
+          setForgotSuccessMsg('');
+        }, 2200);
+      } else {
+        setForgotErrorMsg('No se pudo actualizar la contraseña. Intenta nuevamente.');
+      }
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      setForgotErrorMsg('Error al restablecer la contraseña. Contacta a soporte por WhatsApp.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   // Login Handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1034,7 +1098,23 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] mb-1.5">Contraseña</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-[#A9B2C3]">Contraseña</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotEmail(loginEmail);
+                      setForgotDocNumber(loginDocNumber);
+                      setForgotNewPassword('');
+                      setForgotErrorMsg('');
+                      setForgotSuccessMsg('');
+                      setShowForgotPasswordModal(true);
+                    }}
+                    className="text-xs text-[#E63946] hover:underline font-bold cursor-pointer"
+                  >
+                    ¿Olvidaste tu contraseña?
+                  </button>
+                </div>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
@@ -2888,6 +2968,141 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           driverLiveCoords={currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude } : null}
           storeLocationCoords={activeStoreLocation}
         />
+      )}
+
+      {/* Driver Forgot Password Modal */}
+      {showForgotPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-[#111622] border border-[#232B3A] rounded-3xl p-6 sm:p-7 shadow-2xl relative text-left">
+            <button
+              type="button"
+              onClick={() => {
+                setShowForgotPasswordModal(false);
+                setForgotErrorMsg('');
+                setForgotSuccessMsg('');
+              }}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition cursor-pointer"
+              title="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0">
+                <Key className="w-6 h-6 text-[#E63946]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Recuperar Contraseña</h3>
+                <p className="text-xs text-[#A9B2C3]">Portal de Domiciliarios RYYCO</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300 mb-5 leading-relaxed">
+              Verifica tu identidad con tu <strong>correo</strong> y <strong>número de documento</strong> para crear una nueva clave de acceso de inmediato.
+            </p>
+
+            {forgotErrorMsg && (
+              <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                <span>{forgotErrorMsg}</span>
+              </div>
+            )}
+
+            {forgotSuccessMsg && (
+              <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{forgotSuccessMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleRecoverPasswordSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-[#A9B2C3] mb-1">
+                  Correo Electrónico Registrado *
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="ejemplo@correo.com"
+                  className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#A9B2C3] mb-1">
+                  Número de Documento (Cédula/NIT) *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={forgotDocNumber}
+                  onChange={(e) => setForgotDocNumber(e.target.value)}
+                  placeholder="Ej. 1020304050"
+                  className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-[#A9B2C3] mb-1">
+                  Nueva Contraseña *
+                </label>
+                <div className="relative">
+                  <input
+                    type={forgotShowPass ? 'text' : 'password'}
+                    required
+                    minLength={4}
+                    value={forgotNewPassword}
+                    onChange={(e) => setForgotNewPassword(e.target.value)}
+                    placeholder="Mínimo 4 caracteres"
+                    className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] rounded-xl pl-3.5 pr-11 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForgotShowPass(!forgotShowPass)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A9B2C3] hover:text-white transition p-1 cursor-pointer"
+                    title={forgotShowPass ? "Ocultar clave" : "Ver clave"}
+                  >
+                    {forgotShowPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={forgotLoading}
+                className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-lg shadow-[#E63946]/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
+              >
+                {forgotLoading ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
+                ) : (
+                  <>
+                    <Key className="w-4 h-4" />
+                    <span>Guardar Nueva Contraseña</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-5 pt-5 border-t border-[#232B3A] text-center space-y-3">
+              <p className="text-[11px] text-[#A9B2C3]">
+                ¿Prefieres que el administrador te asista por WhatsApp?
+              </p>
+              <a
+                href={`https://wa.me/573106502043?text=${encodeURIComponent(
+                  `¡Hola Soporte RYYCO! Olvidé mi contraseña de domiciliario. Mi correo registrado es: ${forgotEmail || 'N/A'} y mi documento es: ${forgotDocNumber || 'N/A'}. Por favor ayúdenme a restablecerla.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/30 transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                <span>Pedir Ayuda a Soporte por WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

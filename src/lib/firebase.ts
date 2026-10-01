@@ -4373,6 +4373,72 @@ export async function updateDriverProfile(driverId: string, updates: Partial<Dri
 }
 
 /**
+ * Find driver by email and/or document number for password recovery
+ */
+export async function findDriverByCredentials(emailOrTerm: string, docNumber?: string): Promise<DriverProfile | null> {
+  try {
+    const cleanTerm = (emailOrTerm || '').toLowerCase().trim();
+    const cleanDoc = (docNumber || '').trim();
+
+    // 1. Direct UID format: driver_email_sanitized
+    if (cleanTerm) {
+      const driverUid = `driver_${cleanTerm.replace(/[^a-z0-9]/g, '_')}`;
+      const docRef = doc(db, 'drivers', driverUid);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() } as DriverProfile;
+        if (!cleanDoc || (data.docNumber || '').trim() === cleanDoc) {
+          return data;
+        }
+      }
+    }
+
+    // 2. Fetch all drivers to find by email, docNumber, or phone reliably
+    const allDrivers = await fetchAllDrivers();
+    const found = allDrivers.find(d => {
+      const dEmail = (d.email || '').toLowerCase().trim();
+      const dDoc = (d.docNumber || '').trim();
+      const dPhone = (d.phone || '').replace(/[^0-9]/g, '');
+      const searchPhone = cleanTerm.replace(/[^0-9]/g, '');
+
+      const emailMatches = cleanTerm && dEmail === cleanTerm;
+      const phoneMatches = searchPhone.length >= 7 && dPhone.includes(searchPhone);
+      const docMatches = cleanDoc && dDoc === cleanDoc;
+
+      if (cleanDoc && cleanTerm) {
+        return (emailMatches || phoneMatches) && docMatches;
+      }
+      if (cleanDoc) {
+        return docMatches;
+      }
+      return emailMatches || phoneMatches;
+    });
+
+    return found || null;
+  } catch (err) {
+    console.error("Error finding driver by credentials:", err);
+    return null;
+  }
+}
+
+/**
+ * Reset / Update a driver's password
+ */
+export async function resetDriverPassword(driverId: string, newPassword: string): Promise<boolean> {
+  try {
+    const docRef = doc(db, 'drivers', driverId);
+    await updateDoc(docRef, {
+      password: newPassword.trim(),
+      updatedAt: new Date().toISOString()
+    });
+    return true;
+  } catch (err) {
+    console.error("Error resetting driver password:", err);
+    return false;
+  }
+}
+
+/**
  * Toggle driver availability switch (Disponible / No disponible)
  */
 export async function updateDriverAvailability(driverId: string, isAvailable: boolean): Promise<void> {

@@ -1634,29 +1634,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
-                    {/* Acceso Cliente Comprador */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        setCustomerPortalTab('profile');
-                        setIsCustomerPortalOpen(true);
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <User className="w-4 h-4 text-emerald-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-emerald-300 transition">
-                          {activeCustomer ? `Mi Cuenta de Cliente (${activeCustomer.name.split(' ')[0]})` : 'Iniciar Sesión / Registro (Cliente Comprador)'}
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          {activeCustomer ? 'Ver billetera Ryycos, pedidos y perfil' : 'Ingresa para pedir, acumular puntos y recomendar'}
-                        </p>
-                      </div>
-                    </button>
-
                     {/* Acceso Vendedores / Iniciar Sesión */}
                     <button
                       type="button"

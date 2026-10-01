@@ -412,9 +412,9 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
           title={stats.userHasDisliked ? 'Has marcado con corazón roto (Click para retirar)' : 'Marcar con corazón roto 💔'}
         >
           <HeartCrack 
-            className={`w-3.5 h-3.5 transition-transform ${
+            className={`w-3.5 h-3.5 transition-transform stroke-[2.2] fill-none ${
               stats.userHasDisliked 
-                ? 'text-rose-400 fill-rose-950' 
+                ? 'text-rose-400 stroke-[2.4]' 
                 : 'text-rose-400 group-hover:scale-110'
             }`} 
           />
@@ -440,8 +440,10 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
           title={stats.userHasRecommended ? 'Has recomendado este producto (Click para retirar)' : 'Recomendar este producto con ❤️'}
         >
           <Heart 
-            className={`w-3.5 h-3.5 transition-transform fill-red-500 text-red-500 ${
-              stats.userHasRecommended ? 'scale-110 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'group-hover:scale-110 drop-shadow-[0_0_5px_rgba(239,68,68,0.6)]'
+            className={`w-3.5 h-3.5 transition-transform stroke-[2.2] fill-none ${
+              stats.userHasRecommended 
+                ? 'text-red-500 stroke-[2.6] scale-110 drop-shadow-[0_0_6px_rgba(239,68,68,0.7)]' 
+                : 'text-red-500 group-hover:scale-110'
             }`} 
           />
           {stats.count > 0 && (
@@ -491,7 +493,11 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
           title={stats.userHasRecommended ? 'Has recomendado este plato' : 'Recomendar con ❤️'}
         >
           <Heart 
-            className="w-3 h-3 fill-red-500 text-red-500 drop-shadow-[0_0_5px_rgba(239,68,68,0.6)]" 
+            className={`w-3 h-3 stroke-[2.2] fill-none ${
+              stats.userHasRecommended 
+                ? 'text-red-500 stroke-[2.6] drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]' 
+                : 'text-red-500'
+            }`} 
           />
           <span>
             {stats.count > 0 ? `${stats.count} ${stats.count === 1 ? 'corazón' : 'corazones'}` : 'Recomendar'}
@@ -512,7 +518,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
         {/* Left: Stats & Badges */}
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
-            <Heart className="w-5 h-5 text-red-500 fill-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.7)]" />
+            <Heart className="w-5 h-5 text-red-500 fill-none stroke-[2.2] drop-shadow-[0_0_6px_rgba(239,68,68,0.4)]" />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -586,7 +592,9 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
               transition={{ duration: 0.3 }}
             >
               <Heart 
-                className="w-4 h-4 fill-red-500 text-red-500 drop-shadow-[0_0_6px_rgba(239,68,68,0.7)]" 
+                className={`w-4 h-4 transition-transform stroke-[2.2] fill-none ${
+                  stats.userHasRecommended ? 'text-red-500 stroke-[2.6]' : 'text-current'
+                }`} 
               />
             </motion.span>
             <span>
@@ -641,7 +649,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
               {showFeedbackToast.includes('💔') ? (
                 <HeartCrack className="w-4 h-4 text-rose-400 shrink-0" />
               ) : (
-                <Heart className="w-4 h-4 text-rose-500 fill-rose-500 shrink-0" />
+                <Heart className="w-4 h-4 text-red-500 fill-none stroke-[2.2] shrink-0" />
               )}
               <span>{showFeedbackToast}</span>
             </motion.div>
@@ -674,7 +682,7 @@ export const ProductRecommendationHeartButton: React.FC<ProductRecommendationHea
                   {authModalContext === 'dislike' ? (
                     <HeartCrack className="w-7 h-7 text-rose-400 animate-pulse" />
                   ) : (
-                    <Heart className="w-7 h-7 text-red-500 fill-red-500 animate-pulse drop-shadow-[0_0_12px_rgba(239,68,68,0.7)]" />
+                    <Heart className="w-7 h-7 text-red-500 fill-none stroke-[2.2] animate-pulse drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]" />
                   )}
                 </div>
 

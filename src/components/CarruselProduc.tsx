@@ -765,7 +765,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       className="absolute pointer-events-none z-50 animate-ping duration-700 flex items-center justify-center text-red-500"
                       style={{ left: burst.x - 40, top: burst.y - 40 }}
                     >
-                      <Heart className="w-24 h-24 fill-red-500 text-red-500 drop-shadow-[0_0_20px_rgba(239,68,68,0.8)]" />
+                      <Heart className="w-24 h-24 text-red-500 fill-none stroke-[3] drop-shadow-[0_0_20px_rgba(239,68,68,0.9)]" />
                     </div>
                   ))}
                 </div>
@@ -825,7 +825,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       }`}
                       title={likeInfo.isLiked ? "Ya no me gusta" : "Me gusta"}
                     >
-                      <Heart className={`w-6 h-6 transition-transform ${likeInfo.isLiked ? 'fill-red-500 text-red-500 scale-110' : ''}`} />
+                      <Heart className={`w-6 h-6 transition-transform stroke-[2.2] fill-none ${likeInfo.isLiked ? 'text-red-500 stroke-[2.8] scale-110 drop-shadow-[0_0_8px_rgba(239,68,68,0.7)]' : ''}`} />
                     </button>
                     <span className="text-[11px] font-black text-white mt-1 drop-shadow-md">
                       {likeInfo.count.toLocaleString()}
