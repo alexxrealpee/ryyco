@@ -27,7 +27,8 @@ import {
   getSubscriptionAnchorDay,
   calculateNextExpirationDate,
   getSubscriptionDaysRemaining,
-  isSubscriptionExpiredOrSuspended
+  isSubscriptionExpiredOrSuspended,
+  getPlanProductLimit
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
@@ -94,7 +95,10 @@ import {
   Radio,
   Smartphone,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  ChevronDown,
+  Package,
+  Info
 } from 'lucide-react';
 import {
   initializeFCM,
@@ -1178,25 +1182,43 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const handlePlanUpgrade = async (user: AdminUser, newPlan: 'basico' | 'medio' | 'pro') => {
     try {
-      await updateDoc(doc(db, 'profiles', user.uid), { 
+      const currentStatus = user.subscriptionStatus || 'active';
+      const updates: any = { 
         subscriptionPlan: newPlan,
-        subscriptionStatus: 'active'
-      });
-      // Backwards compatibility writes
-      await updateDoc(doc(db, 'users', user.uid), { 
-        subscriptionPlan: newPlan,
-        subscriptionStatus: 'active',
+        subscriptionStatus: currentStatus,
         plan: newPlan === 'basico' ? 'free' : newPlan === 'medio' ? 'pro' : 'business'
-      });
-    } catch(e) {}
+      };
+      await updateDoc(doc(db, 'profiles', user.uid), updates);
+      try {
+        await updateDoc(doc(db, 'users', user.uid), updates);
+      } catch(e) {}
 
-    setUsers(users.map(u => u.uid === user.uid ? { ...u, subscriptionPlan: newPlan } : u));
+      try {
+        localStorage.removeItem('linnk_all_active_data_cache');
+        fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+      } catch (e) {}
+    } catch(e) {
+      console.error("Error updating plan:", e);
+    }
+
+    setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, subscriptionPlan: newPlan } : u));
+    setStoresMap(prev => {
+      if (!prev[user.uid]) return prev;
+      return {
+        ...prev,
+        [user.uid]: {
+          ...prev[user.uid],
+          subscriptionPlan: newPlan
+        }
+      };
+    });
+
     const planLabels = {
-      basico: 'Plan Básico (5 productos)',
-      medio: 'Plan Medio (12 productos)',
-      pro: 'Plan Avanzado (24 productos)'
+      basico: 'Plan Básico ($49.000 COP • 5 prod.)',
+      medio: 'Plan Medio ($79.000 COP • 12 prod.)',
+      pro: 'Plan Avanzado / Pro ($99.000 COP • 24 prod.)'
     };
-    setNotif(`La suscripción de @${user.username} ha sido actualizada a: ${planLabels[newPlan].toUpperCase()}.`);
+    setNotif(`✅ El plan de ${user.storeName || '@' + user.username} ha sido actualizado a: ${planLabels[newPlan].toUpperCase()}`);
     setTimeout(() => setNotif(''), 4500);
   };
 
@@ -1393,6 +1415,26 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [confirmExtendModalUser, setConfirmExtendModalUser] = useState<AdminUser | null>(null);
   const [extendModalMonths, setExtendModalMonths] = useState<number>(1);
   const [extendingSubscription, setExtendingSubscription] = useState<boolean>(false);
+
+  // State for Ajustar Plan Modal
+  const [planModalUser, setPlanModalUser] = useState<AdminUser | null>(null);
+  const [selectedNewPlan, setSelectedNewPlan] = useState<'basico' | 'medio' | 'pro'>('basico');
+  const [savingPlanChange, setSavingPlanChange] = useState<boolean>(false);
+
+  const handleConfirmPlanChange = async () => {
+    if (!planModalUser) return;
+    setSavingPlanChange(true);
+    try {
+      await handlePlanUpgrade(planModalUser, selectedNewPlan);
+      setPlanModalUser(null);
+    } catch (err) {
+      console.error("Error al actualizar plan:", err);
+      setNotif(`❌ Error al actualizar plan: ${err instanceof Error ? err.message : 'Intente nuevamente'}`);
+      setTimeout(() => setNotif(''), 4500);
+    } finally {
+      setSavingPlanChange(false);
+    }
+  };
 
   const handleExecuteExtendSubscription = async () => {
     if (!confirmExtendModalUser) return;
@@ -2904,9 +2946,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 )}
                               </div>
                             </div>
-                            <span className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[9px] font-black uppercase rounded-lg">
-                              {user.subscriptionPlan || 'Básico'}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedNewPlan((user.subscriptionPlan as any) || 'basico');
+                                setPlanModalUser(user);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 hover:text-white border border-indigo-500/30 rounded-lg text-[9.5px] font-black uppercase tracking-wider transition cursor-pointer shadow-sm active:scale-95 shrink-0"
+                              title="Clic para cambiar / ajustar el plan de esta tienda"
+                            >
+                              <Zap className="w-3 h-3 text-amber-400" />
+                              <span>{user.subscriptionPlan ? (user.subscriptionPlan === 'pro' ? 'Avanzado' : user.subscriptionPlan === 'medio' ? 'Medio' : 'Básico') : 'Básico'}</span>
+                              <ChevronDown className="w-2.5 h-2.5 text-indigo-400 opacity-70" />
+                            </button>
                           </div>
 
                           <div className="grid grid-cols-2 gap-3 pt-2.5 border-t border-gray-900/50">
@@ -3016,6 +3068,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </div>
                           </div>
 
+                          {/* Selector Rápido de Plan */}
+                          <div className="pt-2">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1">
+                                <Zap className="w-3 h-3 text-amber-400" /> Plan de Tienda:
+                              </span>
+                              <span className="text-[9.5px] font-mono text-indigo-400 font-bold">
+                                Límite: {getPlanProductLimit(user.subscriptionPlan || 'basico')} productos
+                              </span>
+                            </div>
+                            <select
+                              value={user.subscriptionPlan || 'basico'}
+                              onChange={(e) => handlePlanUpgrade(user, e.target.value as any)}
+                              className="w-full rounded-xl py-2 px-2.5 text-[10.5px] uppercase font-black border cursor-pointer outline-none bg-indigo-500/10 hover:bg-indigo-500/15 text-indigo-300 border-indigo-500/30 transition shadow-sm text-center"
+                            >
+                              <option value="basico" className="bg-gray-950 text-indigo-300">🥉 BÁSICO ($49.000 COP • 5 PROD.)</option>
+                              <option value="medio" className="bg-gray-950 text-indigo-300">🥈 MEDIO ($79.000 COP • 12 PROD.)</option>
+                              <option value="pro" className="bg-gray-950 text-indigo-300">🥇 AVANZADO / PRO ($99.000 COP • 24 PROD.)</option>
+                            </select>
+                          </div>
+
                           {/* Botón Destacado para Cobrar Plan por WhatsApp */}
                           <div className="pt-2">
                             <button
@@ -3057,7 +3130,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-2 pt-2">
+                          <div className="grid grid-cols-3 gap-1.5 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedNewPlan((user.subscriptionPlan as any) || 'basico');
+                                setPlanModalUser(user);
+                              }}
+                              title="Ajustar y configurar el plan de esta tienda"
+                              className="py-2.5 px-1.5 bg-amber-500/15 hover:bg-amber-500 text-amber-400 hover:text-gray-950 font-black text-[9.5px] tracking-wider uppercase rounded-xl border border-amber-500/25 transition cursor-pointer flex items-center justify-center gap-1 shadow-sm active:scale-95"
+                            >
+                              <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span>Ajustar Plan</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => {
@@ -3065,9 +3150,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 setConfirmExtendModalUser(user);
                               }}
                               title={`Ajustar mes (+1 / -1) manteniendo el día de corte (${anchorDay})`}
-                              className="py-2.5 px-2 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1.5"
+                              className="py-2.5 px-1.5 bg-indigo-500/15 hover:bg-indigo-500 text-indigo-400 hover:text-white font-black text-[9.5px] tracking-wider uppercase rounded-xl border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1 shadow-sm active:scale-95"
                             >
-                              <Calendar className="w-3.5 h-3.5" />
+                              <Calendar className="w-3.5 h-3.5 shrink-0" />
                               <span>Ajustar Mes</span>
                             </button>
                             <button
@@ -3075,12 +3160,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               onClick={() => handleDeletePage(user)}
                               disabled={deletingUserId === user.uid}
                               title="Eliminar esta página/tienda"
-                              className="py-2.5 px-2 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white font-black text-[10px] tracking-wider uppercase rounded-xl border border-red-500/25 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                              className="py-2.5 px-1.5 bg-red-500/15 hover:bg-red-500 text-red-400 hover:text-white font-black text-[9.5px] tracking-wider uppercase rounded-xl border border-red-500/25 transition cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm active:scale-95"
                             >
                               {deletingUserId === user.uid ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                               ) : (
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3.5 h-3.5 shrink-0" />
                               )}
                               <span>Eliminar</span>
                             </button>
@@ -3181,9 +3266,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   )}
                                 </div>
                                 <div className="mt-1 flex items-center gap-2">
-                                  <span className="uppercase font-black font-mono text-indigo-400 text-[9px] bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
-                                    {user.subscriptionPlan || 'Básico'}
-                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedNewPlan((user.subscriptionPlan as any) || 'basico');
+                                      setPlanModalUser(user);
+                                    }}
+                                    className="uppercase font-black font-mono text-indigo-300 hover:text-white text-[9.5px] bg-indigo-500/15 hover:bg-indigo-500/30 px-2 py-0.5 rounded-md border border-indigo-500/30 transition cursor-pointer inline-flex items-center gap-1 shadow-sm active:scale-95"
+                                    title="Clic para cambiar / ajustar el plan"
+                                  >
+                                    <Zap className="w-2.5 h-2.5 text-amber-400" />
+                                    <span>{user.subscriptionPlan ? (user.subscriptionPlan === 'pro' ? 'Avanzado' : user.subscriptionPlan === 'medio' ? 'Medio' : 'Básico') : 'Básico'}</span>
+                                    <ChevronDown className="w-2 h-2 text-indigo-400 opacity-70" />
+                                  </button>
                                   <span className="font-mono text-gray-400 text-[10px]">
                                     ${planPrice.toLocaleString()} COP
                                   </span>
@@ -3294,6 +3389,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               </td>
                               <td className="py-3.5 px-4 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedNewPlan((user.subscriptionPlan as any) || 'basico');
+                                      setPlanModalUser(user);
+                                    }}
+                                    title="Ajustar y configurar el plan de esta tienda"
+                                    className="px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500 hover:text-gray-950 text-amber-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-amber-500/30 transition cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                                  >
+                                    <Zap className="w-3 h-3 text-amber-400" />
+                                    <span>Ajustar Plan</span>
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => handleOpenCobroModal(user)}
@@ -5888,6 +5995,200 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       <Minus className="w-4 h-4" />
                     )}
                     <span>{isAdding ? 'Confirmar +1 Mes' : 'Confirmar -1 Mes'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Modal para Ajustar Plan de Tienda */}
+        {planModalUser && (() => {
+          const user = planModalUser;
+          const currentPlan = user.subscriptionPlan || 'basico';
+          const planOptions = [
+            {
+              id: 'basico' as const,
+              name: 'Plan Básico',
+              price: 49000,
+              limit: 5,
+              badge: '🥉 BÁSICO',
+              color: 'emerald',
+              desc: 'Hasta 5 productos, catálogo digital móvil y recepción de pedidos por WhatsApp.'
+            },
+            {
+              id: 'medio' as const,
+              name: 'Plan Medio',
+              price: 79000,
+              limit: 12,
+              badge: '🥈 MEDIO',
+              color: 'indigo',
+              desc: 'Hasta 12 productos, mayor variedad de catálogo y estadísticas de ventas.'
+            },
+            {
+              id: 'pro' as const,
+              name: 'Plan Avanzado / Pro',
+              price: 99000,
+              limit: 24,
+              badge: '🥇 AVANZADO',
+              color: 'amber',
+              desc: 'Hasta 24 productos, máxima capacidad, visibilidad destacada y soporte prioritario.'
+            }
+          ];
+
+          const currentPlanData = planOptions.find(p => p.id === currentPlan) || planOptions[0];
+          const newPlanData = planOptions.find(p => p.id === selectedNewPlan) || planOptions[0];
+          const isSamePlan = currentPlan === selectedNewPlan;
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+              <div className="bg-[#0f1422] border border-amber-500/40 rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl shadow-amber-950/40 space-y-4 max-h-[92vh] overflow-y-auto">
+                {/* Encabezado */}
+                <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-amber-500/15 border border-amber-500/30 text-amber-400 rounded-2xl">
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-white flex items-center gap-2">
+                        Ajustar Plan de Tienda
+                      </h3>
+                      <p className="text-[11px] text-gray-400">
+                        Cambia el plan de suscripción, límite de productos y costo mensual
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPlanModalUser(null)}
+                    disabled={savingPlanChange}
+                    className="p-1.5 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Tienda Info */}
+                <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-3.5 flex items-center justify-between">
+                  <div>
+                    <h4 className="font-extrabold text-white text-sm">
+                      {user.storeName || user.username || 'Tienda sin Nombre'}
+                    </h4>
+                    <p className="text-xs text-gray-400 font-mono">@{user.username} • {user.email}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-gray-500 uppercase font-bold block mb-0.5">Plan Actual</span>
+                    <span className="px-2.5 py-0.5 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-black uppercase">
+                      {currentPlanData.badge}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Selección de Planes */}
+                <div className="space-y-2.5">
+                  <span className="text-xs font-black uppercase tracking-wider text-gray-400 block">
+                    Selecciona el Nuevo Plan:
+                  </span>
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {planOptions.map((plan) => {
+                      const isSelected = selectedNewPlan === plan.id;
+                      const isCurrent = currentPlan === plan.id;
+
+                      return (
+                        <div
+                          key={plan.id}
+                          onClick={() => setSelectedNewPlan(plan.id)}
+                          className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative ${
+                            isSelected
+                              ? 'bg-amber-500/10 border-amber-500 shadow-md shadow-amber-950/30 ring-1 ring-amber-500/50'
+                              : 'bg-gray-900/50 hover:bg-gray-900 border-gray-800 hover:border-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition ${
+                                isSelected 
+                                  ? 'border-amber-400 bg-amber-400 text-gray-950' 
+                                  : 'border-gray-600 bg-gray-950'
+                              }`}>
+                                {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-black text-white">{plan.name}</span>
+                                  {isCurrent && (
+                                    <span className="px-1.5 py-0.2 bg-gray-800 text-gray-400 rounded text-[9px] font-bold uppercase">
+                                      Actual
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-gray-400 mt-0.5">{plan.desc}</p>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-sm font-black font-mono text-white block">
+                                ${plan.price.toLocaleString('es-CO')}
+                              </span>
+                              <span className="text-[10px] text-amber-400 font-bold block">
+                                Máx. {plan.limit} productos
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Resumen del Cambio */}
+                <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 font-semibold">Costo Mensual:</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <span className="text-gray-500 line-through">${currentPlanData.price.toLocaleString('es-CO')}</span>
+                      <span className="text-gray-400">→</span>
+                      <strong className="text-emerald-400 font-black">${newPlanData.price.toLocaleString('es-CO')} COP</strong>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400 font-semibold">Límite de Catálogo:</span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      <span className="text-gray-500">{currentPlanData.limit} prod.</span>
+                      <span className="text-gray-400">→</span>
+                      <strong className="text-amber-400 font-black">{newPlanData.limit} productos</strong>
+                    </div>
+                  </div>
+
+                  <div className="pt-1 text-[11px] text-gray-400 border-t border-gray-850 flex items-center gap-1.5">
+                    <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span>El recordatorio de cobro por WhatsApp reflejará automáticamente este nuevo valor.</span>
+                  </div>
+                </div>
+
+                {/* Botones de Acción */}
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-850">
+                  <button
+                    type="button"
+                    onClick={() => setPlanModalUser(null)}
+                    disabled={savingPlanChange}
+                    className="flex-1 py-3 bg-gray-900 hover:bg-gray-850 text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmPlanChange}
+                    disabled={savingPlanChange || isSamePlan}
+                    className="flex-1 py-3 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-950/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingPlanChange ? (
+                      <RefreshCw className="w-4 h-4 animate-spin text-gray-950" />
+                    ) : (
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    )}
+                    <span>{isSamePlan ? 'Plan Actual Ya Seleccionado' : 'Guardar y Aplicar Plan'}</span>
                   </button>
                 </div>
               </div>

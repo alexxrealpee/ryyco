@@ -45,11 +45,13 @@ import {
   Save,
   Navigation,
   Compass,
-  Crosshair
+  Crosshair,
+  Zap,
+  ChevronDown
 } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db, getStoreOperatingScheduleInfo, fetchAllActiveProductsAndStores } from '../lib/firebase';
+import { auth, db, getStoreOperatingScheduleInfo, fetchAllActiveProductsAndStores, getPlanProductLimit } from '../lib/firebase';
 import { UserProfile, OrderItem, WeeklySchedule } from '../types';
 import { 
   extractCoordinates, 
@@ -116,6 +118,11 @@ export default function AdminStoresManager({
   const [detectingGps, setDetectingGps] = useState(false);
   const [savingLocation, setSavingLocation] = useState(false);
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
+
+  // Plan Adjustment Modal states
+  const [planModalStore, setPlanModalStore] = useState<UserProfile | null>(null);
+  const [selectedNewPlan, setSelectedNewPlan] = useState<'basico' | 'medio' | 'pro'>('basico');
+  const [savingPlanChange, setSavingPlanChange] = useState(false);
   
   // Feedback states
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
@@ -600,6 +607,71 @@ export default function AdminStoresManager({
       showNotif("Error al modificar horario de la tienda.", "error");
     } finally {
       setUpdatingStoreId(null);
+    }
+  };
+
+  // Open Plan Adjustment Modal
+  const handleOpenPlanModal = (store: UserProfile) => {
+    const rawPlan = (store.subscriptionPlan || store.plan || 'basico').toLowerCase();
+    const normalized: 'basico' | 'medio' | 'pro' = 
+      rawPlan === 'pro' || rawPlan === 'business' || rawPlan === 'avanzado'
+        ? 'pro'
+        : rawPlan === 'medio'
+        ? 'medio'
+        : 'basico';
+    setSelectedNewPlan(normalized);
+    setPlanModalStore(store);
+  };
+
+  // Save Plan Adjustment to Firestore
+  const handleSavePlanChange = async () => {
+    if (!planModalStore) return;
+    setSavingPlanChange(true);
+    try {
+      const currentStatus = planModalStore.subscriptionStatus || 'active';
+      const updates: any = {
+        subscriptionPlan: selectedNewPlan,
+        subscriptionStatus: currentStatus,
+        plan: selectedNewPlan === 'basico' ? 'free' : selectedNewPlan === 'medio' ? 'pro' : 'business',
+        updatedAt: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'profiles', planModalStore.uid), updates);
+      try {
+        await updateDoc(doc(db, 'users', planModalStore.uid), updates);
+      } catch (e) {}
+
+      try {
+        localStorage.removeItem('linnk_all_active_data_cache');
+        fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+      } catch (e) {}
+
+      // Update in-memory references
+      planModalStore.subscriptionPlan = selectedNewPlan;
+      planModalStore.plan = updates.plan;
+
+      if (detailStore && detailStore.uid === planModalStore.uid) {
+        setDetailStore({
+          ...detailStore,
+          subscriptionPlan: selectedNewPlan,
+          plan: updates.plan
+        });
+      }
+
+      const planLabels = {
+        basico: 'Plan Básico ($49.000 COP • 5 prod.)',
+        medio: 'Plan Medio ($79.000 COP • 12 prod.)',
+        pro: 'Plan Avanzado / Pro ($99.000 COP • 24 prod.)'
+      };
+
+      showNotif(`✓ Plan de "${planModalStore.displayName || planModalStore.storeName || planModalStore.username}" ajustado a: ${planLabels[selectedNewPlan]}`);
+      setPlanModalStore(null);
+      if (onRefreshData) onRefreshData();
+    } catch (err: any) {
+      console.error("Error al actualizar plan:", err);
+      showNotif(`Error al actualizar plan: ${err?.message || 'Intente de nuevo'}`, 'error');
+    } finally {
+      setSavingPlanChange(false);
     }
   };
 
@@ -1156,13 +1228,20 @@ export default function AdminStoresManager({
                     </div>
 
                     <div className="flex-1 min-w-0 pt-7">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <h4 className="text-sm font-black text-white truncate">
                           {store.displayName || store.storeName || store.username}
                         </h4>
-                        <span className="px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded text-[9px] font-mono font-black uppercase shrink-0">
-                          {store.subscriptionPlan || store.plan || 'Básico'}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPlanModal(store)}
+                          className="px-1.5 py-0.5 bg-indigo-500/20 hover:bg-indigo-500/35 text-indigo-300 hover:text-white border border-indigo-500/35 hover:border-indigo-400/50 rounded-lg text-[9px] font-mono font-black uppercase shrink-0 transition flex items-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+                          title="Clic para ajustar el plan de esta tienda"
+                        >
+                          <Zap className="w-2.5 h-2.5 text-amber-400" />
+                          <span>{store.subscriptionPlan ? (store.subscriptionPlan === 'pro' || store.subscriptionPlan === 'avanzado' ? 'Avanzado' : store.subscriptionPlan === 'medio' ? 'Medio' : 'Básico') : (store.plan === 'business' ? 'Avanzado' : store.plan === 'pro' ? 'Medio' : 'Básico')}</span>
+                          <Edit3 className="w-2 h-2 opacity-60" />
+                        </button>
                       </div>
 
                       <div className="flex items-center gap-2 mt-0.5">
@@ -1410,11 +1489,22 @@ export default function AdminStoresManager({
                       <button
                         type="button"
                         onClick={() => setDetailStore(store)}
-                        className="px-2.5 py-1.5 bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        className="px-2 py-1.5 bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer"
                         title="Ver ficha técnica completa y redes"
                       >
                         <Info className="w-3.5 h-3.5 text-blue-400" />
-                        <span>Ficha Técnica</span>
+                        <span>Ficha</span>
+                      </button>
+
+                      {/* Ajustar Plan de Tienda */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPlanModal(store)}
+                        className="px-2 py-1.5 bg-amber-500/15 hover:bg-amber-500 hover:text-gray-950 text-amber-400 border border-amber-500/30 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-sm"
+                        title="Ajustar o cambiar el plan de suscripción de esta tienda"
+                      >
+                        <Zap className="w-3.5 h-3.5" />
+                        <span>Plan</span>
                       </button>
 
                       {/* Send Password Reset Email directly to store owner */}
@@ -1422,7 +1512,7 @@ export default function AdminStoresManager({
                         type="button"
                         disabled={sendingResetFor === store.uid || !store.email}
                         onClick={() => handleSendPasswordReset(store.email, store.displayName || store.username, store.uid)}
-                        className="px-2.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer disabled:opacity-40"
+                        className="px-2 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer disabled:opacity-40"
                         title="Enviar correo de restablecimiento de contraseña al dueño de esta tienda"
                       >
                         {sendingResetFor === store.uid ? (
@@ -1430,7 +1520,7 @@ export default function AdminStoresManager({
                         ) : (
                           <KeyRound className="w-3.5 h-3.5 text-amber-400" />
                         )}
-                        <span>Restablecer Clave</span>
+                        <span>Clave</span>
                       </button>
 
                       {/* Suspend / Reactivate */}
@@ -1495,13 +1585,20 @@ export default function AdminStoresManager({
                             )}
                           </div>
                           <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="font-black text-white text-xs truncate max-w-[150px]">
                                 {store.displayName || store.storeName || store.username}
                               </span>
-                              <span className="px-1.5 py-0.2 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded text-[9px] font-black uppercase font-mono">
-                                {store.subscriptionPlan || 'Básico'}
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPlanModal(store)}
+                                className="px-1.5 py-0.2 bg-indigo-500/15 hover:bg-indigo-500/30 text-indigo-300 hover:text-white border border-indigo-500/30 rounded text-[9px] font-black uppercase font-mono transition cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                                title="Clic para ajustar el plan"
+                              >
+                                <Zap className="w-2.5 h-2.5 text-amber-400" />
+                                <span>{store.subscriptionPlan ? (store.subscriptionPlan === 'pro' || store.subscriptionPlan === 'avanzado' ? 'Avanzado' : store.subscriptionPlan === 'medio' ? 'Medio' : 'Básico') : (store.plan === 'business' ? 'Avanzado' : store.plan === 'pro' ? 'Medio' : 'Básico')}</span>
+                                <Edit3 className="w-2 h-2 opacity-60" />
+                              </button>
                             </div>
                             <span className="text-[11px] text-pink-400 font-mono font-bold block truncate">
                               @{store.username}
@@ -1624,6 +1721,15 @@ export default function AdminStoresManager({
 
                           <button
                             type="button"
+                            onClick={() => handleOpenPlanModal(store)}
+                            className="p-2 bg-amber-500/15 hover:bg-amber-500 hover:text-gray-950 text-amber-400 rounded-xl border border-amber-500/30 transition cursor-pointer active:scale-95 shadow-sm"
+                            title="Ajustar plan de suscripción de esta tienda"
+                          >
+                            <Zap className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
                             disabled={sendingResetFor === store.uid || !store.email}
                             onClick={() => handleSendPasswordReset(store.email, store.displayName || store.username, store.uid)}
                             className="p-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/25 transition cursor-pointer disabled:opacity-30"
@@ -1702,7 +1808,18 @@ export default function AdminStoresManager({
                   </div>
                   <div>
                     <span className="text-gray-500 block text-[10px] uppercase font-bold">Plan de Suscripción:</span>
-                    <strong className="text-indigo-400 uppercase font-mono">{detailStore.subscriptionPlan || 'Básico'}</strong>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <strong className="text-indigo-400 uppercase font-mono">{detailStore.subscriptionPlan || (detailStore.plan === 'business' ? 'Avanzado' : detailStore.plan === 'pro' ? 'Medio' : 'Básico')}</strong>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenPlanModal(detailStore)}
+                        className="px-2 py-0.5 bg-amber-500/15 hover:bg-amber-500 hover:text-gray-950 text-amber-400 border border-amber-500/30 rounded-lg text-[9.5px] font-bold uppercase transition flex items-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+                        title="Cambiar plan de esta tienda"
+                      >
+                        <Zap className="w-2.5 h-2.5" />
+                        <span>Ajustar Plan</span>
+                      </button>
+                    </div>
                   </div>
                   <div className="sm:col-span-2">
                     <span className="text-gray-500 block text-[10px] uppercase font-bold">Eslogan / Bio:</span>
@@ -2223,6 +2340,214 @@ export default function AdminStoresManager({
           onConfirm={handleMapPickerConfirm}
         />
       )}
+
+      {/* Modal para Ajustar Plan de Tienda */}
+      {planModalStore && (() => {
+        const store = planModalStore;
+        const rawPlan = (store.subscriptionPlan || store.plan || 'basico').toLowerCase();
+        const currentPlan = 
+          rawPlan === 'pro' || rawPlan === 'business' || rawPlan === 'avanzado'
+            ? 'pro'
+            : rawPlan === 'medio'
+            ? 'medio'
+            : 'basico';
+
+        const planOptions = [
+          {
+            id: 'basico' as const,
+            name: 'Plan Básico',
+            price: 49000,
+            limit: 5,
+            badge: '🥉 BÁSICO',
+            color: 'emerald',
+            desc: 'Hasta 5 productos, catálogo digital móvil y recepción de pedidos por WhatsApp.'
+          },
+          {
+            id: 'medio' as const,
+            name: 'Plan Medio',
+            price: 79000,
+            limit: 12,
+            badge: '🥈 MEDIO',
+            color: 'indigo',
+            desc: 'Hasta 12 productos, mayor variedad de catálogo y estadísticas de ventas.'
+          },
+          {
+            id: 'pro' as const,
+            name: 'Plan Avanzado / Pro',
+            price: 99000,
+            limit: 24,
+            badge: '🥇 AVANZADO',
+            color: 'amber',
+            desc: 'Hasta 24 productos, máxima capacidad, visibilidad destacada y soporte prioritario.'
+          }
+        ];
+
+        const currentPlanData = planOptions.find(p => p.id === currentPlan) || planOptions[0];
+        const newPlanData = planOptions.find(p => p.id === selectedNewPlan) || planOptions[0];
+        const isSamePlan = currentPlan === selectedNewPlan;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+            <div className="bg-[#0f1422] border border-amber-500/40 rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl shadow-amber-950/40 space-y-4 max-h-[92vh] overflow-y-auto">
+              {/* Encabezado */}
+              <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/15 border border-amber-500/30 text-amber-400 rounded-2xl">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white flex items-center gap-2">
+                      Ajustar Plan de Tienda
+                    </h3>
+                    <p className="text-[11px] text-gray-400">
+                      Modifica el plan de suscripción, límite de productos y costo mensual
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPlanModalStore(null)}
+                  disabled={savingPlanChange}
+                  className="p-1.5 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Tienda Info */}
+              <div className="bg-gray-900/80 border border-gray-800 rounded-2xl p-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h4 className="font-extrabold text-white text-sm truncate">
+                    {store.displayName || store.storeName || store.username || 'Tienda sin Nombre'}
+                  </h4>
+                  <p className="text-xs text-gray-400 font-mono truncate">
+                    @{store.username || 'sin-usuario'} • {store.email || 'Sin correo'}
+                  </p>
+                </div>
+                <div className="text-right shrink-0">
+                  <span className="text-[10px] text-gray-500 uppercase font-bold block mb-0.5">Plan Actual</span>
+                  <span className="px-2.5 py-0.5 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg text-xs font-black uppercase">
+                    {currentPlanData.badge}
+                  </span>
+                </div>
+              </div>
+
+              {/* Selección de Planes */}
+              <div className="space-y-2.5">
+                <span className="text-xs font-black uppercase tracking-wider text-gray-400 block">
+                  Selecciona el Nuevo Plan:
+                </span>
+                <div className="grid grid-cols-1 gap-2.5">
+                  {planOptions.map((plan) => {
+                    const isSelected = selectedNewPlan === plan.id;
+                    const isCurrent = currentPlan === plan.id;
+
+                    return (
+                      <div
+                        key={plan.id}
+                        onClick={() => setSelectedNewPlan(plan.id)}
+                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative ${
+                          isSelected
+                            ? 'bg-amber-500/10 border-amber-500 shadow-md shadow-amber-950/30 ring-1 ring-amber-500/50'
+                            : 'bg-gray-900/50 hover:bg-gray-900 border-gray-800 hover:border-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center transition ${
+                              isSelected 
+                                ? 'border-amber-400 bg-amber-400 text-gray-950' 
+                                : 'border-gray-600 bg-gray-950'
+                            }`}>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black text-white">{plan.name}</span>
+                                {isCurrent && (
+                                  <span className="px-1.5 py-0.2 bg-gray-800 text-gray-400 rounded text-[9px] font-bold uppercase">
+                                    Actual
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-gray-400 mt-0.5">{plan.desc}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0">
+                            <span className="text-sm font-black font-mono text-white block">
+                              ${plan.price.toLocaleString('es-CO')}
+                            </span>
+                            <span className="text-[10px] text-amber-400 font-bold block">
+                              Máx. {plan.limit} productos
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Resumen del Cambio */}
+              <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-400 font-semibold">Costo Mensual:</span>
+                  <div className="flex items-center gap-1.5 font-mono">
+                    <span className="text-gray-500 line-through">${currentPlanData.price.toLocaleString('es-CO')}</span>
+                    <span className="text-gray-400">→</span>
+                    <strong className="text-emerald-400 font-black">${newPlanData.price.toLocaleString('es-CO')} COP</strong>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-400 font-semibold">Límite de Catálogo:</span>
+                  <div className="flex items-center gap-1.5 font-mono">
+                    <span className="text-gray-500">{currentPlanData.limit} prod.</span>
+                    <span className="text-gray-400">→</span>
+                    <strong className="text-amber-400 font-black">{newPlanData.limit} productos</strong>
+                  </div>
+                </div>
+
+                <div className="pt-1 text-[11px] text-gray-400 border-t border-gray-850 flex items-center gap-1.5">
+                  <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                  <span>El límite de productos se actualizará al instante para esta tienda.</span>
+                </div>
+              </div>
+
+              {/* Botones de Acción */}
+              <div className="flex items-center gap-2 pt-2 border-t border-gray-850">
+                <button
+                  type="button"
+                  onClick={() => setPlanModalStore(null)}
+                  disabled={savingPlanChange}
+                  className="flex-1 py-3 bg-gray-900 hover:bg-gray-850 text-gray-300 font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePlanChange}
+                  disabled={savingPlanChange || isSamePlan}
+                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95"
+                >
+                  {savingPlanChange ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Guardando Plan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 fill-current" />
+                      <span>{isSamePlan ? 'Plan Ya Asignado' : 'Guardar Nuevo Plan'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
