@@ -709,8 +709,8 @@ export default function App() {
         />
       )}
 
-      {/* Ryyco Chat & Mesero Virtual Assistant for Shoppers and Visitors */}
-      {['tienda', 'profile', 'landing', 'carruselproduc'].includes(view) && (
+      {/* Ryyco Chat & Mesero Virtual Assistant for Shoppers and Visitors - Solo en la página de inicio */}
+      {view === 'tienda' && (
         <LinnkProVoiceAssistant
           activeUsername={targetUsername}
           onNavigateToStore={(username) => {
