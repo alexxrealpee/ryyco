@@ -277,6 +277,27 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         (Array.isArray(detail?.products) ? detail.products : detail?.catalog?.products) || [];
       const incomingProfiles: Record<string, UserProfile> = detail?.profiles || {};
 
+      if (Object.keys(incomingProfiles).length > 0) {
+        setProfilesMap(prev => {
+          const merged = { ...prev, ...incomingProfiles };
+          const seen = new Set<string>();
+          const freshOpen: UserProfile[] = [];
+          (Object.values(merged) as UserProfile[]).forEach(s => {
+            if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
+              if (s.displayName || s.username) {
+                seen.add(s.uid);
+                freshOpen.push(s);
+              }
+            }
+          });
+          freshOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+          openRestaurantsRef.current = freshOpen;
+          setOpenRestaurants(freshOpen);
+          setLoadedLogos(freshOpen);
+          return merged;
+        });
+      }
+
       if (incomingProducts.length > 0) {
         setLoadedProducts(prev => {
           const existingIds = new Set(prev.map(p => p.id));
@@ -288,18 +309,6 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           return [...prev, ...newProducts];
         });
 
-        if (Object.keys(incomingProfiles).length > 0) {
-          setProfilesMap(prev => ({ ...prev, ...incomingProfiles }));
-          setOpenRestaurants(prev => prev.filter(s => {
-            const curr = incomingProfiles[s.uid] || (s.username ? incomingProfiles[s.username.toLowerCase()] : null) || s;
-            return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
-          }));
-          setLoadedLogos(prev => prev.filter(s => {
-            const curr = incomingProfiles[s.uid] || (s.username ? incomingProfiles[s.username.toLowerCase()] : null) || s;
-            return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
-          }));
-        }
-
         setHasMore(true);
       }
     };
@@ -310,12 +319,22 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         setProfilesMap(prev => {
           const s = prev[uid];
           if (!s) return prev;
-          return { ...prev, [uid]: { ...s, isClosed } };
+          const updated = { ...s, isClosed };
+          if (isClosed) {
+            setOpenRestaurants(old => old.filter(st => st.uid !== uid));
+            setLoadedLogos(old => old.filter(st => st.uid !== uid));
+          } else {
+            setOpenRestaurants(old => {
+              if (old.some(st => st.uid === uid)) return old;
+              return [updated, ...old];
+            });
+            setLoadedLogos(old => {
+              if (old.some(st => st.uid === uid)) return old;
+              return [updated, ...old];
+            });
+          }
+          return { ...prev, [uid]: updated };
         });
-        if (isClosed) {
-          setOpenRestaurants(prev => prev.filter(s => s.uid !== uid));
-          setLoadedLogos(prev => prev.filter(s => s.uid !== uid));
-        }
       }
     };
 
@@ -330,14 +349,20 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
   // Ensure loaded logos and open restaurants stay strictly synchronized with profilesMap
   useEffect(() => {
     if (Object.keys(profilesMap).length > 0) {
-      setOpenRestaurants(prev => prev.filter(s => {
-        const curr = profilesMap[s.uid] || (s.username ? profilesMap[s.username.toLowerCase()] : null) || s;
-        return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
-      }));
-      setLoadedLogos(prev => prev.filter(s => {
-        const curr = profilesMap[s.uid] || (s.username ? profilesMap[s.username.toLowerCase()] : null) || s;
-        return !checkIsStoreClosed(curr) && !curr.suspended && curr.isClosed !== true;
-      }));
+      const seen = new Set<string>();
+      const currentOpen: UserProfile[] = [];
+      (Object.values(profilesMap) as UserProfile[]).forEach(s => {
+        if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
+          if (s.displayName || s.username) {
+            seen.add(s.uid);
+            currentOpen.push(s);
+          }
+        }
+      });
+      currentOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+      openRestaurantsRef.current = currentOpen;
+      setOpenRestaurants(currentOpen);
+      setLoadedLogos(currentOpen);
     }
   }, [profilesMap]);
 
@@ -359,7 +384,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         const seenUids = new Set<string>();
         let openStores: UserProfile[] = [];
         Object.values(pMap).forEach(s => {
-          if (s && s.uid && !seenUids.has(s.uid) && !s.suspended && !checkIsStoreClosed(s)) {
+          if (s && s.uid && !seenUids.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
             if (s.displayName || s.username) {
               seenUids.add(s.uid);
               openStores.push(s);
@@ -372,6 +397,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           openStores = await fetchOpenRestaurantsFromFirebase();
         }
 
+        openStores.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
         openRestaurantsRef.current = openStores;
         setOpenRestaurants(openStores);
         setLoadedLogos(openStores);
@@ -415,6 +441,18 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
             });
             setLoadedProducts(initialBatch);
           }
+        }
+
+        // Fast background revalidation: If loaded from cache, immediately fetch live server catalog in background
+        if (initial.hasCache) {
+          setTimeout(async () => {
+            try {
+              const freshData = await fetchAllActiveProductsAndStores(true);
+              if (freshData && freshData.profiles && Object.keys(freshData.profiles).length > 0) {
+                setProfilesMap(prev => ({ ...prev, ...freshData.profiles }));
+              }
+            } catch (e) {}
+          }, 40);
         }
 
         setStage('idle');

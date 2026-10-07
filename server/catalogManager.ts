@@ -248,8 +248,9 @@ export function buildAvailableCatalog(): AvailableCatalog {
   const openStoreUsernames = new Set<string>();
 
   rawStoresMap.forEach((store) => {
-    // Strict requirement: isClosed === true means CLOSED. isClosed === false means OPEN.
-    if (store.isClosed !== true && !store.suspended) {
+    // Re-evaluate live store closed/open status (operating hours schedule, manual toggle, subscription)
+    const isClosed = isStoreCurrentlyClosed(store);
+    if (!isClosed && !store.suspended) {
       openStores.push({
         ...store,
         isClosed: false
@@ -396,7 +397,7 @@ export function initBackendCatalogManager() {
           rawStoresMap.delete(uid);
         } else {
           const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-          const isClosed = isSuspended || data.isClosed === true;
+          const isClosed = isStoreCurrentlyClosed(data);
           const { coverURL, bannerURL, ...cleanData } = data;
           rawStoresMap.set(uid, {
             ...cleanData,
@@ -454,10 +455,18 @@ export function initBackendCatalogManager() {
   }
 }
 
+let lastCatalogBuildTime = 0;
+
 /**
  * Returns the latest Available Catalog
  */
 export function getAvailableCatalog(): AvailableCatalog {
+  const now = Date.now();
+  // If more than 15s elapsed, re-evaluate operating hours/schedules against live clock
+  if (now - lastCatalogBuildTime > 15 * 1000 && rawStoresMap.size > 0) {
+    lastCatalogBuildTime = now;
+    buildAvailableCatalog();
+  }
   return currentAvailableCatalog;
 }
 

@@ -863,12 +863,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       const key = uid || uname;
       if (!key || storeMap.has(key)) return;
 
-      if (!checkIsStoreClosed(profile) && !profile.suspended && profile.isClosed !== true) {
-        // If products are loaded, verify the store has matching active products (or show open store)
-        const hasProducts = products.length === 0 || products.some(p => (uid && p.userId === uid) || (uname && p.storeUsername?.toLowerCase() === uname));
-        if (hasProducts) {
-          storeMap.set(key, profile);
-        }
+      // Include all verified open stores so recently opened restaurants show up immediately
+      if (!checkIsStoreClosed(profile) && !profile.suspended && profile.isClosed !== true && (profile.displayName || profile.username)) {
+        storeMap.set(key, profile);
       }
     });
 

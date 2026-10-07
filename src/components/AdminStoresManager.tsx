@@ -51,7 +51,7 @@ import {
 } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db, getStoreOperatingScheduleInfo, fetchAllActiveProductsAndStores, getPlanProductLimit } from '../lib/firebase';
+import { auth, db, getStoreOperatingScheduleInfo, fetchAllActiveProductsAndStores, getPlanProductLimit, checkIsStoreClosed } from '../lib/firebase';
 import { UserProfile, OrderItem, WeeklySchedule } from '../types';
 import { 
   extractCoordinates, 
@@ -586,25 +586,33 @@ export default function AdminStoresManager({
 
   // Toggle store manual open/closed
   const handleToggleStoreOpen = async (store: UserProfile) => {
-    const newIsClosed = !Boolean(store.isClosed);
+    const isCurrentlyClosed = checkIsStoreClosed(store);
+    const newIsClosed = !isCurrentlyClosed;
     setUpdatingStoreId(store.uid);
     try {
       const userRef = doc(db, 'profiles', store.uid);
-      await updateDoc(userRef, {
+      const updates: Record<string, any> = {
         isClosed: newIsClosed,
         updatedAt: new Date().toISOString()
-      });
+      };
+      if (!newIsClosed && store.scheduleEnabled) {
+        updates.scheduleEnabled = false;
+      }
+      await updateDoc(userRef, updates);
       store.isClosed = newIsClosed;
+      if (!newIsClosed && store.scheduleEnabled) {
+        store.scheduleEnabled = false;
+      }
       try {
         localStorage.removeItem('linnk_all_active_data_cache');
         window.dispatchEvent(new CustomEvent('linnk:store_status_changed', { detail: { uid: store.uid, isClosed: newIsClosed } }));
         fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
       } catch (e) {}
-      showNotif(`Tienda marcada como ${newIsClosed ? 'Cerrada Temporalmente' : 'Abierta al Público'}.`);
+      showNotif(`Tienda ${store.displayName || store.username} marcada como ${newIsClosed ? '🔴 Cerrada' : '🟢 Abierta al Público'}.`);
       if (onRefreshData) onRefreshData();
     } catch (err) {
       console.error("Error toggling open/close:", err);
-      showNotif("Error al modificar horario de la tienda.", "error");
+      showNotif("Error al modificar estado de la tienda.", "error");
     } finally {
       setUpdatingStoreId(null);
     }
@@ -1523,6 +1531,22 @@ export default function AdminStoresManager({
                         <span>Clave</span>
                       </button>
 
+                      {/* Manual Open / Closed Toggle */}
+                      <button
+                        type="button"
+                        disabled={updatingStoreId === store.uid}
+                        onClick={() => handleToggleStoreOpen(store)}
+                        className={`px-2 py-1.5 rounded-xl border text-[10.5px] font-bold transition cursor-pointer flex items-center gap-1 active:scale-95 disabled:opacity-50 ${
+                          checkIsStoreClosed(store)
+                            ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                            : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
+                        }`}
+                        title={checkIsStoreClosed(store) ? 'Tienda actualmente cerrada. Clic para ABRIRLA al público' : 'Tienda actualmente abierta. Clic para CERRARLA'}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${checkIsStoreClosed(store) ? 'bg-rose-500' : 'bg-emerald-400 animate-pulse'}`} />
+                        <span>{checkIsStoreClosed(store) ? 'Abrir' : 'Cerrar'}</span>
+                      </button>
+
                       {/* Suspend / Reactivate */}
                       <button
                         type="button"
@@ -1660,15 +1684,21 @@ export default function AdminStoresManager({
                             <span className="px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/20 rounded text-[9.5px] font-black uppercase inline-block">
                               Suspendida
                             </span>
-                          ) : isOpen ? (
-                            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9.5px] font-black uppercase inline-flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                              Abierto
-                            </span>
                           ) : (
-                            <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded text-[9.5px] font-black uppercase inline-block">
-                              Cerrado
-                            </span>
+                            <button
+                              type="button"
+                              disabled={updatingStoreId === store.uid}
+                              onClick={() => handleToggleStoreOpen(store)}
+                              className={`px-2 py-0.5 rounded text-[9.5px] font-black uppercase inline-flex items-center gap-1 transition cursor-pointer border active:scale-95 ${
+                                !checkIsStoreClosed(store)
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
+                              }`}
+                              title={!checkIsStoreClosed(store) ? 'Abierto al público. Clic para CERRAR' : 'Cerrado al público. Clic para ABRIR'}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${!checkIsStoreClosed(store) ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></span>
+                              {!checkIsStoreClosed(store) ? 'Abierto' : 'Cerrado'}
+                            </button>
                           )}
                           <span className="text-[10px] text-gray-400 block font-mono">
                             {store.openTime && store.closeTime ? `${store.openTime} - ${store.closeTime}` : 'Sin restricción'}
@@ -1736,6 +1766,21 @@ export default function AdminStoresManager({
                             title="Enviar correo de restablecimiento de clave"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Manual Open / Close Toggle Button */}
+                          <button
+                            type="button"
+                            disabled={updatingStoreId === store.uid}
+                            onClick={() => handleToggleStoreOpen(store)}
+                            className={`p-2 rounded-xl border transition cursor-pointer flex items-center justify-center active:scale-95 disabled:opacity-50 ${
+                              checkIsStoreClosed(store)
+                                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border-emerald-500/30'
+                                : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-400 border-rose-500/30'
+                            }`}
+                            title={checkIsStoreClosed(store) ? 'Cerrada. Clic para ABRIR tienda' : 'Abierta. Clic para CERRAR tienda'}
+                          >
+                            <span className={`w-2.5 h-2.5 rounded-full ${checkIsStoreClosed(store) ? 'bg-rose-500' : 'bg-emerald-400 animate-pulse'}`} />
                           </button>
 
                           <button
@@ -2021,7 +2066,24 @@ export default function AdminStoresManager({
                 Cerrar Ficha
               </button>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  disabled={updatingStoreId === detailStore.uid}
+                  onClick={async () => {
+                    await handleToggleStoreOpen(detailStore);
+                    setDetailStore(prev => prev ? { ...prev, isClosed: !checkIsStoreClosed(prev) } : null);
+                  }}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border active:scale-95 disabled:opacity-50 ${
+                    checkIsStoreClosed(detailStore)
+                      ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                      : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border-rose-500/30'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${checkIsStoreClosed(detailStore) ? 'bg-rose-500' : 'bg-emerald-400 animate-pulse'}`} />
+                  <span>{checkIsStoreClosed(detailStore) ? 'Abrir Tienda al Público' : 'Cerrar Tienda'}</span>
+                </button>
+
                 <button
                   type="button"
                   disabled={sendingResetFor === detailStore.uid || !detailStore.email}

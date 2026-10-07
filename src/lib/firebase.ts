@@ -3184,7 +3184,7 @@ export function findStoreForProduct(
 
 // In-memory cache for products & stores to minimize Firestore reads
 let _cachedProductsData: { products: ProductItem[]; profiles: Record<string, UserProfile>; timestamp: number } | null = null;
-const PRODUCTS_CACHE_TTL_MS = 180 * 1000; // 3 minutes cache
+const PRODUCTS_CACHE_TTL_MS = 20 * 1000; // 20 seconds cache for instant revalidation of open/closed stores
 let _isBackgroundRefreshing = false;
 
 // Clear in-memory and persistent catalog caches when store statuses change
@@ -3208,7 +3208,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
         _isBackgroundRefreshing = true;
         setTimeout(() => {
           fetchAllActiveProductsAndStores(true).finally(() => { _isBackgroundRefreshing = false; });
-        }, 80);
+        }, 50);
       }
       return { products: _cachedProductsData.products, profiles: _cachedProductsData.profiles };
     }
@@ -3225,7 +3225,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
               _isBackgroundRefreshing = true;
               setTimeout(() => {
                 fetchAllActiveProductsAndStores(true).finally(() => { _isBackgroundRefreshing = false; });
-              }, 80);
+              }, 50);
             }
             return { products: parsed.products, profiles: parsed.profiles || {} };
           }
@@ -3234,23 +3234,25 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
     }
 
     // 0.2 Instant Server-Side Catalog Cache check (/api/catalog/available or HTML prefetch)
-    // On first load (cold browser cache), the Express backend already keeps all open stores and active products in RAM.
-    // Fetching /api/catalog/available takes ~50-200ms instead of 4-8 seconds of client-side Firestore connection.
-    if (!forceRefresh && typeof window !== 'undefined') {
+    // The Express backend keeps live open stores and active products in RAM with near 0ms latency.
+    // Fetching /api/catalog/available takes ~30-80ms instead of 4-8 seconds of client-side Firestore connection.
+    if (typeof window !== 'undefined') {
       try {
         let apiData: any = null;
-        if ((window as any).__INITIAL_CATALOG_DATA__) {
-          apiData = (window as any).__INITIAL_CATALOG_DATA__;
-        } else if ((window as any).__CATALOG_PREFETCH__) {
-          apiData = await (window as any).__CATALOG_PREFETCH__;
-          (window as any).__CATALOG_PREFETCH__ = null;
+        if (!forceRefresh) {
+          if ((window as any).__INITIAL_CATALOG_DATA__) {
+            apiData = (window as any).__INITIAL_CATALOG_DATA__;
+          } else if ((window as any).__CATALOG_PREFETCH__) {
+            apiData = await (window as any).__CATALOG_PREFETCH__;
+            (window as any).__CATALOG_PREFETCH__ = null;
+          }
         }
 
         if (!apiData || !apiData.catalog) {
           try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2500);
-            const res = await fetch('/api/catalog/available', { signal: controller.signal });
+            const res = await fetch(`/api/catalog/available${forceRefresh ? `?t=${now}` : ''}`, { signal: controller.signal });
             clearTimeout(timeoutId);
             if (res.ok && res.headers.get('content-type')?.includes('json')) {
               apiData = await res.json();
@@ -3260,7 +3262,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
           // Fallback for Hostinger environments where API rewrite isn't enabled or static hosting is used
           if (!apiData || !apiData.catalog) {
             try {
-              const staticRes = await fetch('/catalog-cache.json');
+              const staticRes = await fetch(`/catalog-cache.json${forceRefresh ? `?t=${now}` : ''}`);
               if (staticRes.ok) {
                 apiData = await staticRes.json();
               }
@@ -3307,6 +3309,10 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
               localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(resultData));
             } catch (e) {}
 
+            try {
+              window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: resultData }));
+            } catch (eventErr) {}
+
             // If this was an initial partial batch for fast first paint, warm up full catalog in background
             if (apiData.isPartial && typeof window !== 'undefined') {
               setTimeout(() => {
@@ -3337,7 +3343,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
                     }
                   })
                   .catch(() => {});
-              }, 800);
+              }, 500);
             }
 
             return { products: formattedProducts, profiles: apiProfilesMap };
@@ -3500,6 +3506,12 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
 
     try {
       localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
+    } catch (e) {}
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: _cachedProductsData }));
+      }
     } catch (e) {}
 
     return { products: activeProductsForClients, profiles: profilesMap };

@@ -27,6 +27,10 @@ import {
   fetchBackendSystemSettings,
   fetchBackendUserProfile
 } from './server/catalogManager';
+import { 
+  dispatchOrderWhatsAppNotifications, 
+  WhatsAppOrderPayload 
+} from './server/whatsappNotifier';
 
 // Load environmental variables
 dotenv.config();
@@ -859,6 +863,18 @@ Formatos válidos para:
     }
   });
 
+  // API Route: Unified WhatsApp notification for Restaurants & Available Delivery Drivers
+  app.post('/api/whatsapp/notify-order', async (req, res) => {
+    try {
+      const payload: WhatsAppOrderPayload = req.body || {};
+      const result = await dispatchOrderWhatsAppNotifications(payload);
+      res.json(result);
+    } catch (err: any) {
+      console.error('[WHATSAPP-NOTIFY-ORDER] Error dispatching WhatsApp notifications:', err);
+      res.status(500).json({ error: err.message || 'Error sending WhatsApp notifications' });
+    }
+  });
+
   // API Route: WhatsApp notification dispatcher for active delivery drivers
   app.post('/api/whatsapp/notify-active-drivers', async (req, res) => {
     try {
@@ -866,37 +882,24 @@ Formatos válidos para:
       const driversList = Array.isArray(activeDrivers) ? activeDrivers : [];
       console.log(`[WHATSAPP-DISPATCH] 🛵 Notificación WhatsApp de Nuevo Pedido #${orderNumber || 'S/N'} ("${storeName || 'Tienda'}") para ${driversList.length} domiciliarios activos`);
 
-      // If an external webhook or WhatsApp gateway URL is configured (e.g. WHATSAPP_WEBHOOK_URL)
-      const webhookUrl = process.env.WHATSAPP_WEBHOOK_URL || process.env.EVOLUTION_API_URL;
-      if (webhookUrl && driversList.length > 0) {
-        try {
-          fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              ...(process.env.WHATSAPP_API_TOKEN ? { 'Authorization': `Bearer ${process.env.WHATSAPP_API_TOKEN}` } : {})
-            },
-            body: JSON.stringify({
-              event: 'ORDER_AVAILABLE_FOR_DRIVERS',
-              orderId,
-              orderNumber,
-              storeName,
-              customerAddress,
-              deliveryCost,
-              totalAmount,
-              activeDrivers: driversList
-            })
-          }).catch(e => console.warn('[WHATSAPP-DISPATCH] Webhook call error:', e));
-        } catch (e) {}
-      }
+      const result = await dispatchOrderWhatsAppNotifications({
+        orderId,
+        orderNumber,
+        store: { storeName },
+        customerAddress,
+        deliveryCost,
+        totalAmount,
+        activeDrivers: driversList
+      });
 
       res.json({
         status: 'ok',
         orderId,
         orderNumber,
         activeDriversCount: driversList.length,
-        deliveredCount: driversList.length,
-        message: `Aviso WhatsApp registrado para ${driversList.length} domiciliarios activos`,
+        deliveredCount: result.activeDriversDeliveredCount,
+        message: `Aviso WhatsApp transmitido para ${result.activeDriversDeliveredCount} domiciliarios activos`,
+        driversWhatsAppUrls: result.driversWhatsAppUrls,
         timestamp: new Date().toISOString()
       });
     } catch (err: any) {
