@@ -92,3 +92,45 @@ body {
   content: '';
   pointer-events: none;
 }
+
+@keyframes float-ghost {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(3deg);
+  }
+}
+
+@keyframes float-bat {
+  0%, 100% {
+    transform: translateY(0px) rotate(-5deg);
+  }
+  50% {
+    transform: translateY(-7px) rotate(5deg);
+  }
+}
+
+@keyframes pulse-spooky {
+  0%, 100% {
+    opacity: 0.7;
+    filter: drop-shadow(0 0 6px rgba(255, 107, 0, 0.4));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 16px rgba(255, 107, 0, 0.85));
+  }
+}
+
+.animate-ghost {
+  animation: float-ghost 3.8s ease-in-out infinite;
+}
+
+.animate-bat {
+  animation: float-bat 4.2s ease-in-out infinite;
+}
+
+.animate-spooky-glow {
+  animation: pulse-spooky 2.5s ease-in-out infinite;
+}
+

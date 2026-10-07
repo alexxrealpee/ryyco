@@ -756,7 +756,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const availableBaseProducts = useMemo(() => {
     return products.filter(product => {
       const profile = findStoreForProduct(product, profiles);
-      if (!profile || checkIsStoreClosed(profile) || profile.suspended) return false;
+      if (!profile || checkIsStoreClosed(profile) || profile.suspended || profile.isClosed === true) return false;
       // Check if trial has expired and store subscription is not active
       if (profile.subscriptionTrialExpires && new Date(profile.subscriptionTrialExpires).getTime() < Date.now() && profile.subscriptionStatus !== 'active') {
         return false;
@@ -809,42 +809,37 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Get list of unique store profiles with active products (memoized)
   // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
+  // When a store closes in Firestore, it is removed immediately; when it opens, it appears immediately.
   const uniqueStores = useMemo(() => {
     const storeMap = new Map<string, UserProfile>();
 
-    // 1. Prioritize loadedLogos in order, but ALWAYS check latest status from profiles state
-    loadedLogos.forEach(s => {
-      if (!s) return;
-      const uid = s.uid;
-      const uname = s.username?.toLowerCase();
-      const key = uid || uname;
-      if (!key || storeMap.has(key)) return;
-
-      // Always resolve latest state from profiles state
-      const current = (uid && profiles[uid]) || (uname && profiles[uname]) || s;
-
-      // Strict open/closed validation: MUST NOT be closed and MUST NOT be suspended
-      if (!checkIsStoreClosed(current) && !current.suspended && current.isClosed !== true) {
-        storeMap.set(key, current);
-      }
-    });
-
-    // 2. Complement with any other open stores from profiles
     (Object.values(profiles) as UserProfile[]).forEach(profile => {
       if (!profile) return;
       const uid = profile.uid;
       const uname = profile.username?.toLowerCase();
       const key = uid || uname;
-      if (!key || storeMap.has(key)) return;
+      if (!key) return;
 
-      // Include all verified open stores so recently opened restaurants show up immediately
-      if (!checkIsStoreClosed(profile) && !profile.suspended && profile.isClosed !== true && (profile.displayName || profile.username)) {
-        storeMap.set(key, profile);
+      const isSuspended = profile.suspended === true || profile.subscriptionStatus === 'suspended' || profile.subscriptionStatus === 'expired';
+      const isClosed = isSuspended || profile.isClosed === true || checkIsStoreClosed(profile);
+
+      if (!isClosed && (profile.displayName || profile.username)) {
+        storeMap.set(key, { ...profile, isClosed: false });
       }
     });
 
-    return Array.from(storeMap.values());
-  }, [profiles, products, loadedLogos]);
+    return Array.from(storeMap.values()).sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+  }, [profiles]);
+
+  // If currently filtered store closes, automatically reset filter to all open stores
+  useEffect(() => {
+    if (selectedStore !== 'all') {
+      const isStillOpen = uniqueStores.some(s => s.uid === selectedStore);
+      if (!isStillOpen) {
+        setSelectedStore('all');
+      }
+    }
+  }, [uniqueStores, selectedStore]);
 
   // Real-time loading states tied strictly to actual Firebase data presence (no fake delays)
   const isRestaurantsLoading = uniqueStores.length === 0 && (isLoadingRestaurants || progressiveStage === 'fetching_open_restaurants');
@@ -1376,14 +1371,36 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   };
 
   return (
-    <div className="bg-[#090B12] min-h-screen font-sans text-[#A9B2C3] flex flex-col selection:bg-[#E63946] selection:text-white">
+    <div className="bg-[#080511] min-h-screen font-sans text-[#C4CBD8] flex flex-col selection:bg-[#FF6B00] selection:text-black relative overflow-x-hidden">
       
-      {/* 1. Navbar */}
-      <header className="border-b border-[#232B3A] backdrop-blur-md sticky top-0 z-40 bg-[#090B12]/95 relative">
+      {/* Halloween Ambient Atmosphere (Only on home page) */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
+        {/* Glowing pumpkin orange radial glow */}
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#FF6B00]/12 rounded-full blur-[120px]" />
+        {/* Ghostly violet radial glow */}
+        <div className="absolute top-1/4 -right-32 w-[420px] h-[420px] bg-[#9D4EDD]/12 rounded-full blur-[140px]" />
+        {/* Floating animated bats and ghosts */}
+        <div className="absolute top-28 left-[6%] animate-bat opacity-60 text-xl hidden md:block">🦇</div>
+        <div className="absolute top-52 right-[10%] animate-bat opacity-70 text-2xl hidden sm:block" style={{ animationDelay: '1.2s' }}>🦇</div>
+        <div className="absolute top-[680px] left-[4%] animate-ghost opacity-60 text-2xl hidden lg:block" style={{ animationDelay: '2.5s' }}>👻</div>
+        <div className="absolute top-[950px] right-[5%] animate-bat opacity-50 text-lg hidden md:block" style={{ animationDelay: '3.2s' }}>🦇</div>
+      </div>
+
+      {/* Top Festive Halloween Announcement Bar */}
+      <aside aria-label="Especial de Halloween" className="bg-[#E63946] text-white text-[11px] sm:text-xs font-black py-1.5 px-3 flex items-center justify-center gap-2 tracking-wide shadow-lg z-50 overflow-hidden relative">
+        <span className="animate-bounce select-none">🎃</span>
+        <span className="font-extrabold uppercase tracking-wider">¡Especial de Halloween en Ryyco!</span>
+        <span className="hidden sm:inline font-bold text-white/95">— Domicilios de miedo y antojos monstruosamente deliciosos en Ipiales</span>
+        <span className="animate-pulse select-none">👻</span>
+        <span className="text-[10px] bg-black/60 text-white px-2 py-0.5 rounded-full font-mono border border-white/20 hidden xs:inline select-none">Dulce o Truco 🍬</span>
+      </aside>
+
+      {/* 1. Navbar (Halloween Spooky Theme) */}
+      <header className="border-b border-[#2C1945] backdrop-blur-md sticky top-0 z-40 bg-[#0B0716]/95 relative shadow-md shadow-purple-950/20">
         {/* Subtle initial delivery brand loader hairline (400-700ms max, non-blocking) */}
         {isInitialBrandLoader && (
-          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#111827] overflow-hidden pointer-events-none z-50" aria-hidden="true">
-            <div className="h-full bg-gradient-to-r from-transparent via-[#E63946] to-[#F4B400] w-full animate-shimmer" />
+          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#1A0F2E] overflow-hidden pointer-events-none z-50" aria-hidden="true">
+            <div className="h-full bg-[#E63946] w-full" />
           </div>
         )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
@@ -1414,7 +1431,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   >
                     {/* Customer Session Card (Mobile) */}
                     {activeCustomer ? (
-                      <div className="p-2.5 mb-1 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-slate-700/80 rounded-xl space-y-2">
+                      <div className="p-2.5 mb-1 bg-slate-900 border border-slate-700/80 rounded-xl space-y-2">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
                             <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
@@ -1462,7 +1479,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           setCustomerPortalTab('orders');
                           setIsCustomerPortalOpen(true);
                         }}
-                        className="w-full text-left p-2.5 mb-1 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40 hover:border-emerald-400 transition cursor-pointer flex items-center justify-between group"
+                        className="w-full text-left p-2.5 mb-1 rounded-xl bg-emerald-950/80 border border-emerald-500/40 hover:bg-emerald-900/80 transition cursor-pointer flex items-center justify-between group"
                       >
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
@@ -1516,7 +1533,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         setCustomerPortalTab('rewards');
                         setIsCustomerPortalOpen(true);
                       }}
-                      className="w-full text-left p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/20 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
+                      className="w-full text-left p-2.5 rounded-xl bg-[#2D1B44] hover:bg-[#3D235C] border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
                     >
                       <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
                         <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
@@ -1569,11 +1586,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       }}
                       className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#E63946] to-[#F4B400] flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-md">
-                        <Flame className="w-4 h-4 text-white fill-white" />
+                      <div className="w-8 h-8 rounded-xl bg-[#FF6B00] flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-md">
+                        <Flame className="w-4 h-4 text-black fill-black" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-[#F4B400] transition">
+                        <span className="font-bold text-xs text-white block group-hover:text-[#FFA200] transition">
                           Reels de Comida
                         </span>
                         <p className="text-[10px] text-gray-400 leading-tight">
@@ -1722,8 +1739,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             )}
           </div>
 
-          {/* Center: Centered Logo with Dedicated Protected Clearance */}
-          <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
+          {/* Center: Centered Logo with Dedicated Protected Clearance & Festive Halloween Accent */}
+          <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 gap-1.5 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
+            <span className="text-xl sm:text-2xl animate-bounce select-none -mr-1" title="Halloween Ryyco">🎃</span>
             <LinnkProLogo 
               onClick={() => {
                 setSearchTerm('');
@@ -1737,39 +1755,39 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             />
           </div>
 
-          {/* Right: Action Buttons */}
+          {/* Right: Action Buttons (Halloween Theme) */}
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
             {/* Mis Pedidos Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-orders-btn"
               onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
-              className="hidden md:flex px-3 py-2 rounded-xl bg-[#111827] hover:bg-[#1A2234] border border-[#232B3A] hover:border-gray-600 text-gray-200 hover:text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+              className="hidden md:flex px-3 py-2 rounded-xl bg-[#150F26] hover:bg-[#201538] border border-[#2D1B44] hover:border-orange-500/50 text-gray-200 hover:text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
               title="Ver y rastrear el estado de mis pedidos en tiempo real"
             >
-              <ShoppingBag className="w-3.5 h-3.5 text-[#E63946]" />
-              <span>Mis Pedidos</span>
+              <ShoppingBag className="w-3.5 h-3.5 text-[#FF6B00]" />
+              <span>👻 Mis Pedidos</span>
             </button>
 
             {/* Mis Puntos Ryycos Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-points-btn"
               onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
-              className="hidden sm:flex px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+              className="hidden sm:flex px-3 py-2 rounded-xl bg-[#2D1B44] hover:bg-[#3D235C] border border-[#FF6B00]/40 text-[#FFA200] font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
               title="Mis Puntos Ryycos acumulados, Billetera y Transferencias"
             >
-              <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-              <span>Puntos Ryycos</span>
+              <Crown className="w-3.5 h-3.5 text-[#FFA200] animate-pulse" />
+              <span>🎃 Puntos Ryycos</span>
             </button>
 
             {/* Dynamic Cart Button in Navbar */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 bg-[#111827] hover:bg-[#232B3A] border border-[#232B3A] rounded-xl text-white hover:border-[#E63946] transition cursor-pointer flex items-center gap-1.5 shrink-0"
-              title="Ver mi carrito de compras"
+              className="relative p-2.5 bg-[#150F26] hover:bg-[#201538] border border-[#2D1B44] rounded-xl text-white hover:border-[#FF6B00] transition cursor-pointer flex items-center gap-1.5 shrink-0"
+              title="Ver mi carrito de compras de Halloween"
             >
               <ShoppingBag className="w-4.5 h-4.5 stroke-[2] text-white" />
               {cart.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-[#E63946] text-white font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
+                <span className="absolute -top-1.5 -right-1.5 bg-[#FF6B00] text-black font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center animate-pulse shadow-md shadow-[#FF6B00]/40">
                   {cart.reduce((sum, item) => sum + item.quantity, 0)}
                 </span>
               )}
@@ -1781,7 +1799,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 window.history.pushState({}, '', '/landing');
                 window.dispatchEvent(new Event('popstate'));
               }}
-              className="hidden xl:inline-flex items-center bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md whitespace-nowrap shrink-0"
+              className="hidden xl:inline-flex items-center bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md shadow-red-950/30 whitespace-nowrap shrink-0"
             >
               Ingresar Mi Restaurante
             </button>
@@ -1789,10 +1807,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         </div>
       </header>
 
-      {/* 2. Hero Section */}
-      <section className="relative overflow-hidden pt-6 pb-2 sm:pt-10 sm:pb-4 px-3 sm:px-6 md:px-8 bg-[#090B12]">
-        <div className="absolute top-1/2 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[250px] sm:w-[350px] h-[250px] sm:h-[350px] bg-[#E63946]/10 blur-[80px] rounded-full -z-10" />
-        <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[200px] sm:w-[300px] h-[200px] sm:h-[300px] bg-[#F4B400]/10 blur-[80px] rounded-full -z-10" />
+      {/* 2. Hero Section (Halloween Edition) */}
+      <section className="relative overflow-hidden pt-6 pb-2 sm:pt-10 sm:pb-4 px-3 sm:px-6 md:px-8 bg-transparent z-10">
+        <div className="absolute top-1/2 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[260px] sm:w-[380px] h-[260px] sm:h-[380px] bg-[#FF6B00]/15 blur-[90px] rounded-full -z-10" />
+        <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[220px] sm:w-[320px] h-[220px] sm:h-[320px] bg-[#9D4EDD]/15 blur-[90px] rounded-full -z-10" />
 
         <div className="max-w-6xl mx-auto grid grid-cols-12 items-center gap-2 sm:gap-6">
           {/* Left Column: Stories tag, Social media & Text */}
@@ -1803,12 +1821,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   window.history.pushState({}, '', '/carruselproduc');
                   window.dispatchEvent(new Event('popstate'));
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-[#E63946] to-[#F4B400] text-white rounded-full transition cursor-pointer text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-lg shadow-[#E63946]/20 active:scale-95 border border-white/20"
-                title="Ver Reels de comida"
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#D62839] hover:bg-[#C21829] text-white rounded-full transition cursor-pointer text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-lg shadow-[#D62839]/30 active:scale-95 border border-[#D62839]"
+                title="Ver Reels de comida en Halloween"
               >
                 <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-white text-white animate-bounce" />
-                <span>REELS</span>
+                <span>🎃 REELS DE TERROR</span>
               </button>
+
+              {/* Halloween Tag */}
+              <span className="hidden xs:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-purple-950/80 border border-purple-500/40 text-[10px] sm:text-[11px] font-black text-purple-200">
+                👻 Dulce o Truco
+              </span>
 
               {/* Social Media Links */}
               <div className="flex items-center gap-1.5">
@@ -1861,7 +1884,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   rel="noopener noreferrer"
                   aria-label="Linnk Pro Ryyco"
                   title="Visitar linnk.pro/ryyco"
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#E63946] hover:bg-[#E63946]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#FF6B00] hover:bg-[#FF6B00]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
                 >
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" viewBox="0 0 24 24">
                     <path
@@ -1875,30 +1898,33 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.08] font-sans">
-              <span className="block text-white">¿Qué piensas</span>
-              <span className="block text-[#E63946]">pedir?</span>
+              <span className="block text-white">¿Qué antojo de</span>
+              <span className="block text-[#E63946]">miedo pedirás? 🎃</span>
             </h1>
+            <p className="text-xs sm:text-sm text-gray-300 max-w-md font-medium">
+              🦇 Pide a tus restaurantes favoritos de Ipiales con entrega rápida como escoba de bruja 🧹
+            </p>
           </div>
 
-          {/* Right Column: Food Image with Red Circular Backdrop */}
+          {/* Right Column: Food Image with Halloween Cauldron/Pumpkin Backdrop */}
           <div className="col-span-5 sm:col-span-5 relative flex items-center justify-center sm:justify-end">
             <div className="relative w-full max-w-[170px] sm:max-w-[270px] md:max-w-[340px] flex items-center justify-center py-2">
               
-              {/* Red Circular Background Badge */}
-              <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 w-[110px] h-[110px] sm:w-[180px] sm:h-[180px] md:w-[220px] md:h-[220px] bg-gradient-to-tr from-[#E63946] via-[#D62839] to-[#E63946]/90 rounded-full opacity-90 shadow-2xl shadow-[#E63946]/60 -z-0" />
+              {/* Halloween Glowing Backdrop Aura (Flat solid color) */}
+              <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 w-[110px] h-[110px] sm:w-[180px] sm:h-[180px] md:w-[220px] md:h-[220px] bg-[#FF6B00] rounded-full opacity-90 shadow-2xl shadow-[#FF6B00]/40 -z-0" />
               
-              {/* Top-Left Doodle Star */}
-              <svg className="absolute -top-3 sm:-top-5 left-4 sm:left-10 w-5 h-5 sm:w-7 sm:h-7 text-[#E63946] z-20 animate-pulse pointer-events-none select-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 15 8.5 22 9.5 17 14.5 18.5 21.5 12 18 5.5 21.5 7 14.5 2 9.5 9 8.5 12 2" />
-              </svg>
+              {/* Top-Left Spiderweb / Bat Doodle */}
+              <span className="absolute -top-3 sm:-top-5 left-4 sm:left-10 text-lg sm:text-2xl z-20 animate-bat select-none pointer-events-none" title="Bat">
+                🦇
+              </span>
 
-              {/* Top-Right Doodle Star */}
-              <svg className="absolute -top-1 sm:-top-3 right-0 sm:right-3 w-4 h-4 sm:w-5 sm:h-5 text-[#E63946] z-20 pointer-events-none select-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="12 2 15 8.5 22 9.5 17 14.5 18.5 21.5 12 18 5.5 21.5 7 14.5 2 9.5 9 8.5 12 2" />
-              </svg>
+              {/* Top-Right Glowing Pumpkin Doodle */}
+              <span className="absolute -top-1 sm:-top-3 right-0 sm:right-3 text-base sm:text-xl z-20 animate-bounce select-none pointer-events-none" title="Pumpkin">
+                🎃
+              </span>
 
               {/* Left Side Curved Doodle Aroma Lines */}
-              <svg className="absolute -left-3 sm:-left-6 top-1/2 -translate-y-1/2 w-4 sm:w-7 h-8 sm:h-12 text-[#E63946] z-20 pointer-events-none select-none" viewBox="0 0 24 36" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round">
+              <svg className="absolute -left-3 sm:-left-6 top-1/2 -translate-y-1/2 w-4 sm:w-7 h-8 sm:h-12 text-[#FF6B00] z-20 pointer-events-none select-none" viewBox="0 0 24 36" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round">
                 <path d="M 18 5 C 10 11, 10 25, 18 31" />
                 <path d="M 10 10 C 4 14, 4 22, 10 26" />
               </svg>
@@ -1909,8 +1935,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/hero_combo.webp';
                 }}
-                alt="Delicioso combo de hamburguesa, papas y bebida" 
-                className="relative z-10 w-full h-auto max-h-[170px] sm:max-h-[250px] md:max-h-[300px] object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.65)] hover:scale-105 transition-transform duration-300 pointer-events-none select-none"
+                alt="Delicioso combo de hamburguesa, papas y bebida para Halloween" 
+                className="relative z-10 w-full h-auto max-h-[170px] sm:max-h-[250px] md:max-h-[300px] object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.7)] hover:scale-105 transition-transform duration-300 pointer-events-none select-none"
               />
 
             </div>
@@ -1921,23 +1947,31 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       {/* 3. Filtering & Dashboard Container */}
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
         
-        {/* Filter bar card */}
-        <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-3xl space-y-5 shadow-xl overflow-hidden">
+        {/* Filter bar card (Halloween Edition) */}
+        <div className="bg-[#0E0A1A] border border-[#2D1B44] p-5 rounded-3xl space-y-5 shadow-2xl shadow-purple-950/20 overflow-hidden relative">
           
+          {/* Subtle Decorative Spiderweb in top-right corner */}
+          <div className="absolute -top-1 -right-1 w-24 h-24 opacity-20 pointer-events-none select-none overflow-hidden" aria-hidden="true">
+            <svg viewBox="0 0 100 100" fill="none" stroke="#FF6B00" strokeWidth="1.5">
+              <path d="M 0 0 L 100 100 M 0 0 L 100 40 M 0 0 L 40 100 M 0 0 L 100 70 M 0 0 L 70 100" />
+              <path d="M 25 10 C 20 20, 10 25, 0 25 M 50 20 C 40 40, 20 50, 0 50 M 75 30 C 60 60, 30 75, 0 75" />
+            </svg>
+          </div>
+
           {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
           <div 
             onClick={() => setIsFullScreenSearchOpen(true)}
-            className="relative w-full cursor-pointer"
+            className="relative w-full cursor-pointer z-10"
           >
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400 pointer-events-none" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-orange-400 pointer-events-none" />
             <input
               type="text"
               readOnly
               value={searchTerm}
               onClick={() => setIsFullScreenSearchOpen(true)}
               onFocus={() => setIsFullScreenSearchOpen(true)}
-              placeholder="Buscar restaurantes, platos, comida a domicilio o menús..."
-              className="w-full bg-white border-2 border-[#E63946] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#E63946] focus:ring-4 focus:ring-[#E63946]/20 shadow-md transition cursor-pointer"
+              placeholder="🎃 Buscar restaurantes, platos de miedo, hamburguesas, pizzas a domicilio..."
+              className="w-full bg-[#150F26] border-2 border-[#FF6B00] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-white placeholder:text-gray-400 focus:outline-none focus:border-[#FFA200] focus:ring-4 focus:ring-[#FF6B00]/25 shadow-md shadow-[#FF6B00]/10 transition cursor-pointer"
             />
             {searchTerm && (
               <button 
@@ -1946,7 +1980,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   e.stopPropagation();
                   setSearchTerm('');
                 }} 
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-200 rounded-lg text-gray-600 transition cursor-pointer"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-[#201538] rounded-lg text-gray-300 transition cursor-pointer"
                 title="Limpiar filtro"
               >
                 <X className="w-3.5 h-3.5" />
@@ -1958,19 +1992,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           {isRestaurantsLoading ? (
             <StoresSkeleton />
           ) : uniqueStores.length > 0 ? (
-            <div className="space-y-2 border-t border-[#232B3A] pt-4 transition-opacity duration-200">
+            <div className="space-y-2 border-t border-[#2D1B44] pt-4 transition-opacity duration-200">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <Store className="w-4 h-4 text-[#E63946]" />
-                  <span className="text-xs font-black uppercase text-white tracking-wider">
-                    Restaurantes Abiertos ({uniqueStores.length})
+                  <Store className="w-4 h-4 text-[#FF6B00]" />
+                  <span className="text-xs font-black uppercase text-orange-200 tracking-wider flex items-center gap-1.5">
+                    🎃 Restaurantes Abiertos Ahora ({uniqueStores.length}) 👻
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {selectedStore !== 'all' && (
                     <button
                       onClick={() => setSelectedStore('all')}
-                      className="text-[11px] font-bold text-[#E63946] hover:underline flex items-center gap-1 cursor-pointer mr-1"
+                      className="text-[11px] font-bold text-[#FF6B00] hover:underline flex items-center gap-1 cursor-pointer mr-1"
                     >
                       <span>Ver todos</span>
                     </button>
@@ -1981,7 +2015,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <button
                       type="button"
                       onClick={() => scrollStores('left')}
-                      className="p-1.5 rounded-full bg-[#1F2937] hover:bg-[#E63946] text-gray-300 hover:text-white transition cursor-pointer border border-[#232B3A] active:scale-95 shadow-sm"
+                      className="p-1.5 rounded-full bg-[#1E1435] hover:bg-[#FF6B00] text-gray-300 hover:text-black transition cursor-pointer border border-[#2D1B44] active:scale-95 shadow-sm"
                       title="Mover restaurantes a la izquierda"
                       aria-label="Mover restaurantes a la izquierda"
                     >
@@ -1990,7 +2024,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <button
                       type="button"
                       onClick={() => scrollStores('right')}
-                      className="p-1.5 rounded-full bg-[#1F2937] hover:bg-[#E63946] text-gray-300 hover:text-white transition cursor-pointer border border-[#232B3A] active:scale-95 shadow-sm"
+                      className="p-1.5 rounded-full bg-[#1E1435] hover:bg-[#FF6B00] text-gray-300 hover:text-black transition cursor-pointer border border-[#2D1B44] active:scale-95 shadow-sm"
                       title="Mover restaurantes a la derecha"
                       aria-label="Mover restaurantes a la derecha"
                     >
@@ -2088,13 +2122,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 >
                   <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-200 ${
                     selectedStore === 'all'
-                      ? 'bg-[#E63946] text-white font-black ring-4 ring-[#E63946]/40 shadow-lg shadow-[#E63946]/20 scale-105'
-                      : 'bg-[#090B12] border-2 border-[#232B3A] group-hover:border-[#E63946]/50 text-[#A9B2C3] group-hover:text-[#E63946]'
+                      ? 'bg-[#FF6B00] text-black font-black ring-4 ring-[#FF6B00]/40 shadow-lg shadow-[#FF6B00]/30 scale-105'
+                      : 'bg-[#150F26] border-2 border-[#2D1B44] group-hover:border-[#FF6B00]/50 text-[#A9B2C3] group-hover:text-[#FF6B00]'
                   }`}>
                     <Store className="w-6 h-6 sm:w-7 sm:h-7 pointer-events-none select-none" />
                   </div>
                   <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[70px] sm:max-w-[80px] text-center select-none ${
-                    selectedStore === 'all' ? 'text-[#E63946] font-extrabold' : 'text-[#A9B2C3] group-hover:text-white'
+                    selectedStore === 'all' ? 'text-[#FF6B00] font-black' : 'text-[#C4CBD8] group-hover:text-white'
                   }`}>
                     Todas
                   </span>
@@ -2114,18 +2148,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     window.dispatchEvent(new Event('popstate'));
                   }}
                   className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none relative"
-                  title="Ver Reels y videos recomendados"
+                  title="Ver Reels y videos recomendados en Halloween"
                 >
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2.5px] bg-gradient-to-tr from-[#E63946] via-[#FF007A] to-[#F4B400] transition-all duration-200 group-hover:scale-105 shadow-md shadow-[#E63946]/25 ring-2 ring-transparent group-hover:ring-[#FF007A]/50 flex items-center justify-center">
-                    <div className="w-full h-full rounded-full bg-[#0D121F] group-hover:bg-[#161C2E] flex items-center justify-center transition-colors relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-[#E63946]/20 via-transparent to-[#F4B400]/20 pointer-events-none" />
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2.5px] bg-[#FF6B00] transition-all duration-200 group-hover:scale-105 shadow-md shadow-[#FF6B00]/30 ring-2 ring-transparent group-hover:ring-[#FF6B00]/50 flex items-center justify-center">
+                    <div className="w-full h-full rounded-full bg-[#150F26] group-hover:bg-[#1E1435] flex items-center justify-center transition-colors relative overflow-hidden">
                       <div className="relative flex items-center justify-center">
                         <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white text-white ml-0.5 group-hover:scale-110 transition-transform pointer-events-none drop-shadow-sm" />
                       </div>
-                      <span className="absolute bottom-1 right-1 w-2 h-2 bg-[#E63946] rounded-full ring-1.5 ring-[#0D121F] animate-pulse" />
+                      <span className="absolute bottom-1 right-1 w-2 h-2 bg-[#FF6B00] rounded-full ring-1.5 ring-[#150F26] animate-pulse" />
                     </div>
                   </div>
-                  <span className="text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[76px] sm:max-w-[88px] text-center select-none text-[#A9B2C3] group-hover:text-[#FF007A] transition">
+                  <span className="text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[76px] sm:max-w-[88px] text-center select-none text-[#C4CBD8] group-hover:text-orange-300 transition">
                     Recomendados
                   </span>
                 </button>
@@ -2149,8 +2182,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     >
                       <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 transition-all duration-200 ${
                         isSelected
-                          ? 'bg-[#E63946] ring-4 ring-[#E63946]/50 shadow-lg shadow-[#E63946]/30 scale-105'
-                          : 'bg-[#111827] hover:bg-[#E63946]/20 ring-2 ring-[#232B3A] hover:ring-[#E63946] group-hover:scale-105'
+                          ? 'bg-[#FF6B00] ring-4 ring-[#FF6B00]/50 shadow-lg shadow-[#FF6B00]/30 scale-105'
+                          : 'bg-[#150F26] hover:bg-[#FF6B00]/20 ring-2 ring-[#2D1B44] hover:ring-[#FF6B00] group-hover:scale-105'
                       }`}>
                         {store.photoURL ? (
                           <img
@@ -2160,16 +2193,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             loading="eager"
                             fetchPriority={storeIdx < 8 ? "high" : "auto"}
                             decoding="async"
-                            className="w-full h-full rounded-full object-cover bg-[#090B12] pointer-events-none select-none"
+                            className="w-full h-full rounded-full object-cover bg-[#0E0A1A] pointer-events-none select-none"
                           />
                         ) : (
-                          <div className="w-full h-full rounded-full bg-[#E63946]/20 text-[#E63946] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
+                          <div className="w-full h-full rounded-full bg-[#FF6B00]/20 text-[#FF6B00] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
                             {(store.displayName || store.username || 'T').substring(0, 2)}
                           </div>
                         )}
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
-                        isSelected ? 'text-[#E63946] font-black' : 'text-[#A9B2C3] group-hover:text-white'
+                        isSelected ? 'text-[#FF6B00] font-black' : 'text-[#C4CBD8] group-hover:text-white'
                       }`}>
                         {store.displayName || `@${store.username}`}
                       </span>
@@ -2183,13 +2216,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 const currentStore = uniqueStores.find(s => s.uid === selectedStore);
                 if (!currentStore) return null;
                 return (
-                  <div className="mt-2.5 p-3 rounded-2xl bg-[#111827] border border-[#232B3A] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="mt-2.5 p-3 rounded-2xl bg-[#150F26] border border-[#2D1B44] flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#E63946]/50 bg-[#090B12]">
+                      <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-[#FF6B00]/50 bg-[#0E0A1A]">
                         {currentStore.photoURL ? (
                           <img src={currentStore.photoURL} alt={currentStore.displayName || currentStore.username} loading="eager" decoding="async" className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full text-[#E63946] flex items-center justify-center font-black text-xs uppercase">
+                          <div className="w-full h-full text-[#FF6B00] flex items-center justify-center font-black text-xs uppercase">
                             {(currentStore.displayName || currentStore.username || 'T').substring(0, 2)}
                           </div>
                         )}
@@ -2200,7 +2233,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         </div>
                         <button
                           onClick={() => onNavigateToStore(currentStore.username)}
-                          className="text-[11px] text-[#E63946] hover:underline font-bold"
+                          className="text-[11px] text-[#FF6B00] hover:underline font-bold"
                         >
                           Ver perfil completo del restaurante →
                         </button>
@@ -2225,14 +2258,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
           ) : null}
 
-          {/* Quick Categories section */}
+          {/* Quick Categories section (Halloween Edition) */}
           {isCategoriesLoading ? (
             <CategoriesSkeleton />
           ) : (
-            <div className="border-t border-[#232B3A] pt-3 space-y-2 transition-opacity duration-200">
-              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-[#A9B2C3] tracking-wider px-0.5">
-                <Filter className="w-3.5 h-3.5 text-[#A9B2C3]" />
-                <span>Categorías:</span>
+            <div className="border-t border-[#2D1B44] pt-3 space-y-2 transition-opacity duration-200">
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-orange-300 tracking-wider px-0.5">
+                <Filter className="w-3.5 h-3.5 text-[#FF6B00]" />
+                <span>🎃 Categorías de Miedo:</span>
               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
                 {categories.map((cat) => {
@@ -2244,13 +2277,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       onClick={() => setSelectedCategory(cat)}
                       className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 uppercase tracking-wide cursor-pointer shrink-0 whitespace-nowrap ${
                         isAll && isSelected
-                          ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20 font-black'
+                          ? 'bg-[#FF6B00] text-black shadow-md shadow-[#FF6B00]/25 font-black'
                           : isSelected
-                          ? 'bg-[#F4B400] text-black shadow-md shadow-[#F4B400]/20 font-black'
-                          : 'bg-transparent border border-[#232B3A] text-white hover:border-[#E63946]/60 hover:text-white'
+                          ? 'bg-[#FFA200] text-black shadow-md shadow-[#FFA200]/25 font-black'
+                          : 'bg-[#150F26] border border-[#2D1B44] text-white hover:border-[#FF6B00]/60 hover:text-orange-200'
                       }`}
                     >
-                      {isAll ? 'VER TODO' : cat}
+                      {isAll ? '🎃 VER TODO' : cat}
                     </button>
                   );
                 })}
@@ -2336,7 +2369,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.25 }}
                   onClick={() => setSelectedProduct(product)}
-                  className="bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/50 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
+                  className="bg-[#0E0A1A] border border-[#2D1B44] hover:border-[#FF6B00]/70 hover:shadow-xl hover:shadow-[#FF6B00]/10 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
                 >
                   {/* Store source badge on top left */}
                   <div className="absolute top-3 left-3 z-10 max-w-[85%]">
@@ -2347,9 +2380,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           onNavigateToStore(profile.username);
                         }
                       }}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-[#090B12]/85 hover:bg-[#090B12] border border-[#232B3A] rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
+                      className="flex items-center gap-1 px-2 py-0.5 bg-[#0E0A1A]/90 hover:bg-[#150F26] border border-[#2D1B44] rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
                     >
-                      <Store className="w-2.5 h-2.5 text-[#E63946] shrink-0" />
+                      <Store className="w-2.5 h-2.5 text-[#FF6B00] shrink-0" />
                       <span className="truncate">{profile?.displayName || 'Tienda'}</span>
                     </button>
                   </div>
@@ -2360,11 +2393,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       e.stopPropagation();
                       setSelectedProduct(product);
                     }}
-                    className="relative aspect-square w-full bg-[#090B12] overflow-hidden shrink-0 cursor-pointer"
+                    className="relative aspect-square w-full bg-[#080511] overflow-hidden shrink-0 cursor-pointer"
                   >
                     {product.allowsHalfAndHalf && product.flavorsText && (
                       <div className="absolute top-3 right-3 z-10">
-                        <span className="bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-white/20 flex items-center gap-1">
+                        <span className="bg-[#7B2CBF] text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-[#9D4EDD] flex items-center gap-1">
                           <span>{product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
                         </span>
                       </div>
@@ -2372,8 +2405,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     {/* Top right badges: Sale badge */}
                     {isOnSale && !product.allowsHalfAndHalf && (
                       <div className="absolute top-3 right-3 z-10">
-                        <span className="bg-[#E63946] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
-                          -{discountPercentage}%
+                        <span className="bg-[#FF6B00] text-black font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
+                          🍬 -{discountPercentage}%
                         </span>
                       </div>
                     )}
@@ -2390,15 +2423,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-1.5">
-                        <ShoppingBag className="w-8 h-8 opacity-45" />
+                        <ShoppingBag className="w-8 h-8 opacity-45 text-orange-400" />
                         <span className="text-[10px] font-mono opacity-40">Sin Imagen</span>
                       </div>
                     )}
 
                     {/* Quick overlay actions on hover */}
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 pointer-events-none sm:pointer-events-auto">
-                      <span className="p-2.5 bg-[#E63946] hover:bg-[#D62839] text-white font-bold rounded-xl transition shadow hover:scale-110 active:scale-95 cursor-pointer text-xs uppercase tracking-wider flex items-center gap-1">
-                        Ver Detalles
+                      <span className="p-2.5 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black rounded-xl transition shadow hover:scale-110 active:scale-95 cursor-pointer text-xs uppercase tracking-wider flex items-center gap-1">
+                        Ver Detalles 🎃
                       </span>
                     </div>
                   </div>
@@ -2408,7 +2441,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between gap-2 min-h-[26px]">
                         {product.category ? (
-                          <span className="text-[9px] font-black uppercase text-[#F4B400] tracking-widest block font-mono truncate">
+                          <span className="text-[9px] font-black uppercase text-[#FF8500] tracking-widest block font-mono truncate">
                             {product.category}
                           </span>
                         ) : (
@@ -2438,7 +2471,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           />
                         </div>
                       </div>
-                      <h3 className="font-extrabold text-sm text-white group-hover:text-[#E63946] transition truncate leading-snug">
+                      <h3 className="font-extrabold text-sm text-white group-hover:text-[#FFA200] transition truncate leading-snug">
                         {product.name}
                       </h3>
                       <p className="text-[11px] text-[#A9B2C3] font-medium line-clamp-2">
@@ -2446,9 +2479,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </p>
                     </div>
 
-                    <div className="pt-2 border-t border-[#232B3A] flex items-center justify-between">
+                    <div className="pt-2 border-t border-[#2D1B44] flex items-center justify-between">
                       <div className="flex flex-col">
-                        <span className="text-xs font-black text-white font-mono">
+                        <span className="text-xs font-black text-[#FFA200] font-mono">
                           {currency}{Number(product.price || 0).toLocaleString()}
                         </span>
                         {isOnSale && (
@@ -2463,10 +2496,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           e.stopPropagation();
                           setSelectedProduct(product);
                         }}
-                        className="px-3 py-1.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
+                        className="px-3 py-1.5 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center gap-1 shadow-md shadow-[#FF6B00]/25 active:scale-95"
                         title="Ver detalles y agregar al carrito"
                       >
-                        <ShoppingBag className="w-3.5 h-3.5 text-white" /> Pedir
+                        <ShoppingBag className="w-3.5 h-3.5 text-black stroke-[2.5]" /> Pedir 🎃
                       </button>
                     </div>
                   </div>
@@ -2504,7 +2537,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* Progress bar */}
               <div className="w-48 h-1.5 bg-[#1F2937] rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-gradient-to-r from-[#F4B400] to-[#E63946] rounded-full transition-all duration-300"
+                  className="h-full bg-[#FF6B00] rounded-full transition-all duration-300"
                   style={{ width: `${Math.min(100, Math.round((visibleLimit / Math.max(1, filteredProducts.length)) * 100))}%` }}
                 />
               </div>
@@ -3407,7 +3440,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     setCustomerPortalTab('wheel');
                     setIsCustomerPortalOpen(true);
                   }}
-                  className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                  className="w-full py-2.5 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-orange-500/20 cursor-pointer"
                 >
                   <Crown className="w-4 h-4 text-black" />
                   ¡Girar Ruleta de Platos Gratis & Ver Mis Puntos Ryycos! 🎁
@@ -3452,14 +3485,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         }}
       />
 
-      {/* Floating Cart Button */}
+      {/* Floating Cart Button (Halloween Edition - Flat Solid Color) */}
       {cart.length > 0 && (
         <button
           onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-[#E63946] text-white hover:bg-[#D62839] p-4 rounded-full shadow-2xl flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-transform cursor-pointer border border-[#E63946]/30"
+          className="fixed bottom-6 right-6 z-40 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black p-4 rounded-full shadow-2xl shadow-black/60 flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-transform cursor-pointer border-2 border-orange-300"
         >
-          <ShoppingBag className="w-5 h-5 stroke-[2.5]" />
-          <span className="font-black text-xs">
+          <span className="text-base select-none">🎃</span>
+          <ShoppingBag className="w-5 h-5 stroke-[2.5] text-black" />
+          <span className="font-black text-xs text-black">
             {cart.reduce((sum, item) => sum + item.quantity, 0)} items
           </span>
         </button>

@@ -136,17 +136,10 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     setIsLoadingMore(true);
 
     try {
-      // 1. Check local memory/storage cache for unrendered products first (instant response, 0ms)
+      // 1. Unrendered products pool from memory/server (never read from persistent cache)
       let availablePool: ProductItem[] = [];
-      try {
-        const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
-        if (rawLocal) {
-          const parsed = JSON.parse(rawLocal);
-          if (Array.isArray(parsed?.products)) availablePool = parsed.products;
-        }
-      } catch (e) {}
 
-      if (availablePool.length === 0 && (window as any).__INITIAL_CATALOG_DATA__?.catalog?.products) {
+      if ((window as any).__INITIAL_CATALOG_DATA__?.catalog?.products) {
         availablePool = (window as any).__INITIAL_CATALOG_DATA__.catalog.products;
       }
 

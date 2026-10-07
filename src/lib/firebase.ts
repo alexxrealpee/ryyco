@@ -3080,7 +3080,7 @@ export function checkIsStoreClosed(profile?: {
   restaurantDaysOpen?: string[];
   weeklySchedule?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
 } | null): boolean {
-  if (!profile) return false;
+  if (!profile) return true;
 
   // 1. If store is suspended or subscription explicitly expired, it is ALWAYS closed for customers
   if (
@@ -3162,8 +3162,8 @@ export function findStoreForProduct(
     if (matched) return matched;
   }
 
-  // Fallback: If no explicit profile document was fetched from Firestore, synthesize an open profile
-  // from the product metadata so products and restaurants are NEVER mistakenly dropped as "closed" or "missing"!
+  // If profilesMap is loaded and store is not found, it is considered closed/not available
+  const hasProfilesLoaded = Object.keys(safeMap).length > 0;
   const fallbackUid = product?.userId || `store_${(product?.storeUsername || product?.storeName || 'general').toLowerCase().replace(/\s+/g, '_')}`;
   const fallbackUsername = (product?.storeUsername || product?.storeName || 'restaurante').toLowerCase().replace(/[^a-z0-9._-]/g, '');
   const fallbackDisplayName = product?.storeName || product?.storeUsername || 'Restaurante';
@@ -3176,7 +3176,7 @@ export function findStoreForProduct(
     bio: 'Restaurante y tienda oficial en Ryyco',
     role: 'user',
     plan: 'pro',
-    isClosed: false,
+    isClosed: hasProfilesLoaded ? true : false,
     suspended: false,
     createdAt: new Date().toISOString()
   };
