@@ -4,8 +4,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { UserProfile, ProductItem } from '../types';
 import { 
+  db,
   fetchOpenRestaurantsFromFirebase, 
   fetchProductsForStoreFromFirebase,
   fetchAllActiveProductsAndStores,
@@ -36,7 +38,7 @@ export interface UseProgressiveStoreLoaderResult {
   isLoadingProducts: boolean;
 }
 
-// Instant synchronous cache retrieval to achieve 0ms initial render
+// Ensure no stale restaurants are stored or read from cache across sessions
 function getCachedStoreData(): {
   openRestaurants: UserProfile[];
   products: ProductItem[];
@@ -44,75 +46,9 @@ function getCachedStoreData(): {
   hasCache: boolean;
 } {
   try {
-    const rawLocal = typeof window !== 'undefined' ? localStorage.getItem('linnk_all_active_data_cache') : null;
-    if (rawLocal) {
-      const parsed = JSON.parse(rawLocal);
-      if (parsed && (Array.isArray(parsed.products) || parsed.profiles)) {
-        const profilesMap = (parsed.profiles || {}) as Record<string, UserProfile>;
-        const rawProducts = Array.isArray(parsed.products) ? (parsed.products as ProductItem[]) : [];
-        
-        const openStores: UserProfile[] = [];
-        const seen = new Set<string>();
-        Object.values(profilesMap).forEach(p => {
-          if (p && p.uid && !seen.has(p.uid) && !p.suspended && !checkIsStoreClosed(p)) {
-            if (p.displayName || p.username) {
-              seen.add(p.uid);
-              openStores.push(p);
-            }
-          }
-        });
-
-        if (openStores.length > 0 || rawProducts.length > 0) {
-          return {
-            openRestaurants: openStores,
-            products: rawProducts,
-            profiles: profilesMap,
-            hasCache: true
-          };
-        }
-      }
-    }
-
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_CATALOG_DATA__?.catalog) {
-      const apiCatalog = (window as any).__INITIAL_CATALOG_DATA__.catalog;
-      const apiStores = apiCatalog.stores || [];
-      const apiProducts = apiCatalog.products || [];
-      if (apiStores.length > 0 || apiProducts.length > 0) {
-        const profilesMap: Record<string, UserProfile> = {};
-        const openStores: UserProfile[] = [];
-        apiStores.forEach((s: any) => {
-          const isSuspended = s.suspended === true || s.subscriptionStatus === 'suspended' || s.subscriptionStatus === 'expired';
-          const prof: UserProfile = {
-            ...s,
-            uid: s.uid,
-            username: s.username,
-            displayName: s.displayName || s.storeName || s.username || 'Restaurante',
-            suspended: isSuspended,
-            isClosed: isSuspended ? true : s.isClosed === true
-          };
-          if (prof.uid) profilesMap[prof.uid] = prof;
-          if (prof.username) profilesMap[prof.username.toLowerCase()] = prof;
-          if (!isSuspended && !prof.isClosed && prof.isClosed !== true && !checkIsStoreClosed(prof) && (prof.displayName || prof.username)) {
-            openStores.push(prof);
-          }
-        });
-
-        const rawProducts: ProductItem[] = apiProducts.map((p: any) => ({
-          ...p,
-          id: String(p.id).trim(),
-          name: p.name || 'Producto',
-          price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : parseFloat(p.price) || 0,
-          stock: typeof p.stock === 'number' ? p.stock : 99,
-          active: p.active !== false
-        }));
-
-        return {
-          openRestaurants: openStores,
-          products: rawProducts,
-          profiles: profilesMap,
-          hasCache: true
-        };
-      }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('linnk_all_active_data_cache');
+      localStorage.removeItem('linnk_profiles');
     }
   } catch (e) {}
   return { openRestaurants: [], products: [], profiles: {}, hasCache: false };
@@ -365,6 +301,77 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       setLoadedLogos(currentOpen);
     }
   }, [profilesMap]);
+
+  // Real-time Firestore listener: instantly removes closed stores and instantly displays newly opened stores
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'profiles'), (snapshot) => {
+      const incomingProfiles: Record<string, UserProfile> = {};
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as UserProfile;
+        const uid = data.uid || docSnap.id;
+        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+        const isClosedNow = isSuspended || data.isClosed === true || checkIsStoreClosed({ ...data, isClosed: data.isClosed, suspended: isSuspended });
+        const prof: UserProfile = {
+          ...data,
+          uid,
+          suspended: isSuspended,
+          isClosed: isClosedNow
+        };
+        incomingProfiles[uid] = prof;
+        if (prof.username) {
+          incomingProfiles[prof.username.toLowerCase()] = prof;
+        }
+      });
+
+      setProfilesMap(prev => {
+        const merged = { ...prev, ...incomingProfiles };
+        const seen = new Set<string>();
+        const freshOpen: UserProfile[] = [];
+        (Object.values(merged) as UserProfile[]).forEach(s => {
+          if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
+            if (s.displayName || s.username) {
+              seen.add(s.uid);
+              freshOpen.push(s);
+            }
+          }
+        });
+        freshOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+        openRestaurantsRef.current = freshOpen;
+        setOpenRestaurants(freshOpen);
+        setLoadedLogos(freshOpen);
+        return merged;
+      });
+    }, (err) => {
+      console.warn("Real-time profiles listener notice in store loader:", err);
+    });
+
+    // 15-second schedule timer to auto-refresh stores when their opening/closing time arrives
+    const scheduleTimer = setInterval(() => {
+      setProfilesMap(prev => {
+        if (!prev || Object.keys(prev).length === 0) return prev;
+        const seen = new Set<string>();
+        const freshOpen: UserProfile[] = [];
+        (Object.values(prev) as UserProfile[]).forEach(s => {
+          if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
+            if (s.displayName || s.username) {
+              seen.add(s.uid);
+              freshOpen.push(s);
+            }
+          }
+        });
+        freshOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+        openRestaurantsRef.current = freshOpen;
+        setOpenRestaurants(freshOpen);
+        setLoadedLogos(freshOpen);
+        return prev;
+      });
+    }, 15000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(scheduleTimer);
+    };
+  }, []);
 
   // Main Progressive Loading Orchestrator with Stale-While-Revalidate speed
   useEffect(() => {

@@ -3193,7 +3193,16 @@ export function invalidateActiveCatalogCache(): void {
   try {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('linnk_all_active_data_cache');
+      localStorage.removeItem('linnk_profiles');
     }
+  } catch (e) {}
+}
+
+// Clean up any stale persisted restaurant cache immediately on startup so only live open stores are loaded
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem('linnk_all_active_data_cache');
+    localStorage.removeItem('linnk_profiles');
   } catch (e) {}
 }
 
@@ -3202,7 +3211,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
   try {
     const now = Date.now();
 
-    // 0. Instant in-memory cache return (Stale-While-Revalidate)
+    // 0. Instant in-memory cache return (Stale-While-Revalidate, short TTL)
     if (!forceRefresh && _cachedProductsData && _cachedProductsData.products.length > 0) {
       if (now - _cachedProductsData.timestamp > PRODUCTS_CACHE_TTL_MS && !_isBackgroundRefreshing) {
         _isBackgroundRefreshing = true;
@@ -3211,26 +3220,6 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
         }, 50);
       }
       return { products: _cachedProductsData.products, profiles: _cachedProductsData.profiles };
-    }
-
-    // 0.1 Check persistent localStorage cache for instant fast response (Stale-While-Revalidate)
-    if (!forceRefresh) {
-      try {
-        const rawLocal = typeof window !== 'undefined' ? localStorage.getItem('linnk_all_active_data_cache') : null;
-        if (rawLocal) {
-          const parsed = JSON.parse(rawLocal);
-          if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
-            _cachedProductsData = parsed;
-            if (now - (parsed.timestamp || 0) > PRODUCTS_CACHE_TTL_MS && !_isBackgroundRefreshing) {
-              _isBackgroundRefreshing = true;
-              setTimeout(() => {
-                fetchAllActiveProductsAndStores(true).finally(() => { _isBackgroundRefreshing = false; });
-              }, 50);
-            }
-            return { products: parsed.products, profiles: parsed.profiles || {} };
-          }
-        }
-      } catch (e) {}
     }
 
     // 0.2 Instant Server-Side Catalog Cache check (/api/catalog/available or HTML prefetch)
@@ -3305,9 +3294,6 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
             };
 
             _cachedProductsData = resultData;
-            try {
-              localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(resultData));
-            } catch (e) {}
 
             try {
               window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: resultData }));
@@ -3333,9 +3319,6 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
                         profiles: apiProfilesMap,
                         timestamp: Date.now()
                       };
-                      try {
-                        localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
-                      } catch (err) {}
 
                       try {
                         window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: _cachedProductsData }));
@@ -3505,10 +3488,6 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
     };
 
     try {
-      localStorage.setItem('linnk_all_active_data_cache', JSON.stringify(_cachedProductsData));
-    } catch (e) {}
-
-    try {
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: _cachedProductsData }));
       }
@@ -3527,43 +3506,10 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
 
 /**
  * Sistema de Carga Progresiva en React
- * Paso 1: Consulta a Firebase para obtener los restaurantes que están abiertos.
+ * Consulta directa a Firebase para obtener los restaurantes que están actualmente abiertos (sin caché local).
  */
-export async function fetchOpenRestaurantsFromFirebase(forceRefresh: boolean = false): Promise<UserProfile[]> {
+export async function fetchOpenRestaurantsFromFirebase(): Promise<UserProfile[]> {
   try {
-    // 0. Instant cached open stores check (returns in 0ms if cache exists)
-    if (!forceRefresh) {
-      let cachedProfiles: Record<string, UserProfile> | null = _cachedProductsData?.profiles || null;
-      if (!cachedProfiles) {
-        try {
-          const raw = typeof window !== 'undefined' ? (localStorage.getItem('linnk_all_active_data_cache') || localStorage.getItem('linnk_profiles')) : null;
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            cachedProfiles = (parsed.profiles || parsed) as Record<string, UserProfile>;
-          }
-        } catch (e) {}
-      }
-      if (cachedProfiles && Object.keys(cachedProfiles).length > 0) {
-        const cachedOpen: UserProfile[] = [];
-        const seen = new Set<string>();
-        Object.values(cachedProfiles).forEach(p => {
-          if (p && p.uid && !seen.has(p.uid) && !p.suspended && !checkIsStoreClosed(p)) {
-            if (p.displayName || p.username) {
-              seen.add(p.uid);
-              cachedOpen.push(p);
-            }
-          }
-        });
-        if (cachedOpen.length > 0) {
-          return cachedOpen.sort((a, b) => {
-            const aHasPhoto = a.photoURL ? 1 : 0;
-            const bHasPhoto = b.photoURL ? 1 : 0;
-            return bHasPhoto - aHasPhoto;
-          });
-        }
-      }
-    }
-
     const snap = await getDocs(collection(db, 'profiles'));
     const openStores: UserProfile[] = [];
     const seenUids = new Set<string>();
@@ -3572,45 +3518,22 @@ export async function fetchOpenRestaurantsFromFirebase(forceRefresh: boolean = f
       const data = docSnap.data() as UserProfile;
       const uid = data.uid || docSnap.id;
       const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+      const isClosedNow = isSuspended || data.isClosed === true || checkIsStoreClosed({ ...data, isClosed: data.isClosed, suspended: isSuspended });
       const profileObj: UserProfile = {
         ...data,
         uid,
         suspended: isSuspended,
-        isClosed: isSuspended ? true : data.isClosed === true
+        isClosed: isClosedNow
       };
 
       // Check if store is open according to its schedule and flags
-      if (!checkIsStoreClosed(profileObj) && !isSuspended && (profileObj.displayName || profileObj.username)) {
+      if (!isClosedNow && !isSuspended && (profileObj.displayName || profileObj.username)) {
         if (!seenUids.has(uid)) {
           seenUids.add(uid);
           openStores.push(profileObj);
         }
       }
     });
-
-    // Merge with locally stored profiles if any are present
-    try {
-      const rawLocal = localStorage.getItem('linnk_profiles');
-      if (rawLocal) {
-        const parsed = JSON.parse(rawLocal);
-        Object.keys(parsed).forEach(k => {
-          const p = parsed[k];
-          if (p && !seenUids.has(p.uid || k)) {
-            const isSuspended = p.suspended === true || p.subscriptionStatus === 'suspended' || p.subscriptionStatus === 'expired';
-            const profileObj: UserProfile = { 
-              ...p, 
-              uid: p.uid || k, 
-              suspended: isSuspended, 
-              isClosed: isSuspended ? true : p.isClosed === true 
-            };
-            if (!checkIsStoreClosed(profileObj) && !isSuspended && (profileObj.displayName || profileObj.username)) {
-              seenUids.add(profileObj.uid);
-              openStores.push(profileObj);
-            }
-          }
-        });
-      }
-    } catch (e) {}
 
     // Sort stores: those with photoURL first for best visual experience
     return openStores.sort((a, b) => {

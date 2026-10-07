@@ -187,56 +187,12 @@ interface TiendaGeneralProps {
   onNavigateToStore: (username: string) => void;
 }
 
-// Fast synchronous local cache retrieval for instant initial render
+// Ensure no stale stores are loaded from localStorage cache
 const getInitialGeneralData = () => {
   try {
-    const rawLocal = localStorage.getItem('linnk_all_active_data_cache');
-    if (rawLocal) {
-      const parsed = JSON.parse(rawLocal);
-      if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0) {
-        return {
-          products: parsed.products as ProductItem[],
-          profiles: (parsed.profiles || {}) as Record<string, UserProfile>,
-          hasCache: true
-        };
-      }
-    }
-
-    if (typeof window !== 'undefined' && (window as any).__INITIAL_CATALOG_DATA__?.catalog) {
-      const apiCatalog = (window as any).__INITIAL_CATALOG_DATA__.catalog;
-      const apiStores = apiCatalog.stores || [];
-      const apiProducts = apiCatalog.products || [];
-      if (apiProducts.length > 0) {
-        const profilesMap: Record<string, UserProfile> = {};
-        apiStores.forEach((s: any) => {
-          const isSuspended = s.suspended === true || s.subscriptionStatus === 'suspended' || s.subscriptionStatus === 'expired';
-          const prof: UserProfile = {
-            ...s,
-            uid: s.uid,
-            username: s.username,
-            displayName: s.displayName || s.storeName || s.username || 'Restaurante',
-            suspended: isSuspended,
-            isClosed: isSuspended ? true : s.isClosed === true
-          };
-          if (prof.uid) profilesMap[prof.uid] = prof;
-          if (prof.username) profilesMap[prof.username.toLowerCase()] = prof;
-        });
-
-        const formatted = apiProducts.map((p: any) => ({
-          ...p,
-          id: String(p.id).trim(),
-          name: p.name || 'Producto',
-          price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : parseFloat(p.price) || 0,
-          stock: typeof p.stock === 'number' ? p.stock : 99,
-          active: p.active !== false
-        }));
-
-        return {
-          products: formatted,
-          profiles: profilesMap,
-          hasCache: true
-        };
-      }
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('linnk_all_active_data_cache');
+      localStorage.removeItem('linnk_profiles');
     }
   } catch (e) {}
   return { products: [] as ProductItem[], profiles: {} as Record<string, UserProfile>, hasCache: false };
@@ -355,7 +311,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     };
   }, []);
 
-  // Real-time Firestore listener for all store profiles so admin changes take effect immediately
+  // Real-time Firestore listener for all store profiles so open/closed changes take effect immediately
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'profiles'), (snapshot) => {
       const updatedMap: Record<string, UserProfile> = {};
@@ -363,11 +319,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         const data = docSnap.data() as UserProfile;
         const uid = data.uid || docSnap.id;
         const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+        const isClosedNow = isSuspended || data.isClosed === true || checkIsStoreClosed({ ...data, isClosed: data.isClosed, suspended: isSuspended });
         const prof: UserProfile = {
           ...data,
           uid,
           suspended: isSuspended,
-          isClosed: isSuspended ? true : data.isClosed === true
+          isClosed: isClosedNow
         };
         updatedMap[uid] = prof;
         if (prof.username) {
@@ -379,7 +336,24 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       console.warn("Real-time profiles listener notice:", error);
     });
 
-    return () => unsubscribe();
+    // 15-second schedule timer to auto-refresh store states as time passes
+    const scheduleInterval = setInterval(() => {
+      setProfiles(prev => {
+        if (!prev || Object.keys(prev).length === 0) return prev;
+        const rechecked: Record<string, UserProfile> = {};
+        (Object.entries(prev) as [string, UserProfile][]).forEach(([k, prof]) => {
+          if (!prof) return;
+          const isClosedNow = prof.suspended === true || prof.isClosed === true || checkIsStoreClosed(prof);
+          rechecked[k] = { ...prof, isClosed: isClosedNow };
+        });
+        return rechecked;
+      });
+    }, 15000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(scheduleInterval);
+    };
   }, []);
   
   // Filtering & search states
@@ -1989,7 +1963,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <div className="flex items-center gap-2">
                   <Store className="w-4 h-4 text-[#E63946]" />
                   <span className="text-xs font-black uppercase text-white tracking-wider">
-                    Restaurantes Abiertos ({uniqueStores.length}{totalOpenCount > uniqueStores.length ? ` / ${totalOpenCount}` : ''})
+                    Restaurantes Abiertos ({uniqueStores.length})
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
