@@ -1586,11 +1586,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       }}
                       className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
                     >
-                      <div className="w-8 h-8 rounded-xl bg-[#FF6B00] flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-md">
-                        <Flame className="w-4 h-4 text-black fill-black" />
+                      <div className="w-8 h-8 rounded-xl bg-[#D62839] flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-md">
+                        <Flame className="w-4 h-4 text-white fill-white" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-[#FFA200] transition">
+                        <span className="font-bold text-xs text-white block group-hover:text-red-300 transition">
                           Reels de Comida
                         </span>
                         <p className="text-[10px] text-gray-400 leading-tight">
@@ -1761,10 +1761,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <button 
               id="navbar-my-orders-btn"
               onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
-              className="hidden md:flex px-3 py-2 rounded-xl bg-[#150F26] hover:bg-[#201538] border border-[#2D1B44] hover:border-orange-500/50 text-gray-200 hover:text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+              className="hidden md:flex px-3 py-2 rounded-xl bg-[#150F26] hover:bg-[#201538] border border-[#2D1B44] hover:border-[#D62839]/60 text-gray-200 hover:text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
               title="Ver y rastrear el estado de mis pedidos en tiempo real"
             >
-              <ShoppingBag className="w-3.5 h-3.5 text-[#FF6B00]" />
+              <ShoppingBag className="w-3.5 h-3.5 text-[#D62839]" />
               <span>👻 Mis Pedidos</span>
             </button>
 
@@ -1772,22 +1772,22 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <button 
               id="navbar-my-points-btn"
               onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
-              className="hidden sm:flex px-3 py-2 rounded-xl bg-[#2D1B44] hover:bg-[#3D235C] border border-[#FF6B00]/40 text-[#FFA200] font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+              className="hidden sm:flex px-3 py-2 rounded-xl bg-[#2D1B44] hover:bg-[#3D235C] border border-[#D62839]/50 text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
               title="Mis Puntos Ryycos acumulados, Billetera y Transferencias"
             >
-              <Crown className="w-3.5 h-3.5 text-[#FFA200] animate-pulse" />
+              <Crown className="w-3.5 h-3.5 text-[#D62839] animate-pulse" />
               <span>🎃 Puntos Ryycos</span>
             </button>
 
             {/* Dynamic Cart Button in Navbar */}
             <button
               onClick={() => setIsCartOpen(true)}
-              className="relative p-2.5 bg-[#150F26] hover:bg-[#201538] border border-[#2D1B44] rounded-xl text-white hover:border-[#FF6B00] transition cursor-pointer flex items-center gap-1.5 shrink-0"
+              className="relative p-2.5 bg-[#150F26] hover:bg-[#201538] border border-[#2D1B44] rounded-xl text-white hover:border-[#D62839] transition cursor-pointer flex items-center gap-1.5 shrink-0"
               title="Ver mi carrito de compras de Halloween"
             >
               <ShoppingBag className="w-4.5 h-4.5 stroke-[2] text-white" />
               {cart.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-[#FF6B00] text-black font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center animate-pulse shadow-md shadow-[#FF6B00]/40">
+                <span className="absolute -top-1.5 -right-1.5 bg-[#D62839] text-white font-black text-[9px] w-5 h-5 rounded-full flex items-center justify-center animate-pulse shadow-md shadow-[#D62839]/40">
                   {cart.reduce((sum, item) => sum + item.quantity, 0)}
                 </span>
               )}
@@ -1884,7 +1884,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   rel="noopener noreferrer"
                   aria-label="Linnk Pro Ryyco"
                   title="Visitar linnk.pro/ryyco"
-                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#FF6B00] hover:bg-[#FF6B00]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900/90 border border-slate-700/80 hover:border-[#D62839] hover:bg-[#D62839]/20 flex items-center justify-center text-white transition duration-200 shadow-md active:scale-95"
                 >
                   <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white" viewBox="0 0 24 24">
                     <path
@@ -1971,7 +1971,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               onClick={() => setIsFullScreenSearchOpen(true)}
               onFocus={() => setIsFullScreenSearchOpen(true)}
               placeholder="🎃 Buscar restaurantes, platos de miedo, hamburguesas, pizzas a domicilio..."
-              className="w-full bg-[#150F26] border-2 border-[#FF6B00] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-white placeholder:text-gray-400 focus:outline-none focus:border-[#FFA200] focus:ring-4 focus:ring-[#FF6B00]/25 shadow-md shadow-[#FF6B00]/10 transition cursor-pointer"
+              className="w-full bg-[#150F26] border-2 border-[#D62839] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-white placeholder:text-gray-400 focus:outline-none focus:border-[#D62839] focus:ring-4 focus:ring-[#D62839]/25 shadow-md shadow-[#D62839]/10 transition cursor-pointer"
             />
             {searchTerm && (
               <button 
@@ -1995,8 +1995,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <div className="space-y-2 border-t border-[#2D1B44] pt-4 transition-opacity duration-200">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
-                  <Store className="w-4 h-4 text-[#FF6B00]" />
-                  <span className="text-xs font-black uppercase text-orange-200 tracking-wider flex items-center gap-1.5">
+                  <Store className="w-4 h-4 text-[#D62839]" />
+                  <span className="text-xs font-black uppercase text-red-200 tracking-wider flex items-center gap-1.5">
                     🎃 Restaurantes Abiertos Ahora ({uniqueStores.length}) 👻
                   </span>
                 </div>
@@ -2004,7 +2004,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   {selectedStore !== 'all' && (
                     <button
                       onClick={() => setSelectedStore('all')}
-                      className="text-[11px] font-bold text-[#FF6B00] hover:underline flex items-center gap-1 cursor-pointer mr-1"
+                      className="text-[11px] font-bold text-[#D62839] hover:underline flex items-center gap-1 cursor-pointer mr-1"
                     >
                       <span>Ver todos</span>
                     </button>
@@ -2015,7 +2015,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <button
                       type="button"
                       onClick={() => scrollStores('left')}
-                      className="p-1.5 rounded-full bg-[#1E1435] hover:bg-[#FF6B00] text-gray-300 hover:text-black transition cursor-pointer border border-[#2D1B44] active:scale-95 shadow-sm"
+                      className="p-1.5 rounded-full bg-[#1E1435] hover:bg-[#D62839] text-gray-300 hover:text-white transition cursor-pointer border border-[#2D1B44] active:scale-95 shadow-sm"
                       title="Mover restaurantes a la izquierda"
                       aria-label="Mover restaurantes a la izquierda"
                     >
@@ -2024,7 +2024,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <button
                       type="button"
                       onClick={() => scrollStores('right')}
-                      className="p-1.5 rounded-full bg-[#1E1435] hover:bg-[#FF6B00] text-gray-300 hover:text-black transition cursor-pointer border border-[#2D1B44] active:scale-95 shadow-sm"
+                      className="p-1.5 rounded-full bg-[#1E1435] hover:bg-[#D62839] text-gray-300 hover:text-white transition cursor-pointer border border-[#2D1B44] active:scale-95 shadow-sm"
                       title="Mover restaurantes a la derecha"
                       aria-label="Mover restaurantes a la derecha"
                     >
@@ -2122,13 +2122,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 >
                   <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-200 ${
                     selectedStore === 'all'
-                      ? 'bg-[#FF6B00] text-black font-black ring-4 ring-[#FF6B00]/40 shadow-lg shadow-[#FF6B00]/30 scale-105'
-                      : 'bg-[#150F26] border-2 border-[#2D1B44] group-hover:border-[#FF6B00]/50 text-[#A9B2C3] group-hover:text-[#FF6B00]'
+                      ? 'bg-[#D62839] text-white font-black ring-4 ring-[#D62839]/40 shadow-lg shadow-[#D62839]/30 scale-105'
+                      : 'bg-[#150F26] border-2 border-[#2D1B44] group-hover:border-[#D62839]/50 text-[#A9B2C3] group-hover:text-[#D62839]'
                   }`}>
                     <Store className="w-6 h-6 sm:w-7 sm:h-7 pointer-events-none select-none" />
                   </div>
                   <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[70px] sm:max-w-[80px] text-center select-none ${
-                    selectedStore === 'all' ? 'text-[#FF6B00] font-black' : 'text-[#C4CBD8] group-hover:text-white'
+                    selectedStore === 'all' ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
                   }`}>
                     Todas
                   </span>
@@ -2150,15 +2150,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none relative"
                   title="Ver Reels y videos recomendados en Halloween"
                 >
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2.5px] bg-[#FF6B00] transition-all duration-200 group-hover:scale-105 shadow-md shadow-[#FF6B00]/30 ring-2 ring-transparent group-hover:ring-[#FF6B00]/50 flex items-center justify-center">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2.5px] bg-[#D62839] transition-all duration-200 group-hover:scale-105 shadow-md shadow-[#D62839]/30 ring-2 ring-transparent group-hover:ring-[#D62839]/50 flex items-center justify-center">
                     <div className="w-full h-full rounded-full bg-[#150F26] group-hover:bg-[#1E1435] flex items-center justify-center transition-colors relative overflow-hidden">
                       <div className="relative flex items-center justify-center">
                         <Play className="w-5 h-5 sm:w-6 sm:h-6 fill-white text-white ml-0.5 group-hover:scale-110 transition-transform pointer-events-none drop-shadow-sm" />
                       </div>
-                      <span className="absolute bottom-1 right-1 w-2 h-2 bg-[#FF6B00] rounded-full ring-1.5 ring-[#150F26] animate-pulse" />
+                      <span className="absolute bottom-1 right-1 w-2 h-2 bg-[#D62839] rounded-full ring-1.5 ring-[#150F26] animate-pulse" />
                     </div>
                   </div>
-                  <span className="text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[76px] sm:max-w-[88px] text-center select-none text-[#C4CBD8] group-hover:text-orange-300 transition">
+                  <span className="text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[76px] sm:max-w-[88px] text-center select-none text-[#C4CBD8] group-hover:text-red-300 transition">
                     Recomendados
                   </span>
                 </button>
@@ -2182,8 +2182,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     >
                       <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 transition-all duration-200 ${
                         isSelected
-                          ? 'bg-[#FF6B00] ring-4 ring-[#FF6B00]/50 shadow-lg shadow-[#FF6B00]/30 scale-105'
-                          : 'bg-[#150F26] hover:bg-[#FF6B00]/20 ring-2 ring-[#2D1B44] hover:ring-[#FF6B00] group-hover:scale-105'
+                          ? 'bg-[#D62839] ring-4 ring-[#D62839]/50 shadow-lg shadow-[#D62839]/30 scale-105'
+                          : 'bg-[#150F26] hover:bg-[#D62839]/20 ring-2 ring-[#2D1B44] hover:ring-[#D62839] group-hover:scale-105'
                       }`}>
                         {store.photoURL ? (
                           <img
@@ -2196,13 +2196,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             className="w-full h-full rounded-full object-cover bg-[#0E0A1A] pointer-events-none select-none"
                           />
                         ) : (
-                          <div className="w-full h-full rounded-full bg-[#FF6B00]/20 text-[#FF6B00] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
+                          <div className="w-full h-full rounded-full bg-[#D62839]/20 text-[#D62839] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
                             {(store.displayName || store.username || 'T').substring(0, 2)}
                           </div>
                         )}
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
-                        isSelected ? 'text-[#FF6B00] font-black' : 'text-[#C4CBD8] group-hover:text-white'
+                        isSelected ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
                       }`}>
                         {store.displayName || `@${store.username}`}
                       </span>
@@ -2233,7 +2233,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         </div>
                         <button
                           onClick={() => onNavigateToStore(currentStore.username)}
-                          className="text-[11px] text-[#FF6B00] hover:underline font-bold"
+                          className="text-[11px] text-[#D62839] hover:underline font-bold"
                         >
                           Ver perfil completo del restaurante →
                         </button>
@@ -2263,8 +2263,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <CategoriesSkeleton />
           ) : (
             <div className="border-t border-[#2D1B44] pt-3 space-y-2 transition-opacity duration-200">
-              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-orange-300 tracking-wider px-0.5">
-                <Filter className="w-3.5 h-3.5 text-[#FF6B00]" />
+              <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-red-300 tracking-wider px-0.5">
+                <Filter className="w-3.5 h-3.5 text-[#D62839]" />
                 <span>🎃 Categorías de Miedo:</span>
               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
@@ -2277,10 +2277,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       onClick={() => setSelectedCategory(cat)}
                       className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition duration-150 uppercase tracking-wide cursor-pointer shrink-0 whitespace-nowrap ${
                         isAll && isSelected
-                          ? 'bg-[#FF6B00] text-black shadow-md shadow-[#FF6B00]/25 font-black'
+                          ? 'bg-[#D62839] text-white shadow-md shadow-[#D62839]/30 font-black ring-2 ring-[#D62839]'
                           : isSelected
-                          ? 'bg-[#FFA200] text-black shadow-md shadow-[#FFA200]/25 font-black'
-                          : 'bg-[#150F26] border border-[#2D1B44] text-white hover:border-[#FF6B00]/60 hover:text-orange-200'
+                          ? 'bg-[#D62839] text-white shadow-md shadow-[#D62839]/30 font-black ring-2 ring-[#D62839]'
+                          : 'bg-[#150F26] border border-[#2D1B44] text-white hover:border-[#D62839]/60 hover:text-red-200'
                       }`}
                     >
                       {isAll ? '🎃 VER TODO' : cat}
@@ -2369,7 +2369,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.25 }}
                   onClick={() => setSelectedProduct(product)}
-                  className="bg-[#0E0A1A] border border-[#2D1B44] hover:border-[#FF6B00]/70 hover:shadow-xl hover:shadow-[#FF6B00]/10 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
+                  className="bg-[#0E0A1A] border border-[#2D1B44] hover:border-[#D62839]/70 hover:shadow-xl hover:shadow-[#D62839]/15 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
                 >
                   {/* Store source badge on top left */}
                   <div className="absolute top-3 left-3 z-10 max-w-[85%]">
@@ -2380,9 +2380,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           onNavigateToStore(profile.username);
                         }
                       }}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-[#0E0A1A]/90 hover:bg-[#150F26] border border-[#2D1B44] rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
+                      className="flex items-center gap-1 px-2 py-0.5 bg-[#0E0A1A]/90 hover:bg-[#150F26] border border-[#2D1B44] hover:border-[#D62839]/60 rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
                     >
-                      <Store className="w-2.5 h-2.5 text-[#FF6B00] shrink-0" />
+                      <Store className="w-2.5 h-2.5 text-[#D62839] shrink-0" />
                       <span className="truncate">{profile?.displayName || 'Tienda'}</span>
                     </button>
                   </div>
@@ -2405,7 +2405,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     {/* Top right badges: Sale badge */}
                     {isOnSale && !product.allowsHalfAndHalf && (
                       <div className="absolute top-3 right-3 z-10">
-                        <span className="bg-[#FF6B00] text-black font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
+                        <span className="bg-[#D62839] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
                           🍬 -{discountPercentage}%
                         </span>
                       </div>
@@ -2430,7 +2430,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                     {/* Quick overlay actions on hover */}
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 pointer-events-none sm:pointer-events-auto">
-                      <span className="p-2.5 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black rounded-xl transition shadow hover:scale-110 active:scale-95 cursor-pointer text-xs uppercase tracking-wider flex items-center gap-1">
+                      <span className="p-2.5 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black rounded-xl transition shadow hover:scale-110 active:scale-95 cursor-pointer text-xs uppercase tracking-wider flex items-center gap-1">
                         Ver Detalles 🎃
                       </span>
                     </div>
@@ -2441,7 +2441,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between gap-2 min-h-[26px]">
                         {product.category ? (
-                          <span className="text-[9px] font-black uppercase text-[#FF8500] tracking-widest block font-mono truncate">
+                          <span className="text-[9px] font-black uppercase text-[#E63946] tracking-widest block font-mono truncate">
                             {product.category}
                           </span>
                         ) : (
@@ -2471,7 +2471,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           />
                         </div>
                       </div>
-                      <h3 className="font-extrabold text-sm text-white group-hover:text-[#FFA200] transition truncate leading-snug">
+                      <h3 className="font-extrabold text-sm text-white group-hover:text-red-300 transition truncate leading-snug">
                         {product.name}
                       </h3>
                       <p className="text-[11px] text-[#A9B2C3] font-medium line-clamp-2">
@@ -2481,7 +2481,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                     <div className="pt-2 border-t border-[#2D1B44] flex items-center justify-between">
                       <div className="flex flex-col">
-                        <span className="text-xs font-black text-[#FFA200] font-mono">
+                        <span className="text-xs font-black text-white font-mono">
                           {currency}{Number(product.price || 0).toLocaleString()}
                         </span>
                         {isOnSale && (
@@ -2496,10 +2496,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           e.stopPropagation();
                           setSelectedProduct(product);
                         }}
-                        className="px-3 py-1.5 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center gap-1 shadow-md shadow-[#FF6B00]/25 active:scale-95"
+                        className="px-3 py-1.5 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center gap-1 shadow-md shadow-[#D62839]/30 active:scale-95"
                         title="Ver detalles y agregar al carrito"
                       >
-                        <ShoppingBag className="w-3.5 h-3.5 text-black stroke-[2.5]" /> Pedir 🎃
+                        <ShoppingBag className="w-3.5 h-3.5 text-white stroke-[2.5]" /> Pedir 🎃
                       </button>
                     </div>
                   </div>
@@ -2528,7 +2528,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <div className="w-full flex flex-col items-center justify-center py-8 gap-3 mt-6 border-t border-dashed border-[#232B3A]">
               <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
                 <span>Mostrando</span>
-                <span className="text-[#F4B400] font-black">{Math.min(visibleLimit, filteredProducts.length)}</span>
+                <span className="text-white font-black">{Math.min(visibleLimit, filteredProducts.length)}</span>
                 <span>de</span>
                 <span className="text-white font-black">{filteredProducts.length}</span>
                 <span>productos</span>
@@ -2537,7 +2537,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* Progress bar */}
               <div className="w-48 h-1.5 bg-[#1F2937] rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-[#FF6B00] rounded-full transition-all duration-300"
+                  className="h-full bg-[#D62839] rounded-full transition-all duration-300"
                   style={{ width: `${Math.min(100, Math.round((visibleLimit / Math.max(1, filteredProducts.length)) * 100))}%` }}
                 />
               </div>
@@ -3440,9 +3440,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     setCustomerPortalTab('wheel');
                     setIsCustomerPortalOpen(true);
                   }}
-                  className="w-full py-2.5 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-orange-500/20 cursor-pointer"
+                  className="w-full py-2.5 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-[#D62839]/25 cursor-pointer"
                 >
-                  <Crown className="w-4 h-4 text-black" />
+                  <Crown className="w-4 h-4 text-white" />
                   ¡Girar Ruleta de Platos Gratis & Ver Mis Puntos Ryycos! 🎁
                 </button>
                 <button
@@ -3485,15 +3485,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         }}
       />
 
-      {/* Floating Cart Button (Halloween Edition - Flat Solid Color) */}
+      {/* Floating Cart Button (Halloween Edition - Flat Solid Color #D62839) */}
       {cart.length > 0 && (
         <button
           onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-[#FF6B00] hover:bg-[#E65100] text-black font-black p-4 rounded-full shadow-2xl shadow-black/60 flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-transform cursor-pointer border-2 border-orange-300"
+          className="fixed bottom-6 right-6 z-40 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black p-4 rounded-full shadow-2xl shadow-black/60 flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-transform cursor-pointer border-2 border-red-400"
         >
           <span className="text-base select-none">🎃</span>
-          <ShoppingBag className="w-5 h-5 stroke-[2.5] text-black" />
-          <span className="font-black text-xs text-black">
+          <ShoppingBag className="w-5 h-5 stroke-[2.5] text-white" />
+          <span className="font-black text-xs text-white">
             {cart.reduce((sum, item) => sum + item.quantity, 0)} items
           </span>
         </button>
