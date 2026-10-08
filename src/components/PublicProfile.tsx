@@ -276,6 +276,38 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
   const [appliedRewardCode, setAppliedRewardCode] = useState('');
   const [rewardDiscountAmount, setRewardDiscountAmount] = useState(0);
+  const [checkoutCouponInput, setCheckoutCouponInput] = useState('');
+  const [checkoutCouponMsg, setCheckoutCouponMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const SINGLE_COUPON_CODE = 'RYYCO30K';
+  const SINGLE_COUPON_VALUE = 30000;
+
+  const handleApplySingleCoupon = (inputCode?: string) => {
+    const rawCode = (inputCode !== undefined ? inputCode : checkoutCouponInput).trim().toUpperCase();
+    
+    // Accept RYYCO30K, CUPON30K, DESCUENTO30K, 30K, 30000 or if clicked directly
+    if (!rawCode || rawCode === SINGLE_COUPON_CODE || rawCode === 'CUPON30K' || rawCode === 'DESCUENTO30K' || rawCode === '30000' || rawCode === '30K') {
+      setAppliedRewardCode(SINGLE_COUPON_CODE);
+      setRewardDiscountAmount(SINGLE_COUPON_VALUE);
+      setCheckoutCouponMsg({
+        type: 'success',
+        text: `¡Cupón ${SINGLE_COUPON_CODE} de $${SINGLE_COUPON_VALUE.toLocaleString('es-CO')} COP aplicado con éxito!`
+      });
+      setCheckoutCouponInput(SINGLE_COUPON_CODE);
+    } else {
+      setCheckoutCouponMsg({
+        type: 'error',
+        text: `El cupón "${rawCode}" no es válido. El cupón disponible es ${SINGLE_COUPON_CODE} ($30.000 COP).`
+      });
+    }
+  };
+
+  const handleRemoveSingleCoupon = () => {
+    setAppliedRewardCode('');
+    setRewardDiscountAmount(0);
+    setCheckoutCouponInput('');
+    setCheckoutCouponMsg(null);
+  };
 
   // Customer Checkout Verification Prompt State
   const [orderAuthPromptData, setOrderAuthPromptData] = useState<{
@@ -3679,6 +3711,92 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             )}
 
+
+            {/* SECCIÓN DE CUPÓN EN CHECKOUT: 1 solo cupón con valor de $30.000 COP */}
+            <div className="bg-[#0b0e18] border border-gray-800 rounded-2xl p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-base">🎟️</span>
+                  <span className="text-xs font-black uppercase text-white tracking-wider">
+                    Cupón de Descuento ($30.000 COP)
+                  </span>
+                </div>
+                {appliedRewardCode ? (
+                  <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                    Activo (-$30.000)
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-gray-400">
+                    1 cupón disponible
+                  </span>
+                )}
+              </div>
+
+              {appliedRewardCode ? (
+                <div className="bg-emerald-950/20 border border-emerald-500/30 p-2.5 rounded-xl flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Check className="w-4 h-4 text-emerald-400 shrink-0 stroke-[3]" />
+                    <div className="truncate">
+                      <span className="text-xs font-black text-white font-mono block truncate">
+                        {appliedRewardCode}
+                      </span>
+                      <span className="text-[10px] text-emerald-300 font-semibold block">
+                        Descuento de $30.000 COP aplicado a tu compra
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRemoveSingleCoupon}
+                    className="text-[10px] font-bold text-red-400 hover:text-red-300 bg-red-950/30 hover:bg-red-950/50 border border-red-900/40 px-2.5 py-1 rounded-lg transition shrink-0 cursor-pointer"
+                  >
+                    Quitar
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        value={checkoutCouponInput}
+                        onChange={(e) => {
+                          setCheckoutCouponInput(e.target.value);
+                          if (checkoutCouponMsg) setCheckoutCouponMsg(null);
+                        }}
+                        placeholder="Código: RYYCO30K"
+                        className="w-full h-10 bg-gray-900 border border-gray-800 focus:border-[#D62839] px-3 rounded-xl text-xs font-mono font-bold uppercase text-white placeholder-gray-500 outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplySingleCoupon(checkoutCouponInput || SINGLE_COUPON_CODE)}
+                      className="h-10 px-4 bg-[#D62839] hover:bg-[#b81d2c] text-white font-extrabold text-xs rounded-xl transition active:scale-[0.98] shrink-0 cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <span>Aplicar $30.000</span>
+                    </button>
+                  </div>
+
+                  {checkoutCouponMsg && (
+                    <p className={`text-[10.5px] font-bold ${checkoutCouponMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {checkoutCouponMsg.text}
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between text-[10.5px] text-gray-400 bg-gray-900/50 px-2.5 py-1.5 rounded-lg border border-gray-800/60">
+                    <span>Cupón de $30.000 COP disponible:</span>
+                    <button
+                      type="button"
+                      onClick={() => handleApplySingleCoupon(SINGLE_COUPON_CODE)}
+                      className="font-mono font-extrabold text-[#D62839] hover:underline cursor-pointer"
+                      title="Clic para aplicar cupón directamente"
+                    >
+                      RYYCO30K ($30.000)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Total final */}
             <div className="border-t border-gray-900 pt-4 space-y-2">
