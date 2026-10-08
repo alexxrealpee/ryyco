@@ -1755,17 +1755,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
           {/* Right: Action Buttons (Halloween Theme) */}
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
-            {/* Mis Pedidos Button (Desktop & Tablet) */}
-            <button 
-              id="navbar-my-orders-btn"
-              onClick={() => { setCustomerPortalTab('orders'); setIsCustomerPortalOpen(true); }}
-              className="hidden md:flex px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-[#D62839]/60 text-gray-200 hover:text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-              title="Ver y rastrear el estado de mis pedidos en tiempo real"
-            >
-              <ShoppingBag className="w-3.5 h-3.5 text-[#D62839]" />
-              <span>👻 Mis Pedidos</span>
-            </button>
-
             {/* Mis Puntos Ryycos Button (Desktop & Tablet) */}
             <button 
               id="navbar-my-points-btn"
