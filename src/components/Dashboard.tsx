@@ -153,6 +153,155 @@ export const RESTAURANT_CATEGORIES = [
   '🌱 Vegetariano / saludable',
 ];
 
+export interface DrinkPreset {
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  variantsText: string;
+  imageURL: string;
+  icon: string;
+  type: 'gaseosa' | 'jugo' | 'cerveza' | 'agua' | 'caliente';
+}
+
+export const POPULAR_DRINKS_PRESETS: DrinkPreset[] = [
+  {
+    name: 'Coca-Cola 400ml',
+    description: 'Bebida gaseosa personal bien fría.',
+    price: 4500,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría, Con Hielo',
+    imageURL: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80',
+    icon: '🥤',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Coca-Cola Familiar 1.5L',
+    description: 'Gaseosa tamaño familiar ideal para compartir con tus pedidos.',
+    price: 8500,
+    category: '🥤 Bebidas',
+    variantsText: '1.5 Litros',
+    imageURL: 'https://images.unsplash.com/photo-1629203851122-3726ecdf080e?w=500&auto=format&fit=crop&q=80',
+    icon: '🍾',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Postobón Manzana 400ml',
+    description: 'Refrescante gaseosa colombiana tradicional sabor a manzana.',
+    price: 4000,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría',
+    imageURL: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80',
+    icon: '🍎',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Postobón Colombiana 400ml',
+    description: 'La nuestra, gaseosa tradicional colombiana servida bien helada.',
+    price: 4000,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría',
+    imageURL: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80',
+    icon: '🍊',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Sprite / Quatro 400ml',
+    description: 'Gaseosa cítrica con gas refrescante para acompañar tus platos.',
+    price: 4000,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría',
+    imageURL: 'https://images.unsplash.com/photo-1625772299848-391b6a87d7b3?w=500&auto=format&fit=crop&q=80',
+    icon: '🍋',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Jugo Natural en Agua',
+    description: 'Preparado al instante con fruta fresca natural.',
+    price: 6000,
+    category: '🥤 Bebidas',
+    variantsText: 'Mora, Maracuyá, Mango, Lulo, Fresa',
+    imageURL: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80',
+    icon: '🧃',
+    type: 'jugo'
+  },
+  {
+    name: 'Jugo Natural en Leche',
+    description: 'Delicioso batido cremoso con fruta natural y leche fresca.',
+    price: 7500,
+    category: '🥤 Bebidas',
+    variantsText: 'Mora, Fresa, Guanábana, Mango',
+    imageURL: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=500&auto=format&fit=crop&q=80',
+    icon: '🥛',
+    type: 'jugo'
+  },
+  {
+    name: 'Agua Mineral / Cristal 600ml',
+    description: 'Agua purificada refrescante sin gas o con gas.',
+    price: 3500,
+    category: '🥤 Bebidas',
+    variantsText: 'Sin Gas, Con Gas',
+    imageURL: 'https://images.unsplash.com/photo-1548839140-29a749e1bc4e?w=500&auto=format&fit=crop&q=80',
+    icon: '💧',
+    type: 'agua'
+  },
+  {
+    name: 'Cerveza Club Colombia Dorada',
+    description: 'Cerveza premium nacional 330ml bien fría.',
+    price: 7000,
+    category: '🥤 Bebidas',
+    variantsText: '330ml Helada',
+    imageURL: 'https://images.unsplash.com/photo-1608270546103-ac687427182f?w=500&auto=format&fit=crop&q=80',
+    icon: '🍺',
+    type: 'cerveza'
+  },
+  {
+    name: 'Cerveza Corona Extra 355ml',
+    description: 'Cerveza importada servida bien helada con limón.',
+    price: 9000,
+    category: '🥤 Bebidas',
+    variantsText: 'Con Limón, Sin Limón',
+    imageURL: 'https://images.unsplash.com/photo-1584225064785-c62a8b43d148?w=500&auto=format&fit=crop&q=80',
+    icon: '🍺',
+    type: 'cerveza'
+  },
+  {
+    name: 'Café / Capuchino Caliente',
+    description: 'Café colombiano recién filtrado de alta calidad.',
+    price: 3500,
+    category: '🥤 Bebidas',
+    variantsText: 'Tinto, Americano, Con Leche',
+    imageURL: 'https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=500&auto=format&fit=crop&q=80',
+    icon: '☕',
+    type: 'caliente'
+  }
+];
+
+export const isDrinkItem = (p: ProductItem): boolean => {
+  const cat = (p.category || '').toLowerCase();
+  const name = (p.name || '').toLowerCase();
+  return (
+    cat.includes('bebida') ||
+    cat.includes('gaseosa') ||
+    cat.includes('jugo') ||
+    cat.includes('cerveza') ||
+    cat.includes('licor') ||
+    cat.includes('agua') ||
+    cat.includes('refresco') ||
+    cat.includes('café') ||
+    cat.includes('cafe') ||
+    name.includes('coca-cola') ||
+    name.includes('postobon') ||
+    name.includes('postobón') ||
+    name.includes('pepsi') ||
+    name.includes('sprite') ||
+    name.includes('quatro') ||
+    name.includes('jugo ') ||
+    name.includes('cerveza ') ||
+    name.includes('agua ')
+  );
+};
+
 // Custom Tiktok Icon component to match lucide-react styling
 const Tiktok = ({ className = "w-4 h-4", ...props }: React.SVGProps<SVGSVGElement>) => (
   <svg
@@ -250,7 +399,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'drinks' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank'>('overview');
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -302,6 +451,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] = useState('all');
   const [productStatusFilter, setProductStatusFilter] = useState('all'); // 'all', 'public', 'hidden'
+  const [productSectionFilter, setProductSectionFilter] = useState<'all' | 'food' | 'drinks'>('all');
+  const [drinkSearch, setDrinkSearch] = useState('');
+  const [drinkCategoryFilter, setDrinkCategoryFilter] = useState<'all' | 'gaseosa' | 'jugo' | 'cerveza' | 'agua' | 'caliente'>('all');
+  const [drinkStatusFilter, setDrinkStatusFilter] = useState<'all' | 'public' | 'hidden'>('all');
+
+  const drinksList = useMemo(() => {
+    return products.filter(isDrinkItem);
+  }, [products]);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
@@ -1069,6 +1226,63 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setIsAddingProd(true);
   };
 
+  // Open Add Drink Form (Pre-filled with beverage category and drink helpers)
+  const triggerAddDrinkForm = (overrideProfile?: UserProfile, preset?: DrinkPreset) => {
+    const currentProf = overrideProfile || profile;
+    const currentWhatsApp = (currentProf.ownerWhatsapp || currentProf.whatsapp || currentProf.phone || '').replace(/\D/g, '');
+    
+    // Condition: Seller cannot create products until Owner WhatsApp is configured
+    if (!currentWhatsApp || currentWhatsApp.length < 7) {
+      setQuickOwnerWhatsAppInput(currentProf.ownerWhatsapp || currentProf.whatsapp || currentProf.phone || '');
+      setQuickCustomerServiceWhatsAppInput(currentProf.customerServiceWhatsapp || '');
+      setQuickWhatsAppError('');
+      setIsWhatsAppRequiredModalOpen(true);
+      return;
+    }
+
+    const userPlan = currentProf.subscriptionPlan || currentProf.plan || 'basico';
+    const limit = getPlanProductLimit(userPlan);
+    if (products.length >= limit) {
+      if (currentProf.subscriptionStatus === 'under_review' && currentProf.requestedPlan) {
+        const reqPlanName = currentProf.requestedPlan === 'medio' ? 'Plan Medio (12 productos)' : 'Plan Avanzado (24 productos)';
+        alert(`¡Límite de productos alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${limit} productos).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo de productos.`);
+      } else {
+        alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${limit} productos.\n\nPara pasar al Plan Medio (hasta 12 productos), ingresa a "Suscripción y Pagos", realiza la transferencia y envía tu comprobante de pago para que el Administrador lo apruebe.`);
+      }
+      setActiveTab('subscription');
+      return;
+    }
+
+    setEditingProd(null);
+    setProdName(preset?.name || '');
+    setProdDesc(preset?.description || 'Bebida fría y refrescante para acompañar tus platos favoritos.');
+    setProdPrice(preset?.price ? preset.price.toString() : '');
+    setProdComparePrice('');
+    setProdImage(preset?.imageURL || '');
+    setProdImageFileName('');
+    setProdCategory(preset?.category || '🥤 Bebidas');
+    setProdStock('25');
+    setProdVariants(preset?.variantsText || '');
+    setProdVariantPrices({});
+    setProdAllowsHalfAndHalf(false);
+    setProdFlavorsText('');
+    setProdAllowSingleFlavor(true);
+    setProdActive(true);
+    setIsAddingProd(true);
+  };
+
+  // Toggle active status for drinks or products
+  const handleToggleProductActive = async (prod: ProductItem) => {
+    try {
+      const updated = { ...prod, active: !prod.active };
+      await saveProduct(updated);
+      setProducts(prev => prev.map(p => p.id === prod.id ? updated : p));
+    } catch (e) {
+      console.error(e);
+      alert("Error al actualizar la disponibilidad del artículo.");
+    }
+  };
+
   // Open Edit Form
   const triggerEditProductForm = (prod: ProductItem) => {
     setEditingProd(prod);
@@ -1804,13 +2018,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
           <button
             type="button"
             onClick={() => setIsAdminVoiceAssistantOpen(true)}
-            className="w-auto md:w-full text-start py-2 px-2 md:px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shrink-0 transition bg-gradient-to-r from-indigo-950/70 via-purple-950/40 to-indigo-900/30 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-400/60 shadow-sm"
+            className="w-auto md:w-full text-start py-2 px-2 md:px-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 shrink-0 transition bg-gray-900 text-gray-300 hover:text-white border border-gray-800 hover:border-gray-700"
           >
             <span className="flex items-center gap-2">
-              <Bot className="w-4 h-4 text-indigo-400" />
+              <Bot className="w-4 h-4 text-[#D62839]" />
               <span>Asesor IA Empresarial</span>
             </span>
-            <span className="text-[9px] bg-indigo-500/30 text-indigo-200 px-1.5 py-0.5 rounded-full font-extrabold uppercase">
+            <span className="text-[9px] bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-full font-extrabold uppercase">
               IA
             </span>
           </button>
@@ -1820,7 +2034,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             onClick={() => setActiveTab('products')}
             className={`w-auto md:w-full text-start py-1.5 md:py-3 px-2 md:px-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 shrink-0 transition ${
               activeTab === 'products' 
-                ? 'bg-emerald-400/10 text-emerald-400 border border-emerald-500/10' 
+                ? 'bg-[#D62839] text-white shadow-sm' 
                 : 'text-gray-400 hover:text-white hover:bg-gray-900 border border-transparent'
             }`}
           >
@@ -1828,8 +2042,31 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <Package className="w-4 h-4" />
               Gestor de Productos
             </span>
-            <span className="text-[10px] bg-gray-900 text-gray-400 px-1.5 py-0.5 rounded-full font-bold shrink-0">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+              activeTab === 'products' ? 'bg-black/30 text-white' : 'bg-gray-900 text-gray-400'
+            }`}>
               {products.length}
+            </span>
+          </button>
+
+          {/* Gestor de Bebidas */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('drinks')}
+            className={`w-auto md:w-full text-start py-1.5 md:py-3 px-2 md:px-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 shrink-0 transition ${
+              activeTab === 'drinks' 
+                ? 'bg-[#D62839] text-white shadow-sm' 
+                : 'text-gray-400 hover:text-white hover:bg-gray-900 border border-transparent'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-sm">🥤</span>
+              <span>Gestor de Bebidas</span>
+            </span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+              activeTab === 'drinks' ? 'bg-black/30 text-white' : 'bg-gray-900 text-gray-400'
+            }`}>
+              {drinksList.length}
             </span>
           </button>
 
@@ -2298,20 +2535,78 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           Agrega, edita o elimina mercancías de tu tienda en tiempo real.
                         </p>
                       </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => triggerAddDrinkForm()}
+                          className="bg-[#D62839] hover:bg-[#b81d2c] text-white font-extrabold text-xs py-2.5 px-4 rounded-xl flex items-center gap-1.5 self-start transition active:scale-[0.98] cursor-pointer"
+                          title="Añadir gaseosa, jugo, cerveza o bebida al menú"
+                        >
+                          <span className="text-sm">🥤</span>
+                          <span>+ Nueva Bebida</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => triggerAddProductForm()}
+                          className="bg-gray-800 hover:bg-gray-750 text-white font-extrabold text-xs py-2.5 px-4.5 rounded-xl flex items-center gap-1.5 self-start transition active:scale-[0.98] cursor-pointer border border-gray-700"
+                        >
+                          <Plus className="w-4 h-4 text-white stroke-[3]" />
+                          <span>Nuevo Producto</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Selector de sub-sección: Todos vs Platos vs Bebidas */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-gray-950 border border-gray-900 p-3 rounded-2xl">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setProductSectionFilter('all')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            productSectionFilter === 'all'
+                              ? 'bg-gray-850 text-white'
+                              : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                          }`}
+                        >
+                          <span>🍽️ Todos ({products.length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProductSectionFilter('food')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            productSectionFilter === 'food'
+                              ? 'bg-gray-850 text-white'
+                              : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                          }`}
+                        >
+                          <span>🍔 Platos y Comidas ({products.filter(p => !isDrinkItem(p)).length})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProductSectionFilter('drinks')}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                            productSectionFilter === 'drinks'
+                              ? 'bg-[#D62839] text-white'
+                              : 'text-gray-400 hover:text-white hover:bg-gray-900'
+                          }`}
+                        >
+                          <span>🥤 Bebidas ({drinksList.length})</span>
+                        </button>
+                      </div>
+
                       <button
                         type="button"
-                        onClick={() => triggerAddProductForm()}
-                        className="bg-emerald-400 hover:bg-emerald-300 text-black font-extrabold text-xs py-2.5 px-4.5 rounded-xl flex items-center gap-1.5 self-start transition active:scale-[0.98] shadow-lg shadow-emerald-500/10 cursor-pointer"
+                        onClick={() => setActiveTab('drinks')}
+                        className="text-xs text-white bg-[#D62839] hover:bg-[#b81d2c] font-bold flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl transition cursor-pointer"
                       >
-                        <Plus className="w-4 h-4 text-black stroke-[3]" />
-                        Nuevo Producto
+                        <span>🥤 Ir a Sección de Bebidas</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
                     {/* Banner WhatsApp Requirement Warning (Seller cannot create products without WhatsApp) */}
                     {(!profile.whatsapp || profile.whatsapp.replace(/\D/g, '').length < 7) && (
-                      <div className="bg-gradient-to-r from-emerald-950/80 via-gray-900 to-emerald-950/60 border-2 border-emerald-500/60 p-4.5 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xl shadow-emerald-950/50 animate-fade-in relative overflow-hidden">
-                        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                      <div className="bg-gray-950 border-2 border-emerald-500/60 p-4.5 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl animate-fade-in relative overflow-hidden">
                         <div className="flex items-start gap-3.5 relative z-10">
                           <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30 shrink-0 shadow-inner">
                             <MessageCircle className="w-6 h-6 fill-emerald-500/20" />
@@ -2383,10 +2678,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           <div className="flex items-center justify-between border-b border-gray-900 pb-4">
                             <div>
                               <h3 className="font-extrabold text-white text-base flex items-center gap-2">
-                                {editingProd ? '📝 Editar Producto' : '📦 Añadir Nuevo Producto'}
+                                {prodCategory.toLowerCase().includes('bebida') ? (
+                                  editingProd ? '🥤 Editar Bebida' : '🥤 Añadir Nueva Bebida al Menú'
+                                ) : (
+                                  editingProd ? '📝 Editar Producto' : '📦 Añadir Nuevo Producto'
+                                )}
                               </h3>
                               <p className="text-[11px] text-gray-500 font-medium mt-0.5">
-                                {editingProd ? 'Modifica los datos y detalles del producto.' : 'Llena la información de tu nuevo artículo para publicarlo.'}
+                                {prodCategory.toLowerCase().includes('bebida')
+                                  ? (editingProd ? 'Modifica el precio, tamaño o disponibilidad de la bebida.' : 'Ingresa el nombre, precio, presentaciones y foto de la bebida.')
+                                  : (editingProd ? 'Modifica los datos y detalles del producto.' : 'Llena la información de tu nuevo artículo para publicarlo.')
+                                }
                               </p>
                             </div>
                             <button
@@ -2400,13 +2702,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                           <div className="grid md:grid-cols-2 gap-4">
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Nombre del producto</label>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                                {prodCategory.toLowerCase().includes('bebida') ? 'Nombre de la bebida' : 'Nombre del producto'}
+                              </label>
                               <input
                                 type="text"
                                 required
                                 value={prodName}
                                 onChange={(e) => setProdName(e.target.value)}
-                                placeholder="Ej: Pizza Especial, Hamburguesa Doble, etc."
+                                placeholder={prodCategory.toLowerCase().includes('bebida') ? "Ej: Coca-Cola 400ml, Jugo Natural de Mora, Cerveza..." : "Ej: Pizza Especial, Hamburguesa Doble, etc."}
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                               />
                             </div>
@@ -2867,19 +3171,19 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             <button
                               type="submit"
                               disabled={isSavingProduct || isCompressingImage}
-                              className="px-6 py-2.5 bg-emerald-400 hover:bg-emerald-300 disabled:opacity-50 text-black font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-500/10 transition active:scale-[0.98] cursor-pointer flex items-center gap-2"
+                              className="px-6 py-2.5 bg-[#D62839] hover:bg-[#b81d2c] disabled:opacity-50 text-white font-extrabold text-xs rounded-xl transition active:scale-[0.98] cursor-pointer flex items-center gap-2"
                             >
                               {isSavingProduct ? (
                                 <>
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
                                   Guardando...
                                 </>
                               ) : isCompressingImage ? (
                                 'Comprimiendo Imagen...'
                               ) : editingProd ? (
-                                'Actualizar Producto'
+                                prodCategory.toLowerCase().includes('bebida') ? 'Actualizar Bebida' : 'Actualizar Producto'
                               ) : (
-                                'Guardar Producto'
+                                prodCategory.toLowerCase().includes('bebida') ? 'Guardar Bebida' : 'Guardar Producto'
                               )}
                             </button>
                           </div>
@@ -2995,7 +3299,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               (productStatusFilter === 'public' && prod.active) ||
                               (productStatusFilter === 'hidden' && !prod.active);
                             
-                            return matchesSearch && matchesCategory && matchesStatus;
+                            const matchesSection = productSectionFilter === 'all' ||
+                              (productSectionFilter === 'food' && !isDrinkItem(prod)) ||
+                              (productSectionFilter === 'drinks' && isDrinkItem(prod));
+                            
+                            return matchesSearch && matchesCategory && matchesStatus && matchesSection;
                           });
 
                           const dedupedFiltered = deduplicateProducts(filtered);
@@ -3130,6 +3438,361 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         })()}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* 2.5 SECCIÓN DE BEBIDAS EXCLUSIVA PARA EL RESTAURANTE */}
+                {activeTab === 'drinks' && (
+                  <div className="space-y-6 animate-fade-in">
+                    {/* Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-900 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-2xl">🥤</span>
+                          <h2 className="text-xl font-black text-white tracking-tight">
+                            Gestor y Catálogo de Bebidas
+                          </h2>
+                          <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-950/40 text-red-300 border border-red-800/40">
+                            {drinksList.length} registradas
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-400 font-medium mt-1">
+                          Agrega gaseosas, jugos naturales, cervezas, aguas y bebidas para que tus clientes las añadan a sus pedidos.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => triggerAddDrinkForm()}
+                          className="bg-[#D62839] hover:bg-[#b81d2c] text-white font-extrabold text-xs py-2.5 px-4 rounded-xl flex items-center gap-2 transition active:scale-[0.98] cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4 text-white stroke-[3]" />
+                          <span>+ Nueva Bebida</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('products')}
+                          className="bg-gray-900 hover:bg-gray-850 text-gray-300 font-bold text-xs py-2.5 px-3.5 rounded-xl flex items-center gap-1.5 transition border border-gray-800 cursor-pointer"
+                        >
+                          <Package className="w-4 h-4 text-gray-300" />
+                          <span>Ver Catálogo General</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Banner WhatsApp Requirement Warning */}
+                    {(!profile.whatsapp || profile.whatsapp.replace(/\D/g, '').length < 7) && (
+                      <div className="bg-gray-950 border-2 border-emerald-500/60 p-4.5 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl animate-fade-in">
+                        <div className="flex items-start gap-3.5">
+                          <div className="p-3 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30 shrink-0">
+                            <MessageCircle className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-extrabold text-white">
+                              WhatsApp Obligatorio para Publicar Bebidas
+                            </h4>
+                            <p className="text-xs text-gray-300 mt-0.5">
+                              Configura tu número de WhatsApp para que los clientes te hagan sus pedidos de bebidas y comidas.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuickOwnerWhatsAppInput(profile.ownerWhatsapp || profile.whatsapp || profile.phone || '');
+                            setQuickCustomerServiceWhatsAppInput(profile.customerServiceWhatsapp || '');
+                            setQuickWhatsAppError('');
+                            setIsWhatsAppRequiredModalOpen(true);
+                          }}
+                          className="px-5 py-2.5 bg-[#D62839] hover:bg-[#b81d2c] text-white font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shrink-0 flex items-center gap-2 cursor-pointer"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>Agregar WhatsApp</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Presets de Bebidas Populares (Carga Rápida en 1 clic) */}
+                    <div className="bg-gray-950 border border-gray-850 p-4 sm:p-5 rounded-3xl space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">⚡</span>
+                          <div>
+                            <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                              Bebidas Populares (Agregar en 1 clic)
+                            </h3>
+                            <p className="text-[11px] text-gray-400">
+                              Toca cualquier bebida para agregarla con precio y foto lista a tu tienda.
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-red-400 bg-red-950/60 border border-red-500/30 px-2 py-0.5 rounded-full hidden sm:inline">
+                          Fácil y Rápido
+                        </span>
+                      </div>
+
+                      {/* Presets Horizontal Scrollable Carousel */}
+                      <div className="flex items-center gap-2.5 overflow-x-auto pb-2 pt-1 scrollbar-thin scrollbar-thumb-gray-800">
+                        {POPULAR_DRINKS_PRESETS.map((preset, idx) => (
+                          <div
+                            key={idx}
+                            onClick={() => triggerAddDrinkForm(undefined, preset)}
+                            className="bg-gray-900 hover:bg-gray-850 border border-gray-800 hover:border-red-500/40 p-2.5 sm:p-3 rounded-2xl flex items-center gap-2.5 shrink-0 transition-all cursor-pointer group hover:scale-[1.02] shadow-sm active:scale-95 min-w-[200px] sm:min-w-[220px]"
+                            title={`Añadir ${preset.name} a mi tienda`}
+                          >
+                            <div className="w-10 h-10 rounded-xl bg-gray-950 border border-gray-800 overflow-hidden shrink-0 flex items-center justify-center relative">
+                              {preset.imageURL ? (
+                                <img src={preset.imageURL} alt={preset.name} className="w-full h-full object-cover group-hover:scale-110 transition duration-300" referrerPolicy="no-referrer" />
+                              ) : (
+                                <span className="text-lg">{preset.icon}</span>
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h5 className="text-[11px] font-extrabold text-white truncate group-hover:text-red-300 transition-colors">
+                                {preset.name}
+                              </h5>
+                              <div className="flex items-center justify-between gap-1 mt-0.5">
+                                <span className="text-[10px] font-black text-emerald-400 font-mono">
+                                  {formatPrice(preset.price)}
+                                </span>
+                                <span className="text-[9px] font-bold text-white bg-[#D62839] px-2 py-0.5 rounded">
+                                  + Añadir
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Toolbar de Búsqueda y Subfiltros de Bebidas */}
+                    <div className="flex flex-col md:flex-row gap-3 items-center justify-between bg-gray-950 border border-gray-900 p-3.5 rounded-2xl">
+                      {/* Buscador */}
+                      <div className="relative w-full md:max-w-md">
+                        <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none text-gray-500">
+                          <Search className="w-4 h-4" />
+                        </span>
+                        <input
+                          type="text"
+                          value={drinkSearch}
+                          onChange={(e) => setDrinkSearch(e.target.value)}
+                          placeholder="Buscar bebida (ej: Coca-Cola, Jugo de Mora, Cerveza...)"
+                          className="w-full h-10 bg-gray-900 border border-gray-800 focus:border-sky-500 pl-10 pr-10 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-sky-500/20"
+                        />
+                        {drinkSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setDrinkSearch('')}
+                            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-500 hover:text-white transition"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Sub-filtros por tipo y disponibilidad */}
+                      <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                        <select
+                          value={drinkCategoryFilter}
+                          onChange={(e) => setDrinkCategoryFilter(e.target.value as any)}
+                          className="bg-gray-900 border border-gray-800 text-white text-xs font-bold px-3 py-2 rounded-xl outline-none cursor-pointer"
+                        >
+                          <option value="all" className="bg-gray-950">Todas las Bebidas</option>
+                          <option value="gaseosa" className="bg-gray-950">🥤 Gaseosas & Refrescos</option>
+                          <option value="jugo" className="bg-gray-950">🧃 Jugos Naturales</option>
+                          <option value="cerveza" className="bg-gray-950">🍺 Cervezas & Licores</option>
+                          <option value="agua" className="bg-gray-950">💧 Aguas Minerales</option>
+                          <option value="caliente" className="bg-gray-950">☕ Cafés & Calientes</option>
+                        </select>
+
+                        <select
+                          value={drinkStatusFilter}
+                          onChange={(e) => setDrinkStatusFilter(e.target.value as any)}
+                          className="bg-gray-900 border border-gray-800 text-white text-xs font-bold px-3 py-2 rounded-xl outline-none cursor-pointer"
+                        >
+                          <option value="all" className="bg-gray-950">Todos los Estados</option>
+                          <option value="public" className="bg-gray-950">Disponibles (Públicos)</option>
+                          <option value="hidden" className="bg-gray-950">Agotadas (Pausadas)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Listado de Bebidas */}
+                    {(() => {
+                      const filteredDrinks = drinksList.filter((drink) => {
+                        const name = (drink.name || '').toLowerCase();
+                        const desc = (drink.description || '').toLowerCase();
+                        const cat = (drink.category || '').toLowerCase();
+                        const searchLower = drinkSearch.toLowerCase();
+                        
+                        const matchesSearch = name.includes(searchLower) || desc.includes(searchLower) || cat.includes(searchLower);
+                        
+                        let matchesCategory = true;
+                        if (drinkCategoryFilter === 'gaseosa') {
+                          matchesCategory = name.includes('coca') || name.includes('postob') || name.includes('sprite') || name.includes('pepsi') || name.includes('gaseosa') || name.includes('quatro') || cat.includes('gaseosa');
+                        } else if (drinkCategoryFilter === 'jugo') {
+                          matchesCategory = name.includes('jugo') || desc.includes('jugo') || cat.includes('jugo');
+                        } else if (drinkCategoryFilter === 'cerveza') {
+                          matchesCategory = name.includes('cerveza') || name.includes('corona') || name.includes('club') || name.includes('licor') || cat.includes('cerveza') || cat.includes('licor');
+                        } else if (drinkCategoryFilter === 'agua') {
+                          matchesCategory = name.includes('agua') || desc.includes('agua') || cat.includes('agua');
+                        } else if (drinkCategoryFilter === 'caliente') {
+                          matchesCategory = name.includes('café') || name.includes('cafe') || name.includes('capuchino') || cat.includes('caliente');
+                        }
+
+                        let matchesStatus = true;
+                        if (drinkStatusFilter === 'public') matchesStatus = drink.active;
+                        if (drinkStatusFilter === 'hidden') matchesStatus = !drink.active;
+
+                        return matchesSearch && matchesCategory && matchesStatus;
+                      });
+
+                      if (drinksList.length === 0) {
+                        return (
+                          <div className="bg-gray-950 border border-gray-900 rounded-3xl p-10 sm:p-12 text-center text-gray-500 space-y-4">
+                            <div className="w-16 h-16 rounded-2xl bg-gray-900 border border-gray-800 flex items-center justify-center mx-auto text-3xl">
+                              🥤
+                            </div>
+                            <div>
+                              <h3 className="font-extrabold text-white text-base mb-1">Tu menú de bebidas está listo</h3>
+                              <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+                                Aumenta el ticket promedio de tus pedidos agregando gaseosas frías, jugos naturales, cervezas y aguas. Los clientes adoran acompañar sus comidas con bebidas.
+                              </p>
+                            </div>
+                            <div className="flex items-center justify-center gap-3 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => triggerAddDrinkForm()}
+                                className="bg-[#D62839] hover:bg-[#b81d2c] text-white font-extrabold text-xs py-3 px-6 rounded-xl transition active:scale-[0.98] cursor-pointer inline-flex items-center gap-2"
+                              >
+                                <Plus className="w-4 h-4 text-white stroke-[3]" />
+                                <span>Crear mi Primera Bebida</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      if (filteredDrinks.length === 0) {
+                        return (
+                          <div className="bg-gray-950 border border-gray-900 rounded-3xl p-12 text-center text-gray-500">
+                            <Search className="w-10 h-10 mb-3 mx-auto opacity-30 text-gray-400" />
+                            <h3 className="font-extrabold text-white text-sm mb-1">No se encontraron bebidas</h3>
+                            <p className="text-xs text-gray-500 max-w-sm mx-auto mb-4">No hay bebidas que coincidan con la búsqueda o filtros aplicados.</p>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDrinkSearch('');
+                                setDrinkCategoryFilter('all');
+                                setDrinkStatusFilter('all');
+                              }}
+                              className="bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800 font-bold text-xs py-2 px-4 rounded-xl transition cursor-pointer"
+                            >
+                              Limpiar Filtros
+                            </button>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {filteredDrinks.map((drink) => (
+                            <div
+                              key={drink.id}
+                              style={{ opacity: drink.active ? 1 : 0.5 }}
+                              className="bg-gray-950 border border-gray-900 hover:border-gray-750 rounded-2xl overflow-hidden p-4 flex flex-col justify-between transition-all group"
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-2.5 mb-3">
+                                  <span className="bg-gray-900 border border-gray-800 text-gray-300 font-extrabold tracking-wide uppercase text-[8.5px] px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                    <span>🥤</span>
+                                    <span>{drink.category || 'Bebidas'}</span>
+                                  </span>
+
+                                  {/* Quick Availability Switch */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleProductActive(drink)}
+                                    className={`flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border transition cursor-pointer ${
+                                      drink.active
+                                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+                                        : 'bg-gray-900 text-gray-500 border-gray-800 hover:text-white'
+                                    }`}
+                                    title={drink.active ? 'Clic para pausar esta bebida' : 'Clic para activar en tu tienda'}
+                                  >
+                                    <span className={`w-1.5 h-1.5 rounded-full ${drink.active ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                                    <span>{drink.active ? 'Disponible' : 'Agotada'}</span>
+                                  </button>
+                                </div>
+
+                                <div className="flex gap-3 mb-3">
+                                  <div className="w-16 h-16 rounded-xl bg-gray-900 border border-gray-850 shrink-0 flex items-center justify-center text-2xl font-bold overflow-hidden relative">
+                                    {drink.imageURL ? (
+                                      <img
+                                        src={drink.imageURL}
+                                        alt={drink.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      <span>🥤</span>
+                                    )}
+                                  </div>
+                                  <div className="overflow-hidden flex-1 min-w-0">
+                                    <h4 className="font-extrabold text-white text-xs md:text-sm truncate" title={drink.name}>
+                                      {drink.name}
+                                    </h4>
+                                    <p className="text-[10.5px] text-gray-400 leading-relaxed font-semibold line-clamp-2 h-8 mt-0.5">
+                                      {drink.description || 'Bebida fría refrescante.'}
+                                    </p>
+                                    {drink.variantsText && (
+                                      <span className="text-[9px] text-sky-400 font-bold block truncate mt-0.5">
+                                        Tamaños: {drink.variantsText}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Price */}
+                                <div className="flex items-center gap-2 border-t border-gray-900 pt-3 mb-2">
+                                  <span className="text-sm font-extrabold text-emerald-400 font-mono">
+                                    {formatPrice(drink.price)}
+                                  </span>
+                                  {drink.compareAtPrice && (
+                                    <span className="text-[10px] text-gray-500 line-through font-bold">
+                                      {formatPrice(drink.compareAtPrice)}
+                                    </span>
+                                  )}
+                                  <span className="text-[9.5px] text-gray-500 ml-auto font-medium">
+                                    Stock: {drink.stock} u.
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Card Actions */}
+                              <div className="flex gap-1.5 border-t border-gray-900 pt-3">
+                                <button
+                                  type="button"
+                                  onClick={() => triggerEditProductForm(drink)}
+                                  className="flex-1 py-1 px-2.5 bg-gray-900 hover:bg-gray-850 rounded-lg text-[10px] font-black uppercase text-gray-300 hover:text-white transition flex items-center justify-center gap-1"
+                                >
+                                  <span>Editar</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteProduct(drink.id)}
+                                  className="p-1 px-2 bg-red-950/20 hover:bg-red-900/40 border border-red-900/30 text-red-400 rounded-lg text-[10px] transition"
+                                  title="Eliminar bebida"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
