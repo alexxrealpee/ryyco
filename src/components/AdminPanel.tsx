@@ -42,10 +42,7 @@ import OrderTimeTimeline from './OrderTimeTimeline';
 import { getActiveOrderElapsed, applyOrderTimeTransition } from '../lib/orderTimeTracking';
 import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile } from '../types';
-import { 
-  subscribeToActiveDrivers, 
-  notifyActiveDriversViaServer 
-} from '../lib/whatsappDriverNotifications';
+import { subscribeToActiveDrivers } from '../lib/whatsappDriverNotifications';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import { 
   Users, 
@@ -670,12 +667,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     // Dispatch full FCM & Web Push notification with ServiceWorker, vibration, audio chime & backend broadcast
     triggerAdminOrderPush(order, storeName);
 
-    // Notify backend and active delivery drivers via WhatsApp notification pipeline
-    const isDeliveryOrder = order.orderType !== 'table' && order.orderType !== 'pickup' && !checkIsTableOrder(order) && !checkIsPickupOrder(order);
-    if (isDeliveryOrder && currentActiveDrivers.length > 0) {
-      notifyActiveDriversViaServer(order, currentActiveDrivers, storeName).catch(() => {});
-    }
-
     setNewIncomingOrderAlert({
       id: order.id,
       orderNumber: order.orderNumber,
@@ -684,6 +675,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       totalAmount: order.totalAmount || 0,
       orderObj: order
     });
+
+    const isDeliveryOrder = order.orderType !== 'table' && order.orderType !== 'pickup' && !checkIsTableOrder(order) && !checkIsPickupOrder(order);
 
     // If auto-open is enabled in settings, open WhatsApp drivers dispatch modal right away
     if (currentSystemSettings?.autoNotifyActiveDriversWhatsApp && isDeliveryOrder) {

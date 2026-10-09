@@ -32,8 +32,7 @@ import { DriverProfile, OrderItem, SystemSettings } from '../types';
 import { 
   buildDriverOrderWhatsAppMessage, 
   buildDriverWhatsAppUrl, 
-  formatPhoneDisplay,
-  notifyActiveDriversViaServer
+  formatPhoneDisplay
 } from '../lib/whatsappDriverNotifications';
 
 interface AdminWhatsAppDriversModalProps {
@@ -95,16 +94,12 @@ export default function AdminWhatsAppDriversModal({
     window.open(url, '_blank');
     
     setNotifiedDriversMap(prev => ({ ...prev, [driver.id]: true }));
-    notifyActiveDriversViaServer(order, [driver], storeName);
   };
 
   const handleSendAllSequential = async () => {
     if (displayedDrivers.length === 0) return;
     setIsDispatchingAll(true);
     setDispatchProgress({ current: 0, total: displayedDrivers.length });
-
-    // Notify backend
-    notifyActiveDriversViaServer(order, displayedDrivers, storeName);
 
     for (let i = 0; i < displayedDrivers.length; i++) {
       const driver = displayedDrivers[i];

@@ -27,10 +27,6 @@ import {
   fetchBackendSystemSettings,
   fetchBackendUserProfile
 } from './server/catalogManager';
-import { 
-  dispatchOrderWhatsAppNotifications, 
-  WhatsAppOrderPayload 
-} from './server/whatsappNotifier';
 
 // Load environmental variables
 dotenv.config();
@@ -860,51 +856,6 @@ Formatos válidos para:
     } catch (err: any) {
       console.error('[FCM-SERVER] Error in broadcast-to-seller:', err);
       res.status(500).json({ error: err.message || 'Internal server error' });
-    }
-  });
-
-  // API Route: Unified WhatsApp notification for Restaurants & Available Delivery Drivers
-  app.post('/api/whatsapp/notify-order', async (req, res) => {
-    try {
-      const payload: WhatsAppOrderPayload = req.body || {};
-      const result = await dispatchOrderWhatsAppNotifications(payload);
-      res.json(result);
-    } catch (err: any) {
-      console.error('[WHATSAPP-NOTIFY-ORDER] Error dispatching WhatsApp notifications:', err);
-      res.status(500).json({ error: err.message || 'Error sending WhatsApp notifications' });
-    }
-  });
-
-  // API Route: WhatsApp notification dispatcher for active delivery drivers
-  app.post('/api/whatsapp/notify-active-drivers', async (req, res) => {
-    try {
-      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, totalAmount, activeDrivers } = req.body || {};
-      const driversList = Array.isArray(activeDrivers) ? activeDrivers : [];
-      console.log(`[WHATSAPP-DISPATCH] 🛵 Notificación WhatsApp de Nuevo Pedido #${orderNumber || 'S/N'} ("${storeName || 'Tienda'}") para ${driversList.length} domiciliarios activos`);
-
-      const result = await dispatchOrderWhatsAppNotifications({
-        orderId,
-        orderNumber,
-        store: { storeName },
-        customerAddress,
-        deliveryCost,
-        totalAmount,
-        activeDrivers: driversList
-      });
-
-      res.json({
-        status: 'ok',
-        orderId,
-        orderNumber,
-        activeDriversCount: driversList.length,
-        deliveredCount: result.activeDriversDeliveredCount,
-        message: `Aviso WhatsApp transmitido para ${result.activeDriversDeliveredCount} domiciliarios activos`,
-        driversWhatsAppUrls: result.driversWhatsAppUrls,
-        timestamp: new Date().toISOString()
-      });
-    } catch (err: any) {
-      console.error('[WHATSAPP-DISPATCH] Error notifying active drivers:', err);
-      res.status(500).json({ error: err.message || 'Error processing WhatsApp dispatch' });
     }
   });
 
