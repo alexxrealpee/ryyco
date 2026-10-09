@@ -420,13 +420,13 @@ export default function CustomerOrderAuthPromptModal({
               </div>
             )}
 
-            {/* Quick Google 1-Click Button */}
-            <div>
+            {/* Quick Google 1-Click Button with generous top and bottom spacing */}
+            <div className="py-6 sm:py-7">
               <button
                 type="button"
                 onClick={handleGoogleSignIn}
                 disabled={isGoogleLoading || isSubmitting}
-                className="w-full h-11 bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs rounded-xl flex items-center justify-center gap-2.5 transition active:scale-[0.98] shadow-md cursor-pointer disabled:opacity-60"
+                className="w-full h-11 sm:h-12 bg-white hover:bg-gray-100 text-gray-900 font-bold text-xs sm:text-sm rounded-xl flex items-center justify-center gap-2.5 transition active:scale-[0.98] shadow-md cursor-pointer disabled:opacity-60"
               >
                 {isGoogleLoading ? (
                   <>
@@ -442,14 +442,6 @@ export default function CustomerOrderAuthPromptModal({
                   </>
                 )}
               </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="h-px bg-[#232B3A] flex-1" />
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
-                O confirma directo
-              </span>
-              <div className="h-px bg-[#232B3A] flex-1" />
             </div>
 
             {/* Direct Confirmation Form */}
