@@ -61,37 +61,48 @@ if (empty($envOpenAIKey) || empty($envGoogleMapsKey)) {
     }
 }
 
-// Optionally load from a local uncommitted .env file on Hostinger
-if (!$envOpenAIKey || !$envGoogleMapsKey) {
-    $potentialPaths = array_filter([
-        __DIR__ . '/../../.env',
-        __DIR__ . '/../.env',
-        __DIR__ . '/.env',
-        (isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . '/.env' : null),
-        (isset($_SERVER['DOCUMENT_ROOT']) ? dirname(rtrim($_SERVER['DOCUMENT_ROOT'], '/\\')) . '/.env' : null),
-        getcwd() . '/.env'
-    ]);
+// Optionally load from local .env files across all possible Hostinger directories
+if (empty($envOpenAIKey) || empty($envGoogleMapsKey) || empty($envFCMServerKey)) {
+    $searchDirs = [
+        __DIR__,
+        dirname(__DIR__),
+        dirname(dirname(__DIR__)),
+        dirname(dirname(dirname(__DIR__))),
+        dirname(dirname(dirname(dirname(__DIR__)))),
+        isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') : null,
+        isset($_SERVER['DOCUMENT_ROOT']) ? dirname(rtrim($_SERVER['DOCUMENT_ROOT'], '/\\')) : null,
+        isset($_SERVER['DOCUMENT_ROOT']) ? dirname(dirname(rtrim($_SERVER['DOCUMENT_ROOT'], '/\\'))) : null,
+        getcwd()
+    ];
 
-    foreach ($potentialPaths as $envFilePath) {
-        if ($envFilePath && file_exists($envFilePath) && is_readable($envFilePath)) {
-            $lines = @file($envFilePath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-            if ($lines) {
-                foreach ($lines as $line) {
-                    $trimmed = trim($line);
-                    if (strpos($trimmed, '#') === 0) continue;
-                    if (!$envOpenAIKey && strpos($trimmed, 'OPENAI_API_KEY=') === 0) {
-                        $val = trim(substr($trimmed, strlen('OPENAI_API_KEY=')));
-                        $val = trim($val, '"\'');
-                        if (!empty($val)) {
-                            $envOpenAIKey = $val;
-                        }
-                    }
-                    if (!$envGoogleMapsKey && (strpos($trimmed, 'GOOGLE_MAPS_API_KEY=') === 0 || strpos($trimmed, 'VITE_GOOGLE_MAPS_API_KEY=') === 0)) {
-                        $prefix = strpos($trimmed, 'GOOGLE_MAPS_API_KEY=') === 0 ? 'GOOGLE_MAPS_API_KEY=' : 'VITE_GOOGLE_MAPS_API_KEY=';
-                        $val = trim(substr($trimmed, strlen($prefix)));
-                        $val = trim($val, '"\'');
-                        if (!empty($val)) {
-                            $envGoogleMapsKey = $val;
+    $fileNames = ['.env', '.env.local', '.env.production'];
+    $checkedFiles = [];
+
+    foreach ($searchDirs as $dir) {
+        if (!$dir || !is_dir($dir)) continue;
+        foreach ($fileNames as $fn) {
+            $path = rtrim($dir, '/\\') . '/' . $fn;
+            if (isset($checkedFiles[$path])) continue;
+            $checkedFiles[$path] = true;
+
+            if (file_exists($path) && is_readable($path)) {
+                $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                if ($lines) {
+                    foreach ($lines as $line) {
+                        $trimmed = trim($line);
+                        if (empty($trimmed) || strpos($trimmed, '#') === 0) continue;
+                        if (preg_match('/^\s*(?:export\s+)?([A-Za-z0-9_]+)\s*=\s*(["\']?)(.*?)\2\s*$/', $trimmed, $matches)) {
+                            $varName = $matches[1];
+                            $varVal = trim($matches[3]);
+                            if (empty($varVal)) continue;
+
+                            if ($varName === 'OPENAI_API_KEY' && empty($envOpenAIKey)) {
+                                $envOpenAIKey = $varVal;
+                            } elseif (($varName === 'VITE_GOOGLE_MAPS_API_KEY' || $varName === 'GOOGLE_MAPS_API_KEY') && empty($envGoogleMapsKey)) {
+                                $envGoogleMapsKey = $varVal;
+                            } elseif ($varName === 'FCM_SERVER_KEY' && empty($envFCMServerKey)) {
+                                $envFCMServerKey = $varVal;
+                            }
                         }
                     }
                 }
