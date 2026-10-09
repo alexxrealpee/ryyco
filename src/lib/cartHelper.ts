@@ -6,6 +6,7 @@
 import { ProductItem } from '../types';
 import { safeGetItem, safeSetItem } from './safeStorage';
 import { getVariantPrice, extractProductVariants } from './variantHelper';
+export { extractProductVariants };
 
 export interface GeneralCartItem {
   id: string; // Composite ID: `${productId}_${variant || 'none'}`
@@ -259,8 +260,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
   // 3. Retrieve current cart
   const currentCart = getStoredCart();
   const actualQty = Math.max(1, Number(quantity) || 1);
-  const productVariants = extractProductVariants(product);
-  const actualVariant = variant?.trim() || (productVariants.length > 0 ? productVariants[0] : undefined);
+  const actualVariant = variant?.trim() || (product.variantsText ? product.variantsText.split(',')[0].trim() : undefined);
   const cartItemId = getCartItemId(validId, actualVariant);
   const variantSpecificPrice = getVariantPrice(product, actualVariant);
   

@@ -215,3 +215,28 @@ export function getProductPriceRange(product: ProductItem, currency: string = '$
     displayPrice: `${currency}${min.toLocaleString('es-CO')}`
   };
 }
+
+/**
+ * Extracts individual variant strings from a product or variants text.
+ * Exported for backward compatibility with build snapshots and dependent modules.
+ */
+export function extractProductVariants(
+  productOrText?: ProductItem | string,
+  variantPrices?: Record<string, number>
+): string[] {
+  if (!productOrText) return [];
+  if (typeof productOrText === 'string') {
+    return splitVariantsText(productOrText, variantPrices);
+  }
+  return splitVariantsText(productOrText.variantsText, productOrText.variantPrices || variantPrices);
+}
+
+/**
+ * Alias for splitVariantsText for backward compatibility
+ */
+export function splitProductVariants(
+  variantsText?: string,
+  variantPrices?: Record<string, number>
+): string[] {
+  return splitVariantsText(variantsText, variantPrices);
+}
