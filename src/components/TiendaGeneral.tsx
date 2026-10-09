@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
-import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
+import { getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import { 
   db,
   fetchAllActiveProductsAndStores, 
@@ -703,16 +703,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (selectedProduct) {
       setBuyQuantity(1);
       setIsVariantValid(true);
+      const parsedVars = splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices);
       if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) {
-        const variants = selectedProduct.variantsText ? selectedProduct.variantsText.split(',').map(s => s.trim()) : [];
-        const firstVar = variants.length > 0 ? variants[0] : '';
+        const firstVar = parsedVars.length > 0 ? parsedVars[0] : '';
         setChosenVariant(firstVar);
         const initialPrice = firstVar ? getVariantPrice(selectedProduct, firstVar) : (Number(selectedProduct.price) || 0);
         setChosenVariantPrice(initialPrice);
-      } else if (selectedProduct.variantsText) {
-        const firstVar = selectedProduct.variantsText.split(',')[0].trim();
+      } else if (parsedVars.length > 0) {
+        const firstVar = parsedVars[0];
         setChosenVariant(firstVar);
-        const initialPrice = firstVar ? getVariantPrice(selectedProduct, firstVar) : (Number(selectedProduct.price) || 0);
+        const initialPrice = getVariantPrice(selectedProduct, firstVar);
         setChosenVariantPrice(initialPrice);
       } else {
         setChosenVariant('');
@@ -1114,7 +1114,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const handleAddToCartDirect = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     // If the product allows half-and-half or has multiple variants, open detail modal to customize!
-    if ((product.allowsHalfAndHalf && product.flavorsText) || (product.variantsText && product.variantsText.includes(','))) {
+    const parsedVariants = splitVariantsText(product.variantsText, product.variantPrices);
+    if ((product.allowsHalfAndHalf && product.flavorsText) || parsedVariants.length > 1) {
       setSelectedProduct(product);
       return;
     }
@@ -1124,7 +1125,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ? String(product.id).trim()
       : `prod_${String(prof?.uid || product.userId || 'store')}_${encodeURIComponent((product.name || 'dish').trim().toLowerCase().replace(/\s+/g, '_'))}`;
 
-    const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : undefined;
+    const firstVariant = parsedVariants.length > 0 ? parsedVariants[0] : undefined;
     const unitPrice = firstVariant ? getVariantPrice(product, firstVariant) : (Number(product.price) || 0);
 
     const prodToSave: ProductItem = {
@@ -1737,9 +1738,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             )}
           </div>
 
-          {/* Center: Centered Logo with Dedicated Protected Clearance & Festive Halloween Accent */}
+          {/* Center: Centered Logo with Dedicated Protected Clearance */}
           <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 gap-1.5 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
-            <span className="text-xl sm:text-2xl animate-bounce select-none -mr-1" title="Halloween Ryyco">🎃</span>
             <LinnkProLogo 
               onClick={() => {
                 setSearchTerm('');
@@ -1896,8 +1896,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div className="col-span-5 sm:col-span-5 relative flex items-center justify-center sm:justify-end">
             <div className="relative w-full max-w-[170px] sm:max-w-[270px] md:max-w-[340px] flex items-center justify-center py-2">
               
-              {/* Halloween Glowing Backdrop Aura (Flat solid color) */}
-              <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 w-[110px] h-[110px] sm:w-[180px] sm:h-[180px] md:w-[220px] md:h-[220px] bg-[#FF6B00] rounded-full opacity-90 shadow-2xl shadow-[#FF6B00]/40 -z-0" />
+              {/* Glowing Backdrop Aura */}
+              <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 w-[110px] h-[110px] sm:w-[180px] sm:h-[180px] md:w-[220px] md:h-[220px] bg-[#E63946] rounded-full opacity-90 shadow-2xl shadow-[#E63946]/40 -z-0" />
               
               {/* Top-Left Spiderweb / Bat Doodle */}
               <span className="absolute -top-3 sm:-top-5 left-4 sm:left-10 text-lg sm:text-2xl z-20 animate-bat select-none pointer-events-none" title="Bat">
@@ -2753,27 +2753,75 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           />
                         </div>
                       ) : selectedProduct.variantsText ? (
-                        <div className="space-y-1.5 w-full min-w-0">
-                          <label className="text-[10px] font-bold text-[#A9B2C3] uppercase tracking-widest block">Elegir Variante / Opción</label>
-                          <select
-                            value={chosenVariant}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setChosenVariant(val);
-                              setChosenVariantPrice(getVariantPrice(selectedProduct, val));
-                            }}
-                            className="w-full h-10 bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] text-xs px-3 rounded-lg outline-none text-white font-semibold"
-                          >
-                            {selectedProduct.variantsText.split(',').map((vari, vIdx) => {
-                              const vName = vari.trim();
+                        <div className="space-y-2.5 w-full min-w-0 pt-1">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] font-black text-[#A9B2C3] uppercase tracking-wider">
+                                Elige tu presentación
+                              </span>
+                              <span className="text-[9px] font-extrabold bg-[#E63946]/15 text-[#E63946] border border-[#E63946]/30 px-2 py-0.5 rounded-full">
+                                1 requerida
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              Toca para seleccionar
+                            </span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices).map((vName, vIdx) => {
+                              const isSelected = chosenVariant === vName;
                               const vPrice = getVariantPrice(selectedProduct, vName);
+                              const displayPrice = vPrice > 0 ? vPrice : (Number(selectedProduct.price) || 0);
+
                               return (
-                                <option key={vIdx} value={vName}>
-                                  {vName} {vPrice > 0 && vPrice !== selectedProduct.price ? `(${currency}${vPrice.toLocaleString()})` : ''}
-                                </option>
+                                <button
+                                  key={vIdx}
+                                  type="button"
+                                  onClick={() => {
+                                    setChosenVariant(vName);
+                                    setChosenVariantPrice(displayPrice);
+                                  }}
+                                  className={`w-full text-left p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 group relative overflow-hidden ${
+                                    isSelected
+                                      ? 'bg-gradient-to-r from-[#E63946]/15 via-[#E63946]/10 to-transparent border-[#E63946] shadow-md shadow-[#E63946]/10 ring-1 ring-[#E63946]/40'
+                                      : 'bg-[#0E1424]/90 border-[#232B3A] hover:border-slate-600 hover:bg-[#151D2F]'
+                                  }`}
+                                >
+                                  {/* Left: Radio indicator + Variant text */}
+                                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                                      isSelected
+                                        ? 'border-[#E63946] bg-[#E63946]'
+                                        : 'border-slate-600 bg-slate-900 group-hover:border-slate-500'
+                                    }`}>
+                                      {isSelected && (
+                                        <div className="w-2 h-2 rounded-full bg-white" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className={`text-xs sm:text-sm font-bold leading-snug break-words transition-colors ${
+                                        isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'
+                                      }`}>
+                                        {vName}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Right: Price badge */}
+                                  <div className="shrink-0 pl-1">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-black tracking-tight transition-colors ${
+                                      isSelected
+                                        ? 'bg-[#E63946] text-white shadow-sm'
+                                        : 'bg-[#1A2234] border border-[#2A3447] text-emerald-400 group-hover:border-slate-600'
+                                    }`}>
+                                      {currency}{displayPrice.toLocaleString('es-CO')}
+                                    </span>
+                                  </div>
+                                </button>
                               );
                             })}
-                          </select>
+                          </div>
                         </div>
                       ) : null}
                     </div>

@@ -132,7 +132,7 @@ import LinnkProIsotype from './LinnkProIsotype';
 import { formatColombianPhoneWith57 } from './PublicProfile';
 import { BasicPlanTrialModal } from './BasicPlanTrialModal';
 import { DashboardTrialBanner } from './DashboardTrialBanner';
-import { getProductParsedVariants, getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
+import { getProductParsedVariants, getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import { generateRyycoImageName } from '../lib/seoImageRenamer';
 
 export const RESTAURANT_CATEGORIES = [
@@ -830,13 +830,63 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [prodImageFileName, setProdImageFileName] = useState('');
   const [prodCategory, setProdCategory] = useState('');
   const [prodStock, setProdStock] = useState('10');
-  const [prodVariants, setProdVariants] = useState(''); // Comma separated e.g. "S, M, L"
+  const [prodVariantsList, setProdVariantsList] = useState<string[]>([]);
   const [prodVariantPrices, setProdVariantPrices] = useState<Record<string, number>>({});
+  const [newVariantInput, setNewVariantInput] = useState('');
 
   const detectedVariants = useMemo(() => {
-    if (!prodVariants || !prodVariants.trim()) return [];
-    return getProductParsedVariants(prodVariants, prodVariantPrices, Number(prodPrice) || 0);
-  }, [prodVariants, prodVariantPrices, prodPrice]);
+    if (prodVariantsList.length === 0) return [];
+    return prodVariantsList.map(name => ({
+      name,
+      price: prodVariantPrices[name] !== undefined && prodVariantPrices[name] > 0
+        ? prodVariantPrices[name]
+        : (Number(prodPrice) || 0)
+    }));
+  }, [prodVariantsList, prodVariantPrices, prodPrice]);
+
+  const hasVariantsEntered = prodVariantsList.length > 0;
+  const hasAnyVariantPrice = useMemo(() => {
+    if (!prodVariantPrices || typeof prodVariantPrices !== 'object') return false;
+    return Object.values(prodVariantPrices).some(v => typeof v === 'number' && v > 0);
+  }, [prodVariantPrices]);
+
+  const lowestVariantPrice = useMemo(() => {
+    if (!prodVariantPrices || typeof prodVariantPrices !== 'object') return 0;
+    const nums = Object.values(prodVariantPrices).filter((v): v is number => typeof v === 'number' && v > 0);
+    return nums.length > 0 ? Math.min(...nums) : 0;
+  }, [prodVariantPrices]);
+
+  const handleAddVariant = (nameToAdd?: string) => {
+    const raw = (nameToAdd !== undefined ? nameToAdd : newVariantInput).trim();
+    if (!raw) return;
+
+    // Do NOT split by comma. Whatever the user wrote in this field is ONE single variant
+    if (prodVariantsList.some(v => v.toLowerCase() === raw.toLowerCase())) {
+      setNewVariantInput('');
+      return;
+    }
+
+    const updatedList = [...prodVariantsList, raw];
+    setProdVariantsList(updatedList);
+
+    if (prodPrice && Number(prodPrice) > 0 && prodVariantPrices[raw] === undefined) {
+      setProdVariantPrices(prev => ({
+        ...prev,
+        [raw]: Number(prodPrice)
+      }));
+    }
+
+    setNewVariantInput('');
+  };
+
+  const handleRemoveVariant = (nameToRemove: string) => {
+    setProdVariantsList(prev => prev.filter(v => v !== nameToRemove));
+    setProdVariantPrices(prev => {
+      const next = { ...prev };
+      delete next[nameToRemove];
+      return next;
+    });
+  };
 
   // Automatically synchronize SEO image filename when product name, category or city updates
   useEffect(() => {
@@ -1217,7 +1267,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdImageFileName('');
     setProdCategory('🍔 Hamburguesas');
     setProdStock('15');
-    setProdVariants('');
+    setProdVariantsList([]);
+    setNewVariantInput('');
     setProdVariantPrices({});
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
@@ -1262,7 +1313,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdImageFileName('');
     setProdCategory(preset?.category || '🥤 Bebidas');
     setProdStock('25');
-    setProdVariants(preset?.variantsText || '');
+    setProdVariantsList(preset?.variantsText ? splitVariantsText(preset.variantsText) : []);
+    setNewVariantInput('');
     setProdVariantPrices({});
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
@@ -1300,17 +1352,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }) : ''));
     setProdCategory(prod.category || 'General');
     setProdStock(prod.stock !== undefined && prod.stock !== null ? prod.stock.toString() : '10');
-    setProdVariants(prod.variantsText || '');
+    const parsedVariants = splitVariantsText(prod.variantsText, prod.variantPrices);
+    setProdVariantsList(parsedVariants);
+    setNewVariantInput('');
 
     const initialPrices: Record<string, number> = prod.variantPrices ? { ...prod.variantPrices } : {};
-    if (prod.variantsText) {
-      const parsed = getProductParsedVariants(prod.variantsText, prod.variantPrices, prod.price || 0);
-      parsed.forEach(p => {
-        if (p.price > 0 && initialPrices[p.name] === undefined) {
-          initialPrices[p.name] = p.price;
-        }
-      });
-    }
+    parsedVariants.forEach(name => {
+      if (initialPrices[name] === undefined && prod.price) {
+        initialPrices[name] = prod.price;
+      }
+    });
     setProdVariantPrices(initialPrices);
 
     setProdAllowsHalfAndHalf(Boolean(prod.allowsHalfAndHalf));
@@ -1404,11 +1455,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       return;
     }
 
-    const cleanPrice = parsePriceInput(prodPrice);
-    if (isNaN(cleanPrice) || cleanPrice < 0) {
-      alert("Por favor, introduce un precio de venta válido.");
-      return;
-    }
+    let cleanPrice = parsePriceInput(prodPrice);
 
     let cleanComparePrice: number | undefined = undefined;
     if (prodComparePrice && prodComparePrice.trim() !== '') {
@@ -1428,6 +1475,23 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       });
     }
 
+    const hasVariants = prodVariantsList.length > 0;
+    const variantPricesList = Object.values(cleanVariantPrices).filter(p => typeof p === 'number' && p > 0);
+
+    // Si el usuario coloca valor en Tamaños o Variantes (Opcional), no es necesario colocar el precio de venta general
+    if (isNaN(cleanPrice) || cleanPrice <= 0) {
+      if (hasVariants && variantPricesList.length > 0) {
+        // Asignar automáticamente el menor precio de variante como precio base de vitrina
+        cleanPrice = Math.min(...variantPricesList);
+      } else if (hasVariants) {
+        alert("Por favor, asigna al menos un precio a las variantes o indica un precio de venta general.");
+        return;
+      } else {
+        alert("Por favor, introduce un precio de venta válido.");
+        return;
+      }
+    }
+
     const finalImageFileName = prodImage ? (prodImageFileName || generateRyycoImageName({
       productName: prodName.trim() || 'producto',
       category: prodCategory ? prodCategory.trim() : 'General',
@@ -1435,6 +1499,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       city: profile.restaurantCity || profile.location || profile.address,
       intent: 'domicilio'
     })) : undefined;
+
+    const hasCommas = prodVariantsList.some(v => v.includes(','));
+    const serializedVariants = prodVariantsList.length > 0
+      ? (hasCommas ? prodVariantsList.join('\n') : prodVariantsList.join(', '))
+      : '';
 
     const payload: ProductItem = {
       id: editingProd ? editingProd.id : `temp_${Date.now()}`,
@@ -1447,7 +1516,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       imageFileName: finalImageFileName,
       category: prodCategory ? prodCategory.trim() : 'General',
       stock: isNaN(parseInt(prodStock)) ? 10 : parseInt(prodStock),
-      variantsText: prodVariants ? prodVariants.trim() : '',
+      variantsText: serializedVariants,
       variantPrices: Object.keys(cleanVariantPrices).length > 0 ? cleanVariantPrices : undefined,
       allowsHalfAndHalf: prodAllowsHalfAndHalf,
       flavorsText: prodAllowsHalfAndHalf ? prodFlavorsText.trim() : '',
@@ -2863,89 +2932,156 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
-                                Tamaños o Variantes (Opcional)
-                              </label>
-                              <input
-                                type="text"
-                                value={prodVariants}
-                                onChange={(e) => {
-                                  const text = e.target.value;
-                                  setProdVariants(text);
-                                  const parsed = getProductParsedVariants(text, prodVariantPrices, Number(prodPrice) || 0);
-                                  const updatedPrices = { ...prodVariantPrices };
-                                  parsed.forEach(p => {
-                                    if (p.price > 0 && updatedPrices[p.name] === undefined) {
-                                      updatedPrices[p.name] = p.price;
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider">
+                                  Tamaños o Variantes (Opcional)
+                                </label>
+                                {prodVariantsList.length > 0 && (
+                                  <span className="text-[10px] font-extrabold text-emerald-400">
+                                    {prodVariantsList.length} {prodVariantsList.length === 1 ? 'agregada' : 'agregadas'}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Input with "+" button */}
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={newVariantInput}
+                                  onChange={(e) => setNewVariantInput(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddVariant();
                                     }
-                                  });
-                                  setProdVariantPrices(updatedPrices);
-                                }}
-                                placeholder="Ej: Pequeña, Mediana, Grande"
-                                className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
-                              />
-                              <p className="text-[9px] text-gray-400 mt-1 font-semibold">
-                                Escribe los tamaños o presentaciones separados por coma (puedes asignar precio diferente a cada uno abajo).
-                              </p>
+                                  }}
+                                  placeholder="Escribe un tamaño (Ej: Sencilla Carne, lechuga...)"
+                                  className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20 placeholder:text-gray-500"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddVariant()}
+                                  disabled={!newVariantInput.trim()}
+                                  className="h-11 px-4 bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-md"
+                                  title="Agregar tamaño o variante"
+                                >
+                                  <Plus className="w-4 h-4 stroke-[3]" />
+                                  <span>Agregar</span>
+                                </button>
+                              </div>
 
-                              {/* Interactive per-variant price inputs */}
-                              {detectedVariants.length > 0 && (
-                                <div className="mt-3 bg-gray-950/90 border border-indigo-500/30 rounded-xl p-3.5 space-y-3">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm">🏷️</span>
-                                      <div>
-                                        <span className="text-xs font-black text-indigo-300 uppercase tracking-wider block">
-                                          Precios por Tamaño / Variante
-                                        </span>
-                                        <span className="text-[10px] text-gray-400">
-                                          Define el costo de cada presentación
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full">
-                                      {detectedVariants.length} opciones
-                                    </span>
-                                  </div>
-
-                                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                                    {detectedVariants.map((item) => {
-                                      const currentPriceVal = prodVariantPrices[item.name] !== undefined ? String(prodVariantPrices[item.name]) : (item.price > 0 ? String(item.price) : '');
-                                      return (
-                                        <div key={item.name} className="bg-gray-900 border border-gray-800 rounded-xl p-2.5 flex flex-col justify-between gap-1.5 focus-within:border-indigo-500 transition">
-                                          <span className="text-xs font-bold text-white truncate" title={item.name}>
-                                            {item.name}
-                                          </span>
-                                          <div className="flex items-center gap-1.5 bg-gray-950 px-2.5 py-1.5 rounded-lg border border-gray-800">
-                                            <span className="text-xs font-bold text-gray-400">{profile.currency || '$'}</span>
-                                            <input
-                                              type="text"
-                                              inputMode="decimal"
-                                              value={currentPriceVal}
-                                              placeholder={prodPrice || '0'}
-                                              onChange={(e) => {
-                                                const rawVal = e.target.value;
-                                                const parsed = parsePriceInput(rawVal);
-                                                setProdVariantPrices(prev => ({
-                                                  ...prev,
-                                                  [item.name]: !isNaN(parsed) ? parsed : 0
-                                                }));
-                                              }}
-                                              className="w-full bg-transparent text-right text-xs font-black text-emerald-400 outline-none"
-                                            />
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-indigo-300/80 bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
-                                    <span>💡</span>
-                                    <span>Si dejas un precio vacío o en 0, se usará el <strong>Precio de Venta</strong> general ({profile.currency || '$'}{prodPrice || '0'}).</span>
-                                  </div>
-                                </div>
+                              {prodVariantsList.length === 0 && (
+                                <p className="text-[9px] text-gray-400 mt-1 font-semibold">
+                                  Escribe cada tamaño o presentación y pulsa <strong>Agregar (+)</strong>. Podrás definir su precio abajo.
+                                </p>
                               )}
                             </div>
                           </div>
+
+                          {/* Interactive per-variant price inputs (Full Width on PC) */}
+                          {detectedVariants.length > 0 && (
+                            <div className="bg-gradient-to-br from-gray-950 via-[#0e1424] to-gray-950 border border-indigo-500/35 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-xl relative overflow-hidden animate-fade-in">
+                              {/* Background ambient glow */}
+                              <div className="absolute -top-16 -right-16 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-indigo-500/15">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center shrink-0 border border-indigo-500/30 shadow-inner">
+                                    <span className="text-sm">🏷️</span>
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs sm:text-sm font-black text-white tracking-wide">
+                                        Precios por Tamaño / Variante
+                                      </span>
+                                      <span className="text-[10px] font-extrabold bg-indigo-500/20 text-indigo-300 px-2.5 py-0.5 rounded-full border border-indigo-500/30">
+                                        {detectedVariants.length} {detectedVariants.length === 1 ? 'opción' : 'opciones'}
+                                      </span>
+                                    </div>
+                                    <span className="text-[11px] text-gray-400 block mt-0.5">
+                                      Define el valor individual de cada presentación para que tus clientes elijan con un toque
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {hasAnyVariantPrice && lowestVariantPrice > 0 && (
+                                  <div className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs font-black">
+                                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Base vitrina:</span>
+                                    <span>{profile.currency || '$'}{lowestVariantPrice.toLocaleString('es-CO')}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                {detectedVariants.map((item, idx) => {
+                                  const currentPriceVal = prodVariantPrices[item.name] !== undefined ? String(prodVariantPrices[item.name]) : (item.price > 0 ? String(item.price) : '');
+                                  const isFilled = Boolean(currentPriceVal && Number(currentPriceVal) > 0);
+                                  return (
+                                    <div 
+                                      key={item.name} 
+                                      className={`bg-gray-900/90 border rounded-xl p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition shadow-sm hover:border-gray-700 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 ${
+                                        isFilled ? 'border-indigo-500/40 bg-gradient-to-r from-gray-900 via-gray-900 to-indigo-950/20' : 'border-gray-800'
+                                      }`}
+                                    >
+                                      {/* Left: Number badge + full variant name */}
+                                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <span className="w-6 h-6 rounded-lg bg-gray-800 text-indigo-300 text-xs font-black flex items-center justify-center shrink-0 border border-gray-700">
+                                          {idx + 1}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <span className="text-xs sm:text-sm font-bold text-white break-words">
+                                            {item.name}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Right: Price input + remove button */}
+                                      <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                                        <div className="flex items-center gap-1.5 bg-gray-950 px-3 py-2 rounded-xl border border-gray-800 focus-within:border-emerald-500/80 transition w-36 sm:w-44 shadow-inner">
+                                          <span className="text-xs font-black text-gray-400 select-none">
+                                            {profile.currency || '$'}
+                                          </span>
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={currentPriceVal}
+                                            placeholder={prodPrice || '0'}
+                                            onChange={(e) => {
+                                              const rawVal = e.target.value;
+                                              const parsed = parsePriceInput(rawVal);
+                                              setProdVariantPrices(prev => ({
+                                                ...prev,
+                                                [item.name]: !isNaN(parsed) ? parsed : 0
+                                              }));
+                                            }}
+                                            className="w-full bg-transparent text-right text-sm font-black text-emerald-400 outline-none placeholder:text-gray-600"
+                                          />
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveVariant(item.name)}
+                                          className="w-9 h-9 rounded-xl bg-gray-950 border border-gray-800 text-gray-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10 flex items-center justify-center transition cursor-pointer shrink-0"
+                                          title={`Eliminar variante ${item.name}`}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              <div className="flex items-center gap-2 text-[11px] text-indigo-300/90 bg-indigo-500/10 p-2.5 sm:px-3.5 rounded-xl border border-indigo-500/20">
+                                <span className="text-sm">💡</span>
+                                <span>
+                                  {hasAnyVariantPrice && (!prodPrice || prodPrice.trim() === '' || prodPrice === '0')
+                                    ? `Al dejar el Precio de Venta vacío, se usará automáticamente el menor precio de variante (${profile.currency || '$'}${lowestVariantPrice.toLocaleString('es-CO')}) como precio base de vitrina.`
+                                    : `Si dejas un precio vacío o en 0, se usará el Precio de Venta general (${profile.currency || '$'}${prodPrice || '0'}).`}
+                                </span>
+                              </div>
+                            </div>
+                          )}
 
                           <div>
                             <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Descripción del Producto</label>
@@ -2960,14 +3096,27 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                           <div className="grid sm:grid-cols-3 gap-4">
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Precio de Venta ({profile.currency || '$'})</label>
+                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                                Precio de Venta ({profile.currency || '$'})
+                                {hasVariantsEntered && (
+                                  <span className="text-emerald-400 font-bold ml-1.5 lowercase">
+                                    (opcional con variantes)
+                                  </span>
+                                )}
+                              </label>
                               <input
                                 type="text"
                                 inputMode="decimal"
-                                required
+                                required={!hasVariantsEntered && !hasAnyVariantPrice}
                                 value={prodPrice}
                                 onChange={(e) => setProdPrice(e.target.value)}
-                                placeholder="Ej: 35000 o 35.000"
+                                placeholder={
+                                  hasAnyVariantPrice
+                                    ? `Opcional (se usará ${profile.currency || '$'}${lowestVariantPrice.toLocaleString('es-CO')})`
+                                    : hasVariantsEntered
+                                      ? "Opcional con variantes"
+                                      : "Ej: 35000 o 35.000"
+                                }
                                 className="w-full h-11 bg-gray-900 border border-gray-800 focus:border-emerald-500 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-emerald-500/20"
                               />
                             </div>

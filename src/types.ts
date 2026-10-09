@@ -198,7 +198,8 @@ export interface ProductItem {
   imageFileName?: string; // SEO-optimized WebP filename (e.g. ryyco-hamburguesa-especial-domicilio-ipiales-8f32ac.webp)
   category?: string; // e.g. "Ropa", "Calzado", "Accesorios"
   stock: number; // Inventory count
-  variantsText?: string; // Comma separated variants like "S, M, L" or "Azul, Rojo"
+  variantsText?: string; // Comma or ;; separated variants
+  variantsList?: string[]; // Array of variants preserving full text with commas
   variantPrices?: Record<string, number>; // Specific price for each variant/size { "Pequeña": 25000, "Mediana": 40000, "Grande": 60000 }
   allowsHalfAndHalf?: boolean; // Permite pedir combinando 2 sabores (Mitad y Mitad para pizzas)
   flavorsText?: string; // Lista de sabores separados por coma para pizzas o productos multi-sabor

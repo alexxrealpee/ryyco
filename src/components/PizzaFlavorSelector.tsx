@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ProductItem } from '../types';
 import { Pizza, Search, Check, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
-import { getVariantPrice, parseSingleVariant } from '../lib/variantHelper';
+import { getVariantPrice, parseSingleVariant, extractProductVariants } from '../lib/variantHelper';
 
 interface PizzaFlavorSelectorProps {
   product: ProductItem;
@@ -25,17 +25,13 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
       .filter(Boolean);
   }, [product.flavorsText]);
 
-  // Extract available sizes (from variantsText)
+  // Extract available sizes (from variantsText, variantsList, or variantPrices)
   const sizes = useMemo(() => {
-    if (!product.variantsText) return [];
-    return product.variantsText
-      .split(',')
-      .map(s => {
-        const parsed = parseSingleVariant(s);
-        return parsed.name || s.trim();
-      })
-      .filter(Boolean);
-  }, [product.variantsText]);
+    return extractProductVariants(product).map(s => {
+      const parsed = parseSingleVariant(s);
+      return parsed.name || s.trim();
+    }).filter(Boolean);
+  }, [product]);
 
   const allowsHalfAndHalf = product.allowsHalfAndHalf !== false;
   const allowSingle = product.allowSingleFlavor !== false;

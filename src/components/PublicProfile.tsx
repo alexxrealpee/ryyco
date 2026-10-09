@@ -37,7 +37,7 @@ import {
   GeneralCartItem 
 } from '../lib/cartHelper';
 import { isFoodCategory, isFoodProduct } from './TiendaGeneral';
-import { getVariantPrice, getProductPriceRange } from '../lib/variantHelper';
+import { getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import CustomerPortalModal from './CustomerPortalModal';
 import CustomerOrderAuthPromptModal from './CustomerOrderAuthPromptModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -825,7 +825,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   // Cart operations
   const handleOpenProductSelection = (prod: ProductItem) => {
-    const variants = prod.variantsText ? prod.variantsText.split(',').map(s => s.trim()) : [];
+    const variants = splitVariantsText(prod.variantsText, prod.variantPrices);
     const firstVar = variants.length > 0 ? variants[0] : '';
     setSelectedProduct(prod);
     setChosenVariant(firstVar);
@@ -872,7 +872,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   const handleAddToCartDirect = (p: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const variants = p.variantsText ? p.variantsText.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const variants = splitVariantsText(p.variantsText, p.variantPrices);
     if (variants.length > 1 || (p.allowsHalfAndHalf && p.flavorsText)) {
       // Multiple variants or Pizza flavors require selection modal
       handleOpenProductSelection(p);
@@ -2894,27 +2894,75 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       />
                     </div>
                   ) : selectedProduct.variantsText ? (
-                    <div className="space-y-1.5 w-full min-w-0">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Elegir Variante / Opción</label>
-                      <select
-                        value={chosenVariant}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setChosenVariant(val);
-                          setChosenVariantPrice(getVariantPrice(selectedProduct, val));
-                        }}
-                        className="w-full h-10 bg-gray-900 border border-gray-800 focus:border-indigo-500 text-xs px-3 rounded-lg outline-none text-white font-semibold"
-                      >
-                        {selectedProduct.variantsText.split(',').map((vari, vIdx) => {
-                          const vName = vari.trim();
+                    <div className="space-y-2.5 w-full min-w-0 pt-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                            Elige tu presentación
+                          </span>
+                          <span className="text-[9px] font-extrabold bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded-full">
+                            1 requerida
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-gray-400 font-medium">
+                          Toca para seleccionar
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices).map((vName, vIdx) => {
+                          const isSelected = chosenVariant === vName;
                           const vPrice = getVariantPrice(selectedProduct, vName);
+                          const displayPrice = vPrice > 0 ? vPrice : (Number(selectedProduct.price) || 0);
+
                           return (
-                            <option key={vIdx} value={vName}>
-                              {vName} {vPrice > 0 && vPrice !== selectedProduct.price ? `(${getStoreCurrency()}${vPrice.toLocaleString()})` : ''}
-                            </option>
+                            <button
+                              key={vIdx}
+                              type="button"
+                              onClick={() => {
+                                setChosenVariant(vName);
+                                setChosenVariantPrice(displayPrice);
+                              }}
+                              className={`w-full text-left p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 group relative overflow-hidden ${
+                                isSelected
+                                  ? 'bg-gradient-to-r from-indigo-500/15 via-indigo-500/10 to-transparent border-indigo-500 shadow-md shadow-indigo-500/10 ring-1 ring-indigo-500/40'
+                                  : 'bg-gray-900/90 border-gray-800 hover:border-gray-700 hover:bg-gray-850'
+                              }`}
+                            >
+                              {/* Left: Radio indicator + Variant text */}
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                                  isSelected
+                                    ? 'border-indigo-500 bg-indigo-500'
+                                    : 'border-gray-600 bg-gray-950 group-hover:border-gray-500'
+                                }`}>
+                                  {isSelected && (
+                                    <div className="w-2 h-2 rounded-full bg-white" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className={`text-xs sm:text-sm font-bold leading-snug break-words transition-colors ${
+                                    isSelected ? 'text-white' : 'text-gray-200 group-hover:text-white'
+                                  }`}>
+                                    {vName}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Right: Price badge */}
+                              <div className="shrink-0 pl-1">
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-black tracking-tight transition-colors ${
+                                  isSelected
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-gray-950 border border-gray-800 text-emerald-400 group-hover:border-gray-700'
+                                }`}>
+                                  {getStoreCurrency()}{displayPrice.toLocaleString('es-CO')}
+                                </span>
+                              </div>
+                            </button>
                           );
                         })}
-                      </select>
+                      </div>
                     </div>
                   ) : null}
                 </div>

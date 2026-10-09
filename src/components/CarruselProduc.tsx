@@ -31,7 +31,7 @@ import { fetchAllActiveProductsAndStores, checkIsStoreClosed, findStoreForProduc
 import { ProductItem, UserProfile } from '../types';
 import { isFoodProduct } from './TiendaGeneral';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
-import { getVariantPrice } from '../lib/variantHelper';
+import { getVariantPrice, splitVariantsText } from '../lib/variantHelper';
 import { ReelShareModal } from './ReelShareModal';
 import { 
   addProductToCart, 
@@ -1208,41 +1208,53 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     />
                   </div>
                 ) : (
-                  <div className="w-full min-w-0">
-                    <label className="block text-xs font-bold text-[#A9B2C3] uppercase tracking-wider mb-2 truncate">
-                      Elige una opción / tamaño:
-                    </label>
-                    <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                      {(variantSheetProduct.variantsText || '')
-                        .split(',')
-                        .map(v => v.trim())
-                        .filter(Boolean)
-                        .map((variantName) => {
-                          const isSelected = selectedVariant === variantName;
-                          const vPrice = getVariantPrice(variantSheetProduct, variantName);
-                          return (
-                            <button
-                              key={variantName}
-                              type="button"
-                              onClick={() => {
-                                setSelectedVariant(variantName);
-                                setSheetVariantPrice(getVariantPrice(variantSheetProduct, variantName));
-                              }}
-                              className={`py-1.5 sm:py-2 px-2.5 sm:px-3.5 rounded-xl text-xs font-bold transition cursor-pointer border flex items-center gap-1.5 min-w-0 ${
-                                isSelected
-                                  ? 'bg-gradient-to-r from-[#E63946] to-[#D62839] text-white border-transparent shadow-md shadow-[#E63946]/30'
-                                  : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
-                              }`}
-                            >
-                              <span className="truncate">{variantName}</span>
-                              {vPrice > 0 && vPrice !== variantSheetProduct.price && (
-                                <span className={`text-[10px] whitespace-nowrap shrink-0 ${isSelected ? 'text-white/90 font-black' : 'text-amber-400 font-bold'}`}>
-                                  • ${vPrice.toLocaleString('es-CO')}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
+                  <div className="w-full min-w-0 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-black text-[#A9B2C3] uppercase tracking-wider">
+                        Elige una opción / tamaño:
+                      </label>
+                      <span className="text-[9px] font-extrabold bg-[#E63946]/15 text-[#E63946] border border-[#E63946]/30 px-2 py-0.5 rounded-full">
+                        1 requerida
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {splitVariantsText(variantSheetProduct.variantsText, variantSheetProduct.variantPrices).map((variantName, vIdx) => {
+                        const isSelected = selectedVariant === variantName;
+                        const vPrice = getVariantPrice(variantSheetProduct, variantName);
+                        const displayPrice = vPrice > 0 ? vPrice : (Number(variantSheetProduct.price) || 0);
+
+                        return (
+                          <button
+                            key={vIdx}
+                            type="button"
+                            onClick={() => {
+                              setSelectedVariant(variantName);
+                              setSheetVariantPrice(displayPrice);
+                            }}
+                            className={`w-full text-left p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                              isSelected
+                                ? 'bg-gradient-to-r from-[#E63946]/15 via-[#E63946]/10 to-transparent border-[#E63946] ring-1 ring-[#E63946]/40'
+                                : 'bg-[#151D2F] text-gray-300 border-[#232B3A] hover:bg-[#1E293B]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                isSelected ? 'border-[#E63946] bg-[#E63946]' : 'border-slate-600 bg-slate-900'
+                              }`}>
+                                {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                              <span className="text-xs font-bold text-white break-words flex-1">
+                                {variantName}
+                              </span>
+                            </div>
+                            <span className={`text-xs font-black px-2 py-0.5 rounded-lg shrink-0 ${
+                              isSelected ? 'bg-[#E63946] text-white' : 'bg-[#0E1424] text-emerald-400 border border-[#232B3A]'
+                            }`}>
+                              ${displayPrice.toLocaleString('es-CO')}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

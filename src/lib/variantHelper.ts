@@ -44,6 +44,44 @@ export function parseSingleVariant(raw: string, defaultPrice: number = 0): Parse
 }
 
 /**
+ * Splits a variantsText string into individual variant strings cleanly,
+ * supporting newlines (\n), pipes ( | ), semicolons (;), or legacy commas (,).
+ * If variantPrices has explicit keys with commas, those keys are prioritized.
+ */
+export function splitVariantsText(
+  variantsText?: string,
+  variantPrices?: Record<string, number>
+): string[] {
+  if (variantPrices && typeof variantPrices === 'object') {
+    const keys = Object.keys(variantPrices).map(k => k.trim()).filter(Boolean);
+    if (keys.length > 0 && keys.some(k => k.includes(','))) {
+      return keys;
+    }
+  }
+
+  if (!variantsText || !variantsText.trim()) {
+    if (variantPrices && typeof variantPrices === 'object') {
+      return Object.keys(variantPrices).map(k => k.trim()).filter(Boolean);
+    }
+    return [];
+  }
+
+  if (variantsText.includes('\n')) {
+    return variantsText.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+  if (variantsText.includes(' | ')) {
+    return variantsText.split(' | ').map(s => s.trim()).filter(Boolean);
+  }
+
+  if (variantsText.includes(';')) {
+    return variantsText.split(';').map(s => s.trim()).filter(Boolean);
+  }
+
+  return variantsText.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+/**
  * Returns all parsed variants for a product with their individual prices
  */
 export function getProductParsedVariants(
@@ -51,9 +89,9 @@ export function getProductParsedVariants(
   variantPrices?: Record<string, number>,
   basePrice: number = 0
 ): ParsedVariant[] {
-  if (!variantsText || !variantsText.trim()) return [];
+  const rawList = splitVariantsText(variantsText, variantPrices);
+  if (rawList.length === 0) return [];
 
-  const rawList = variantsText.split(',').map(s => s.trim()).filter(Boolean);
   return rawList.map(raw => {
     const parsed = parseSingleVariant(raw, basePrice);
     // Check if variantPrices has an explicit price for this variant
