@@ -1621,7 +1621,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
-                    {/* Acceso Vendedores / Iniciar Sesión */}
+                    {/* Administrar mi Restaurante / Iniciar Sesión */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1633,14 +1633,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
                     >
                       <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <User className="w-4 h-4 text-indigo-400" />
+                        <Utensils className="w-4 h-4 text-indigo-400" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="font-bold text-xs text-white block group-hover:text-indigo-300 transition">
-                          Acceso Vendedores (Login)
+                          Administrar mi Restaurante
                         </span>
                         <p className="text-[10px] text-gray-400 leading-tight">
-                          Ingresar a la administración de tu tienda
+                          Ingresar a la administración de tu restaurante
                         </p>
                       </div>
                     </button>
