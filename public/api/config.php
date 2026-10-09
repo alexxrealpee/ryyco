@@ -77,6 +77,7 @@ if (empty($envOpenAIKey) || empty($envGoogleMapsKey) || empty($envFCMServerKey))
 
     $fileNames = ['.env', '.env.local', '.env.production'];
     $checkedFiles = [];
+    $GLOBALS['ryyco_checked_env_paths'] = [];
 
     foreach ($searchDirs as $dir) {
         if (!$dir || !is_dir($dir)) continue;
@@ -85,7 +86,10 @@ if (empty($envOpenAIKey) || empty($envGoogleMapsKey) || empty($envFCMServerKey))
             if (isset($checkedFiles[$path])) continue;
             $checkedFiles[$path] = true;
 
-            if (file_exists($path) && is_readable($path)) {
+            $exists = @file_exists($path);
+            $GLOBALS['ryyco_checked_env_paths'][$path] = $exists ? 'found' : 'not_found';
+
+            if ($exists && @is_readable($path)) {
                 $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
                 if ($lines) {
                     foreach ($lines as $line) {
