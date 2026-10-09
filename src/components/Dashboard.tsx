@@ -2049,27 +2049,6 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             </span>
           </button>
 
-          {/* Gestor de Bebidas */}
-          <button
-            type="button"
-            onClick={() => setActiveTab('drinks')}
-            className={`w-auto md:w-full text-start py-1.5 md:py-3 px-2 md:px-3.5 rounded-xl text-xs font-bold flex items-center justify-between gap-2.5 shrink-0 transition ${
-              activeTab === 'drinks' 
-                ? 'bg-[#D62839] text-white shadow-sm' 
-                : 'text-gray-400 hover:text-white hover:bg-gray-900 border border-transparent'
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <span className="text-sm">🥤</span>
-              <span>Gestor de Bebidas</span>
-            </span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-              activeTab === 'drinks' ? 'bg-black/30 text-white' : 'bg-gray-900 text-gray-400'
-            }`}>
-              {drinksList.length}
-            </span>
-          </button>
-
           <button
             type="button"
             onClick={() => setActiveTab('orders')}

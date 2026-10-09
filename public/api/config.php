@@ -13,52 +13,80 @@ if (!ob_get_level()) {
 ini_set('display_errors', '0');
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 
-// 1. Load API Keys directly from Hostinger Environment Variables
+// 1. Direct configuration from keys.php (Top priority for Hostinger users)
 $envOpenAIKey = '';
 $envGoogleMapsKey = '';
 $envFCMServerKey = '';
 
-// Check Hostinger environment variables across all server scopes ($_SERVER, $_ENV, getenv, apache_getenv, REDIRECT_*)
-$envOpenAIKey = getenv('OPENAI_API_KEY') 
-    ?: (isset($_SERVER['OPENAI_API_KEY']) ? $_SERVER['OPENAI_API_KEY'] : '')
-    ?: (isset($_SERVER['REDIRECT_OPENAI_API_KEY']) ? $_SERVER['REDIRECT_OPENAI_API_KEY'] : '')
-    ?: (isset($_ENV['OPENAI_API_KEY']) ? $_ENV['OPENAI_API_KEY'] : '')
-    ?: (function_exists('apache_getenv') ? apache_getenv('OPENAI_API_KEY') : '');
+$keyFiles = [
+    __DIR__ . '/keys.php',
+    __DIR__ . '/keys.local.php',
+    __DIR__ . '/../keys.php',
+    (isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . '/api/keys.php' : null),
+    (isset($_SERVER['DOCUMENT_ROOT']) ? rtrim($_SERVER['DOCUMENT_ROOT'], '/\\') . '/keys.php' : null)
+];
 
-$envGoogleMapsKey = getenv('VITE_GOOGLE_MAPS_API_KEY') 
-    ?: getenv('GOOGLE_MAPS_API_KEY')
-    ?: (isset($_SERVER['VITE_GOOGLE_MAPS_API_KEY']) ? $_SERVER['VITE_GOOGLE_MAPS_API_KEY'] : '')
-    ?: (isset($_SERVER['GOOGLE_MAPS_API_KEY']) ? $_SERVER['GOOGLE_MAPS_API_KEY'] : '')
-    ?: (isset($_SERVER['REDIRECT_VITE_GOOGLE_MAPS_API_KEY']) ? $_SERVER['REDIRECT_VITE_GOOGLE_MAPS_API_KEY'] : '')
-    ?: (isset($_SERVER['REDIRECT_GOOGLE_MAPS_API_KEY']) ? $_SERVER['REDIRECT_GOOGLE_MAPS_API_KEY'] : '')
-    ?: (isset($_ENV['VITE_GOOGLE_MAPS_API_KEY']) ? $_ENV['VITE_GOOGLE_MAPS_API_KEY'] : '')
-    ?: (isset($_ENV['GOOGLE_MAPS_API_KEY']) ? $_ENV['GOOGLE_MAPS_API_KEY'] : '')
-    ?: (function_exists('apache_getenv') ? (apache_getenv('VITE_GOOGLE_MAPS_API_KEY') ?: apache_getenv('GOOGLE_MAPS_API_KEY')) : '');
+foreach ($keyFiles as $kf) {
+    if ($kf && file_exists($kf) && is_readable($kf)) {
+        @include_once $kf;
+        if (empty($envOpenAIKey) && defined('RYYCO_HOSTINGER_OPENAI_KEY') && !empty(RYYCO_HOSTINGER_OPENAI_KEY)) {
+            $envOpenAIKey = trim(RYYCO_HOSTINGER_OPENAI_KEY);
+        }
+        if (empty($envGoogleMapsKey) && defined('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY') && !empty(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY)) {
+            $envGoogleMapsKey = trim(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY);
+        }
+        if (empty($envFCMServerKey) && defined('RYYCO_HOSTINGER_FCM_SERVER_KEY') && !empty(RYYCO_HOSTINGER_FCM_SERVER_KEY)) {
+            $envFCMServerKey = trim(RYYCO_HOSTINGER_FCM_SERVER_KEY);
+        }
 
-$envFCMServerKey = getenv('FCM_SERVER_KEY')
-    ?: (isset($_SERVER['FCM_SERVER_KEY']) ? $_SERVER['FCM_SERVER_KEY'] : '')
-    ?: (isset($_SERVER['REDIRECT_FCM_SERVER_KEY']) ? $_SERVER['REDIRECT_FCM_SERVER_KEY'] : '')
-    ?: (isset($_ENV['FCM_SERVER_KEY']) ? $_ENV['FCM_SERVER_KEY'] : '')
-    ?: (function_exists('apache_getenv') ? apache_getenv('FCM_SERVER_KEY') : '');
-
-// 2. Optional secondary fallback for legacy keys.php if present
-if (empty($envOpenAIKey) || empty($envGoogleMapsKey)) {
-    $keyFiles = [
-        __DIR__ . '/keys.php',
-        __DIR__ . '/keys.local.php',
-        __DIR__ . '/../keys.php'
-    ];
-    foreach ($keyFiles as $kf) {
-        if (file_exists($kf) && is_readable($kf)) {
-            @include_once $kf;
-            if (empty($envOpenAIKey) && defined('RYYCO_HOSTINGER_OPENAI_KEY') && !empty(RYYCO_HOSTINGER_OPENAI_KEY)) {
-                $envOpenAIKey = trim(RYYCO_HOSTINGER_OPENAI_KEY);
-            }
-            if (empty($envGoogleMapsKey) && defined('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY') && !empty(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY)) {
-                $envGoogleMapsKey = trim(RYYCO_HOSTINGER_GOOGLE_MAPS_KEY);
+        // Resilient Fallback: If include didn't catch due to BOM or syntax anomaly, parse directly
+        if (empty($envOpenAIKey) || empty($envGoogleMapsKey) || empty($envFCMServerKey)) {
+            $fileRaw = @file_get_contents($kf);
+            if (!empty($fileRaw)) {
+                if (empty($envOpenAIKey) && preg_match("/RYYCO_HOSTINGER_OPENAI_KEY['\"]\s*,\s*['\"]([^'\"]+)['\"]/i", $fileRaw, $m)) {
+                    $candidate = trim($m[1]);
+                    if (!empty($candidate)) $envOpenAIKey = $candidate;
+                }
+                if (empty($envGoogleMapsKey) && preg_match("/RYYCO_HOSTINGER_GOOGLE_MAPS_KEY['\"]\s*,\s*['\"]([^'\"]+)['\"]/i", $fileRaw, $m)) {
+                    $candidate = trim($m[1]);
+                    if (!empty($candidate)) $envGoogleMapsKey = $candidate;
+                }
+                if (empty($envFCMServerKey) && preg_match("/RYYCO_HOSTINGER_FCM_SERVER_KEY['\"]\s*,\s*['\"]([^'\"]+)['\"]/i", $fileRaw, $m)) {
+                    $candidate = trim($m[1]);
+                    if (!empty($candidate)) $envFCMServerKey = $candidate;
+                }
             }
         }
     }
+}
+
+// 2. Secondary fallback: Hostinger Environment Variables ($_SERVER, $_ENV, getenv, apache_getenv, REDIRECT_*)
+if (empty($envOpenAIKey)) {
+    $envOpenAIKey = getenv('OPENAI_API_KEY') 
+        ?: (isset($_SERVER['OPENAI_API_KEY']) ? $_SERVER['OPENAI_API_KEY'] : '')
+        ?: (isset($_SERVER['REDIRECT_OPENAI_API_KEY']) ? $_SERVER['REDIRECT_OPENAI_API_KEY'] : '')
+        ?: (isset($_ENV['OPENAI_API_KEY']) ? $_ENV['OPENAI_API_KEY'] : '')
+        ?: (function_exists('apache_getenv') ? apache_getenv('OPENAI_API_KEY') : '');
+}
+
+if (empty($envGoogleMapsKey)) {
+    $envGoogleMapsKey = getenv('VITE_GOOGLE_MAPS_API_KEY') 
+        ?: getenv('GOOGLE_MAPS_API_KEY')
+        ?: (isset($_SERVER['VITE_GOOGLE_MAPS_API_KEY']) ? $_SERVER['VITE_GOOGLE_MAPS_API_KEY'] : '')
+        ?: (isset($_SERVER['GOOGLE_MAPS_API_KEY']) ? $_SERVER['GOOGLE_MAPS_API_KEY'] : '')
+        ?: (isset($_SERVER['REDIRECT_VITE_GOOGLE_MAPS_API_KEY']) ? $_SERVER['REDIRECT_VITE_GOOGLE_MAPS_API_KEY'] : '')
+        ?: (isset($_SERVER['REDIRECT_GOOGLE_MAPS_API_KEY']) ? $_SERVER['REDIRECT_GOOGLE_MAPS_API_KEY'] : '')
+        ?: (isset($_ENV['VITE_GOOGLE_MAPS_API_KEY']) ? $_ENV['VITE_GOOGLE_MAPS_API_KEY'] : '')
+        ?: (isset($_ENV['GOOGLE_MAPS_API_KEY']) ? $_ENV['GOOGLE_MAPS_API_KEY'] : '')
+        ?: (function_exists('apache_getenv') ? (apache_getenv('VITE_GOOGLE_MAPS_API_KEY') ?: apache_getenv('GOOGLE_MAPS_API_KEY')) : '');
+}
+
+if (empty($envFCMServerKey)) {
+    $envFCMServerKey = getenv('FCM_SERVER_KEY')
+        ?: (isset($_SERVER['FCM_SERVER_KEY']) ? $_SERVER['FCM_SERVER_KEY'] : '')
+        ?: (isset($_SERVER['REDIRECT_FCM_SERVER_KEY']) ? $_SERVER['REDIRECT_FCM_SERVER_KEY'] : '')
+        ?: (isset($_ENV['FCM_SERVER_KEY']) ? $_ENV['FCM_SERVER_KEY'] : '')
+        ?: (function_exists('apache_getenv') ? apache_getenv('FCM_SERVER_KEY') : '');
 }
 
 // Optionally load from local .env files across all possible Hostinger directories

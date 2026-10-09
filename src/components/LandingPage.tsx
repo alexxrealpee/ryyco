@@ -357,7 +357,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               onClick={() => onNavigate('signup')}
               className="bg-[#E63946] text-white hover:bg-[#D62839] transition-all font-bold rounded-xl text-xs md:text-sm px-3 py-1.5 md:px-4.5 md:py-2 shadow-md hover:shadow-lg hover:shadow-[#E63946]/20 active:scale-[0.98] whitespace-nowrap cursor-pointer"
             >
-              <span>Crear Tienda</span>
+              <span>Ingresar mi restaurante</span>
             </button>
           </div>
         </div>
