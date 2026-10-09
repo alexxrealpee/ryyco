@@ -6,7 +6,11 @@
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { GoogleGenAI, Type, Modality } from '@google/genai';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
@@ -87,7 +91,7 @@ async function startServer() {
   const PORT = 3000;
 
   // Compress all responses with gzip / deflate to drastically accelerate network delivery
-  app.use(compression());
+  app.use(compression() as any);
 
   // Universal CORS & Header middleware for all requests (supports custom domains like ryyco.com)
   app.use((req, res, next) => {
