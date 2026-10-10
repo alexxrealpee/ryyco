@@ -80,8 +80,8 @@ import {
   GeneralCartItem, 
   CART_UPDATED_EVENT 
 } from '../lib/cartHelper';
-import { isFoodCategory, isFoodProduct, orderProductBatch } from '../lib/productUtils';
-export { isFoodCategory, isFoodProduct, orderProductBatch };
+import { isFoodCategory, isFoodProduct, isDrinkProduct, orderProductBatch } from '../lib/productUtils';
+export { isFoodCategory, isFoodProduct, isDrinkProduct, orderProductBatch };
 
 // --- Skeleton Screen Components (Delivery App Pattern with Subdued Shimmer & Zero CLS) ---
 const ProductCardSkeleton: React.FC<{ index?: number }> = ({ index }) => {
@@ -753,8 +753,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   };
 
   // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
+  // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
   const availableBaseProducts = useMemo(() => {
     return products.filter(product => {
+      // Si estamos en la página de inicio (sin tienda específica seleccionada), ocultar bebidas
+      if (selectedStore === 'all' && isDrinkProduct(product)) {
+        return false;
+      }
+
       const profile = findStoreForProduct(product, profiles);
       if (!profile || checkIsStoreClosed(profile) || profile.suspended || profile.isClosed === true) return false;
       // Check if trial has expired and store subscription is not active

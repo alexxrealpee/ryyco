@@ -401,6 +401,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   // Filter by subscription status for historical payments & subscriptions ledger
   const [selectedSubscriptionStatusFilter, setSelectedSubscriptionStatusFilter] = useState<string>('all');
+  const [subscriptionSearchQuery, setSubscriptionSearchQuery] = useState<string>('');
   // Order specific filters and lazy loading / progressive pagination state
   const [selectedOrderStoreFilter, setSelectedOrderStoreFilter] = useState<string>('all');
   const [selectedOrderStatusFilter, setSelectedOrderStatusFilter] = useState<string>('all');
@@ -2130,27 +2131,41 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   };
 
   const displayedSubscriptions = useMemo(() => {
-    const sorted = sortUsersNewestFirst(users);
-    if (!selectedSubscriptionStatusFilter || selectedSubscriptionStatusFilter === 'all') {
-      return sorted;
+    let list = sortUsersNewestFirst(users);
+
+    if (selectedSubscriptionStatusFilter && selectedSubscriptionStatusFilter !== 'all') {
+      list = list.filter(u => {
+        const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
+        if (selectedSubscriptionStatusFilter === 'expired') {
+          return effectiveStatus === 'expired' || isExpired;
+        }
+        if (selectedSubscriptionStatusFilter === 'suspended') {
+          return effectiveStatus === 'suspended' || isSuspended;
+        }
+        if (selectedSubscriptionStatusFilter === 'active') {
+          return !isExpired && !isSuspended && effectiveStatus === 'active';
+        }
+        if (selectedSubscriptionStatusFilter === 'trial') {
+          return !isExpired && !isSuspended && effectiveStatus === 'trial';
+        }
+        return effectiveStatus === selectedSubscriptionStatusFilter;
+      });
     }
-    return sorted.filter(u => {
-      const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
-      if (selectedSubscriptionStatusFilter === 'expired') {
-        return effectiveStatus === 'expired' || isExpired;
-      }
-      if (selectedSubscriptionStatusFilter === 'suspended') {
-        return effectiveStatus === 'suspended' || isSuspended;
-      }
-      if (selectedSubscriptionStatusFilter === 'active') {
-        return !isExpired && !isSuspended && effectiveStatus === 'active';
-      }
-      if (selectedSubscriptionStatusFilter === 'trial') {
-        return !isExpired && !isSuspended && effectiveStatus === 'trial';
-      }
-      return effectiveStatus === selectedSubscriptionStatusFilter;
-    });
-  }, [users, selectedSubscriptionStatusFilter]);
+
+    if (subscriptionSearchQuery.trim()) {
+      const q = subscriptionSearchQuery.toLowerCase().trim();
+      list = list.filter(u => {
+        const storeName = (u.storeName || '').toLowerCase();
+        const username = (u.username || '').toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        const phone = (u.phone || u.ownerWhatsapp || u.whatsapp || u.customerServiceWhatsapp || '').toLowerCase();
+        const uid = (u.uid || '').toLowerCase();
+        return storeName.includes(q) || username.includes(q) || email.includes(q) || phone.includes(q) || uid.includes(q);
+      });
+    }
+
+    return list;
+  }, [users, selectedSubscriptionStatusFilter, subscriptionSearchQuery]);
 
   const expiredSubscriptionsCount = useMemo(() => {
     return users.filter(u => {
@@ -2864,19 +2879,41 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           <div className="space-y-6 animate-fade-in">
             {/* Summary statistics or info */}
             <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-6 backdrop-blur-sm space-y-6">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-900 pb-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-900 pb-4">
                 <div>
                   <h3 className="font-extrabold text-white text-base">Registro de Suscripciones & Control de Pagos</h3>
                   <p className="text-[11px] text-gray-500 font-medium">Revisa las fechas, montos pagados, y administra de manera detallada las suscripciones activas de cada tienda en línea.</p>
                 </div>
                 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Buscador de tienda específica */}
+                  <div className="relative min-w-[240px] sm:min-w-[280px] flex-1 sm:flex-initial">
+                    <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder="Buscar tienda por nombre, @usuario o tel..."
+                      value={subscriptionSearchQuery}
+                      onChange={(e) => setSubscriptionSearchQuery(e.target.value)}
+                      className="w-full bg-gray-950 border border-gray-800 text-white rounded-xl py-2 pl-9 pr-8 text-xs outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/40 transition placeholder:text-gray-500 font-medium shadow-inner"
+                    />
+                    {subscriptionSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSubscriptionSearchQuery('')}
+                        title="Limpiar búsqueda"
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-0.5 rounded-full hover:bg-gray-800 transition text-xs font-black cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
                   <button
                     type="button"
                     onClick={handleCleanTestUsers}
                     disabled={cleaningTestUsers}
                     title="Eliminar automáticamente todas las cuentas de prueba"
-                    className="px-3 py-1.5 bg-red-500/15 hover:bg-red-500 hover:text-white text-red-400 font-extrabold text-xs rounded-xl border border-red-500/30 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    className="px-3 py-2 bg-red-500/15 hover:bg-red-500 hover:text-white text-red-400 font-extrabold text-xs rounded-xl border border-red-500/30 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                   >
                     {cleaningTestUsers ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -2886,33 +2923,71 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     <span>Limpiar Usuarios Test</span>
                   </button>
 
-                  <span className="text-xs text-gray-400 font-semibold font-mono ml-2">Filtrar por Estado:</span>
-                  <select 
-                    value={selectedSubscriptionStatusFilter}
-                    onChange={(e) => setSelectedSubscriptionStatusFilter(e.target.value)}
-                    className="bg-gray-950 border border-gray-800 text-white rounded-xl py-1.5 px-3 text-xs outline-none cursor-pointer focus:border-indigo-500 font-medium"
-                  >
-                    <option value="all">Todos los Estados</option>
-                    <option value="active">🟢 Activas</option>
-                    <option value="trial">🆓 Estado Gratuito (7 Días)</option>
-                    <option value="expired">🔴 Expiradas</option>
-                    <option value="suspended">⚠️ Suspendidas</option>
-                    <option value="pending_payment">🟡 Pendiente de Pago</option>
-                  </select>
+                  <div className="flex items-center gap-1.5 bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1">
+                    <span className="text-[11px] text-gray-400 font-semibold font-mono">Estado:</span>
+                    <select 
+                      value={selectedSubscriptionStatusFilter}
+                      onChange={(e) => setSelectedSubscriptionStatusFilter(e.target.value)}
+                      className="bg-transparent text-white text-xs outline-none cursor-pointer focus:text-amber-300 font-medium py-1"
+                    >
+                      <option value="all" className="bg-gray-950 text-white">Todos los Estados</option>
+                      <option value="active" className="bg-gray-950 text-emerald-400">🟢 Activas</option>
+                      <option value="trial" className="bg-gray-950 text-cyan-300">🆓 Estado Gratuito (7 Días)</option>
+                      <option value="expired" className="bg-gray-950 text-red-400">🔴 Expiradas</option>
+                      <option value="suspended" className="bg-gray-950 text-amber-300">⚠️ Suspendidas</option>
+                      <option value="pending_payment" className="bg-gray-950 text-amber-400">🟡 Pendiente de Pago</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
               {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR */}
               <div className="space-y-4">
-                <h4 className="text-xs font-black uppercase text-amber-400 tracking-wider flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" /> Estado de Suscripciones Activas
-                </h4>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                  <h4 className="text-xs font-black uppercase text-amber-400 tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" /> Estado de Suscripciones Activas
+                    <span className="px-2 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 rounded-full font-mono text-[10px] font-bold">
+                      {displayedSubscriptions.length} {displayedSubscriptions.length === 1 ? 'tienda' : 'tiendas'}
+                    </span>
+                  </h4>
+
+                  {subscriptionSearchQuery.trim() && (
+                    <div className="flex items-center gap-2 text-xs bg-amber-500/10 text-amber-300 border border-amber-500/25 px-3 py-1 rounded-xl">
+                      <span className="text-[11px]">
+                        Filtrando por tienda: <strong className="text-white font-bold">"{subscriptionSearchQuery}"</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSubscriptionSearchQuery('')}
+                        className="text-amber-400 hover:text-white font-bold ml-1 cursor-pointer text-[11px]"
+                        title="Limpiar búsqueda"
+                      >
+                        ✕ Borrar
+                      </button>
+                    </div>
+                  )}
+                </div>
                 
                 {/* Mobile view: beautiful cards for cell phones */}
                 <div className="block md:hidden space-y-4">
                   {displayedSubscriptions.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500 font-semibold">
-                      {users.length === 0 ? 'Cargando tiendas...' : 'No se encontraron tiendas con el filtro seleccionado.'}
+                    <div className="text-center py-8 text-gray-500 font-semibold space-y-2">
+                      <div>
+                        {users.length === 0 
+                          ? 'Cargando tiendas...' 
+                          : subscriptionSearchQuery.trim()
+                          ? `No se encontró ninguna tienda que coincida con "${subscriptionSearchQuery}".`
+                          : 'No se encontraron tiendas con el filtro seleccionado.'}
+                      </div>
+                      {subscriptionSearchQuery.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setSubscriptionSearchQuery('')}
+                          className="text-xs text-amber-400 hover:underline cursor-pointer font-bold inline-block"
+                        >
+                          Limpiar búsqueda para ver todas las tiendas
+                        </button>
+                      )}
                     </div>
                   ) : (
                     displayedSubscriptions.map((user) => {
@@ -3233,7 +3308,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       {displayedSubscriptions.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-8 text-center text-gray-500 font-semibold">
-                            {users.length === 0 ? 'Cargando tiendas...' : 'No se encontraron tiendas con el filtro seleccionado.'}
+                            <div className="space-y-2">
+                              <div>
+                                {users.length === 0 
+                                  ? 'Cargando tiendas...' 
+                                  : subscriptionSearchQuery.trim()
+                                  ? `No se encontró ninguna tienda que coincida con "${subscriptionSearchQuery}".`
+                                  : 'No se encontraron tiendas con el filtro seleccionado.'}
+                              </div>
+                              {subscriptionSearchQuery.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => setSubscriptionSearchQuery('')}
+                                  className="text-xs text-amber-400 hover:underline cursor-pointer font-bold inline-block"
+                                >
+                                  Limpiar búsqueda para ver todas las tiendas
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ) : (
@@ -3508,7 +3600,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   {!loadingMoreSubs && hasMoreSubs && users.length > 0 && (
                     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-950/80 p-3 rounded-2xl border border-gray-900 text-xs">
                       <span className="text-gray-400 font-mono text-[11px]">
-                        Mostrando <strong className="text-amber-400 font-bold">{users.length}</strong> registros iniciales. Desplázate hacia abajo para autocargar los siguientes 7.
+                        {subscriptionSearchQuery.trim() ? (
+                          <>Mostrando <strong className="text-amber-400 font-bold">{displayedSubscriptions.length}</strong> tiendas filtradas de <strong className="text-gray-300 font-bold">{users.length}</strong> registros cargados.</>
+                        ) : (
+                          <>Mostrando <strong className="text-amber-400 font-bold">{users.length}</strong> registros iniciales. Desplázate hacia abajo para autocargar los siguientes 7.</>
+                        )}
                       </span>
                       <button
                         type="button"

@@ -88,6 +88,64 @@ export const isFoodProduct = (product: { name?: string; description?: string; ca
 };
 
 /**
+ * Checks if a product or category is a drink/beverage
+ */
+export const isDrinkProduct = (product: { name?: string; description?: string; category?: string }): boolean => {
+  const cat = (product.category || '').toLowerCase();
+  const name = (product.name || '').toLowerCase();
+  const desc = (product.description || '').toLowerCase();
+  const text = `${name} ${cat} ${desc}`;
+
+  return (
+    cat.includes('bebida') ||
+    cat.includes('gaseosa') ||
+    cat.includes('jugo') ||
+    cat.includes('cerveza') ||
+    cat.includes('licor') ||
+    cat.includes('agua') ||
+    cat.includes('refresco') ||
+    cat.includes('café') ||
+    cat.includes('cafe') ||
+    cat.includes('malteada') ||
+    cat.includes('smoothie') ||
+    cat.includes('coctel') ||
+    cat.includes('cóctel') ||
+    cat.includes('trago') ||
+    cat.includes('energizante') ||
+    name.includes('coca-cola') ||
+    name.includes('coca cola') ||
+    name.includes('postobon') ||
+    name.includes('postobón') ||
+    name.includes('pepsi') ||
+    name.includes('sprite') ||
+    name.includes('quatro') ||
+    name.includes('colombiana') ||
+    name.includes('manzana postobon') ||
+    name.includes('jugo ') ||
+    name.includes('jugos ') ||
+    name.includes('cerveza') ||
+    name.includes('gaseosa') ||
+    name.includes('bebida') ||
+    name.includes('agua mineral') ||
+    name.includes('agua con gas') ||
+    name.includes('agua cristal') ||
+    name.includes('limonada') ||
+    name.includes('hit ') ||
+    name.includes('mora ') ||
+    name.includes('maracuyá') ||
+    name.includes('lulo') ||
+    name.includes('mango') ||
+    name.includes('monster') ||
+    name.includes('red bull') ||
+    name.includes('gatorade') ||
+    name.includes('cerveza ') ||
+    name.includes('aguardiente') ||
+    name.includes('ron ') ||
+    name.includes('whisky')
+  );
+};
+
+/**
  * Orders a single batch of products internally (food first, then newest first),
  * ensuring individual batches are tidy before being appended to the screen.
  */
@@ -103,3 +161,4 @@ export function orderProductBatch(batch: ProductItem[]): ProductItem[] {
     return dateB - dateA;
   });
 }
+

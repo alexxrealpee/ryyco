@@ -249,10 +249,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
     },
     {
       id: 'p4',
-      category: 'BEBIDAS',
-      name: 'Limonada de Coco y Hierbabuena',
-      price: '$9.000',
-      image: 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=300&auto=format&fit=crop&q=80',
+      category: 'PIZZAS',
+      name: 'Pizza Artesanal Cuatro Quesos',
+      price: '$28.000',
+      image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=300&auto=format&fit=crop&q=80',
     }
   ];
 
@@ -693,7 +693,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                         { id: 'PARRILLA', label: 'PARRILLA' },
                         { id: 'HAMBURGUESAS', label: 'HAMBURG...' },
                         { id: 'COMIDAS RÁPIDAS', label: 'RÁPIDAS' },
-                        { id: 'BEBIDAS', label: 'BEBIDAS' }
+                        { id: 'PIZZAS', label: 'PIZZAS' }
                       ].map((cat) => {
                         const isSelected = mockCategory === cat.id;
                         return (

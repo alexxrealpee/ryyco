@@ -968,7 +968,33 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   const [prodAllowsHalfAndHalf, setProdAllowsHalfAndHalf] = useState(false);
   const [prodFlavorsText, setProdFlavorsText] = useState('');
+  const [prodFlavorsList, setProdFlavorsList] = useState<string[]>([]);
+  const [newFlavorInput, setNewFlavorInput] = useState('');
   const [prodAllowSingleFlavor, setProdAllowSingleFlavor] = useState(true);
+
+  const handleAddFlavor = (flavorToAdd?: string) => {
+    const raw = (flavorToAdd !== undefined ? flavorToAdd : newFlavorInput).trim();
+    if (!raw) return;
+
+    // Support entering or pasting multiple flavors separated by commas or adding one
+    const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
+    const uniqueNew = parts.filter(
+      p => !prodFlavorsList.some(existing => existing.toLowerCase() === p.toLowerCase())
+    );
+
+    if (uniqueNew.length > 0) {
+      const updated = [...prodFlavorsList, ...uniqueNew];
+      setProdFlavorsList(updated);
+      setProdFlavorsText(updated.join(', '));
+    }
+    setNewFlavorInput('');
+  };
+
+  const handleRemoveFlavor = (indexToRemove: number) => {
+    const updated = prodFlavorsList.filter((_, idx) => idx !== indexToRemove);
+    setProdFlavorsList(updated);
+    setProdFlavorsText(updated.join(', '));
+  };
   const [prodActive, setProdActive] = useState(true);
   const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [isCompressingLogo, setIsCompressingLogo] = useState(false);
@@ -1334,6 +1360,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdVariantPrices({});
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
+    setProdFlavorsList([]);
+    setNewFlavorInput('');
     setProdAllowSingleFlavor(true);
     setProdActive(true);
     setIsAddingProd(true);
@@ -1380,6 +1408,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdVariantPrices({});
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
+    setProdFlavorsList([]);
+    setNewFlavorInput('');
     setProdAllowSingleFlavor(true);
     setProdActive(true);
     setIsAddingProd(true);
@@ -1427,7 +1457,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdVariantPrices(initialPrices);
 
     setProdAllowsHalfAndHalf(Boolean(prod.allowsHalfAndHalf));
+    const initialFlavors = (prod.flavorsText || '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+    setProdFlavorsList(initialFlavors);
     setProdFlavorsText(prod.flavorsText || '');
+    setNewFlavorInput('');
     setProdAllowSingleFlavor(prod.allowSingleFlavor !== false);
     setProdActive(prod.active !== false);
     setIsAddingProd(true);
@@ -1581,7 +1617,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       variantsText: serializedVariants,
       variantPrices: Object.keys(cleanVariantPrices).length > 0 ? cleanVariantPrices : undefined,
       allowsHalfAndHalf: prodAllowsHalfAndHalf,
-      flavorsText: prodAllowsHalfAndHalf ? prodFlavorsText.trim() : '',
+      flavorsText: prodAllowsHalfAndHalf ? (prodFlavorsList.length > 0 ? prodFlavorsList.join(', ') : prodFlavorsText.trim()) : '',
       allowSingleFlavor: prodAllowSingleFlavor,
       active: prodActive
     };
@@ -2903,34 +2939,83 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                               <div>
                                 <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1">
-                                  Sabores disponibles (separados por comas)
+                                  Agregar sabor
                                 </label>
-                                <textarea
-                                  rows={3}
-                                  value={prodFlavorsText}
-                                  onChange={(e) => setProdFlavorsText(e.target.value)}
-                                  placeholder="Ej: Vainilla, Chocolate, Fresa, Arequipe, Maracuyá, Brownie, Hawaiana, Pepperoni, Carnes..."
-                                  className="w-full bg-gray-900 border border-amber-500/40 focus:border-amber-400 p-3 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 resize-none"
-                                />
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                  Escribe todos los sabores que ofreces separados por coma. El cliente podrá elegir sus sabores favoritos o combinarlos con selector interactivo y buscador.
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="text"
+                                    value={newFlavorInput}
+                                    onChange={(e) => setNewFlavorInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleAddFlavor();
+                                      }
+                                    }}
+                                    placeholder="Ej: Vainilla, Chocolate, Fresa..."
+                                    className="w-full h-11 bg-gray-900 border border-amber-500/40 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder:text-gray-500"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddFlavor()}
+                                    disabled={!newFlavorInput.trim()}
+                                    className="h-11 px-4 bg-amber-500 hover:bg-amber-400 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-gray-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-md whitespace-nowrap"
+                                    title="Añadir sabor a la lista"
+                                  >
+                                    <Plus className="w-4 h-4 stroke-[3]" />
+                                    <span>+ Añadir sabor</span>
+                                  </button>
+                                </div>
                               </div>
 
-                              {/* Flavor chips preview */}
-                              {prodFlavorsText.trim() && (
-                                <div className="space-y-1.5 bg-black/40 p-3 rounded-xl border border-amber-500/20">
-                                  <span className="text-[9px] font-black uppercase tracking-wider text-amber-400 block">
-                                    Sabores detectados ({prodFlavorsText.split(',').filter(s => s.trim()).length}):
-                                  </span>
-                                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto custom-scrollbar">
-                                    {prodFlavorsText.split(',').map(s => s.trim()).filter(Boolean).map((flavor, idx) => (
-                                      <span key={idx} className="inline-flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-lg">
-                                        ✨ {flavor}
+                              {/* Lista de sabores visible debajo del campo */}
+                              {prodFlavorsList.length > 0 ? (
+                                <div className="space-y-2 bg-black/40 p-3 sm:p-3.5 rounded-xl border border-amber-500/25">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                                      <span>Sabores añadidos</span>
+                                      <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full text-[9px] font-extrabold border border-amber-500/30">
+                                        {prodFlavorsList.length} {prodFlavorsList.length === 1 ? 'sabor' : 'sabores'}
                                       </span>
+                                    </span>
+                                    {prodFlavorsList.length > 1 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setProdFlavorsList([]);
+                                          setProdFlavorsText('');
+                                        }}
+                                        className="text-[9px] text-gray-400 hover:text-red-400 transition font-semibold cursor-pointer"
+                                      >
+                                        Borrar todos
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto custom-scrollbar pt-0.5">
+                                    {prodFlavorsList.map((flavor, idx) => (
+                                      <div
+                                        key={idx}
+                                        className="inline-flex items-center gap-2 bg-amber-500/15 hover:bg-amber-500/20 border border-amber-500/35 text-amber-200 text-xs font-bold px-3 py-1.5 rounded-xl transition shadow-sm group"
+                                      >
+                                        <span className="text-amber-400 text-[11px]">✨</span>
+                                        <span className="max-w-[220px] truncate">{flavor}</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveFlavor(idx)}
+                                          className="w-4 h-4 rounded-full flex items-center justify-center text-amber-400/70 hover:text-red-400 hover:bg-red-500/20 transition cursor-pointer ml-0.5"
+                                          title={`Eliminar sabor ${flavor}`}
+                                        >
+                                          <X className="w-3.5 h-3.5 stroke-[2.5]" />
+                                        </button>
+                                      </div>
                                     ))}
                                   </div>
                                 </div>
+                              ) : (
+                                <p className="text-[10px] text-gray-400 font-semibold italic">
+                                  No has añadido sabores todavía. Escribe el nombre de un sabor arriba y haz clic en «+ Añadir sabor».
+                                </p>
                               )}
 
                               <div className="flex items-center gap-2 pt-1">
