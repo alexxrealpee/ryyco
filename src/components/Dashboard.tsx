@@ -2964,14 +2964,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     onClick={() => handleAddFlavor()}
                                     disabled={!newFlavorInput.trim()}
                                     className="h-11 px-4 bg-amber-500 hover:bg-amber-400 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-gray-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-md whitespace-nowrap"
-                                    title="Añadir sabor a la lista"
+                                    title="Agregar"
                                   >
-                                    <Plus className="w-4 h-4 stroke-[3]" />
-                                    <span>Añadir sabor</span>
+                                    <span>Agregar</span>
                                   </button>
                                 </div>
                                 <p className="text-[10px] text-gray-400 mt-1 font-medium">
-                                  Escribe un sabor y pulsa <strong className="text-amber-400 font-bold">Añadir sabor</strong>. El texto ingresado quedará completo como un único sabor.
+                                  Escribe un sabor y pulsa <strong className="text-amber-400 font-bold">Agregar</strong>. El texto ingresado quedará completo como un único sabor.
                                 </p>
                               </div>
 
@@ -3021,7 +3020,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </div>
                               ) : (
                                 <p className="text-[10px] text-gray-400 font-semibold italic">
-                                  No has añadido sabores todavía. Escribe el nombre de un sabor arriba y haz clic en «Añadir sabor».
+                                  No has añadido sabores todavía. Escribe el nombre de un sabor arriba y haz clic en «Agregar».
                                 </p>
                               )}
 

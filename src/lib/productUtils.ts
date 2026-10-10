@@ -162,3 +162,57 @@ export function orderProductBatch(batch: ProductItem[]): ProductItem[] {
   });
 }
 
+export interface DrinkPreset {
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  variantsText?: string;
+  imageURL: string;
+  icon: string;
+  type?: 'gaseosa' | 'jugo' | 'cerveza' | 'agua' | 'caliente';
+}
+
+export const DEFAULT_DRINK_PRESETS: DrinkPreset[] = [
+  {
+    name: 'Coca-Cola 400ml',
+    description: 'Bebida gaseosa personal servida bien fría.',
+    price: 4500,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría',
+    imageURL: 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80',
+    icon: '🥤',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Postobón Manzana 400ml',
+    description: 'Refrescante gaseosa tradicional colombiana sabor a manzana.',
+    price: 4000,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría',
+    imageURL: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=500&auto=format&fit=crop&q=80',
+    icon: '🍎',
+    type: 'gaseosa'
+  },
+  {
+    name: 'Jugo Natural en Agua',
+    description: 'Jugo preparado al instante con fruta fresca natural.',
+    price: 6000,
+    category: '🥤 Bebidas',
+    variantsText: 'Mora, Maracuyá, Mango, Lulo',
+    imageURL: 'https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500&auto=format&fit=crop&q=80',
+    icon: '🧃',
+    type: 'jugo'
+  },
+  {
+    name: 'Agua Cristal 600ml',
+    description: 'Agua pura sin gas servida bien fría.',
+    price: 3500,
+    category: '🥤 Bebidas',
+    variantsText: 'Fría, Al clima',
+    imageURL: 'https://images.unsplash.com/photo-1559839914-ba2ac5cd5880?w=500&auto=format&fit=crop&q=80',
+    icon: '💧',
+    type: 'agua'
+  }
+];
+

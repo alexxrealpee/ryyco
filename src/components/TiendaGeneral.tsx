@@ -1148,7 +1148,105 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     const updated = addProductToCart(prodToSave, 1, firstVariant);
     setCart(updated);
+    setIsCartOpen(true);
   };
+
+  // Helper: Obtener las bebidas de este mismo restaurante para sugerir al agregar al carrito
+  const getSuggestedDrinksForStore = useCallback((storeUid: string, storeProf?: UserProfile): ProductItem[] => {
+    if (!storeUid && !storeProf) return [];
+    const targetUid = storeProf?.uid || storeUid;
+    const targetUsername = (storeProf?.username || '').toLowerCase().trim();
+    const storeDisplayName = storeProf?.displayName || storeProf?.username || 'este restaurante';
+
+    // 1. Filtrar bebidas reales del restaurante en el catálogo cargado
+    const realStoreDrinks = products.filter(p => {
+      if (!isDrinkProduct(p)) return false;
+      if (p.active === false || p.outOfStock === true) return false;
+      const pStoreProf = findStoreForProduct(p, profiles);
+      const isUidMatch = (p.userId && p.userId === targetUid) || (pStoreProf && pStoreProf.uid === targetUid);
+      const isUserMatch = targetUsername && p.storeUsername && p.storeUsername.toLowerCase().trim() === targetUsername;
+      return isUidMatch || isUserMatch;
+    });
+
+    if (realStoreDrinks.length > 0) {
+      const seen = new Set<string>();
+      return realStoreDrinks.filter(d => {
+        const key = (d.id || d.name || '').toLowerCase().trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    // 2. Si el restaurante no tiene bebidas disponibles registradas, no mostrar sugerencias genéricas
+    return [];
+  }, [products, profiles]);
+
+  const handleAddSuggestedDrink = (drink: ProductItem) => {
+    const prof = findStoreForProduct(drink, profiles) || (drink.userId ? profiles[drink.userId] : undefined);
+    const img = drink.imageURL || getProductImage(drink.id);
+    const validProdId = (drink.id && String(drink.id).trim() && String(drink.id).trim() !== 'undefined')
+      ? String(drink.id).trim()
+      : `drink_${String(prof?.uid || drink.userId || 'store')}_${encodeURIComponent((drink.name || 'drink').trim().toLowerCase().replace(/\s+/g, '_'))}`;
+
+    const parsedVariants = splitVariantsText(drink.variantsText, drink.variantPrices);
+    const firstVariant = parsedVariants.length > 0 ? parsedVariants[0] : undefined;
+    const unitPrice = firstVariant ? getVariantPrice(drink, firstVariant) : (Number(drink.price) || 0);
+
+    const prodToSave: ProductItem = {
+      ...drink,
+      price: unitPrice > 0 ? unitPrice : (Number(drink.price) || 0),
+      id: validProdId,
+      imageURL: img,
+      userId: prof?.uid || drink.userId || '',
+      storeName: prof?.displayName || drink.storeName || (prof?.username ? `@${prof.username}` : 'Restaurante'),
+      storeUsername: prof?.username || drink.storeUsername || ''
+    };
+
+    if (img) registerProductImages([prodToSave]);
+
+    const updated = addProductToCart(prodToSave, 1, firstVariant);
+    setCart(updated);
+    setIsCartOpen(true);
+  };
+
+  // Cargar catálogo completo del restaurante en segundo plano para que todas sus bebidas reales estén disponibles
+  useEffect(() => {
+    const storesToFetch = new Set<string>();
+
+    if (selectedProduct) {
+      const prof = findStoreForProduct(selectedProduct, profiles);
+      if (prof?.uid) storesToFetch.add(prof.uid);
+    }
+
+    if (cart.length > 0) {
+      cart.forEach(item => {
+        const p = item.product;
+        const prof = findStoreForProduct(p, profiles);
+        if (prof?.uid) storesToFetch.add(prof.uid);
+        else if (p.userId) storesToFetch.add(p.userId);
+      });
+    }
+
+    if (storesToFetch.size === 0) return;
+
+    storesToFetch.forEach(storeUid => {
+      const prof = profiles[storeUid] || (Object.values(profiles) as UserProfile[]).find(p => p?.uid === storeUid);
+      if (prof && prof.uid) {
+        fetchProductsForStoreOnDemand(prof, 50).then(fresh => {
+          if (fresh && fresh.length > 0) {
+            setProducts(prev => {
+              const existingIds = new Set(prev.map(p => p.id));
+              const newOnes = fresh.filter(p => !existingIds.has(p.id));
+              if (newOnes.length === 0) return prev;
+              registerProductImages(newOnes);
+              return [...prev, ...newOnes];
+            });
+          }
+        }).catch(() => {});
+      }
+    });
+  }, [selectedProduct, cart, profiles]);
 
   const handleSetItemQuantity = (cartItemId: string, change: number) => {
     const item = cart.find(i => i.id === cartItemId || i.product.id === cartItemId);
@@ -2827,6 +2925,80 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           </div>
                         </div>
                       ) : null}
+
+                      {/* Bebidas sugeridas de este mismo restaurante */}
+                      {(() => {
+                        const modalStoreProf = findStoreForProduct(selectedProduct, profiles);
+                        const modalStoreUid = modalStoreProf?.uid || selectedProduct.userId || '';
+                        const modalStoreDrinks = getSuggestedDrinksForStore(modalStoreUid, modalStoreProf);
+                        if (!modalStoreDrinks || modalStoreDrinks.length === 0) return null;
+
+                        return (
+                          <div className="pt-4 mt-2 border-t border-[#232B3A] space-y-3 w-full">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-base select-none">🥤</span>
+                                <div>
+                                  <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                                    ¿Deseas acompañar tu comida con una bebida?
+                                  </h4>
+                                  <p className="text-[10px] text-[#A9B2C3]">
+                                    Bebidas sugeridas de <span className="text-white font-bold">{modalStoreProf?.displayName || modalStoreProf?.username || 'este restaurante'}</span>
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[9px] font-black bg-[#E63946]/15 text-[#E63946] border border-[#E63946]/30 px-2 py-0.5 rounded-full shrink-0">
+                                {modalStoreDrinks.length} {modalStoreDrinks.length === 1 ? 'opción' : 'opciones'}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {modalStoreDrinks.map(drink => {
+                                const drinkQty = cart
+                                  .filter(ci => (ci.product.id === drink.id || ci.product.name === drink.name) && ci.product.userId === modalStoreUid)
+                                  .reduce((sum, ci) => sum + ci.quantity, 0);
+
+                                return (
+                                  <div 
+                                    key={drink.id}
+                                    className="bg-[#0E1424] border border-[#232B3A] hover:border-[#E63946]/50 rounded-xl p-2.5 flex items-center justify-between gap-2.5 transition"
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <div className="w-10 h-10 rounded-lg bg-[#090B12] border border-[#232B3A] overflow-hidden shrink-0 flex items-center justify-center">
+                                        {drink.imageURL ? (
+                                          <img src={drink.imageURL} alt={drink.name} className="w-full h-full object-cover" />
+                                        ) : (
+                                          <span className="text-base">🥤</span>
+                                        )}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-bold text-white truncate">{drink.name}</p>
+                                        <p className="text-[11px] font-black text-emerald-400 font-mono">
+                                          {currency}{Number(drink.price || 0).toLocaleString('es-CO')}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAddSuggestedDrink(drink)}
+                                      className={`px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 shrink-0 cursor-pointer active:scale-95 ${
+                                        drinkQty > 0
+                                          ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white'
+                                          : 'bg-[#E63946] hover:bg-[#D62839] text-white shadow-sm'
+                                      }`}
+                                      title={`Añadir ${drink.name} al carrito`}
+                                    >
+                                      <Plus className="w-3 h-3 stroke-[3]" />
+                                      <span>{drinkQty > 0 ? `+ (${drinkQty})` : 'Añadir'}</span>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -2996,6 +3168,92 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     );
                   })
                 )}
+
+                {/* Bebidas sugeridas de este mismo restaurante */}
+                {cart.length > 0 && (() => {
+                  const uniqueStoreIds = Array.from(
+                    new Set(
+                      cart.map(item => {
+                        const p = item?.product || (item as any) || {};
+                        return p.userId || (item as any)?.userId || '';
+                      }).filter(Boolean)
+                    )
+                  );
+
+                  return uniqueStoreIds.map(storeUid => {
+                    const storeProfile = profiles[storeUid] || (Object.values(profiles) as UserProfile[]).find(p => p?.uid === storeUid);
+                    const storeName = storeProfile?.displayName || storeProfile?.username || 'este restaurante';
+                    const storeCurrency = storeProfile?.currency || '$';
+                    const storeDrinks = getSuggestedDrinksForStore(storeUid, storeProfile);
+                    if (!storeDrinks || storeDrinks.length === 0) return null;
+
+                    return (
+                      <div key={`cart_drinks_${storeUid}`} className="mt-5 pt-4 border-t border-[#232B3A] space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base select-none">🥤</span>
+                            <div>
+                              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                                ¿Deseas agregar una bebida?
+                              </h4>
+                              <p className="text-[10px] text-[#A9B2C3]">
+                                Bebidas sugeridas de <span className="text-white font-bold">{storeName}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <span className="text-[9px] font-black bg-[#E63946]/15 text-[#E63946] border border-[#E63946]/30 px-2 py-0.5 rounded-full shrink-0">
+                            {storeDrinks.length} {storeDrinks.length === 1 ? 'disponible' : 'disponibles'}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-2">
+                          {storeDrinks.map(drink => {
+                            const drinkQty = cart
+                              .filter(ci => (ci.product.id === drink.id || ci.product.name === drink.name) && (ci.product.userId === storeUid))
+                              .reduce((sum, ci) => sum + ci.quantity, 0);
+
+                            return (
+                              <div 
+                                key={drink.id}
+                                className="bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/60 rounded-xl p-2.5 flex items-center justify-between gap-3 transition"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-11 h-11 rounded-lg bg-[#090B12] border border-[#232B3A] overflow-hidden shrink-0 flex items-center justify-center">
+                                    {drink.imageURL ? (
+                                      <img src={drink.imageURL} alt={drink.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                      <span className="text-lg">🥤</span>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-white truncate">{drink.name}</p>
+                                    <p className="text-[11px] font-black text-emerald-400 font-mono">
+                                      {storeCurrency}{Number(drink.price || 0).toLocaleString('es-CO')}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddSuggestedDrink(drink)}
+                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 shrink-0 cursor-pointer active:scale-95 shadow-sm ${
+                                    drinkQty > 0
+                                      ? 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-600 hover:text-white'
+                                      : 'bg-[#E63946] hover:bg-[#D62839] text-white shadow-[#E63946]/20'
+                                  }`}
+                                  title={`Añadir ${drink.name} al carrito`}
+                                >
+                                  <Plus className="w-3 h-3 stroke-[3]" />
+                                  <span>{drinkQty > 0 ? `+ Añadir (${drinkQty})` : '+ Añadir'}</span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
 
               {/* Cart Footer */}
