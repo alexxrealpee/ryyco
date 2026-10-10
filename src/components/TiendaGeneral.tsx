@@ -1312,27 +1312,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const triggerShopperWhatsAppMessage = (order: OrderItem) => {
     const profile = profiles[order.storeOwnerId];
-    if (!profile) return;
+    const currency = profile?.currency || '$';
+    const storeDisplayName = (profile?.displayName || profile?.storeName || order.storeName || (profile?.username ? `@${profile.username}` : 'Restaurante / Tienda')).trim();
 
     const isPickup = order.orderType === 'pickup' || order.deliveryFee === 0;
 
     let msg = `🛍️ *PEDIDO NUEVO #${order.orderNumber}* de *${order.customerName}*\n`;
+    msg += `🏪 *Tienda:* ${storeDisplayName}\n`;
     msg += `-----------------------------\n`;
     order.items.forEach(item => {
       const vText = item.selectedVariant ? ` (${item.selectedVariant})` : '';
-      msg += `• ${item.quantity} x ${item.name}${vText} - ${profile.currency || '$'}${item.price.toLocaleString()}\n`;
+      msg += `• ${item.quantity} x ${item.name}${vText} - ${currency}${item.price.toLocaleString()}\n`;
     });
     msg += `-----------------------------\n`;
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
     const feeVal = order.deliveryFee ?? (isPickup ? 0 : systemDeliveryFee);
-    msg += `Subtotal: ${profile.currency || '$'}${subtotalVal.toLocaleString()}\n`;
+    msg += `Subtotal: ${currency}${subtotalVal.toLocaleString()}\n`;
     msg += `Tipo de Entrega: *${isPickup ? '🛍️ Recoger en Restaurante / Local (Sin costo de envío)' : '🛵 Envío a Domicilio'}*\n`;
     if (!isPickup) {
-      msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
+      msg += `Domicilio: ${currency}${feeVal.toLocaleString('es-CO')}\n`;
     } else {
       msg += `Domicilio: *$0 (Recoger en Restaurante)*\n`;
     }
-    msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
+    msg += `Total: *${currency}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
     msg += `📍 ${isPickup ? 'Entrega' : 'Despacho'}: ${order.customerAddress}\n`;
     if (!isPickup && order.customerMapUrl) {
@@ -1346,9 +1348,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ? window.location.origin
       : 'https://ryyco.com';
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
-    const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/`;
+    const storeRatingUrl = profile?.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/`;
     const ryycoHomeUrl = `${cleanBaseUrl}/`;
-    const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'el restaurante')).trim();
 
     msg += `-----------------------------\n`;
     msg += `🍔 *¿NECESITA AYUDA?*\n`;
@@ -1361,14 +1362,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     msg += `¡Gracias por pedir con RYYCO! ❤️💛`;
 
     const cleanMsg = encodeURIComponent(msg);
-    const targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';
-    let cleanedWhatsapp = targetPhone.replace(/[^0-9]/g, '');
+    // Todas las órdenes se envían a este número central de WhatsApp: 3106502043
+    const targetPhone = '573106502043';
 
-    if (cleanedWhatsapp.length === 10 && cleanedWhatsapp.startsWith('3')) {
-      cleanedWhatsapp = '57' + cleanedWhatsapp;
-    }
-
-    window.open(`https://wa.me/${cleanedWhatsapp || '573000000000'}?text=${cleanMsg}`, '_blank');
+    window.open(`https://wa.me/${targetPhone}?text=${cleanMsg}`, '_blank');
   };
 
   return (

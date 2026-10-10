@@ -1102,10 +1102,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
     const isTable = order.orderType === 'table' || order.isTableOrder;
     const isPickup = !isTable && (order.orderType === 'pickup' || order.deliveryFee === 0);
+    const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'el restaurante')).trim();
     
     let msg = isTable
       ? `🍽️ *PEDIDO EN MESA #${order.tableNumber || tableNumber || (order.customerAddress.replace(/\D+/g, '') || '')}* - *${order.customerName}*\n`
       : `🛍️ *PEDIDO NUEVO #${order.orderNumber}* de *${order.customerName}*\n`;
+    msg += `🏪 *Tienda:* ${storeDisplayName}\n`;
     msg += `-----------------------------\n`;
     order.items.forEach(item => {
       const vText = item.selectedVariant ? ` (${item.selectedVariant})` : '';
@@ -1150,7 +1152,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const cleanBaseUrl = baseUrl.replace(/\/+$/, '');
     const storeRatingUrl = profile.username ? `${cleanBaseUrl}/${profile.username.replace(/^\//, '')}` : `${cleanBaseUrl}/`;
     const ryycoHomeUrl = `${cleanBaseUrl}/`;
-    const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'el restaurante')).trim();
 
     msg += `-----------------------------\n`;
     msg += `🍔 *¿NECESITA AYUDA?*\n`;
@@ -1163,15 +1164,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     msg += `¡Gracias por pedir con RYYCO! ❤️💛`;
 
     const cleanMsg = encodeURIComponent(msg);
-    let targetPhone = profile.customerServiceWhatsapp || profile.whatsapp || profile.ownerWhatsapp || profile.phone || '';
-    let cleanedWhatsapp = targetPhone.replace(/[^0-9]/g, '');
+    // Todas las órdenes se envían a este número central de WhatsApp: 3106502043
+    const targetPhone = '573106502043';
     
-    // Auto-fix: if it's a 10 digit Colombian celular (starts with 3), automatically prepend country code '57'
-    if (cleanedWhatsapp.length === 10 && cleanedWhatsapp.startsWith('3')) {
-      cleanedWhatsapp = '57' + cleanedWhatsapp;
-    }
-    
-    window.open(`https://wa.me/${cleanedWhatsapp || '573000000000'}?text=${cleanMsg}`, '_blank');
+    window.open(`https://wa.me/${targetPhone}?text=${cleanMsg}`, '_blank');
   };
 
   if (loading) {
