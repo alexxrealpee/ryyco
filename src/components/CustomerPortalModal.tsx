@@ -923,7 +923,8 @@ export default function CustomerPortalModal({
         return {
           stageTitle: 'Paso 1 de 5 • Recepción',
           headline: 'Pedido Recibido en Ryyco',
-          description: 'Tu pedido ha sido recibido y se encuentra en espera de confirmación por la tienda o domiciliario.',
+          subMessage: 'Espera un momento mientras toman tu orden.',
+          description: 'Espera un momento mientras toman tu orden. Tu pedido ha sido recibido y se encuentra en espera de confirmación por la tienda o domiciliario.',
           percentageLabel: '15%',
           icon: <Clock className="w-4 h-4 text-amber-400" />,
           iconBadge: 'bg-amber-400/20 text-amber-400 border border-amber-400/30',
@@ -1692,9 +1693,17 @@ export default function CustomerPortalModal({
                                             <span className="w-1.5 h-1.5 rounded-full bg-current animate-ping shrink-0" />
                                           )}
                                         </div>
-                                        <p className="text-[11.5px] sm:text-xs font-bold text-white truncate mt-0.5">
-                                          {stepperInfo.headline}
-                                        </p>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <p className="text-[11.5px] sm:text-xs font-bold text-white truncate mt-0.5">
+                                            {stepperInfo.headline}
+                                          </p>
+                                          {stepperInfo.subMessage && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-amber-300 bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 rounded-md mt-0.5">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                                              {stepperInfo.subMessage}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                     <div className="text-right shrink-0">
