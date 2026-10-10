@@ -18,12 +18,18 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
 }) => {
   // Extract available flavors list
   const flavors = useMemo(() => {
+    if (product.flavorsList && Array.isArray(product.flavorsList) && product.flavorsList.length > 0) {
+      return product.flavorsList.map(f => f.trim()).filter(Boolean);
+    }
     if (!product.flavorsText) return [];
+    if (product.flavorsText.includes(';;')) {
+      return product.flavorsText.split(';;').map(f => f.trim()).filter(Boolean);
+    }
     return product.flavorsText
       .split(',')
       .map(f => f.trim())
       .filter(Boolean);
-  }, [product.flavorsText]);
+  }, [product.flavorsText, product.flavorsList]);
 
   // Extract available sizes (from variantsText, variantsList, or variantPrices)
   const sizes = useMemo(() => {

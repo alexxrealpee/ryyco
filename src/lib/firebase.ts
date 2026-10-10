@@ -1268,6 +1268,7 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
         variantPrices: data.variantPrices || undefined,
         allowsHalfAndHalf: Boolean(data.allowsHalfAndHalf),
         flavorsText: data.flavorsText || '',
+        flavorsList: Array.isArray(data.flavorsList) ? data.flavorsList : (data.flavorsText ? (data.flavorsText.includes(';;') ? data.flavorsText.split(';;').map((s: string) => s.trim()).filter(Boolean) : data.flavorsText.split(',').map((s: string) => s.trim()).filter(Boolean)) : []),
         allowSingleFlavor: data.allowSingleFlavor !== false,
         active: data.active !== false,
         createdAt: data.createdAt || new Date().toISOString()
@@ -1299,6 +1300,7 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
               variantPrices: lp.variantPrices || undefined,
               allowsHalfAndHalf: Boolean(lp.allowsHalfAndHalf),
               flavorsText: lp.flavorsText || '',
+              flavorsList: Array.isArray(lp.flavorsList) ? lp.flavorsList : (lp.flavorsText ? (lp.flavorsText.includes(';;') ? lp.flavorsText.split(';;').map((s: string) => s.trim()).filter(Boolean) : lp.flavorsText.split(',').map((s: string) => s.trim()).filter(Boolean)) : []),
               allowSingleFlavor: lp.allowSingleFlavor !== false,
               active: lp.active !== false,
               createdAt: lp.createdAt || new Date().toISOString()
@@ -1696,6 +1698,7 @@ export function subscribeProducts(userId: string, callback: (products: ProductIt
         variantPrices: data.variantPrices || undefined,
         allowsHalfAndHalf: Boolean(data.allowsHalfAndHalf),
         flavorsText: data.flavorsText || '',
+        flavorsList: Array.isArray(data.flavorsList) ? data.flavorsList : (data.flavorsText ? (data.flavorsText.includes(';;') ? data.flavorsText.split(';;').map((s: string) => s.trim()).filter(Boolean) : data.flavorsText.split(',').map((s: string) => s.trim()).filter(Boolean)) : []),
         allowSingleFlavor: data.allowSingleFlavor !== false,
         active: data.active !== false,
         createdAt: data.createdAt || new Date().toISOString()

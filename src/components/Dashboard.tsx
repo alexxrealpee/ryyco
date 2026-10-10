@@ -976,17 +976,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     const raw = (flavorToAdd !== undefined ? flavorToAdd : newFlavorInput).trim();
     if (!raw) return;
 
-    // Support entering or pasting multiple flavors separated by commas or adding one
-    const parts = raw.split(',').map(s => s.trim()).filter(Boolean);
-    const uniqueNew = parts.filter(
-      p => !prodFlavorsList.some(existing => existing.toLowerCase() === p.toLowerCase())
-    );
-
-    if (uniqueNew.length > 0) {
-      const updated = [...prodFlavorsList, ...uniqueNew];
-      setProdFlavorsList(updated);
-      setProdFlavorsText(updated.join(', '));
+    // No dividir por comas: el texto ingresado queda completo como un único sabor
+    if (prodFlavorsList.some(existing => existing.toLowerCase() === raw.toLowerCase())) {
+      setNewFlavorInput('');
+      return;
     }
+
+    const updated = [...prodFlavorsList, raw];
+    setProdFlavorsList(updated);
+    setProdFlavorsText(updated.join(', '));
     setNewFlavorInput('');
   };
 
@@ -1457,10 +1455,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdVariantPrices(initialPrices);
 
     setProdAllowsHalfAndHalf(Boolean(prod.allowsHalfAndHalf));
-    const initialFlavors = (prod.flavorsText || '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
+    const initialFlavors = (prod.flavorsList && Array.isArray(prod.flavorsList) && prod.flavorsList.length > 0)
+      ? [...prod.flavorsList]
+      : (prod.flavorsText || '')
+          .includes(';;')
+          ? prod.flavorsText.split(';;').map(s => s.trim()).filter(Boolean)
+          : (prod.flavorsText || '')
+              .split(',')
+              .map(s => s.trim())
+              .filter(Boolean);
     setProdFlavorsList(initialFlavors);
     setProdFlavorsText(prod.flavorsText || '');
     setNewFlavorInput('');
@@ -1617,6 +1620,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       variantsText: serializedVariants,
       variantPrices: Object.keys(cleanVariantPrices).length > 0 ? cleanVariantPrices : undefined,
       allowsHalfAndHalf: prodAllowsHalfAndHalf,
+      flavorsList: prodAllowsHalfAndHalf ? prodFlavorsList : [],
       flavorsText: prodAllowsHalfAndHalf ? (prodFlavorsList.length > 0 ? prodFlavorsList.join(', ') : prodFlavorsText.trim()) : '',
       allowSingleFlavor: prodAllowSingleFlavor,
       active: prodActive
@@ -2952,7 +2956,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         handleAddFlavor();
                                       }
                                     }}
-                                    placeholder="Ej: Vainilla, Chocolate, Fresa..."
+                                    placeholder="Escribe el sabor (ej: Vainilla)..."
                                     className="w-full h-11 bg-gray-900 border border-amber-500/40 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder:text-gray-500"
                                   />
                                   <button
@@ -2963,9 +2967,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     title="Añadir sabor a la lista"
                                   >
                                     <Plus className="w-4 h-4 stroke-[3]" />
-                                    <span>+ Añadir sabor</span>
+                                    <span>Añadir sabor</span>
                                   </button>
                                 </div>
+                                <p className="text-[10px] text-gray-400 mt-1 font-medium">
+                                  Escribe un sabor y pulsa <strong className="text-amber-400 font-bold">Añadir sabor</strong>. El texto ingresado quedará completo como un único sabor.
+                                </p>
                               </div>
 
                               {/* Lista de sabores visible debajo del campo */}
@@ -3014,7 +3021,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </div>
                               ) : (
                                 <p className="text-[10px] text-gray-400 font-semibold italic">
-                                  No has añadido sabores todavía. Escribe el nombre de un sabor arriba y haz clic en «+ Añadir sabor».
+                                  No has añadido sabores todavía. Escribe el nombre de un sabor arriba y haz clic en «Añadir sabor».
                                 </p>
                               )}
 
@@ -3676,11 +3683,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                           <span className="text-indigo-400 truncate max-w-[120px]">{prod.variantsText}</span>
                                         </div>
                                       )}
-                                      {prod.allowsHalfAndHalf && prod.flavorsText && (
+                                      {prod.allowsHalfAndHalf && (prod.flavorsText || (prod.flavorsList && prod.flavorsList.length > 0)) && (
                                         <div className="flex justify-between items-center text-amber-400">
                                           <span>✨ Sabores:</span>
-                                          <span className="font-bold truncate max-w-[120px]" title={prod.flavorsText}>
-                                            {prod.flavorsText.split(',').filter(Boolean).length} sabores
+                                          <span className="font-bold truncate max-w-[120px]" title={prod.flavorsList?.join(', ') || prod.flavorsText}>
+                                            {prod.flavorsList && prod.flavorsList.length > 0
+                                              ? prod.flavorsList.length
+                                              : (prod.flavorsText?.split(',').filter(Boolean).length || 0)} sabores
                                           </span>
                                         </div>
                                       )}
