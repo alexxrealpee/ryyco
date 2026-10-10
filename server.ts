@@ -88,7 +88,7 @@ function getOpenAIClient(): OpenAI | null {
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Compress all responses with gzip / deflate to drastically accelerate network delivery
   app.use(compression() as any);
@@ -336,7 +336,13 @@ Formatos válidos para:
     }
   };
 
-  app.post(['/api/voice-assistant', '/api/voice-assistant.php', '/api/gemini/voice-assistant'], handleVoiceAssistantRequest);
+  app.post([
+    '/api/voice-assistant', 
+    '/api/voice-assistant.php', 
+    '/api/gemini/voice-assistant',
+    '/api/chat',
+    '/api/chat.php'
+  ], handleVoiceAssistantRequest);
 
   // Health check route
   app.get(['/api/health', '/api/health.php'], (req, res) => {

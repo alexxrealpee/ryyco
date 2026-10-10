@@ -71,7 +71,8 @@ import {
   Smartphone,
   CheckCircle2,
   Store,
-  Laptop
+  Laptop,
+  Key
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -97,6 +98,7 @@ import {
   deduplicateProducts,
   fetchOrders,
   saveOrder,
+  getOrderDeliveryCode,
   deduplicateOrders,
   subscribeOrders,
   updateOrderStatus,
@@ -6257,6 +6259,25 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   <Bike className="w-4 h-4" />
                   Confirmar Pedido (Domiciliario Propio)
                 </button>
+              </div>
+            )}
+
+            {/* Delivery Verification PIN Code for Restaurant Owner */}
+            {!checkIsTableOrder(viewingOrder) && !checkIsPickupOrder(viewingOrder) && (
+              <div className="p-3.5 bg-emerald-950/40 border border-emerald-800/50 rounded-2xl flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-emerald-400" /> Código PIN de Entrega del Cliente
+                  </span>
+                  <p className="text-[11px] text-gray-300 mt-0.5">
+                    {viewingOrder.deliveryCodeVerified 
+                      ? '✓ Código verificado exitosamente por el domiciliario'
+                      : 'El cliente debe dictar este código al domiciliario para confirmar la entrega'}
+                  </p>
+                </div>
+                <span className="font-mono text-base font-black text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-3 py-1 rounded-xl tracking-widest shrink-0 ml-3">
+                  {getOrderDeliveryCode(viewingOrder)}
+                </span>
               </div>
             )}
 

@@ -99,6 +99,7 @@ import {
   Info,
   Key
 } from 'lucide-react';
+import { smartApiFetch } from '../lib/apiConfig';
 import {
   initializeFCM,
   requestAdminFCMPermission,
@@ -400,6 +401,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [addingAdminEmail, setAddingAdminEmail] = useState<boolean>(false);
   const [removingAdminEmail, setRemovingAdminEmail] = useState<string | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+
+  // Hostinger and External APIs Integration state
+  const [hostingerBackendUrl, setHostingerBackendUrl] = useState<string>(() => {
+    try {
+      return localStorage.getItem('ryyco_backend_url') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(false);
+  const [healthCheckResult, setHealthCheckResult] = useState<any | null>(null);
+  const [savingBackendUrl, setSavingBackendUrl] = useState<boolean>(false);
 
   // Filter by subscription status for historical payments & subscriptions ledger
   const [selectedSubscriptionStatusFilter, setSelectedSubscriptionStatusFilter] = useState<string>('all');
@@ -5380,6 +5393,151 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       );
                     })}
                   </div>
+                </div>
+              </div>
+
+              {/* Hostinger & AI APIs Integration Section */}
+              <div className="bg-[#0b101d] border border-emerald-900/40 p-5 sm:p-6 rounded-2xl space-y-5 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-800/80 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                      <Zap className="w-5 h-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-extrabold text-white flex items-center gap-2">
+                        Hosting y Conexión de APIs de IA (Hostinger / GPT)
+                        <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                          PHP + Node.js
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-gray-400">
+                        Diagnóstico y enlace de APIs para asistentes de voz, ChatGPT GPT-4o y mapas en tu dominio publicado.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={healthCheckLoading}
+                    onClick={async () => {
+                      setHealthCheckLoading(true);
+                      setHealthCheckResult(null);
+                      try {
+                        const res = await smartApiFetch('/api/health');
+                        const data = await res.json();
+                        setHealthCheckResult({ ok: true, data });
+                      } catch (err: any) {
+                        setHealthCheckResult({ ok: false, error: err?.message || 'No se pudo conectar con /api/health' });
+                      } finally {
+                        setHealthCheckLoading(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shadow-md"
+                  >
+                    {healthCheckLoading ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Verificando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Probar APIs (/api/health)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Health Check Result Feedback */}
+                {healthCheckResult && (
+                  <div className={`p-4 rounded-xl text-xs space-y-2 border ${healthCheckResult.ok ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-200' : 'bg-red-950/40 border-red-500/40 text-red-200'}`}>
+                    <div className="flex items-center gap-2 font-black">
+                      {healthCheckResult.ok ? (
+                        <>
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span>¡Conexión de APIs exitosa! Servidor respondiendo correctamente.</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-4 h-4 text-red-400" />
+                          <span>Aviso de conexión: {healthCheckResult.error}</span>
+                        </>
+                      )}
+                    </div>
+                    {healthCheckResult.ok && healthCheckResult.data?.apis && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                        <div className="p-2 bg-black/30 rounded-lg">
+                          <span className="text-gray-400 block font-semibold">OpenAI ChatGPT:</span>
+                          <span className={healthCheckResult.data.apis.openai_gpt?.configured ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                            {healthCheckResult.data.apis.openai_gpt?.configured ? '✓ Activo y Configurado' : '⚠ Clave no detectada en servidor'}
+                          </span>
+                        </div>
+                        <div className="p-2 bg-black/30 rounded-lg">
+                          <span className="text-gray-400 block font-semibold">Plataforma detectada:</span>
+                          <span className="text-white font-mono">{healthCheckResult.data.platform || 'Hostinger Web'}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Custom Remote Backend URL Field */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-300 block">
+                    URL de Backend Remoto Personalizado (Opcional)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={hostingerBackendUrl}
+                      onChange={(e) => setHostingerBackendUrl(e.target.value)}
+                      placeholder="https://tudominio.com o https://tu-servicio-cloudrun.run.app"
+                      className="flex-1 bg-gray-950 border border-gray-800 focus:border-emerald-500 text-white font-mono text-xs rounded-xl p-3 outline-none transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const clean = hostingerBackendUrl.trim();
+                        try {
+                          if (clean) {
+                            localStorage.setItem('ryyco_backend_url', clean);
+                          } else {
+                            localStorage.removeItem('ryyco_backend_url');
+                          }
+                          setSavingBackendUrl(true);
+                          setTimeout(() => setSavingBackendUrl(false), 2000);
+                        } catch (e) {}
+                      }}
+                      className="px-5 py-3 bg-[#161F30] hover:bg-[#1E293B] text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/30 transition cursor-pointer shrink-0"
+                    >
+                      {savingBackendUrl ? '✓ Guardado' : 'Guardar URL'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Déjalo vacío si utilizas el puente nativo PHP de Hostinger en el mismo dominio (recomendado). Si ejecutas Node.js en otro servidor o Cloud Run, ingresa aquí la URL base.
+                  </p>
+                </div>
+
+                {/* Hostinger Step-by-Step Instructions */}
+                <div className="p-4 bg-gray-900/60 border border-gray-800 rounded-xl space-y-2.5 text-xs text-gray-300">
+                  <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider block flex items-center gap-1.5">
+                    <Info className="w-4 h-4 text-amber-400" /> Guía para que funcionen las APIs de GPT en Hostinger:
+                  </span>
+                  <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-gray-300 leading-relaxed">
+                    <li>
+                      <strong>Sube los archivos de la carpeta <code className="text-emerald-300">dist/</code></strong> directamente al directorio <code className="text-emerald-300">public_html/</code> de tu hosting en Hostinger (incluyendo el archivo <code className="text-emerald-300">.htaccess</code> y la carpeta <code className="text-emerald-300">api/</code>).
+                    </li>
+                    <li>
+                      <strong>Configura tu clave de OpenAI en Hostinger:</strong> Crea un archivo llamado <code className="text-emerald-300">.env</code> en la carpeta raíz de tu hosting con:
+                      <pre className="mt-1 p-2 bg-black rounded-lg text-emerald-300 font-mono text-[10px] overflow-x-auto">OPENAI_API_KEY=tu_clave_sk_proj_aqui</pre>
+                      <em>O en Hostinger hPanel &gt; Variables de entorno, o en <code className="text-emerald-300">.htaccess</code> descomentando <code className="text-emerald-300">SetEnv OPENAI_API_KEY "tu_clave"</code>.</em>
+                    </li>
+                    <li>
+                      <strong>¡Listo!</strong> La asistente de voz, el chat GPT y la síntesis de voz funcionarán nativamente a través de los scripts PHP de alto rendimiento incluidos en <code className="text-emerald-300">/api/</code>.
+                    </li>
+                  </ol>
                 </div>
               </div>
 

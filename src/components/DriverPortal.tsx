@@ -62,6 +62,7 @@ import {
   listenToUnassignedOrders, 
   acceptDeliveryOrderTransaction, 
   updateOrderDeliveryStep, 
+  getOrderDeliveryCode,
   updateOrderDriverPaymentInfo,
   fetchDriverOrdersHistory, 
   fetchDriverRatings, 
@@ -2225,10 +2226,40 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               </button>
                             </div>
                             {deliveryPinError && (
-                              <p className="text-[11px] text-red-400 font-semibold flex items-start gap-1.5 pt-0.5">
-                                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                                <span>{deliveryPinError}</span>
-                              </p>
+                              <div className="space-y-2 pt-0.5">
+                                <p className="text-[11px] text-red-400 font-semibold flex items-start gap-1.5">
+                                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                  <span>{deliveryPinError}</span>
+                                </p>
+                                {activeDelivery.customerPhone && (
+                                  <a
+                                    href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
+                                  >
+                                    <MessageSquare className="w-3 h-3" />
+                                    <span>Pedir PIN al cliente por WhatsApp</span>
+                                  </a>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Demo driver helper */}
+                            {(driver?.id === 'driver_demo' || driver?.docNumber === '12345678') && (
+                              <div className="pt-1 flex items-center justify-between text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 rounded-lg">
+                                <span>Modo Demo: PIN ({getOrderDeliveryCode(activeDelivery)})</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDeliveryPinInput(getOrderDeliveryCode(activeDelivery));
+                                    if (deliveryPinError) setDeliveryPinError('');
+                                  }}
+                                  className="text-amber-200 underline font-black hover:text-white cursor-pointer ml-2"
+                                >
+                                  Autocompletar
+                                </button>
+                              </div>
                             )}
                           </div>
 
@@ -3141,9 +3172,41 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
             {/* Error Message */}
             {deliveryPinError && (
-              <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 font-semibold flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-                <span>{deliveryPinError}</span>
+              <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 font-semibold space-y-2">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                  <span>{deliveryPinError}</span>
+                </div>
+                {activeDelivery.customerPhone && (
+                  <div className="pt-1">
+                    <a
+                      href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
+                    >
+                      <MessageSquare className="w-3 h-3" />
+                      <span>Pedir PIN al cliente por WhatsApp</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Demo driver helper in modal */}
+            {(driver?.id === 'driver_demo' || driver?.docNumber === '12345678') && (
+              <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center justify-between">
+                <span>Modo Demostración: PIN ({getOrderDeliveryCode(activeDelivery)})</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeliveryPinInput(getOrderDeliveryCode(activeDelivery));
+                    if (deliveryPinError) setDeliveryPinError('');
+                  }}
+                  className="text-amber-200 underline font-black hover:text-white cursor-pointer ml-2"
+                >
+                  Autocompletar
+                </button>
               </div>
             )}
 

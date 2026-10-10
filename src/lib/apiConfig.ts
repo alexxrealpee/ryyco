@@ -90,6 +90,27 @@ export async function smartApiFetch(endpoint: string, options: RequestInit = {})
         });
       }
 
+      // If mod_rewrite is disabled on Hostinger, retry directly with .php file extension
+      if (!cleanPath.endsWith('.php') && !cleanPath.includes('?')) {
+        const phpPath = cleanPath.startsWith('/api/') ? cleanPath : `/api${cleanPath}`;
+        const phpUrl = `${phpPath}.php`;
+        try {
+          const phpRes = await fetch(phpUrl, {
+            ...options,
+            headers: {
+              'Accept': 'application/json',
+              ...(options.headers || {})
+            }
+          });
+          const phpContentType = phpRes.headers.get('content-type') || '';
+          if (!phpContentType.includes('text/html') && phpRes.ok) {
+            return phpRes;
+          }
+        } catch (phpErr) {
+          // Ignore and continue
+        }
+      }
+
       // If no valid remote backend is configured, reject with a structured error
       // so calling services activate their local client-side matching engine cleanly
       throw new Error(`ENDPOINT_RETURNED_HTML:${cleanPath}`);
