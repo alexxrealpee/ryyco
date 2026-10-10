@@ -1886,6 +1886,22 @@ export default function LinnkProVoiceAssistant({
               )}
 
               {/* VIEW 2: CHAT & CART TRANSCRIPT VIEW (Matching 3. Chat del Mesero IA) */}
+              {/* Botón superior de contacto humano por WhatsApp al comenzar a chatear */}
+              {activeTab === 'chat' && messages.length > 1 && (
+                <div className="px-3.5 py-2 bg-[#161D2B] border-b border-white/10 flex items-center justify-center flex-shrink-0 z-10 shadow-sm">
+                  <a
+                    id="btn-whatsapp-human-support-top"
+                    href="https://wa.me/573106502043?text=Hola%2C%20deseo%20contactar%20con%20un%20humano%20en%20Ryyco"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#25D366] hover:text-[#4ade80] border border-[#25D366]/35 text-xs font-semibold transition active:scale-95 shadow-sm"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-[#25D366] flex-shrink-0" />
+                    <span>Contactar con un humano por WhatsApp 3106502043</span>
+                  </a>
+                </div>
+              )}
+
               {activeTab === 'chat' && (
                 <div className="flex-1 overflow-y-auto p-4 space-y-4 text-sm bg-[#121722] scrollbar-thin scrollbar-thumb-slate-800">
                   {/* Welcome Message Card if initial conversation */}

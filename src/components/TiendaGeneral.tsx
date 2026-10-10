@@ -1949,7 +1949,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             onClick={() => setIsFullScreenSearchOpen(true)}
             className="relative w-full cursor-pointer z-10"
           >
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-orange-400 pointer-events-none" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-[#D62839] pointer-events-none" />
             <input
               type="text"
               readOnly
@@ -1957,7 +1957,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               onClick={() => setIsFullScreenSearchOpen(true)}
               onFocus={() => setIsFullScreenSearchOpen(true)}
               placeholder="🎃 Buscar restaurantes, platos de miedo, hamburguesas, pizzas a domicilio..."
-              className="w-full bg-[#0B0F19] border-2 border-[#D62839] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-white placeholder:text-gray-400 focus:outline-none focus:border-[#D62839] focus:ring-4 focus:ring-[#D62839]/25 shadow-md shadow-[#D62839]/10 transition cursor-pointer"
+              className="w-full bg-white border-2 border-[#D62839] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-[#D62839] focus:ring-4 focus:ring-[#D62839]/25 shadow-md shadow-black/10 transition cursor-pointer"
             />
             {searchTerm && (
               <button 
@@ -1966,7 +1966,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   e.stopPropagation();
                   setSearchTerm('');
                 }} 
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-800 rounded-lg text-gray-300 transition cursor-pointer"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded-lg text-gray-600 transition cursor-pointer"
                 title="Limpiar filtro"
               >
                 <X className="w-3.5 h-3.5" />

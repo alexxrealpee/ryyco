@@ -79,8 +79,8 @@ export function buildDriverOrderWhatsAppMessage(
     order.paymentMethod === 'whatsapp' ? 'Por WhatsApp' : 'Efectivo';
 
   const itemsSummary = order.items && order.items.length > 0 
-    ? order.items.map(i => `  • ${i.quantity}x ${i.name}${i.selectedVariant ? ` (${i.selectedVariant})` : ''}`).join('\n')
-    : '  • Productos de la orden';
+    ? order.items.map(i => `• ${i.quantity}x ${i.name}${i.selectedVariant ? ` (${i.selectedVariant})` : ''}`).join('\n')
+    : (order.notes ? `• ${order.notes}` : '• Productos del pedido');
 
   // If a custom template is provided, we can support basic replacements
   if (customTemplate && customTemplate.trim().length > 10) {
@@ -91,22 +91,16 @@ export function buildDriverOrderWhatsAppMessage(
       .replace(/{customerName}/g, order.customerName || 'Cliente')
       .replace(/{deliveryFee}/g, feeFormatted)
       .replace(/{totalAmount}/g, totalFormatted)
-      .replace(/{driverName}/g, driver?.firstName || 'Domiciliario');
+      .replace(/{driverName}/g, driver?.firstName || 'Domiciliario')
+      .replace(/{itemsSummary}/g, itemsSummary);
   }
 
   return (
-    `🛵 *¡NUEVO PEDIDO DISPONIBLE EN RYYCO!* 🛵\n\n` +
-    `${driverGreeting}Se acaba de recibir un nuevo pedido disponible para entrega:\n\n` +
-    `📦 *Pedido:* ${orderNum}\n` +
-    `🏪 *Tienda:* ${storeName}${storeAddress}${storeRef}\n` +
-    `🏠 *Cliente:* ${order.customerName || 'Cliente'}\n` +
-    `📍 *Dirección de Entrega:* ${address}${reference}\n` +
-    `💰 *Tu Ganancia Domicilio:* ${feeFormatted}\n` +
-    `💵 *Valor Total Pedido:* ${totalFormatted}\n` +
-    `💳 *Método de Pago:* ${paymentMethodLabel}\n\n` +
-    `📋 *Productos del Pedido:*\n${itemsSummary}\n\n` +
+    `*Pedido:*\n` +
+    `${itemsSummary}\n\n` +
     `👉 *¡Ingresa ya a tu app de Domiciliario para ACEPTAR el servicio antes que los demás!*:\n` +
     `📲 https://ryyco.com/?view=driver\n\n` +
+    `📞 *Recuerda llamar al restaurante antes de ir por el pedido*\n\n` +
     `_Sistema Central de Administración General RYYCO_`
   );
 }

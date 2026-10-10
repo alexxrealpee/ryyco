@@ -170,15 +170,15 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
         className="bg-[#111827] text-white rounded-[32px] sm:rounded-[36px] shadow-2xl p-6 sm:p-8 max-w-[440px] w-full relative text-center border border-[#232B3A] overflow-hidden animate-in zoom-in-95 duration-200 shadow-black/60"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
+        {/* Close Button with red #E63946 background */}
         <button
           type="button"
           onClick={handleSkip}
-          className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-full text-[#A9B2C3] hover:text-white hover:bg-[#232B3A] transition cursor-pointer"
-          title="Omitir por ahora"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 w-8 h-8 rounded-full bg-[#E63946] hover:bg-[#D62839] text-white flex items-center justify-center transition cursor-pointer hover:scale-110 active:scale-95 shadow-md shadow-red-900/40 z-20"
+          title="Cerrar"
           aria-label="Cerrar"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4 stroke-[2.5]" />
         </button>
 
         {/* 3D Isometric House with Red Map Pin Illustration */}
