@@ -170,52 +170,11 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
         </span>
       </div>
 
-      {/* 1. Mode Selector: Mitad y Mitad / Combinar vs 1 Solo Sabor */}
-      {allowsHalfAndHalf && allowSingle && (
-        <div className="space-y-1.5 w-full min-w-0">
-          <label className="text-[10px] font-black uppercase tracking-widest text-[#A9B2C3] block truncate">
-            1. ¿Cómo deseas prepararlo?
-          </label>
-          <div className="grid grid-cols-2 gap-1.5 sm:gap-2 bg-[#090B12] p-1 sm:p-1.5 rounded-xl border border-[#232B3A] w-full min-w-0">
-            <button
-              type="button"
-              onClick={() => setMode('half_half')}
-              className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-lg text-[11px] sm:text-xs font-black transition cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-center leading-tight min-w-0 ${
-                mode === 'half_half'
-                  ? 'bg-gradient-to-r from-amber-500 to-red-500 text-white shadow-lg shadow-amber-500/20'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="text-xs sm:text-sm shrink-0">🌓</span>
-                <span className="truncate font-bold">{isPizza ? 'Mitad y Mitad' : 'Combinar'}</span>
-              </div>
-              <span className="text-[9px] sm:text-[10px] font-medium opacity-85 shrink-0 whitespace-nowrap">(2 Sabores)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('single')}
-              className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-lg text-[11px] sm:text-xs font-black transition cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-center leading-tight min-w-0 ${
-                mode === 'single'
-                  ? 'bg-gradient-to-r from-amber-500 to-red-500 text-white shadow-lg shadow-amber-500/20'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center gap-1 min-w-0">
-                <span className="text-xs sm:text-sm shrink-0">{productEmoji}</span>
-                <span className="truncate font-bold">1 Solo Sabor</span>
-              </div>
-              <span className="text-[9px] sm:text-[10px] font-medium opacity-85 shrink-0 whitespace-nowrap">(Completo)</span>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Size / Presentation Selector if available */}
+      {/* 1. Size / Presentation Selector if available */}
       {sizes.length > 0 && (
         <div className="space-y-1.5 w-full min-w-0">
           <label className="text-[10px] font-black uppercase tracking-widest text-[#A9B2C3] block truncate">
-            {allowsHalfAndHalf && allowSingle ? '2. ' : '1. '}Elige el tamaño o presentación:
+            1. Elige el tamaño o presentación:
           </label>
           <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {sizes.map((sz) => {
@@ -251,6 +210,47 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
                 </button>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* 2. Mode Selector: Mitad y Mitad / Combinar vs 1 Solo Sabor */}
+      {allowsHalfAndHalf && allowSingle && (
+        <div className="space-y-1.5 w-full min-w-0">
+          <label className="text-[10px] font-black uppercase tracking-widest text-[#A9B2C3] block truncate">
+            {sizes.length > 0 ? '2. ' : '1. '}¿Cómo deseas prepararlo?
+          </label>
+          <div className="grid grid-cols-2 gap-1.5 sm:gap-2 bg-[#090B12] p-1 sm:p-1.5 rounded-xl border border-[#232B3A] w-full min-w-0">
+            <button
+              type="button"
+              onClick={() => setMode('half_half')}
+              className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-lg text-[11px] sm:text-xs font-black transition cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-center leading-tight min-w-0 ${
+                mode === 'half_half'
+                  ? 'bg-gradient-to-r from-amber-500 to-red-500 text-white shadow-lg shadow-amber-500/20'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="text-xs sm:text-sm shrink-0">🌓</span>
+                <span className="truncate font-bold">{isPizza ? 'Mitad y Mitad' : 'Combinar'}</span>
+              </div>
+              <span className="text-[9px] sm:text-[10px] font-medium opacity-85 shrink-0 whitespace-nowrap">(2 Sabores)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('single')}
+              className={`py-2 sm:py-2.5 px-1.5 sm:px-3 rounded-lg text-[11px] sm:text-xs font-black transition cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1.5 text-center leading-tight min-w-0 ${
+                mode === 'single'
+                  ? 'bg-gradient-to-r from-amber-500 to-red-500 text-white shadow-lg shadow-amber-500/20'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-1 min-w-0">
+                <span className="text-xs sm:text-sm shrink-0">{productEmoji}</span>
+                <span className="truncate font-bold">1 Solo Sabor</span>
+              </div>
+              <span className="text-[9px] sm:text-[10px] font-medium opacity-85 shrink-0 whitespace-nowrap">(Completo)</span>
+            </button>
           </div>
         </div>
       )}
