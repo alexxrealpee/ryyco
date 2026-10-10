@@ -13,7 +13,7 @@ import {
   MessageCircle, ShieldCheck, Ticket, LogOut, ArrowRight,
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
   Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale,
-  Navigation, Send, ArrowUpRight, ArrowDownLeft, History, Share2, Wallet, CheckCheck, Coins
+  Navigation, Send, ArrowUpRight, ArrowDownLeft, History, Share2, Wallet, CheckCheck, Coins, Key
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -44,7 +44,8 @@ import {
   logoutCustomerSession,
   RyycoTransferReceipt,
   auth,
-  googleProvider
+  googleProvider,
+  getOrderDeliveryCode
 } from '../lib/firebase';
 
 const GoogleIcon = () => (
@@ -1876,6 +1877,39 @@ export default function CustomerPortalModal({
                                     WhatsApp
                                   </a>
                                 )}
+                              </div>
+                            )}
+
+                            {/* Customer Delivery PIN Code Banner */}
+                            {!isDelivered && !isCancelled && (
+                              <div className="p-3.5 bg-gradient-to-r from-emerald-950/40 via-[#0C1522] to-emerald-950/20 border border-emerald-500/40 rounded-xl flex items-center justify-between gap-3 shadow-md">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                                    <Key className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block">
+                                      Código de Entrega (PIN)
+                                    </span>
+                                    <p className="text-[11px] text-gray-300">
+                                      Entrégale este código al domiciliario para confirmar la entrega:
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="px-3.5 py-1.5 bg-emerald-500/20 border border-emerald-500/50 rounded-lg font-mono text-lg font-black text-emerald-300 tracking-[0.2em] shrink-0">
+                                  {getOrderDeliveryCode(order)}
+                                </div>
+                              </div>
+                            )}
+
+                            {isDelivered && (order.deliveryCodeVerified || order.deliveryCode) && (
+                              <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between text-xs text-emerald-400">
+                                <span className="flex items-center gap-1.5 text-[11px] font-bold">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Entrega confirmada con código PIN
+                                </span>
+                                <span className="font-mono text-xs font-bold text-emerald-300 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30">
+                                  PIN: {order.deliveryCode || getOrderDeliveryCode(order)}
+                                </span>
                               </div>
                             )}
 

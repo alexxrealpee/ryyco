@@ -299,6 +299,11 @@ export interface OrderItem {
   deliveryStepUpdatedAt?: string;
   driverRatingGiven?: boolean;
 
+  // Customer Delivery Verification Code (PIN de entrega entregado por el cliente al domiciliario)
+  deliveryCode?: string;
+  deliveryCodeVerified?: boolean;
+  deliveryCodeVerifiedAt?: string;
+
   // Restaurant & COD Payment Verification by Domiciliario (Etapa 1)
   restaurantPaymentStatus?: 'unconfirmed' | 'already_paid' | 'not_paid';
   customerCodConfirmed?: boolean;

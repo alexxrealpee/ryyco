@@ -1321,6 +1321,37 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
   return dedupedProducts;
 }
 
+/**
+ * Generates a random 4-digit verification PIN for order delivery (e.g. "4829")
+ */
+export function generateOrderDeliveryCode(): string {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+/**
+ * Returns the order's delivery verification code, or a deterministic 4-digit code fallback if not set
+ */
+export function getOrderDeliveryCode(order?: { deliveryCode?: string; orderNumber?: number; id?: string } | null): string {
+  if (!order) return '0000';
+  if (order.deliveryCode && String(order.deliveryCode).trim()) {
+    return String(order.deliveryCode).trim();
+  }
+  // Deterministic fallback based on orderNumber
+  if (order.orderNumber) {
+    const seed = Math.abs(Number(order.orderNumber) * 37 + 1013);
+    const code = 1000 + (seed % 9000);
+    return code.toString();
+  }
+  if (order.id) {
+    let hash = 0;
+    for (let i = 0; i < order.id.length; i++) {
+      hash = (hash * 31 + order.id.charCodeAt(i)) % 9000;
+    }
+    return (1000 + hash).toString();
+  }
+  return '1234';
+}
+
 // CREATE CUSTOMER ORDER
 export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   // 1. Strict Live Validation against Firestore: Verify store is open (isClosed === false)
@@ -1345,6 +1376,8 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   const docRef = doc(collection(db, 'orders'));
   result.id = docRef.id;
   result.status = 'pending';
+  // Generate 4-digit delivery verification code for the customer to give to the driver
+  result.deliveryCode = result.deliveryCode || generateOrderDeliveryCode();
   const orderCreatedAt = result.createdAt || new Date().toISOString();
   result.createdAt = orderCreatedAt;
   result.pendingAt = result.pendingAt || orderCreatedAt;
@@ -4521,6 +4554,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
 
       const now = new Date().toISOString();
       const effectiveFee = systemFee || 7000;
+      const orderDeliveryCode = orderData.deliveryCode || generateOrderDeliveryCode();
       const timeUpdates = applyOrderTimeTransition(orderData, 'processing', {
         userRole: 'driver',
         driverId: driver.id,
@@ -4541,6 +4575,7 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
         deliveryStep: 'accepted' as const,
         deliveryStepUpdatedAt: now,
         status: 'confirmed',
+        deliveryCode: orderDeliveryCode,
         ...timeUpdates
       };
 
@@ -4607,7 +4642,13 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
 /**
  * Progress order delivery step (accepted -> to_store -> at_store -> picked_up -> to_client -> at_destination -> delivered)
  */
-export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['deliveryStep'], driverId?: string, deliveryFee?: number): Promise<void> {
+export async function updateOrderDeliveryStep(
+  orderId: string, 
+  step: OrderItem['deliveryStep'], 
+  driverId?: string, 
+  deliveryFee?: number,
+  providedDeliveryCode?: string
+): Promise<void> {
   const orderRef = doc(db, 'orders', orderId);
   const now = new Date().toISOString();
 
@@ -4624,6 +4665,19 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
   }
   if (currentOrder?.status === 'cancelled') {
     throw new Error("Un pedido cancelado no puede ser modificado.");
+  }
+
+  // VALIDATION: When completing delivery ('delivered'), require customer verification code
+  let expectedDeliveryCode: string | undefined = undefined;
+  if (step === 'delivered') {
+    expectedDeliveryCode = getOrderDeliveryCode(currentOrder);
+    const cleanedProvided = (providedDeliveryCode || '').trim();
+    if (!cleanedProvided) {
+      throw new Error("Debes solicitar el código de 4 dígitos al cliente para confirmar la entrega del pedido.");
+    }
+    if (cleanedProvided !== expectedDeliveryCode) {
+      throw new Error("Código de entrega incorrecto. Verifica el código de 4 dígitos con el cliente.");
+    }
   }
 
   let nextStatus: OrderStatus = currentOrder?.status || 'processing';
@@ -4644,7 +4698,7 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
     historyNote = 'Tu pedido va en camino a tu dirección (recogido por domiciliario - enviado)';
   } else if (step === 'delivered') {
     nextStatus = 'delivered';
-    historyNote = '¡Pedido entregado exitosamente!';
+    historyNote = '¡Pedido entregado exitosamente con código verificado por el cliente!';
   }
 
   const baseOrder = currentOrder || {
@@ -4673,6 +4727,11 @@ export async function updateOrderDeliveryStep(orderId: string, step: OrderItem['
     deliveryStep: step,
     deliveryStepUpdatedAt: now,
     status: nextStatus,
+    ...(step === 'delivered' ? { 
+      deliveryCode: currentOrder?.deliveryCode || expectedDeliveryCode,
+      deliveryCodeVerified: true, 
+      deliveryCodeVerifiedAt: now 
+    } : {}),
     ...timeUpdates
   };
 

@@ -12,13 +12,14 @@ import {
   Compass,
   Layers,
   Sparkles,
-  Store
+  Store,
+  Key
 } from 'lucide-react';
 import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { OrderItem, DeliveryTrackingData } from '../types';
-import { listenToDeliveryTracking, db } from '../lib/firebase';
+import { listenToDeliveryTracking, db, getOrderDeliveryCode } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { buildGoogleFullRouteUrl } from '../lib/coordinateUtils';
 
@@ -498,6 +499,38 @@ export default function DeliveryTrackingModal({
               </div>
             )}
           </div>
+
+          {/* Customer Delivery Verification Code (PIN) Banner */}
+          {currentStep !== 'delivered' ? (
+            <div className="p-3.5 bg-gradient-to-r from-emerald-950/60 via-[#0A161E] to-emerald-950/40 border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 block">
+                    Tu Código de Entrega (PIN)
+                  </span>
+                  <p className="text-[11px] text-gray-300 truncate">
+                    Entrégale este código al domiciliario para confirmar la entrega:
+                  </p>
+                </div>
+              </div>
+              <div className="px-3.5 py-1.5 bg-emerald-500/20 border border-emerald-500/60 rounded-xl font-mono text-2xl font-black text-emerald-300 tracking-[0.25em] shadow-inner shrink-0">
+                {getOrderDeliveryCode(activeOrder)}
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs text-emerald-300">
+              <span className="flex items-center gap-2 font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Entrega confirmada con código de seguridad
+              </span>
+              <span className="font-mono text-emerald-200 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">
+                PIN: {getOrderDeliveryCode(activeOrder)}
+              </span>
+            </div>
+          )}
 
           {/* Interactive Map */}
           <div className="relative rounded-2xl border border-gray-800 overflow-hidden bg-gray-950 h-[340px] shadow-inner">

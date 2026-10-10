@@ -336,18 +336,28 @@ Formatos válidos para:
     }
   };
 
-  app.post('/api/voice-assistant', handleVoiceAssistantRequest);
-  app.post('/api/gemini/voice-assistant', handleVoiceAssistantRequest); // Endpoint alias for backward compatibility
+  app.post(['/api/voice-assistant', '/api/voice-assistant.php', '/api/gemini/voice-assistant'], handleVoiceAssistantRequest);
+
+  // Health check route
+  app.get(['/api/health', '/api/health.php'], (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
 
   // API Route: OpenAI Realtime Voice WebRTC Session (Secure Ephemeral Token Provisioning)
   const handleRealtimeSession = async (req: express.Request, res: express.Response) => {
     const apiKey = process.env.OPENAI_API_KEY || '';
     await createRealtimeSessionHandler(req, res, apiKey);
   };
-  app.all('/api/realtime/session', handleRealtimeSession);
-  app.all('/api/realtime-session', handleRealtimeSession);
-  app.all('/api/realtime/client_secrets', handleRealtimeSession);
-  app.all('/api/realtime/client-secrets', handleRealtimeSession);
+  app.all([
+    '/api/realtime/session', 
+    '/api/realtime-session', 
+    '/api/realtime/client_secrets', 
+    '/api/realtime/client-secrets',
+    '/api/realtime-session.php',
+    '/api/realtime/session.php',
+    '/api/realtime/client_secrets.php',
+    '/api/realtime/client-secrets.php'
+  ], handleRealtimeSession);
 
   // API Route: LinnkPro AI Voice Text-to-Speech (TTS) (Powered strictly by OpenAI High Definition TTS)
   const handleTTSRequest = async (req: express.Request, res: express.Response) => {
@@ -388,14 +398,13 @@ Formatos válidos para:
     }
   };
 
-  app.post('/api/tts', handleTTSRequest);
-  app.post('/api/gemini/tts', handleTTSRequest); // Endpoint alias for backward compatibility
+  app.post(['/api/tts', '/api/tts.php', '/api/gemini/tts'], handleTTSRequest);
 
   // Initialize Dynamic Available Catalog Manager (5-min refresh & real-time synchronization)
   initBackendCatalogManager();
 
   // API Routes: Dynamic Available Catalog & Real-time Validation
-  app.get('/api/catalog/available', async (req, res) => {
+  app.get(['/api/catalog/available', '/api/catalog-available.php'], async (req, res) => {
     let catalog = getAvailableCatalog();
     if (!catalog.stores || catalog.stores.length === 0) {
       catalog = await refreshCatalogFromFirestore();

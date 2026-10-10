@@ -193,6 +193,13 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [trackingPreviewOpen, setTrackingPreviewOpen] = useState<boolean>(false);
   const [showActiveOrderDetails, setShowActiveOrderDetails] = useState<boolean>(true);
 
+  // Delivery PIN Verification Modal & Input State
+  const [showDeliveryCodeModal, setShowDeliveryCodeModal] = useState<boolean>(false);
+  const [deliveryPinInput, setDeliveryPinInput] = useState<string>('');
+  const [deliveryPinError, setDeliveryPinError] = useState<string>('');
+  const [isVerifyingPin, setIsVerifyingPin] = useState<boolean>(false);
+  const [deliveryPinSuccess, setDeliveryPinSuccess] = useState<boolean>(false);
+
   // Hard guarantee: When active delivery exists, suppress and wipe all available unassigned orders & popups
   useEffect(() => {
     if (activeDelivery) {
@@ -876,10 +883,33 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   };
 
   // Advance delivery step (4 simplified steps)
-  const handleAdvanceStep = async (nextStep: OrderItem['deliveryStep']) => {
+  const handleAdvanceStep = async (nextStep: OrderItem['deliveryStep'], providedCode?: string) => {
     if (!activeDelivery || !driver) return;
+
+    // Security Gate: Delivery driver CANNOT mark order as delivered without customer code
+    if (nextStep === 'delivered') {
+      const codeToVerify = (providedCode !== undefined ? providedCode : deliveryPinInput).trim();
+      if (!codeToVerify) {
+        setDeliveryPinError('Debes solicitar e ingresar el código de 4 dígitos entregado por el cliente.');
+        setShowDeliveryCodeModal(true);
+        return;
+      }
+    }
+
     try {
-      await updateOrderDeliveryStep(activeDelivery.id, nextStep, driver.id, systemDeliveryFee || activeDelivery.deliveryFee || 7000);
+      if (nextStep === 'delivered') {
+        setIsVerifyingPin(true);
+        setDeliveryPinError('');
+      }
+
+      await updateOrderDeliveryStep(
+        activeDelivery.id, 
+        nextStep, 
+        driver.id, 
+        systemDeliveryFee || activeDelivery.deliveryFee || 7000,
+        providedCode !== undefined ? providedCode : (nextStep === 'delivered' ? deliveryPinInput.trim() : undefined)
+      );
+
       const computedStatus: OrderItem['status'] = 
         nextStep === 'delivered' ? 'delivered' : 
         (nextStep === 'to_client' || nextStep === 'at_destination') ? 'shipped' : 
@@ -890,7 +920,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       const updated = {
         ...activeDelivery,
         deliveryStep: nextStep,
-        status: computedStatus
+        status: computedStatus,
+        ...(nextStep === 'delivered' ? { deliveryCodeVerified: true } : {})
       };
       setActiveDelivery(updated);
 
@@ -898,8 +929,15 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       manualForceSync();
 
       if (nextStep === 'delivered') {
-        // Delivery completed!
-        setActiveDelivery(null);
+        // Delivery completed with verified PIN!
+        setDeliveryPinSuccess(true);
+        setTimeout(() => {
+          setShowDeliveryCodeModal(false);
+          setDeliveryPinInput('');
+          setDeliveryPinSuccess(false);
+          setActiveDelivery(null);
+        }, 1500);
+
         try {
           localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
           localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
@@ -913,8 +951,16 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         }
         loadHistoryAndRatings(driver.id);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error updating delivery step:", e);
+      if (nextStep === 'delivered') {
+        setDeliveryPinError(e.message || 'Código incorrecto. Verifica el código de 4 dígitos con el cliente.');
+        setShowDeliveryCodeModal(true);
+      }
+    } finally {
+      if (nextStep === 'delivered') {
+        setIsVerifyingPin(false);
+      }
     }
   };
 
@@ -2110,7 +2156,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       )}
 
                       {(activeDelivery.deliveryStep === 'to_client' || activeDelivery.deliveryStep === 'at_destination') && (
-                        <div className="w-full space-y-2">
+                        <div className="w-full space-y-3">
                           {activeDelivery.driverPaidToRestaurant && (
                             <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-100 flex items-center justify-between">
                               <div className="flex items-center gap-2">
@@ -2125,12 +2171,77 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               </span>
                             </div>
                           )}
+
+                          {/* Security Notice: Customer Delivery Code Required */}
+                          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-xs text-amber-200">
+                            <Key className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                            <div className="leading-snug">
+                              <strong className="text-white block font-bold">Código de Entrega Obligatorio:</strong>
+                              <span>Solicita al cliente el código de 4 dígitos (PIN) que ve en su pantalla de seguimiento para poder finalizar la entrega.</span>
+                            </div>
+                          </div>
+
+                          {/* Inline PIN verification card */}
+                          <div className="p-3.5 bg-[#090D16] border border-[#232B3A] rounded-xl space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider">
+                                Código PIN del Cliente:
+                              </label>
+                              <span className="text-[10px] text-amber-400 font-semibold">4 Dígitos</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={4}
+                                disabled={isVerifyingPin || deliveryPinSuccess}
+                                value={deliveryPinInput}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                  setDeliveryPinInput(val);
+                                  if (deliveryPinError) setDeliveryPinError('');
+                                }}
+                                placeholder="••••"
+                                className="flex-1 py-3 px-3 bg-[#111827] border border-[#2B384E] focus:border-emerald-500 rounded-xl font-mono text-xl font-black text-center tracking-[0.4em] text-white outline-none placeholder-gray-600 transition"
+                              />
+                              <button
+                                type="button"
+                                disabled={isVerifyingPin || deliveryPinInput.trim().length !== 4 || deliveryPinSuccess}
+                                onClick={() => handleAdvanceStep('delivered', deliveryPinInput.trim())}
+                                className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                              >
+                                {isVerifyingPin ? (
+                                  <>
+                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    <span>Verificando...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Verificar y Entregar</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            {deliveryPinError && (
+                              <p className="text-[11px] text-red-400 font-semibold flex items-start gap-1.5 pt-0.5">
+                                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                                <span>{deliveryPinError}</span>
+                              </p>
+                            )}
+                          </div>
+
                           <button
-                            onClick={() => handleAdvanceStep('delivered')}
+                            type="button"
+                            onClick={() => {
+                              setDeliveryPinError('');
+                              setShowDeliveryCodeModal(true);
+                            }}
                             className="w-full py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2"
                           >
-                            <CheckCircle2 className="w-5 h-5" />
-                            <span>4. Confirmar Pedido Entregado ✓</span>
+                            <Key className="w-5 h-5" />
+                            <span>4. Confirmar Pedido Entregado con Código ✓</span>
                           </button>
                         </div>
                       )}
@@ -2968,6 +3079,148 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           driverLiveCoords={currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude } : null}
           storeLocationCoords={activeStoreLocation}
         />
+      )}
+
+      {/* Customer Delivery Code (PIN) Verification Modal */}
+      {showDeliveryCodeModal && activeDelivery && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-md bg-[#111622] border border-[#232B3A] rounded-3xl p-6 sm:p-7 shadow-2xl relative text-left">
+            <button
+              type="button"
+              disabled={isVerifyingPin}
+              onClick={() => {
+                setShowDeliveryCodeModal(false);
+                setDeliveryPinError('');
+                setDeliveryPinInput('');
+              }}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition cursor-pointer disabled:opacity-50"
+              title="Cerrar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white shadow-lg shadow-[#E63946]/20 shrink-0">
+                <Key className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Código de Entrega</h3>
+                <p className="text-xs text-[#A9B2C3]">Verificación obligatoria del cliente</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-300 mb-4 leading-relaxed">
+              Pídele al cliente el <strong>código de 4 dígitos (PIN)</strong> que aparece en su pantalla de seguimiento de Ryyco. No puedes marcar el pedido como entregado sin este código.
+            </p>
+
+            {/* Order info summary */}
+            <div className="bg-[#090D16] border border-[#232B3A] p-3.5 rounded-2xl mb-4 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between text-gray-400">
+                <span>Pedido:</span>
+                <span className="font-mono font-black text-[#E63946] bg-[#E63946]/10 px-2 py-0.5 rounded border border-[#E63946]/20">
+                  #{activeDelivery.orderNumber}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-gray-400">
+                <span>Cliente:</span>
+                <span className="font-bold text-white">{activeDelivery.customerName}</span>
+              </div>
+              <div className="flex items-center justify-between text-gray-400">
+                <span>Dirección:</span>
+                <span className="text-gray-200 truncate max-w-[200px]">{activeDelivery.customerAddress}</span>
+              </div>
+              {activeDelivery.driverPaidToRestaurant && (
+                <div className="flex items-center justify-between pt-1.5 border-t border-[#1F2937] text-emerald-400 font-bold">
+                  <span>Cobrar al cliente:</span>
+                  <span className="font-mono text-sm text-white">
+                    ${(activeDelivery.totalAmount || 0).toLocaleString('es-CO')}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {deliveryPinError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 font-semibold flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                <span>{deliveryPinError}</span>
+              </div>
+            )}
+
+            {/* Success Message */}
+            {deliveryPinSuccess && (
+              <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs text-emerald-200 font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                <span>✓ ¡Código correcto! Finalizando pedido entregado...</span>
+              </div>
+            )}
+
+            {/* 4-Digit Input Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!isVerifyingPin && deliveryPinInput.trim().length === 4) {
+                  handleAdvanceStep('delivered', deliveryPinInput.trim());
+                }
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-[11px] font-black uppercase tracking-wider text-gray-400 block mb-2 text-center">
+                  Ingresa el código PIN (4 dígitos):
+                </label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  autoFocus
+                  disabled={isVerifyingPin || deliveryPinSuccess}
+                  value={deliveryPinInput}
+                  onChange={(e) => {
+                    const cleaned = e.target.value.replace(/\D/g, '').slice(0, 4);
+                    setDeliveryPinInput(cleaned);
+                    if (deliveryPinError) setDeliveryPinError('');
+                  }}
+                  placeholder="••••"
+                  className="w-full py-3.5 px-4 bg-[#090B12] border-2 border-emerald-500/50 focus:border-emerald-400 rounded-2xl font-mono text-3xl font-black text-center tracking-[0.6em] text-white outline-none transition placeholder-gray-600 shadow-inner"
+                />
+              </div>
+
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  disabled={isVerifyingPin || deliveryPinSuccess}
+                  onClick={() => {
+                    setShowDeliveryCodeModal(false);
+                    setDeliveryPinError('');
+                    setDeliveryPinInput('');
+                  }}
+                  className="flex-1 py-3 bg-[#161F30] hover:bg-[#1E293B] text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingPin || deliveryPinInput.trim().length !== 4 || deliveryPinSuccess}
+                  className="flex-[2] py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isVerifyingPin ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Verificando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Confirmar Entrega</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Driver Forgot Password Modal */}

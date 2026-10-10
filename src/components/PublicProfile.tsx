@@ -23,7 +23,8 @@ import {
   sanitizeCustomerPhone,
   setActiveCustomerSession,
   getActiveCustomerSession,
-  logoutCustomerSession
+  logoutCustomerSession,
+  getOrderDeliveryCode
 } from '../lib/firebase';
 import { 
   getStoredCart, 
@@ -109,7 +110,8 @@ import {
   Star,
   Ticket,
   Scale,
-  Navigation
+  Navigation,
+  Key
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
@@ -1138,6 +1140,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       }
     }
     if (order.notes) msg += `✍️ Notas: ${order.notes}\n\n`;
+    if (!isTable && !isPickup) {
+      const pinCode = getOrderDeliveryCode(order);
+      msg += `🔑 *CÓDIGO DE ENTREGA (PIN):* *${pinCode}*\n_(Entrégale este código al domiciliario al recibir tu pedido para confirmar la entrega)_\n\n`;
+    }
     msg += `Método de pago: *${order.paymentMethod === 'whatsapp' ? 'WhatsApp Directo' : order.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : isTable ? 'Efectivo / En Mesa / Datáfono' : 'Pago contra Entrega'}*\n`;
     if (order.proofImage) {
       msg += `📸 *Comprobante de compra:* Adjunto en ryyco.com\n`;
@@ -3944,6 +3950,21 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
             <h3 className="text-lg font-black text-white leading-tight">¡Pedido Recibido con Éxito!</h3>
             <p className="text-xs text-indigo-300">Tu número de guía interna es <strong className="font-mono text-white">#{submittedOrder.orderNumber}</strong></p>
+
+            {/* Customer Delivery PIN Box */}
+            {submittedOrder.orderType !== 'table' && !submittedOrder.isTableOrder && submittedOrder.orderType !== 'pickup' && (
+              <div className="bg-gradient-to-r from-emerald-950/70 via-[#0C1522] to-emerald-950/50 border border-emerald-500/50 p-3.5 rounded-2xl text-center space-y-1 shadow-lg">
+                <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 flex items-center justify-center gap-1.5">
+                  <Key className="w-3.5 h-3.5" /> Tu Código de Entrega (PIN)
+                </span>
+                <div className="font-mono text-2xl font-black text-white tracking-[0.25em]">
+                  {getOrderDeliveryCode(submittedOrder)}
+                </div>
+                <p className="text-[11px] text-gray-300">
+                  Guarda este código. Debes dárselo al domiciliario al recibir tu pedido para que pueda confirmar la entrega.
+                </p>
+              </div>
+            )}
             
             {/* Loyalty Bonus Banner */}
             <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-amber-500/15 border border-amber-500/40 p-3 rounded-2xl text-left space-y-1.5 shadow-lg">

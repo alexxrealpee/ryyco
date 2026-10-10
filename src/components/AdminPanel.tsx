@@ -28,7 +28,8 @@ import {
   calculateNextExpirationDate,
   getSubscriptionDaysRemaining,
   isSubscriptionExpiredOrSuspended,
-  getPlanProductLimit
+  getPlanProductLimit,
+  getOrderDeliveryCode
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
 import AdminReferralsManager from './AdminReferralsManager';
@@ -95,7 +96,8 @@ import {
   CheckCircle2,
   ChevronDown,
   Package,
-  Info
+  Info,
+  Key
 } from 'lucide-react';
 import {
   initializeFCM,
@@ -5562,6 +5564,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     {viewingOrder.deliveryVehicle && (
                       <div className="text-xs text-gray-300">🚘 Vehículo: {viewingOrder.deliveryVehicle} {viewingOrder.deliveryVehiclePlate ? `(${viewingOrder.deliveryVehiclePlate})` : ''}</div>
                     )}
+                  </div>
+                )}
+
+                {/* Delivery Verification PIN Code for Admin */}
+                {!checkIsTableOrder(viewingOrder) && !checkIsPickupOrder(viewingOrder) && (
+                  <div className="p-3.5 bg-emerald-950/40 border border-emerald-800/50 rounded-2xl flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block flex items-center gap-1.5">
+                        <Key className="w-3.5 h-3.5 text-emerald-400" /> Código PIN de Entrega del Cliente
+                      </span>
+                      <p className="text-[11px] text-gray-300 mt-0.5">
+                        {viewingOrder.deliveryCodeVerified 
+                          ? '✓ Código verificado exitosamente por el domiciliario'
+                          : 'El cliente debe dictar este código al domiciliario para confirmar la entrega'}
+                      </p>
+                    </div>
+                    <span className="font-mono text-base font-black text-emerald-300 bg-emerald-500/20 border border-emerald-500/40 px-3 py-1 rounded-xl tracking-widest shrink-0">
+                      {getOrderDeliveryCode(viewingOrder)}
+                    </span>
                   </div>
                 )}
 
