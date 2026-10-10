@@ -82,6 +82,14 @@ export function buildDriverOrderWhatsAppMessage(
     ? order.items.map(i => `• ${i.quantity}x ${i.name}${i.selectedVariant ? ` (${i.selectedVariant})` : ''}`).join('\n')
     : (order.notes ? `• ${order.notes}` : '• Productos del pedido');
 
+  // Calcular valor total de los productos (costo de la comida a comprar en el restaurante)
+  const productsSubtotal = (order.items && order.items.length > 0)
+    ? order.items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0)
+    : Math.max(0, (Number(order.totalAmount) || 0) - (Number(order.deliveryCost || order.deliveryFee || 0)));
+
+  const finalProductsAmount = productsSubtotal > 0 ? productsSubtotal : (Number(order.totalAmount) || 0);
+  const productsFormatted = `$${Number(finalProductsAmount).toLocaleString('es-CO')}`;
+
   // If a custom template is provided, we can support basic replacements
   if (customTemplate && customTemplate.trim().length > 10) {
     return customTemplate
@@ -91,17 +99,22 @@ export function buildDriverOrderWhatsAppMessage(
       .replace(/{customerName}/g, order.customerName || 'Cliente')
       .replace(/{deliveryFee}/g, feeFormatted)
       .replace(/{totalAmount}/g, totalFormatted)
+      .replace(/{productsAmount}/g, productsFormatted)
+      .replace(/{productsValue}/g, productsFormatted)
       .replace(/{driverName}/g, driver?.firstName || 'Domiciliario')
       .replace(/{itemsSummary}/g, itemsSummary);
   }
 
   return (
-    `*Pedido:*\n` +
+    `🛵 *¡NUEVO DOMICILIO DISPONIBLE EN RYYCO!*\n\n` +
+    `📦 *Pedido:*\n` +
     `${itemsSummary}\n\n` +
-    `👉 *¡Ingresa ya a tu app de Domiciliario para ACEPTAR el servicio antes que los demás!*:\n` +
-    `📲 https://ryyco.com/?view=driver\n\n` +
-    `📞 *Recuerda llamar al restaurante antes de ir por el pedido*\n\n` +
-    `_Sistema Central de Administración General RYYCO_`
+    `💰 *Valor total de los productos:* ${productsFormatted}\n\n` +
+    `💵 *Importante:* Debe llevar *${productsFormatted} en efectivo* para comprar y pagar el pedido en el restaurante.\n\n` +
+    `🚨 *¡Ingrese ya a la plataforma de domiciliarios y ACEPTE el servicio antes que los demás!*\n\n` +
+    `👉 https://ryyco.com/?view=driver\n\n` +
+    `📞 *Recuerde llamar al restaurante antes de ir a recoger el pedido.*\n\n` +
+    `*Sistema Central de Administración General RYYCO*`
   );
 }
 
