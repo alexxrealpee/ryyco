@@ -82,7 +82,13 @@ const detectInitialRouteFromUrl = (): {
   while (hashUser.endsWith('/')) hashUser = hashUser.substring(0, hashUser.length - 1);
   if (hashUser.startsWith('@')) hashUser = hashUser.substring(1);
 
-  const systemRoutes = ['login', 'signup', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda', 'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios', 'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets', 'registro-cliente', 'privacidad', 'politica-de-privacidad', 'privacy', 'privacy-policy', 'legal'];
+  const systemRoutes = [
+    'login', 'ingresar', 'signup', 'registro', 'dashboard', 'admin', 'landing', 'vender', 'crear-tienda',
+    'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios',
+    'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets',
+    'registro-cliente', 'privacidad', 'politica-de-privacidad', 'privacy', 'privacy-policy', 'legal',
+    'restaurante', 'restaurantes', 'admin-restaurante', 'pedidos-restaurante', 'panel-restaurante', 'pedidos'
+  ];
 
   const pathLower = pathUser.toLowerCase();
   const hashLower = hashUser.toLowerCase();
@@ -126,7 +132,25 @@ const detectInitialRouteFromUrl = (): {
     return { view: 'driver-portal', username: null, reelId: null };
   }
 
-  // 2. Explicit admin routes (e.g. /admin, /?view=admin, /admin?tab=general, #/admin, #admin)
+  // 2. Direct Restaurant Administrator / Orders routes (e.g. /restaurante, /admin-restaurante, /pedidos-restaurante, /?view=restaurante, /?view=seller)
+  const isRestaurantAdminRoute = 
+    ['restaurante', 'restaurantes', 'admin-restaurante', 'pedidos-restaurante', 'panel-restaurante', 'pedidos'].includes(pathLower) ||
+    ['restaurante', 'restaurantes', 'admin-restaurante', 'pedidos-restaurante', 'panel-restaurante', 'pedidos'].includes(hashLower) ||
+    searchView === 'restaurante' ||
+    searchView === 'restaurantes' ||
+    searchView === 'admin-restaurante' ||
+    searchView === 'pedidos-restaurante' ||
+    searchView === 'seller' ||
+    searchParams.has('restaurante');
+
+  if (isRestaurantAdminRoute) {
+    try {
+      localStorage.setItem('ryyco_auth_mode', 'seller');
+    } catch (e) {}
+    return { view: 'dashboard', username: null, reelId: null };
+  }
+
+  // 3. Explicit super-admin routes (e.g. /admin, /?view=admin, /admin?tab=general, #/admin, #admin)
   if (
     searchView === 'admin' ||
     pathLower === 'admin' || 
@@ -139,7 +163,7 @@ const detectInitialRouteFromUrl = (): {
     return { view: 'admin', username: null, reelId: null };
   }
 
-  // 3. Dashboard and Authentication routes
+  // 4. Dashboard and Authentication routes
   if (searchView === 'dashboard' || ['dashboard'].includes(pathLower) || ['dashboard'].includes(hashLower)) {
     return { view: 'dashboard', username: null, reelId: null };
   }
@@ -295,7 +319,9 @@ export default function App() {
     const isSpecialPath = pathnameLower.includes('admin') ||
                           pathnameLower.includes('domiciliario') ||
                           pathnameLower.includes('driver-register') ||
-                          pathnameLower.includes('dashboard');
+                          pathnameLower.includes('dashboard') ||
+                          pathnameLower.includes('restaurante') ||
+                          pathnameLower.includes('pedidos');
 
     if (!savedAddress && !hasCompletedPrompt && !isSpecialPath && authMode !== 'driver' && authMode !== 'seller') {
       const timer = setTimeout(() => {
@@ -518,8 +544,23 @@ export default function App() {
         }
       } else {
         setUserProfile(null);
-        // Return back to tienda general if user was inside protected views
+        // Return back to tienda general if user was inside protected views, unless accessing restaurant admin or driver portal
         setView(prev => {
+          const pathLower = window.location.pathname.toLowerCase();
+          const searchParams = new URLSearchParams(window.location.search);
+          const searchView = searchParams.get('view')?.toLowerCase();
+          const isRestaurantRoute = 
+            pathLower.includes('restaurante') || 
+            pathLower.includes('pedidos') || 
+            searchView === 'restaurante' ||
+            searchView === 'restaurantes' ||
+            searchView === 'admin-restaurante' ||
+            searchView === 'pedidos-restaurante' ||
+            searchView === 'seller';
+
+          if (isRestaurantRoute) {
+            return 'login';
+          }
           if (prev === 'dashboard' || prev === 'admin') {
             window.history.pushState({}, document.title, '/');
             return 'tienda';
@@ -592,9 +633,9 @@ export default function App() {
         />
       )}
 
-      {(view === 'login' || view === 'signup') && (
+      {((view === 'login' || view === 'signup') || (view === 'dashboard' && !userProfile && !initLoading)) && (
         <AuthPage 
-          initialView={view} 
+          initialView={view === 'signup' ? 'signup' : 'login'} 
           usernameClaimed={claimedUsername}
           onNavigate={(targetView) => {
             if (targetView === 'tienda') {

@@ -3978,16 +3978,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             <div className="flex flex-col gap-2.5 pt-2">
               <button
                 type="button"
-                onClick={() => triggerShopperWhatsAppMessage(submittedOrder)}
-                className="w-full py-4 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow active:scale-95 cursor-pointer hover:opacity-90"
-                style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
-              >
-                <MessageCircle className="w-5 h-5 stroke-[2.5]" style={{ color: getContrastText(storeAccent) }} />
-                Enviar Pedido por WhatsApp
-              </button>
-
-              <button
-                type="button"
                 onClick={() => {
                   setDirectTrackingOrder(submittedOrder);
                 }}
@@ -4011,7 +4001,17 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Truck className="w-4 h-4" />
-                Rastrear Estado de mi Pedido en Vivo
+                Ver y Rastrear Estado de mi Pedido en Vivo
+              </button>
+
+              <button
+                type="button"
+                onClick={() => triggerShopperWhatsAppMessage(submittedOrder)}
+                className="w-full py-3.5 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow active:scale-95 cursor-pointer hover:opacity-90"
+                style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
+              >
+                <MessageCircle className="w-5 h-5 stroke-[2.5]" style={{ color: getContrastText(storeAccent) }} />
+                Enviar Pedido por WhatsApp
               </button>
 
               <button

@@ -1624,7 +1624,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       onClick={() => {
                         setIsMobileMenuOpen(false);
                         localStorage.setItem('ryyco_auth_mode', 'seller');
-                        window.history.pushState({}, '', '/login');
+                        window.history.pushState({}, '', '/admin-restaurante');
                         window.dispatchEvent(new Event('popstate'));
                       }}
                       className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
@@ -3415,9 +3415,22 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <div className="space-y-2">
                 <h3 className="text-xl font-black text-white leading-tight">¡Pedido Registrado con Éxito!</h3>
                 <p className="text-xs text-[#A9B2C3] max-w-sm mx-auto leading-relaxed">
-                  Tus órdenes han sido almacenadas en el sistema. Ahora, por favor envía cada orden por WhatsApp para que los vendedores procesen tu envío:
+                  Espera que un domiciliario de ryyco tome su pedido.
                 </p>
               </div>
+
+              {/* Botón principal: Ver y Rastrear de primero */}
+              <button
+                onClick={() => {
+                  setIsSuccessOpen(false);
+                  setCustomerPortalTab('orders');
+                  setIsCustomerPortalOpen(true);
+                }}
+                className="w-full py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/30 cursor-pointer active:scale-95 shrink-0"
+              >
+                <ShoppingBag className="w-5 h-5 text-white" />
+                Ver y Rastrear Mi Pedido en Tiempo Real 📦
+              </button>
 
               {/* Created Orders list with send WhatsApp buttons */}
               <div className="space-y-3 flex-grow overflow-y-auto max-h-[40vh] pr-1">
@@ -3452,19 +3465,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 })}
               </div>
 
-              {/* Close / Done action */}
-              <div className="flex flex-col gap-2 pt-2">
-                <button
-                  onClick={() => {
-                    setIsSuccessOpen(false);
-                    setCustomerPortalTab('orders');
-                    setIsCustomerPortalOpen(true);
-                  }}
-                  className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-[#E63946]/20 cursor-pointer"
-                >
-                  <ShoppingBag className="w-4 h-4 text-white" />
-                  Ver y Rastrear Mis Pedidos en Tiempo Real 📦
-                </button>
+              {/* Close / Other actions */}
+              <div className="flex flex-col gap-2 pt-2 shrink-0">
                 <button
                   onClick={() => {
                     setIsSuccessOpen(false);

@@ -56,6 +56,26 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
 
   const [isCustomDomain, setIsCustomDomain] = useState(false);
 
+  const isRestaurantAccess = (() => {
+    try {
+      const path = window.location.pathname.toLowerCase();
+      const search = new URLSearchParams(window.location.search);
+      const v = search.get('view')?.toLowerCase();
+      return (
+        path.includes('restaurante') ||
+        path.includes('pedidos') ||
+        v === 'restaurante' ||
+        v === 'restaurantes' ||
+        v === 'admin-restaurante' ||
+        v === 'pedidos-restaurante' ||
+        v === 'seller' ||
+        search.has('restaurante')
+      );
+    } catch (e) {
+      return false;
+    }
+  })();
+
   useEffect(() => {
     const currentHost = window.location.hostname;
     const isDefaultHost = currentHost === 'localhost' || 
@@ -525,7 +545,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
           <ArrowLeft className="w-4 h-4" /> Volver
         </button>
 
-        <div className="flex flex-col items-center mb-8 mt-2">
+        <div className="flex flex-col items-center mb-8 mt-2 text-center">
           <div className="mb-4">
             <LinnkProLogo 
               onClick={() => onNavigate('tienda')}
@@ -533,15 +553,30 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
               imgClassName="h-11 sm:h-12"
             />
           </div>
+          {isRestaurantAccess && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#E63946]/15 border border-[#E63946]/40 text-[#E63946] text-xs font-bold rounded-full mb-3 shadow-sm">
+              <span>🍽️ Portal Administrador de Restaurante</span>
+            </div>
+          )}
           <h2 className="text-2xl font-black text-white tracking-tight">
-            {view === 'login' && 'Bienvenido de nuevo'}
-            {view === 'signup' && 'Crea tu Tienda Online'}
-            {view === 'forgot' && 'Recuperar Cuenta'}
+            {isRestaurantAccess && view === 'login' ? 'Administración de Pedidos' : (
+              <>
+                {view === 'login' && 'Bienvenido de nuevo'}
+                {view === 'signup' && 'Crea tu Tienda Online'}
+                {view === 'forgot' && 'Recuperar Cuenta'}
+              </>
+            )}
           </h2>
           <p className="text-sm text-[#A9B2C3] mt-2 text-center">
-            {view === 'login' && 'Entra y representa tu tienda al instante'}
-            {view === 'signup' && 'La mejor forma de comercializar tus productos online'}
-            {view === 'forgot' && 'Te enviaremos las instrucciones de reinicio'}
+            {isRestaurantAccess && view === 'login'
+              ? 'Ingresa con tu cuenta para revisar y gestionar tus pedidos en tiempo real'
+              : (
+                <>
+                  {view === 'login' && 'Entra y representa tu tienda al instante'}
+                  {view === 'signup' && 'La mejor forma de comercializar tus productos online'}
+                  {view === 'forgot' && 'Te enviaremos las instrucciones de reinicio'}
+                </>
+              )}
           </p>
         </div>
 

@@ -399,7 +399,39 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'drinks' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'drinks' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank'>(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const tabParam = searchParams.get('tab')?.toLowerCase();
+      const viewParam = searchParams.get('view')?.toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+
+      if (
+        tabParam === 'orders' || 
+        tabParam === 'pedidos' || 
+        pathname.includes('pedidos') || 
+        hash.includes('pedidos') || 
+        pathname.includes('restaurante') ||
+        hash.includes('restaurante') ||
+        viewParam === 'restaurante' ||
+        viewParam === 'restaurantes' ||
+        viewParam === 'pedidos-restaurante' ||
+        viewParam === 'admin-restaurante' ||
+        searchParams.has('restaurante')
+      ) {
+        return 'orders';
+      }
+      if (tabParam === 'products' || tabParam === 'productos') return 'products';
+      if (tabParam === 'drinks' || tabParam === 'bebidas') return 'drinks';
+      if (tabParam === 'design' || tabParam === 'diseno') return 'design';
+      if (tabParam === 'restaurant' || tabParam === 'mesas') return 'restaurant';
+      if (tabParam === 'analytics') return 'analytics';
+      if (tabParam === 'subscription') return 'subscription';
+      if (tabParam === 'bank') return 'bank';
+    } catch (e) {}
+    return 'overview';
+  });
   const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [isAdminVoiceAssistantOpen, setIsAdminVoiceAssistantOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
@@ -554,13 +586,43 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     return () => cleanupSSE();
   }, [profile.uid]);
 
-  // Listen for navigation clicks from Push Notifications
+  // Listen for navigation clicks from Push Notifications and URL changes
   useEffect(() => {
     const handleTabNav = (e: any) => {
       if (e.detail?.tab) setActiveTab(e.detail.tab);
     };
+    const handleUrlPopState = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const tabParam = searchParams.get('tab')?.toLowerCase();
+        const viewParam = searchParams.get('view')?.toLowerCase();
+        const pathname = window.location.pathname.toLowerCase();
+        const hash = window.location.hash.toLowerCase();
+
+        if (
+          tabParam === 'orders' || 
+          tabParam === 'pedidos' || 
+          pathname.includes('pedidos') || 
+          hash.includes('pedidos') || 
+          pathname.includes('restaurante') ||
+          hash.includes('restaurante') ||
+          viewParam === 'restaurante' ||
+          viewParam === 'restaurantes' ||
+          viewParam === 'pedidos-restaurante' ||
+          viewParam === 'admin-restaurante' ||
+          searchParams.has('restaurante')
+        ) {
+          setActiveTab('orders');
+        }
+      } catch (e) {}
+    };
+
     window.addEventListener('ryyco:seller-navigate-tab', handleTabNav);
-    return () => window.removeEventListener('ryyco:seller-navigate-tab', handleTabNav);
+    window.addEventListener('popstate', handleUrlPopState);
+    return () => {
+      window.removeEventListener('ryyco:seller-navigate-tab', handleTabNav);
+      window.removeEventListener('popstate', handleUrlPopState);
+    };
   }, []);
 
   // Listen for foreground FCM Push orders targeted to this seller
