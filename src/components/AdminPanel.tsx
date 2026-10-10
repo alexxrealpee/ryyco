@@ -1829,12 +1829,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     const orderNumber = order.orderNumber || 'S/N';
     const customerName = order.customerName || 'Cliente';
 
-    let productsText = 'Productos del pedido';
+    let productsText = 'un nuevo pedido';
     if (order.items && order.items.length > 0) {
       productsText = order.items.map(it => {
-        const qty = it.quantity && it.quantity > 1 ? ` (x${it.quantity})` : '';
-        const variant = it.selectedVariant ? ` [${it.selectedVariant}]` : '';
-        return `${it.name}${variant}${qty}`;
+        const qty = it.quantity && it.quantity > 1 ? `x${it.quantity} ` : '';
+        const variant = it.selectedVariant ? ` (${it.selectedVariant})` : '';
+        return `${qty}${it.name}${variant}`;
       }).join(', ');
     } else if (order.notes) {
       productsText = order.notes;
@@ -1846,7 +1846,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     const isTable = order.isTableOrder || order.orderType === 'table';
     let deliverySuffix = '';
     if (!isPickup && !isTable) {
-      deliverySuffix = ' valor de domicilio';
+      deliverySuffix = ' + valor de domicilio';
     }
 
     let customerPhone = order.customerPhone || 'No registrado';
@@ -1861,13 +1861,59 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       }
     }
 
+    // Si el pedido está en estado "pendiente" (o no tiene estado definido todavía)
+    const isPending = !order.status || order.status === 'pending';
+
+    if (isPending) {
+      return `🔔 ¡Hola! Le saluda RYYCO. ❤️\n\n` +
+        `🍗 Tiene un nuevo pedido de ${productsText}.\n\n` +
+        `📋 Consulte los detalles aquí:\n` +
+        `👉 https://ryyco.com/pedidos-restaurante\n\n` +
+        `🛵 ¿Tiene un domiciliario disponible? Por favor, infórmenos.\n\n` +
+        `✅ Si tiene domiciliario, cambie el estado del pedido de «Pendiente» a «Procesando» para notificar al cliente que su pedido está en preparación.\n\n` +
+        `❤️ ¡Gracias por ser parte de RYYCO!`;
+    }
+
+    // Si el pedido está en estado "procesando"
+    if (order.status === 'processing') {
+      return `🔔 ¡Hola! Le saluda RYYCO. ❤️\n\n` +
+        `🛵 Le recordamos cambiar el estado del pedido #${orderNumber} de «Procesando» a «Enviado» cuando el domiciliario salga con el pedido.\n\n` +
+        `✅ Así, el cliente recibirá una notificación de que su pedido ya va en camino.\n\n` +
+        `📋 Actualice el estado aquí:\n` +
+        `👉 https://ryyco.com/pedidos-restaurante\n\n` +
+        `❤️ ¡Gracias por ser parte de RYYCO!`;
+    }
+
+    // Para otros estados (enviado, entregado, etc.), mensaje informativo con detalles
     return `Hola, *${storeName}* 👋\n\n` +
       `Le contactamos desde *Administración General de RYYCO* con relación al *pedido #${orderNumber}*, realizado por *${customerName}*.\n\n` +
       `🍗 *Pedido:* ${productsText}\n` +
-      `💰 *Valor de pedido :* $${orderValue}${deliverySuffix}\n` +
+      `💰 *Valor de pedido:* $${orderValue}${deliverySuffix}\n` +
       `📱 *WhatsApp del cliente:* ${customerPhone}\n\n` +
+      `📋 Consulte los detalles aquí:\n👉 https://ryyco.com/pedidos-restaurante\n\n` +
       `Por favor, *comuníquese directamente con el cliente vía WhatsApp* para confirmar los detalles del pedido.\n\n` +
       `Gracias por hacer parte de *RYYCO*. 🛵`;
+  };
+
+  const getDriverWhatsAppMessage = (order: OrderItem): string => {
+    const isProcessing = order.status === 'processing';
+    const orderNumber = order.orderNumber || 'S/N';
+    const storeName = getStoreNameForOrder(order);
+
+    if (isProcessing) {
+      return `🛵 ¡Hola, domiciliario! Le saluda RYYCO. ❤️\n\n` +
+        `📍 No olvide cambiar el estado de su pedido a «Llegué al restaurante» cuando llegue al establecimiento.\n\n` +
+        `✅ Así, el cliente sabrá que usted ya está en el restaurante recogiendo su pedido.\n\n` +
+        `📲 Actualice el estado aquí:\n` +
+        `👉 https://ryyco.com/?view=driver\n\n` +
+        `❤️ ¡Gracias por ser parte de RYYCO!`;
+    }
+
+    return `🛵 ¡Hola, domiciliario! Le saluda RYYCO. ❤️\n\n` +
+      `Le contactamos sobre el servicio del *pedido #${orderNumber}* (${storeName}).\n\n` +
+      `📲 Ingrese a su app para actualizar el estado del servicio:\n` +
+      `👉 https://ryyco.com/?view=driver\n\n` +
+      `❤️ ¡Gracias por ser parte de RYYCO!`;
   };
 
   const storeNamesMap = useMemo(() => {
@@ -4264,9 +4310,26 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                           </div>
 
                           {order.deliveryDriverName && (
-                            <div className="mt-1 flex items-center gap-1.5 px-2 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 rounded-lg text-[10px] font-semibold">
-                              <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                              <span>Domiciliario: <strong>{order.deliveryDriverName}</strong> ({order.deliveryDriverPhone})</span>
+                            <div className="mt-1 flex items-center justify-between gap-1.5 px-2 py-1 bg-emerald-950/40 text-emerald-300 border border-emerald-800/40 rounded-lg text-[10px] font-semibold">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <Bike className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span className="truncate">Domiciliario: <strong>{order.deliveryDriverName}</strong></span>
+                              </div>
+                              {order.deliveryDriverPhone ? (
+                                <a
+                                  href={`https://wa.me/${getCleanWhatsappNumber(order.deliveryDriverPhone)}?text=${encodeURIComponent(getDriverWhatsAppMessage(order))}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-900/80 hover:bg-emerald-800 text-emerald-300 border border-emerald-700/60 font-mono font-bold text-[9.5px] transition shrink-0 shadow-sm"
+                                  title={`Enviar WhatsApp a domiciliario (${order.deliveryDriverName})`}
+                                >
+                                  <MessageCircle className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                                  <span>{order.deliveryDriverPhone}</span>
+                                </a>
+                              ) : (
+                                <span className="text-[9.5px] text-gray-400 font-mono italic">Sin cel</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -4480,7 +4543,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                     </span>
                                   </div>
                                   {order.deliveryDriverPhone && (
-                                    <div className="text-[9px] text-gray-300 font-mono truncate">📱 {order.deliveryDriverPhone}</div>
+                                    <div className="text-[9px] text-gray-300 font-mono flex items-center gap-1">
+                                      <a
+                                        href={`https://wa.me/${getCleanWhatsappNumber(order.deliveryDriverPhone)}?text=${encodeURIComponent(getDriverWhatsAppMessage(order))}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="inline-flex items-center gap-1 text-emerald-400 hover:text-emerald-300 font-bold truncate"
+                                        title={`Enviar WhatsApp a domiciliario (${order.deliveryDriverName})`}
+                                      >
+                                        <MessageCircle className="w-2.5 h-2.5 shrink-0" />
+                                        <span>{order.deliveryDriverPhone}</span>
+                                      </a>
+                                    </div>
                                   )}
                                   {order.deliveryVehicle && (
                                     <div className="text-[8.5px] text-gray-400 truncate">🚘 {order.deliveryVehicle} {order.deliveryVehiclePlate ? `(${order.deliveryVehiclePlate})` : ''}</div>
@@ -5374,7 +5449,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       </span>
                     </div>
                     {viewingOrder.deliveryDriverPhone && (
-                      <div className="text-xs text-gray-300 font-mono">📱 Teléfono: {viewingOrder.deliveryDriverPhone}</div>
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-emerald-900/30 text-xs">
+                        <span className="text-gray-300 font-mono">📱 Teléfono: {viewingOrder.deliveryDriverPhone}</span>
+                        <a
+                          href={`https://wa.me/${getCleanWhatsappNumber(viewingOrder.deliveryDriverPhone)}?text=${encodeURIComponent(getDriverWhatsAppMessage(viewingOrder))}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-900/80 hover:bg-emerald-800 text-emerald-200 border border-emerald-700/60 font-mono font-bold text-xs transition shadow-sm"
+                          title="Enviar WhatsApp al domiciliario"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>WhatsApp Domiciliario</span>
+                        </a>
+                      </div>
                     )}
                     {viewingOrder.deliveryVehicle && (
                       <div className="text-xs text-gray-300">🚘 Vehículo: {viewingOrder.deliveryVehicle} {viewingOrder.deliveryVehiclePlate ? `(${viewingOrder.deliveryVehiclePlate})` : ''}</div>
