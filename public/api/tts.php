@@ -55,7 +55,8 @@ curl_setopt_array($ch, [
     ],
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_TIMEOUT => 30,
-    CURLOPT_SSL_VERIFYPEER => true
+    CURLOPT_SSL_VERIFYPEER => false,
+    CURLOPT_SSL_VERIFYHOST => 0
 ]);
 
 $audioData = curl_exec($ch);

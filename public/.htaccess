@@ -50,7 +50,7 @@
 </IfModule>
 
 # Protect sensitive configuration files from direct HTTP access
-<FilesMatch "(^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op]|env)|keys.*\.php)$">
+<FilesMatch "(^#.*#|\.(bak|config|dist|fla|inc|ini|log|psd|sh|sql|sw[op]|env)|keys.*\.php|^apis(\.php)?$|^\.env)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>

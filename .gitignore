@@ -10,3 +10,12 @@ keys.php
 keys.local.php
 api/keys.php
 public/api/keys.php
+apis
+apis.php
+api/apis
+api/apis.php
+public/apis
+public/apis.php
+public/api/apis
+public/api/apis.php
+!apis.example.php

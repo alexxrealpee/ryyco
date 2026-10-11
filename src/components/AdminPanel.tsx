@@ -5527,15 +5527,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </span>
                   <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-gray-300 leading-relaxed">
                     <li>
-                      <strong>Sube los archivos de la carpeta <code className="text-emerald-300">dist/</code></strong> directamente al directorio <code className="text-emerald-300">public_html/</code> de tu hosting en Hostinger (incluyendo el archivo <code className="text-emerald-300">.htaccess</code> y la carpeta <code className="text-emerald-300">api/</code>).
+                      <strong>Sube los archivos de la carpeta <code className="text-emerald-300">dist/</code></strong> directamente al directorio <code className="text-emerald-300">public_html/</code> de tu hosting en Hostinger (incluyendo el archivo <code className="text-emerald-300">.htaccess</code>, el archivo <code className="text-emerald-300">apis.php</code> y la carpeta <code className="text-emerald-300">api/</code>).
                     </li>
                     <li>
-                      <strong>Configura tu clave de OpenAI en Hostinger:</strong> Crea un archivo llamado <code className="text-emerald-300">.env</code> en la carpeta raíz de tu hosting con:
-                      <pre className="mt-1 p-2 bg-black rounded-lg text-emerald-300 font-mono text-[10px] overflow-x-auto">OPENAI_API_KEY=tu_clave_sk_proj_aqui</pre>
-                      <em>O en Hostinger hPanel &gt; Variables de entorno, o en <code className="text-emerald-300">.htaccess</code> descomentando <code className="text-emerald-300">SetEnv OPENAI_API_KEY "tu_clave"</code>.</em>
+                      <strong>Tus claves ya están configuradas en <code className="text-emerald-300">api/apis.php</code>:</strong> El archivo ya contiene tu clave de OpenAI GPT, Google Maps y FCM. El sistema lo carga de forma automática sin necesidad de configurar variables de entorno adicionales.
                     </li>
                     <li>
-                      <strong>¡Listo!</strong> La asistente de voz, el chat GPT y la síntesis de voz funcionarán nativamente a través de los scripts PHP de alto rendimiento incluidos en <code className="text-emerald-300">/api/</code>.
+                      <strong>Verificación en 1 clic:</strong> Haz clic arriba en <strong className="text-emerald-400">"Probar APIs (/api/health)"</strong> para comprobar que Hostinger responde con tus claves de OpenAI activas.
                     </li>
                   </ol>
                 </div>
