@@ -35,11 +35,13 @@ function loadHostingerApisDefinition() {
         $docRoot . '/public_html/api/apis',
         $docRoot . '/public_html/apis.php',
         $docRoot . '/public_html/apis',
-        // Common aliases or legacy keys.php
+        // Common aliases or keys.php
         __DIR__ . '/keys.php',
         __DIR__ . '/../keys.php',
         $docRoot . '/api/keys.php',
-        $docRoot . '/keys.php'
+        $docRoot . '/keys.php',
+        $docRoot . '/public_html/api/keys.php',
+        $docRoot . '/public_html/keys.php'
     ];
 
     foreach ($apiFiles as $file) {
