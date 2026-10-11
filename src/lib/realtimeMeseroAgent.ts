@@ -915,6 +915,9 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
                 model: 'whisper-1',
                 language: 'es'
               }
+            },
+            output: {
+              voice: 'marin'
             }
           }
         }
@@ -1048,6 +1051,14 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
             this.callbacks.onStateChange('listening');
             break;
           }
+          case 'session.created': {
+            console.log("Realtime session created on server:", ev.session?.id || ev);
+            break;
+          }
+          case 'session.updated': {
+            console.log("Realtime session.updated confirmed by server:", ev.session || ev);
+            break;
+          }
           case 'error': {
             console.warn("Realtime transport error:", ev.error);
             break;
@@ -1063,6 +1074,9 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
       transport?.on?.('*', (event: any) => {
         handleRawRealtimeEvent(event);
       });
+      transport?.on?.('session.updated', (event: any) => {
+        console.log("Realtime server confirmed session.updated event:", event);
+      });
 
       // Connect session with WebRTC media stream and remote audio element
       await this.session.connect({
@@ -1071,26 +1085,56 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
         audioElement: this.remoteAudioElement
       } as any);
 
-      // Explicitly enforce server VAD and Spanish Whisper transcription on the active session
+      // Explicitly enforce server VAD, Spanish Whisper transcription, and marin voice via transport.updateSessionConfig
       try {
-        (this.session as any).sendMessage?.({
-          type: 'session.update',
-          session: {
-            turn_detection: {
-              type: 'server_vad',
-              threshold: 0.78,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 650,
-              create_response: true
+        const sessionTransport = (this.session as any)?.transport;
+        const targetSessionConfig = {
+          voice: 'marin',
+          audio: {
+            input: {
+              turnDetection: {
+                type: 'server_vad',
+                threshold: 0.78,
+                prefixPaddingMs: 300,
+                silenceDurationMs: 650,
+                createResponse: true
+              },
+              transcription: {
+                model: 'whisper-1',
+                language: 'es'
+              }
             },
-            input_audio_transcription: {
-              model: 'whisper-1',
-              language: 'es'
+            output: {
+              voice: 'marin'
             }
           }
-        });
+        };
+
+        if (sessionTransport && typeof sessionTransport.updateSessionConfig === 'function') {
+          sessionTransport.updateSessionConfig(targetSessionConfig);
+          console.log("Realtime configuration applied using session.transport.updateSessionConfig()");
+        } else if (sessionTransport && typeof sessionTransport.sendEvent === 'function') {
+          sessionTransport.sendEvent({
+            type: 'session.update',
+            session: {
+              voice: 'marin',
+              turn_detection: {
+                type: 'server_vad',
+                threshold: 0.78,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 650,
+                create_response: true
+              },
+              input_audio_transcription: {
+                model: 'whisper-1',
+                language: 'es'
+              }
+            }
+          });
+          console.log("Realtime configuration applied using session.transport.sendEvent()");
+        }
       } catch (e) {
-        console.warn("session.update notice:", e);
+        console.warn("Realtime session update notice:", e);
       }
 
       this.isConnected = true;
