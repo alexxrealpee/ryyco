@@ -772,10 +772,11 @@ export default function LinnkProVoiceAssistant({
         isInVoiceCallRef.current = false;
         stopAudioPlayback();
         stopAudioAnalyser();
-        setMicPermissionError("Para activar la llamada de voz en tiempo real con iAmesero, se debe configurar OPENAI_API_KEY en tu servidor de Hostinger. Mientras tanto, puedes usar el chat de texto con el catálogo completo.");
+        setMicPermissionError("Para activar la llamada de voz con iAmesero, coloca el archivo keys.php en tu hosting con tu clave de OpenAI. Mientras tanto, puedes usar el chat de texto.");
         setAssistantState('idle');
       } else {
-        // Automatically activate Speech Recognition fallback without disconnecting the call
+        // Clear any prior temporary notice and activate voice mode fallback smoothly
+        setMicPermissionError(null);
         await startSpeechRecognitionVoiceMode();
       }
     }

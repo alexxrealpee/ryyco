@@ -12,7 +12,7 @@ $openaiKey = getApiKey('OPENAI_API_KEY');
 if (empty($openaiKey)) {
     http_response_code(500);
     echo json_encode([
-        'error' => 'OPENAI_API_KEY no está configurada en el servidor de Hostinger. Agrega tu clave en el archivo .env o en el panel de control de Hostinger.'
+        'error' => 'OPENAI_API_KEY no está configurada en el servidor de Hostinger. Agrega tu clave en keys.php o en el panel de control de Hostinger.'
     ], JSON_UNESCAPED_UNICODE);
     exit(0);
 }
@@ -25,39 +25,74 @@ Pronuncia siempre los precios en pesos colombianos de forma natural.
 No leas emojis, símbolos de Markdown, JSON ni etiquetas técnicas.
 INST;
 
-$sessionPayload = [
-    'model' => 'gpt-4o-realtime-preview',
-    'voice' => 'shimmer',
-    'modalities' => ['audio', 'text'],
-    'instructions' => $instructions,
-    'turn_detection' => [
-        'type' => 'server_vad',
-        'threshold' => 0.5,
-        'prefix_padding_ms' => 300,
-        'silence_duration_ms' => 500
-    ],
-    'temperature' => 0.7
+$candidateModels = [
+    'gpt-realtime-mini',
+    'gpt-4o-mini-realtime-preview-2024-12-17',
+    'gpt-4o-mini-realtime-preview',
+    'gpt-4o-realtime-preview-2024-12-17',
+    'gpt-4o-realtime-preview',
+    'gpt-realtime'
 ];
 
 $headers = [
     "Authorization: Bearer {$openaiKey}"
 ];
 
-// Try client_secrets endpoint first (Standard for ephemeral WebRTC token)
-$response = curlJsonPost('https://api.openai.com/v1/realtime/client_secrets', $sessionPayload, $headers, 20);
+$lastResponseBody = null;
+$lastStatus = 500;
 
-// If client_secrets is not 200, try /sessions endpoint
-if ($response['status'] !== 200 || empty($response['body'])) {
-    $response = curlJsonPost('https://api.openai.com/v1/realtime/sessions', $sessionPayload, $headers, 20);
+// 1. Try standard OpenAI client_secrets endpoint with wrapped session structure
+foreach ($candidateModels as $model) {
+    $csPayload = [
+        'session' => [
+            'type' => 'realtime',
+            'model' => $model
+        ]
+    ];
+    $response = curlJsonPost('https://api.openai.com/v1/realtime/client_secrets', $csPayload, $headers, 15);
+    $lastStatus = $response['status'];
+    $lastResponseBody = $response['body'] ?: $response['error'];
+
+    if ($response['status'] >= 200 && $response['status'] < 300 && !empty($response['body'])) {
+        $data = json_decode($response['body'], true);
+        if ($data && (!empty($data['value']) || !empty($data['client_secret']))) {
+            echo $response['body'];
+            exit(0);
+        }
+    }
 }
 
-if ($response['status'] >= 200 && $response['status'] < 300 && !empty($response['body'])) {
-    echo $response['body'];
-    exit(0);
+// 2. Try standard /sessions endpoint if client_secrets is not available or rejected
+foreach ($candidateModels as $model) {
+    $sessionPayload = [
+        'model' => $model,
+        'voice' => 'shimmer',
+        'modalities' => ['audio', 'text'],
+        'instructions' => $instructions,
+        'turn_detection' => [
+            'type' => 'server_vad',
+            'threshold' => 0.5,
+            'prefix_padding_ms' => 300,
+            'silence_duration_ms' => 500
+        ],
+        'temperature' => 0.7
+    ];
+    $response = curlJsonPost('https://api.openai.com/v1/realtime/sessions', $sessionPayload, $headers, 15);
+    $lastStatus = $response['status'];
+    $lastResponseBody = $response['body'] ?: $response['error'];
+
+    if ($response['status'] >= 200 && $response['status'] < 300 && !empty($response['body'])) {
+        $data = json_decode($response['body'], true);
+        if ($data && (!empty($data['client_secret']) || !empty($data['value']))) {
+            echo $response['body'];
+            exit(0);
+        }
+    }
 }
 
-http_response_code($response['status'] > 0 ? $response['status'] : 502);
+// If OpenAI returns error (e.g. Realtime API requires Tier 1+ or quota issue)
+http_response_code($lastStatus > 0 ? $lastStatus : 502);
 echo json_encode([
     'error' => 'Error al comunicar con OpenAI Realtime API',
-    'details' => $response['body'] ?: $response['error']
+    'details' => $lastResponseBody
 ], JSON_UNESCAPED_UNICODE);

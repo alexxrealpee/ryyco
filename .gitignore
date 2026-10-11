@@ -7,9 +7,14 @@ coverage/
 .env*
 !.env.example
 keys.php
+*/keys.php
+*/*/keys.php
+public/keys.php
+public/api/keys.php
+dist/keys.php
+dist/api/keys.php
 keys.local.php
 api/keys.php
-public/api/keys.php
 apis
 apis.php
 api/apis
@@ -18,5 +23,8 @@ public/apis
 public/apis.php
 public/api/apis
 public/api/apis.php
+dist/apis
+dist/apis.php
+dist/api/apis.php
 !apis.example.php
 !keys.example.php

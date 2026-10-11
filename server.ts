@@ -6,6 +6,7 @@
 import express from 'express';
 import compression from 'compression';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
@@ -37,11 +38,35 @@ dotenv.config();
 if (!process.env.OPENAI_API_KEY) {
   dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 }
+// Also support keys.php (Hostinger configuration file) if OPENAI_API_KEY is not set
 if (!process.env.OPENAI_API_KEY) {
-  dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
-}
-if (!process.env.OPENAI_API_KEY) {
-  dotenv.config({ path: path.resolve(__dirname, '.env') });
+  const candidateKeys = [
+    path.resolve(process.cwd(), 'keys.php'),
+    path.resolve(process.cwd(), 'public', 'keys.php'),
+    path.resolve(process.cwd(), 'public', 'api', 'keys.php'),
+    path.resolve(__dirname, 'keys.php')
+  ];
+  for (const kf of candidateKeys) {
+    if (fs.existsSync(kf)) {
+      try {
+        const fileContent = fs.readFileSync(kf, 'utf-8');
+        const matchOpenAI = fileContent.match(/define\s*\(\s*['"]RYYCO_HOSTINGER_OPENAI_KEY['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
+        if (matchOpenAI && matchOpenAI[1] && !matchOpenAI[1].includes('tu-clave')) {
+          process.env.OPENAI_API_KEY = matchOpenAI[1].trim();
+        }
+        const matchMaps = fileContent.match(/define\s*\(\s*['"]RYYCO_HOSTINGER_GOOGLE_MAPS_KEY['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
+        if (matchMaps && matchMaps[1] && !matchMaps[1].includes('tu-clave')) {
+          process.env.GOOGLE_MAPS_API_KEY = matchMaps[1].trim();
+          process.env.VITE_GOOGLE_MAPS_API_KEY = matchMaps[1].trim();
+        }
+        const matchFcm = fileContent.match(/define\s*\(\s*['"]RYYCO_HOSTINGER_FCM_SERVER_KEY['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
+        if (matchFcm && matchFcm[1] && !matchFcm[1].includes('tu-clave')) {
+          process.env.FCM_SERVER_KEY = matchFcm[1].trim();
+        }
+        if (process.env.OPENAI_API_KEY) break;
+      } catch (e) {}
+    }
+  }
 }
 
 let aiClient: GoogleGenAI | null = null;

@@ -15,10 +15,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit(0);
 }
 
-// 2. Automatically load "apis.php", "apis" or "keys.php" file if present
+// 2. Automatically load "keys.php", "apis.php" or "apis" file if present
 function loadHostingerApisDefinition() {
     $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? '';
+    $cwd = getcwd() ?: '';
     $apiFiles = [
+        // Primary Hostinger configuration file: keys.php
+        __DIR__ . '/keys.php',
+        __DIR__ . '/../keys.php',
+        __DIR__ . '/../../keys.php',
+        dirname(__DIR__, 2) . '/keys.php',
+        dirname(__DIR__, 3) . '/keys.php',
+        $cwd . '/keys.php',
+        $cwd . '/api/keys.php',
+        $cwd . '/public/keys.php',
+        $cwd . '/public/api/keys.php',
+        $docRoot . '/keys.php',
+        $docRoot . '/api/keys.php',
+        $docRoot . '/public_html/keys.php',
+        $docRoot . '/public_html/api/keys.php',
+        
+        // Secondary / backward-compatible aliases: apis.php and apis
         __DIR__ . '/apis.php',
         __DIR__ . '/apis',
         __DIR__ . '/../apis.php',
@@ -27,6 +44,10 @@ function loadHostingerApisDefinition() {
         __DIR__ . '/../../apis',
         dirname(__DIR__, 2) . '/apis.php',
         dirname(__DIR__, 2) . '/apis',
+        $cwd . '/apis.php',
+        $cwd . '/apis',
+        $cwd . '/api/apis.php',
+        $cwd . '/public/apis.php',
         $docRoot . '/api/apis.php',
         $docRoot . '/api/apis',
         $docRoot . '/apis.php',
@@ -34,14 +55,7 @@ function loadHostingerApisDefinition() {
         $docRoot . '/public_html/api/apis.php',
         $docRoot . '/public_html/api/apis',
         $docRoot . '/public_html/apis.php',
-        $docRoot . '/public_html/apis',
-        // Common aliases or keys.php
-        __DIR__ . '/keys.php',
-        __DIR__ . '/../keys.php',
-        $docRoot . '/api/keys.php',
-        $docRoot . '/keys.php',
-        $docRoot . '/public_html/api/keys.php',
-        $docRoot . '/public_html/keys.php'
+        $docRoot . '/public_html/apis'
     ];
 
     foreach ($apiFiles as $file) {

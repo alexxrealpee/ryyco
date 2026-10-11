@@ -790,8 +790,9 @@ export class RealtimeMeseroManager {
 
       // 2. Fetch ephemeral Realtime session token from our secure backend
       const endpointCandidates = [
-        '/api/realtime/session',
         '/api/realtime-session',
+        '/api/realtime-session.php',
+        '/api/realtime/session',
         '/api/realtime/client_secrets'
       ];
 
@@ -1096,9 +1097,6 @@ PAUTAS DE LENGUAJE HABLADO NATURAL:
       this.callbacks.onStateChange('listening');
     } catch (error: any) {
       this.stop();
-      if (this.callbacks.onError) {
-        this.callbacks.onError(error?.message || "No fue posible iniciar la sesión de voz WebRTC.");
-      }
       throw error;
     }
   }

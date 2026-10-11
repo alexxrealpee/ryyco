@@ -37,25 +37,25 @@ echo json_encode([
     'status' => 'ok',
     'platform' => 'Hostinger Web Hosting (PHP)',
     'php_version' => PHP_VERSION,
-    'apis_file_active' => $isApisLoaded,
+    'keys_file_active' => $isApisLoaded,
     'apis' => [
         'openai_gpt' => [
             'configured' => $hasOpenAI,
-            'source' => $isApisLoaded ? 'apis' : (!empty(getenv('OPENAI_API_KEY')) ? 'env' : 'none'),
+            'source' => $isApisLoaded ? 'keys.php' : (!empty(getenv('OPENAI_API_KEY')) ? 'env' : 'none'),
             'key_hint' => $hasOpenAI ? substr($openaiKey, 0, 7) . '...' . substr($openaiKey, -4) : 'NO_CONFIGURADA',
             'live_test' => $testOpenAIResult
         ],
         'google_maps' => [
             'configured' => $hasMaps,
-            'source' => defined('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY') ? 'apis' : 'env'
+            'source' => defined('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY') ? 'keys.php' : 'env'
         ],
         'fcm_notifications' => [
             'configured' => $hasFcm,
-            'source' => defined('RYYCO_HOSTINGER_FCM_SERVER_KEY') ? 'apis' : 'env'
+            'source' => defined('RYYCO_HOSTINGER_FCM_SERVER_KEY') ? 'keys.php' : 'env'
         ]
     ],
     'instructions' => $hasOpenAI 
         ? '✓ OpenAI GPT está activo y listo para responder consultas de voz y texto.' 
-        : 'Para activar GPT en Hostinger, sube el archivo apis o apis.php con tu clave de OpenAI a public_html/ o public_html/api/.',
+        : 'Para activar GPT en Hostinger, sube el archivo keys.php con tu clave de OpenAI a public_html/ o public_html/api/.',
     'timestamp' => date('c')
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
