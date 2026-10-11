@@ -318,6 +318,27 @@ export interface OrderItem {
   referralCommissionAmount?: number;
   referralCommissionStatus?: 'pending' | 'paid' | 'cancelled';
   referralCommissionPaidAt?: string;
+
+  // Real-time Chat Unread Counters
+  driverUnreadChatCount?: number;
+  customerUnreadChatCount?: number;
+  lastChatMessage?: string;
+  lastChatAt?: string;
+}
+
+export type OrderChatSenderRole = 'driver' | 'customer' | 'system';
+
+export interface OrderChatMessage {
+  id: string;
+  orderId: string;
+  senderRole: OrderChatSenderRole;
+  senderId?: string;
+  senderName: string;
+  text: string;
+  createdAt: string;
+  timestamp?: number;
+  readByCustomer?: boolean;
+  readByDriver?: boolean;
 }
 
 export interface DeliveryTrackingData {

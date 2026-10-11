@@ -79,6 +79,21 @@ service cloud.firestore {
       allow read: if true;
       allow update: if true;
       allow delete: if true;
+
+      // Real-Time Chat subcollection between Driver and Customer for the active order
+      match /chat_messages/{messageId} {
+        allow read, create, update: if true;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Direct collection fallback for order chats: order_chats/{orderId}/messages/{messageId}
+    match /order_chats/{orderId} {
+      allow read, write: if true;
+      match /messages/{messageId} {
+        allow read, create, update: if true;
+        allow delete: if isAdmin();
+      }
     }
 
     // Drivers collection rules (Registration, profile management & admin approval)

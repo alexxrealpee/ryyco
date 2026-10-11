@@ -53,6 +53,7 @@ import {
   X,
   MessageCircle
 } from 'lucide-react';
+import OrderChatModal from './OrderChatModal';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { 
   db,
@@ -321,6 +322,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [orderHistory, setOrderHistory] = useState<OrderItem[]>([]);
   const [driverRatings, setDriverRatings] = useState<DriverRating[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  // Active Order Live Chat with Customer
+  const [isOrderChatOpen, setIsOrderChatOpen] = useState<boolean>(false);
 
   // Edit Profile Form State
   const [editPhone, setEditPhone] = useState<string>('');
@@ -2059,19 +2063,36 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                         </div>
 
 
-                        <div className="flex items-center gap-3 pt-1 border-t border-[#232B3A]/60">
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#232B3A]/60">
+                          {/* Live In-App Chat with Customer */}
+                          <button
+                            type="button"
+                            onClick={() => setIsOrderChatOpen(true)}
+                            className="inline-flex items-center gap-1.5 text-xs bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white px-3 py-1.5 rounded-xl font-bold transition shadow-md active:scale-95 cursor-pointer relative"
+                            title="Abrir chat en tiempo real con el cliente"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>Chat con el Cliente</span>
+                            {Boolean(activeDelivery.driverUnreadChatCount && activeDelivery.driverUnreadChatCount > 0) && (
+                              <span className="w-4 h-4 rounded-full bg-amber-400 text-gray-950 text-[10px] font-black flex items-center justify-center animate-bounce">
+                                {activeDelivery.driverUnreadChatCount}
+                              </span>
+                            )}
+                          </button>
+
                           <a
                             href={`tel:${activeDelivery.customerPhone}`}
-                            className="inline-flex items-center gap-1.5 text-xs text-[#E63946] hover:underline font-semibold"
+                            className="inline-flex items-center gap-1.5 text-xs text-[#E63946] hover:underline font-semibold px-2 py-1"
                           >
                             <Phone className="w-3.5 h-3.5" />
                             <span>{activeDelivery.customerPhone}</span>
                           </a>
+
                           <a
                             href={`https://wa.me/${activeDelivery.customerPhone.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] bg-[#E63946]/10 text-[#E63946] px-2 py-0.5 rounded-md border border-[#E63946]/20 hover:bg-[#E63946]/20 transition"
+                            className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition"
                           >
                             <MessageSquare className="w-3 h-3" />
                             <span>WhatsApp</span>
@@ -2208,15 +2229,25 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                   <span>{deliveryPinError}</span>
                                 </p>
                                 {activeDelivery.customerPhone && (
-                                  <a
-                                    href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
-                                  >
-                                    <MessageSquare className="w-3 h-3" />
-                                    <span>Pedir PIN al cliente por WhatsApp</span>
-                                  </a>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsOrderChatOpen(true)}
+                                      className="inline-flex items-center gap-1.5 text-[11px] text-[#E63946] hover:text-white font-bold bg-[#E63946]/10 hover:bg-[#E63946] border border-[#E63946]/30 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                                    >
+                                      <MessageCircle className="w-3 h-3" />
+                                      <span>Pedir PIN por Chat Interno</span>
+                                    </button>
+                                    <a
+                                      href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
+                                    >
+                                      <MessageSquare className="w-3 h-3" />
+                                      <span>Pedir por WhatsApp</span>
+                                    </a>
+                                  </div>
                                 )}
                               </div>
                             )}
@@ -3395,6 +3426,18 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             </div>
           </div>
         </div>
+      )}
+
+      {/* Real-time Order Chat Modal with Customer */}
+      {activeDelivery && isOrderChatOpen && (
+        <OrderChatModal
+          isOpen={isOrderChatOpen}
+          onClose={() => setIsOrderChatOpen(false)}
+          order={activeDelivery}
+          currentRole="driver"
+          currentUserId={driver?.id || driver?.uid || 'driver'}
+          currentUserName={driver?.name || driver?.fullName || 'Domiciliario RYYCO'}
+        />
       )}
     </div>
   );

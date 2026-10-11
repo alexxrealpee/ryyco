@@ -47,6 +47,7 @@ import {
   googleProvider,
   getOrderDeliveryCode
 } from '../lib/firebase';
+import OrderChatModal from './OrderChatModal';
 
 const GoogleIcon = () => (
   <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -136,6 +137,7 @@ export default function CustomerPortalModal({
   const [acceptedBuyerTerms, setAcceptedBuyerTerms] = useState(false);
   const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
   const [showForgotPasswordInfo, setShowForgotPasswordInfo] = useState(false);
+  const [chatOrder, setChatOrder] = useState<OrderItem | null>(null);
 
   // Wheel animation state
   const [isSpinning, setIsSpinning] = useState(false);
@@ -1853,30 +1855,49 @@ export default function CustomerPortalModal({
 
                             {/* Driver info if assigned (only while delivery is active, removed when delivered) */}
                             {!isDelivered && order.deliveryDriverName && (
-                              <div className="p-3 bg-[#161F30] border border-[#232E42] rounded-xl flex items-center justify-between gap-3 text-xs">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-8 h-8 rounded-full bg-[#E63946]/15 flex items-center justify-center text-[#E63946]">
+                              <div className="p-3 bg-[#161F30] border border-[#232E42] rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-full bg-[#E63946]/15 flex items-center justify-center text-[#E63946] shrink-0">
                                     <Truck className="w-4 h-4" />
                                   </div>
-                                  <div>
+                                  <div className="min-w-0">
                                     <span className="text-[10px] text-[#E63946] font-black uppercase tracking-wider block">Domiciliario RYYCO Asignado</span>
-                                    <span className="font-bold text-white">{order.deliveryDriverName}</span>
+                                    <span className="font-bold text-white truncate block">{order.deliveryDriverName}</span>
                                     {order.deliveryVehiclePlate && (
-                                      <span className="text-gray-400 ml-1 font-mono">({order.deliveryVehiclePlate})</span>
+                                      <span className="text-gray-400 font-mono text-[10px]">({order.deliveryVehiclePlate})</span>
                                     )}
                                   </div>
                                 </div>
-                                {order.deliveryDriverPhone && (
-                                  <a
-                                    href={`https://wa.me/57${order.deliveryDriverPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${order.deliveryDriverName}, estoy pendiente de mi pedido #${order.orderNumber}.`)}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-[10px] font-bold transition flex items-center gap-1"
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {/* Direct In-App Chat button with Driver */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setChatOrder(order)}
+                                    className="px-3 py-1.5 bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white rounded-lg text-[10px] font-black transition flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer relative"
+                                    title="Abrir chat en tiempo real con tu domiciliario"
                                   >
                                     <MessageCircle className="w-3.5 h-3.5" />
-                                    WhatsApp
-                                  </a>
-                                )}
+                                    <span>Chat</span>
+                                    {Boolean(order.customerUnreadChatCount && order.customerUnreadChatCount > 0) && (
+                                      <span className="w-3.5 h-3.5 rounded-full bg-amber-400 text-gray-950 text-[9px] font-black flex items-center justify-center animate-bounce">
+                                        {order.customerUnreadChatCount}
+                                      </span>
+                                    )}
+                                  </button>
+
+                                  {order.deliveryDriverPhone && (
+                                    <a
+                                      href={`https://wa.me/57${order.deliveryDriverPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${order.deliveryDriverName}, estoy pendiente de mi pedido #${order.orderNumber}.`)}`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-[10px] font-bold transition flex items-center gap-1"
+                                    >
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                      WhatsApp
+                                    </a>
+                                  )}
+                                </div>
                               </div>
                             )}
 
@@ -3209,6 +3230,18 @@ export default function CustomerPortalModal({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Real-time Order Chat Modal with Delivery Driver */}
+      {chatOrder && (
+        <OrderChatModal
+          isOpen={Boolean(chatOrder)}
+          onClose={() => setChatOrder(null)}
+          order={chatOrder}
+          currentRole="customer"
+          currentUserId={customer?.phone || chatOrder.customerPhone || 'customer'}
+          currentUserName={customer?.name || chatOrder.customerName || 'Cliente'}
+        />
       )}
 
     </div>
