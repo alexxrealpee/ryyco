@@ -2064,12 +2064,12 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
 
                         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#232B3A]/60">
-                          {/* Live In-App Chat with Customer */}
+                          {/* Live In-App Chat with Customer (Exclusively Internal Chat) */}
                           <button
                             type="button"
                             onClick={() => setIsOrderChatOpen(true)}
-                            className="inline-flex items-center gap-1.5 text-xs bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white px-3 py-1.5 rounded-xl font-bold transition shadow-md active:scale-95 cursor-pointer relative"
-                            title="Abrir chat en tiempo real con el cliente"
+                            className="inline-flex items-center gap-1.5 text-xs bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white px-3.5 py-2 rounded-xl font-bold transition shadow-md active:scale-95 cursor-pointer relative"
+                            title="Abrir chat interno en tiempo real con el cliente"
                           >
                             <MessageCircle className="w-3.5 h-3.5" />
                             <span>Chat con el Cliente</span>
@@ -2086,16 +2086,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           >
                             <Phone className="w-3.5 h-3.5" />
                             <span>{activeDelivery.customerPhone}</span>
-                          </a>
-
-                          <a
-                            href={`https://wa.me/${activeDelivery.customerPhone.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition"
-                          >
-                            <MessageSquare className="w-3 h-3" />
-                            <span>WhatsApp</span>
                           </a>
                         </div>
                       </div>
@@ -2229,24 +2219,15 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                   <span>{deliveryPinError}</span>
                                 </p>
                                 {activeDelivery.customerPhone && (
-                                  <div className="flex flex-wrap items-center gap-2">
+                                  <div className="flex items-center gap-2">
                                     <button
                                       type="button"
                                       onClick={() => setIsOrderChatOpen(true)}
-                                      className="inline-flex items-center gap-1.5 text-[11px] text-[#E63946] hover:text-white font-bold bg-[#E63946]/10 hover:bg-[#E63946] border border-[#E63946]/30 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                                      className="inline-flex items-center gap-1.5 text-xs text-[#E63946] hover:text-white font-bold bg-[#E63946]/10 hover:bg-[#E63946] border border-[#E63946]/30 px-3 py-1.5 rounded-lg transition cursor-pointer"
                                     >
-                                      <MessageCircle className="w-3 h-3" />
+                                      <MessageCircle className="w-3.5 h-3.5" />
                                       <span>Pedir PIN por Chat Interno</span>
                                     </button>
-                                    <a
-                                      href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
-                                    >
-                                      <MessageSquare className="w-3 h-3" />
-                                      <span>Pedir por WhatsApp</span>
-                                    </a>
                                   </div>
                                 )}
                               </div>

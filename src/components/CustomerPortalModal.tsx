@@ -1870,33 +1870,21 @@ export default function CustomerPortalModal({
                                 </div>
 
                                 <div className="flex items-center gap-2 shrink-0">
-                                  {/* Direct In-App Chat button with Driver */}
+                                  {/* Direct In-App Chat button with Driver (Exclusively Internal Chat) */}
                                   <button
                                     type="button"
                                     onClick={() => setChatOrder(order)}
-                                    className="px-3 py-1.5 bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white rounded-lg text-[10px] font-black transition flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer relative"
-                                    title="Abrir chat en tiempo real con tu domiciliario"
+                                    className="px-3.5 py-2 bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer relative"
+                                    title="Abrir chat interno en tiempo real con tu domiciliario"
                                   >
                                     <MessageCircle className="w-3.5 h-3.5" />
-                                    <span>Chat</span>
+                                    <span>Chat con Domiciliario</span>
                                     {Boolean(order.customerUnreadChatCount && order.customerUnreadChatCount > 0) && (
-                                      <span className="w-3.5 h-3.5 rounded-full bg-amber-400 text-gray-950 text-[9px] font-black flex items-center justify-center animate-bounce">
+                                      <span className="w-4 h-4 rounded-full bg-amber-400 text-gray-950 text-[10px] font-black flex items-center justify-center animate-bounce">
                                         {order.customerUnreadChatCount}
                                       </span>
                                     )}
                                   </button>
-
-                                  {order.deliveryDriverPhone && (
-                                    <a
-                                      href={`https://wa.me/57${order.deliveryDriverPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${order.deliveryDriverName}, estoy pendiente de mi pedido #${order.orderNumber}.`)}`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-[10px] font-bold transition flex items-center gap-1"
-                                    >
-                                      <MessageCircle className="w-3.5 h-3.5" />
-                                      WhatsApp
-                                    </a>
-                                  )}
                                 </div>
                               </div>
                             )}
