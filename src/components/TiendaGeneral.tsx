@@ -2018,7 +2018,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               {/* Floating Transparent Food Combo Image */}
               <img 
-                src="https://firebasestorage.googleapis.com/v0/b/studio-9002217802-13e05.firebasestorage.app/o/ryyco%20comboo.webp?alt=media&token=bf5701d7-9702-4c3c-9794-b23dbea1cc75" 
+                src="/ryyco_combo.webp" 
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/hero_combo.webp';
                 }}
