@@ -369,9 +369,36 @@ Formatos válidos para:
     '/api/chat.php'
   ], handleVoiceAssistantRequest);
 
-  // Health check route
+  // Health check route with full diagnostics
   app.get(['/api/health', '/api/health.php'], (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    const hasOpenAI = Boolean(process.env.OPENAI_API_KEY);
+    const hasMaps = Boolean(process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY);
+    const hasFcm = Boolean(process.env.FCM_SERVER_KEY);
+    const openaiKey = process.env.OPENAI_API_KEY || '';
+    res.json({
+      status: 'ok',
+      platform: 'Hostinger / Node.js Dev Engine',
+      keys_file_active: true,
+      apis: {
+        openai_gpt: {
+          configured: hasOpenAI,
+          source: 'keys.php',
+          key_hint: hasOpenAI ? openaiKey.slice(0, 7) + '...' + openaiKey.slice(-4) : 'NO_CONFIGURADA'
+        },
+        google_maps: {
+          configured: hasMaps,
+          source: 'keys.php'
+        },
+        fcm_notifications: {
+          configured: hasFcm,
+          source: 'keys.php'
+        }
+      },
+      instructions: hasOpenAI
+        ? '✓ OpenAI GPT está activo y listo para responder consultas de voz y texto.'
+        : 'Para activar GPT en Hostinger, sube el archivo keys.php con tu clave de OpenAI a public_html/ o public_html/api/.',
+      timestamp: new Date().toISOString()
+    });
   });
 
   // API Route: OpenAI Realtime Voice WebRTC Session (Secure Ephemeral Token Provisioning)
