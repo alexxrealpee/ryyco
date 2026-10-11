@@ -38,7 +38,6 @@ import {
   Film,
   Play
 } from 'lucide-react';
-import { collection, onSnapshot } from 'firebase/firestore';
 import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import { 
@@ -216,15 +215,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     isLoadingProducts
   } = useProgressiveStoreLoader();
 
-  // Non-blocking initial delivery brand loader indicator (400-700ms max)
-  const [isInitialBrandLoader, setIsInitialBrandLoader] = useState(true);
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsInitialBrandLoader(false);
-    }, 550);
-    return () => clearTimeout(timer);
-  }, []);
-
   const [cachedInitial] = useState(() => getInitialGeneralData());
   // Inicializar inmediatamente con productos cacheados si existen para renderizado instantáneo
   const [products, setProducts] = useState<ProductItem[]>(() => cachedInitial.products);
@@ -311,50 +301,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     };
   }, []);
 
-  // Real-time Firestore listener for all store profiles so open/closed changes take effect immediately
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'profiles'), (snapshot) => {
-      const updatedMap: Record<string, UserProfile> = {};
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data() as UserProfile;
-        const uid = data.uid || docSnap.id;
-        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-        const isClosedNow = isSuspended || data.isClosed === true || checkIsStoreClosed({ ...data, isClosed: data.isClosed, suspended: isSuspended });
-        const prof: UserProfile = {
-          ...data,
-          uid,
-          suspended: isSuspended,
-          isClosed: isClosedNow
-        };
-        updatedMap[uid] = prof;
-        if (prof.username) {
-          updatedMap[prof.username.toLowerCase()] = prof;
-        }
-      });
-      setProfiles(prev => ({ ...prev, ...updatedMap }));
-    }, (error) => {
-      console.warn("Real-time profiles listener notice:", error);
-    });
-
-    // 15-second schedule timer to auto-refresh store states as time passes
-    const scheduleInterval = setInterval(() => {
-      setProfiles(prev => {
-        if (!prev || Object.keys(prev).length === 0) return prev;
-        const rechecked: Record<string, UserProfile> = {};
-        (Object.entries(prev) as [string, UserProfile][]).forEach(([k, prof]) => {
-          if (!prof) return;
-          const isClosedNow = prof.suspended === true || prof.isClosed === true || checkIsStoreClosed(prof);
-          rechecked[k] = { ...prof, isClosed: isClosedNow };
-        });
-        return rechecked;
-      });
-    }, 15000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(scheduleInterval);
-    };
-  }, []);
+  // Note: Real-time profiles listener is efficiently managed by useProgressiveStoreLoader
+  // which updates profilesMap and synchronizes open/closed states without duplicate reads.
   
   // Filtering & search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -994,23 +942,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return matched;
   }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy]);
 
-  // Smart progressive loading visibleLimit (12 productos iniciales para cubrir la cuadrícula en móviles y PC)
-  const [visibleLimit, setVisibleLimit] = useState(12);
+  // Smart progressive loading visibleLimit (Carga inicial de 6 productos de establecimientos abiertos y paginación real de 6 en 6)
+  const [visibleLimit, setVisibleLimit] = useState(6);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
 
   // Reset limit when filter/search/sort changes (show full store products when store is selected)
   useEffect(() => {
-    setVisibleLimit(selectedStore !== 'all' ? 30 : 12);
+    setVisibleLimit(selectedStore !== 'all' ? 30 : 6);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
-  // Unified function to load the next batch of 4 products in order
+  // Unified function to load the next batch of 6 products in order
   const loadNextBatchOfFour = useCallback(async () => {
     if (isFetchingNextBatchRef.current || isProgressiveLoadingMore) return;
 
-    // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
+    // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 6
     if (visibleLimit < filteredProducts.length) {
-      setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length));
+      setVisibleLimit(prev => Math.min(prev + 6, filteredProducts.length));
       // If reaching near the end of buffered products, prefetch the next batch
       if (hasMoreProgressive && visibleLimit + 6 >= filteredProducts.length) {
         loadNextFourProducts();
@@ -1018,7 +966,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return;
     }
 
-    // 2. Otherwise, fetch the next 4 products (from memory cache, API or Firebase)
+    // 2. Otherwise, fetch the next 6 products (from memory cache, API or Firebase)
     if (hasMoreProgressive) {
       isFetchingNextBatchRef.current = true;
       setIsLoadingMore(true);
@@ -1028,7 +976,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           setVisibleLimit(prev => prev + fresh.length);
         }
       } catch (err) {
-        console.warn("Error loading next batch of 4:", err);
+        console.warn("Error loading next batch of 6:", err);
       } finally {
         setIsLoadingMore(false);
         isFetchingNextBatchRef.current = false;
@@ -1036,7 +984,30 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
   }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
 
-  // Coordinated scroll listener: loads next 4 products when scrolling near bottom
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // High-performance IntersectionObserver for loading next 6 products
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry && entry.isIntersecting) {
+          if (!isFetchingNextBatchRef.current && !isProgressiveLoadingMore) {
+            loadNextBatchOfFour();
+          }
+        }
+      },
+      { rootMargin: '350px 0px' }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [loadNextBatchOfFour, isProgressiveLoadingMore]);
+
+  // Fallback passive scroll listener for older webviews
   useEffect(() => {
     let ticking = false;
 
@@ -1054,8 +1025,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           document.documentElement.offsetHeight
         );
 
-        // Trigger when within 650px of page bottom for seamless smooth continuous scrolling
-        if (scrollTop + windowHeight >= docHeight - 650) {
+        // Trigger when within 400px of page bottom
+        if (scrollTop + windowHeight >= docHeight - 400) {
           if (!isFetchingNextBatchRef.current && !isProgressiveLoadingMore) {
             loadNextBatchOfFour();
           }
@@ -1497,12 +1468,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
       {/* 1. Navbar (Halloween Spooky Theme) */}
       <header className="border-b border-[#1F2937] backdrop-blur-md sticky top-0 z-40 bg-[#0F172A]/95 relative shadow-md shadow-black/40">
-        {/* Subtle initial delivery brand loader hairline (400-700ms max, non-blocking) */}
-        {isInitialBrandLoader && (
-          <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#111827] overflow-hidden pointer-events-none z-50" aria-hidden="true">
-            <div className="h-full bg-[#E63946] w-full" />
-          </div>
-        )}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
           {/* Left: 3-Dots Menu Dropdown Button & Customer Session Status on Desktop */}
           <div className="flex-1 flex items-center justify-start z-30 min-w-0 gap-2">
@@ -1840,7 +1805,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Center: Centered Logo with Dedicated Protected Clearance */}
-          <div className={`flex items-center justify-center shrink-0 px-2 z-20 transition-transform duration-500 gap-1.5 ${isInitialBrandLoader ? 'scale-[1.03]' : 'scale-100'}`}>
+          <div className="flex items-center justify-center shrink-0 px-2 z-20 gap-1.5 scale-100">
             <LinnkProLogo 
               onClick={() => {
                 setSearchTerm('');
@@ -2023,6 +1988,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   (e.target as HTMLImageElement).src = '/hero_combo.webp';
                 }}
                 alt="Delicioso combo de hamburguesa, papas y bebida para Halloween" 
+                width="400"
+                height="260"
+                loading="eager"
+                fetchPriority="high"
+                decoding="async"
                 className="relative z-10 w-full h-auto max-h-[170px] sm:max-h-[250px] md:max-h-[300px] object-contain drop-shadow-[0_15px_25px_rgba(0,0,0,0.7)] hover:scale-105 transition-transform duration-300 pointer-events-none select-none"
               />
 
@@ -2280,6 +2250,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             loading="eager"
                             fetchPriority={storeIdx < 8 ? "high" : "auto"}
                             decoding="async"
+                            width="64"
+                            height="64"
                             className="w-full h-full rounded-full object-cover bg-slate-950 pointer-events-none select-none"
                           />
                         ) : (
@@ -2503,9 +2475,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         src={product.imageURL} 
                         alt={product.name}
                         referrerPolicy="no-referrer"
-                        loading={productIndex < 4 ? "eager" : "lazy"}
-                        fetchPriority={productIndex < 4 ? "high" : "auto"}
+                        loading={productIndex < 6 ? "eager" : "lazy"}
+                        fetchPriority={productIndex < 6 ? "high" : "auto"}
                         decoding="async"
+                        width="300"
+                        height="300"
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                       />
                     ) : (
@@ -2604,13 +2578,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               aria-busy="true"
               aria-label="Cargando siguientes productos"
             >
-              {[0, 1, 2, 3].map((idx) => (
+              {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <ProductCardSkeleton key={`loading-more-${idx}`} index={idx} />
               ))}
             </div>
           )}
 
-          {/* Smart 4-by-4 Progressive Loading indicator & control */}
+          {/* Smart 6-by-6 Progressive Loading indicator & control */}
           {(visibleLimit < filteredProducts.length || hasMoreProgressive) ? (
             <div className="w-full flex flex-col items-center justify-center py-8 gap-3 mt-6 border-t border-dashed border-[#232B3A]">
               <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
@@ -2634,13 +2608,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 disabled={isLoadingMore || isProgressiveLoadingMore}
                 className="px-6 py-2.5 bg-[#1F2937] hover:bg-[#374151] border border-white/10 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
-                <span>Cargar 4 productos más</span>
-                <span className="text-[10px] bg-[#E63946]/30 text-[#E63946] px-1.5 py-0.5 rounded font-black border border-[#E63946]/40">+4</span>
+                <span>Cargar 6 productos más</span>
+                <span className="text-[10px] bg-[#E63946]/30 text-[#E63946] px-1.5 py-0.5 rounded font-black border border-[#E63946]/40">+6</span>
               </button>
               
               <p className="text-[10px] text-gray-500 tracking-wide">o desliza hacia abajo (scroll) para carga automática</p>
+              
+              {/* IntersectionObserver sentinel target */}
+              <div ref={sentinelRef} className="w-full h-2 pointer-events-none opacity-0" aria-hidden="true" />
             </div>
-          ) : filteredProducts.length > 4 ? (
+          ) : filteredProducts.length > 6 ? (
             <div className="w-full text-center py-8 text-xs font-medium text-gray-500 border-t border-dashed border-[#232B3A] mt-6">
               ✨ Has llegado al final — Mostrando todos los {filteredProducts.length} productos
             </div>

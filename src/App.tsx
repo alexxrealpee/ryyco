@@ -19,20 +19,23 @@ import {
 } from './lib/firebase';
 import { UserProfile, CustomerProfile } from './types';
 
-// Importing Custom Component views
-import LandingPage from './components/LandingPage';
-import AuthPage from './components/AuthPage';
-import Dashboard from './components/Dashboard';
-import PublicProfile from './components/PublicProfile';
-import AdminPanel from './components/AdminPanel';
+// Primary landing view kept static for zero-latency first paint
 import TiendaGeneral from './components/TiendaGeneral';
-import DriverRegister from './components/DriverRegister';
-import DriverPortal, { getStoredDriverSession } from './components/DriverPortal';
-import CarruselProduc from './components/CarruselProduc';
 import PwaLoadingScreen from './components/PwaLoadingScreen';
-import FirstVisitAddressModal from './components/FirstVisitAddressModal';
-import PrivacyPolicyPage from './components/PrivacyPolicyPage';
-import LinnkProVoiceAssistant from './components/LinnkProVoiceAssistant';
+
+// Secondary views lazy loaded on-demand via React.lazy
+const LandingPage = React.lazy(() => import('./components/LandingPage'));
+const AuthPage = React.lazy(() => import('./components/AuthPage'));
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+const PublicProfile = React.lazy(() => import('./components/PublicProfile'));
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
+const DriverRegister = React.lazy(() => import('./components/DriverRegister'));
+const DriverPortal = React.lazy(() => import('./components/DriverPortal'));
+const CarruselProduc = React.lazy(() => import('./components/CarruselProduc'));
+const FirstVisitAddressModal = React.lazy(() => import('./components/FirstVisitAddressModal'));
+const PrivacyPolicyPage = React.lazy(() => import('./components/PrivacyPolicyPage'));
+const LinnkProVoiceAssistant = React.lazy(() => import('./components/LinnkProVoiceAssistant'));
+import { getStoredDriverSession } from './lib/driverSessionStorage';
 import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
@@ -604,14 +607,48 @@ export default function App() {
     setView('dashboard');
   };
 
-  if (initLoading && (view === 'dashboard' || view === 'admin')) {
-    return <PwaLoadingScreen />;
+  // If visiting the main home page (tienda general), render TiendaGeneral directly without any splash loader screen
+  if (view === 'tienda') {
+    return (
+      <div className="min-h-screen bg-[#090B12] text-gray-100">
+        <TiendaGeneral 
+          onNavigateHome={handleNavigateHome}
+          onNavigateToStore={(username) => {
+            window.history.pushState({}, '', '/' + username);
+            setTargetUsername(username);
+            setView('profile');
+          }}
+        />
+
+        {/* Assistant & First visit modal loaded quietly in background without replacing the page */}
+        <React.Suspense fallback={null}>
+          <LinnkProVoiceAssistant
+            activeUsername={targetUsername}
+            onNavigateToStore={(username) => {
+              window.history.pushState({}, '', '/' + username);
+              setTargetUsername(username);
+              setView('profile');
+            }}
+            onNavigateToTienda={() => {
+              window.history.pushState({}, '', '/');
+              setTargetUsername(null);
+              setView('tienda');
+            }}
+          />
+          <FirstVisitAddressModal
+            isOpen={isFirstVisitAddressOpen}
+            onClose={() => setIsFirstVisitAddressOpen(false)}
+          />
+        </React.Suspense>
+      </div>
+    );
   }
 
   return (
     <div className="min-h-screen bg-[#090B12] text-gray-100">
-      {view === 'landing' && (
-        <LandingPage 
+      <React.Suspense fallback={<PwaLoadingScreen />}>
+        {view === 'landing' && (
+          <LandingPage 
           onNavigate={(targetView, customUser) => {
             if (targetView === 'tienda') {
               window.history.pushState({}, '', '/');
@@ -671,16 +708,6 @@ export default function App() {
         />
       )}
 
-      {view === 'tienda' && (
-        <TiendaGeneral 
-          onNavigateHome={handleNavigateHome}
-          onNavigateToStore={(username) => {
-            window.history.pushState({}, '', '/' + username);
-            setTargetUsername(username);
-            setView('profile');
-          }}
-        />
-      )}
 
       {view === 'admin' && (
         <AdminPanel 
@@ -750,28 +777,12 @@ export default function App() {
         />
       )}
 
-      {/* Ryyco Chat & Mesero Virtual Assistant for Shoppers and Visitors - Solo en la página de inicio */}
-      {view === 'tienda' && (
-        <LinnkProVoiceAssistant
-          activeUsername={targetUsername}
-          onNavigateToStore={(username) => {
-            window.history.pushState({}, '', '/' + username);
-            setTargetUsername(username);
-            setView('profile');
-          }}
-          onNavigateToTienda={() => {
-            window.history.pushState({}, '', '/');
-            setTargetUsername(null);
-            setView('tienda');
-          }}
+        {/* First-Visit / Customer Delivery Address Modal in Ipiales */}
+        <FirstVisitAddressModal
+          isOpen={isFirstVisitAddressOpen}
+          onClose={() => setIsFirstVisitAddressOpen(false)}
         />
-      )}
-
-      {/* First-Visit / Customer Delivery Address Modal in Ipiales */}
-      <FirstVisitAddressModal
-        isOpen={isFirstVisitAddressOpen}
-        onClose={() => setIsFirstVisitAddressOpen(false)}
-      />
+      </React.Suspense>
     </div>
   );
 }

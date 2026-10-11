@@ -16,15 +16,24 @@ export default defineConfig(({mode}) => {
       },
     },
     build: {
-      chunkSizeWarningLimit: 2500,
+      chunkSizeWarningLimit: 1200,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-firebase': ['firebase/app', 'firebase/firestore', 'firebase/auth', 'firebase/storage'],
-            'vendor-icons': ['lucide-react'],
-            'vendor-maps': ['leaflet'],
-            'vendor-motion': ['motion'],
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
+              }
+              if (id.includes('leaflet')) {
+                return 'vendor-maps';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('react') || id.includes('scheduler') || id.includes('motion')) {
+                return 'vendor-framework';
+              }
+            }
           },
         },
       },

@@ -83,7 +83,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
    * Helper function: fetches a sequential batch of products across open restaurants.
    * Gathers up to batchSize products in order, advancing from store to store as needed.
    */
-  const fetchBatch = useCallback(async (batchSize: number = 4): Promise<ProductItem[]> => {
+  const fetchBatch = useCallback(async (batchSize: number = 6): Promise<ProductItem[]> => {
     const stores = openRestaurantsRef.current;
     if (stores.length === 0) return [];
 
@@ -126,7 +126,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
   }, []);
 
   /**
-   * Loads the next 4 products in order and strictly appends them.
+   * Loads the next 6 products in order and strictly appends them.
    * Products already rendered on screen are never displaced.
    */
   const loadNextFourProducts = useCallback(async (): Promise<ProductItem[]> => {
@@ -145,12 +145,12 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
       const unrendered = availablePool.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
       if (unrendered.length > 0) {
-        const nextBatch = unrendered.slice(0, 4);
+        const nextBatch = unrendered.slice(0, 6);
         nextBatch.forEach(p => {
           if (p.id) loadedProductIdsRef.current.add(p.id);
         });
         setLoadedProducts(prev => [...prev, ...nextBatch]);
-        setHasMore(unrendered.length > 4 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
+        setHasMore(unrendered.length > 6 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
         return nextBatch;
       }
 
@@ -163,12 +163,12 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           if (catalogProducts.length > 0) {
             const freshFromApi = catalogProducts.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
             if (freshFromApi.length > 0) {
-              const nextBatch = freshFromApi.slice(0, 4);
+              const nextBatch = freshFromApi.slice(0, 6);
               nextBatch.forEach(p => {
                 if (p.id) loadedProductIdsRef.current.add(p.id);
               });
               setLoadedProducts(prev => [...prev, ...nextBatch]);
-              setHasMore(freshFromApi.length > 4 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
+              setHasMore(freshFromApi.length > 6 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
               return nextBatch;
             }
           }
@@ -176,7 +176,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       } catch (e) {}
 
       // 3. Fallback: Fetch sequentially from Firestore across open restaurants
-      const newBatch = await fetchBatch(4);
+      const newBatch = await fetchBatch(6);
 
       if (newBatch.length > 0) {
         setLoadedProducts(prev => {
@@ -190,7 +190,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
       return newBatch;
     } catch (err) {
-      console.warn('Error in loadNextFourProducts:', err);
+      console.warn('Error in loadNextBatch:', err);
       return [];
     } finally {
       setIsLoadingMore(false);
@@ -425,16 +425,17 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           });
 
           const finalInitialProducts = orderProductBatch(uniqueInitial);
-          finalInitialProducts.forEach(p => {
+          const initialSlice = finalInitialProducts.slice(0, 6);
+          initialSlice.forEach(p => {
             if (p.id) loadedProductIdsRef.current.add(p.id);
           });
 
-          setLoadedProducts(finalInitialProducts);
+          setLoadedProducts(initialSlice);
           setProfilesMap(prev => ({ ...prev, ...activeData.profiles }));
           // Ensure hasMore remains true so user can scroll to load the remaining products
-          setHasMore(true);
+          setHasMore(uniqueInitial.length > 6 || openStores.length > 0);
         } else if (openStores.length > 0) {
-          const initialBatch = await fetchBatch(8);
+          const initialBatch = await fetchBatch(6);
           if (initialBatch.length > 0) {
             initialBatch.forEach(p => {
               if (p.id) loadedProductIdsRef.current.add(p.id);

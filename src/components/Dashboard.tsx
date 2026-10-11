@@ -371,19 +371,8 @@ const compressImage = (base64Str: string, maxWidth = 1200, maxHeight = 800, qual
   });
 };
 
-export function checkIsTableOrder(order?: Partial<OrderItem> | null): boolean {
-  if (!order) return false;
-  if (order.orderType === 'table' || order.isTableOrder) return true;
-  if (order.customerName?.toLowerCase().startsWith('mesa ') || order.customerAddress?.toLowerCase().includes('mesa')) return true;
-  return false;
-}
-
-export function checkIsPickupOrder(order?: Partial<OrderItem> | null): boolean {
-  if (!order) return false;
-  if (order.orderType === 'pickup') return true;
-  if (order.customerAddress?.toLowerCase().includes('recoger')) return true;
-  return false;
-}
+import { checkIsTableOrder, checkIsPickupOrder } from '../lib/orderTypeUtils';
+export { checkIsTableOrder, checkIsPickupOrder };
 
 interface DashboardProps {
   userProfile: UserProfile;

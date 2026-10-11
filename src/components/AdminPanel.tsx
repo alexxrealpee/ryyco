@@ -41,7 +41,7 @@ import AdminOrderTimesManager from './AdminOrderTimesManager';
 import AdminProductImagesOptimizer from './AdminProductImagesOptimizer';
 import OrderTimeTimeline from './OrderTimeTimeline';
 import { getActiveOrderElapsed, applyOrderTimeTransition } from '../lib/orderTimeTracking';
-import { checkIsTableOrder, checkIsPickupOrder } from './Dashboard';
+import { checkIsTableOrder, checkIsPickupOrder } from '../lib/orderTypeUtils';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile } from '../types';
 import { subscribeToActiveDrivers } from '../lib/whatsappDriverNotifications';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';

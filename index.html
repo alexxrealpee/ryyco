@@ -128,14 +128,34 @@
         }
       ]
     </script>
-    <!-- Google tag (gtag.js) -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-5DZY5FQ42X"></script>
+    <!-- Google tag (gtag.js) - Defer to eliminate main-thread blocking during initial paint -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
-
       gtag('config', 'G-5DZY5FQ42X');
+
+      // Load external gtag library without blocking first paint or TBT
+      function loadGtagScript() {
+        if (window.__GTAG_LOADED__) return;
+        window.__GTAG_LOADED__ = true;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=G-5DZY5FQ42X';
+        document.head.appendChild(s);
+      }
+
+      if (typeof window !== 'undefined') {
+        if ('requestIdleCallback' in window) {
+          window.requestIdleCallback(function() {
+            setTimeout(loadGtagScript, 1200);
+          }, { timeout: 3000 });
+        } else {
+          window.addEventListener('load', function() {
+            setTimeout(loadGtagScript, 1200);
+          }, { once: true });
+        }
+      }
     </script>
   </head>
   <body>
