@@ -566,6 +566,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         const orderStatus = payload.data?.status;
         if (orderStatus && orderStatus !== 'pending') return;
         setNotif(`🚨 ¡Nuevo Pedido FCM detectado! #${payload.data?.orderNumber || ''}`);
+        playOrderAlertSound();
         setTimeout(() => setNotif(''), 6000);
       }
     };
@@ -576,6 +577,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       if (data.type === 'ADMIN_ORDER_PUSH') {
         if (data.status && data.status !== 'pending') return;
         setNotif(`🚨 ¡Nuevo Pedido #${data.orderNumber || ''} en "${data.storeName || 'Tienda'}"!`);
+        playOrderAlertSound();
         setTimeout(() => setNotif(''), 6000);
       }
     });
