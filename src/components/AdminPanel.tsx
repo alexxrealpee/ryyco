@@ -413,6 +413,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [healthCheckLoading, setHealthCheckLoading] = useState<boolean>(false);
   const [healthCheckResult, setHealthCheckResult] = useState<any | null>(null);
   const [savingBackendUrl, setSavingBackendUrl] = useState<boolean>(false);
+  const [copiedDataModelPrompt, setCopiedDataModelPrompt] = useState<boolean>(false);
+  const [exportingCSV, setExportingCSV] = useState<boolean>(false);
 
   // Filter by subscription status for historical payments & subscriptions ledger
   const [selectedSubscriptionStatusFilter, setSelectedSubscriptionStatusFilter] = useState<string>('all');
@@ -1508,6 +1510,196 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     navigator.clipboard.writeText(cobroCustomPhone);
     setCopiedCobroPhone(true);
     setTimeout(() => setCopiedCobroPhone(false), 2500);
+  };
+
+  // Export Complete Real-time Firebase Database to CSV (Tiendas, Pedidos, Domiciliarios, Productos, Clientes)
+  const handleExportLiveCSV = async () => {
+    setExportingCSV(true);
+    try {
+      const escapeCSV = (val: any) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""').replace(/\r?\n/g, ' ');
+        return `"${str}"`;
+      };
+
+      const rows: string[] = [];
+      const headers = [
+        'ENTIDAD',
+        'ID',
+        'TITULO_NOMBRE',
+        'ESTADO',
+        'CATEGORIA_VEHICULO',
+        'TELEFONO_WHATSAPP',
+        'DIRECCION',
+        'CIUDAD_O_ZONA',
+        'LATITUD',
+        'LONGITUD',
+        'PRECIO_O_TOTAL_COP',
+        'TARIFA_ENVIO_COP',
+        'METODO_PAGO_O_PLAN',
+        'FECHA_CREACION',
+        'ID_RELACIONADO',
+        'DETALLES_ITEMS_METRICAS'
+      ];
+
+      // 1. Fetch Tiendas (profiles)
+      try {
+        const snap = await getDocs(collection(db, 'profiles'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          rows.push([
+            escapeCSV('TIENDA'),
+            escapeCSV(docSnap.id),
+            escapeCSV(d.storeName || d.displayName || d.username || 'Tienda'),
+            escapeCSV(d.subscriptionStatus || (d.isClosed ? 'cerrado' : 'abierto')),
+            escapeCSV(d.category || 'Restaurante / Comercio'),
+            escapeCSV(d.ownerWhatsapp || d.whatsapp || d.phone || ''),
+            escapeCSV(d.restaurantAddress || d.address || ''),
+            escapeCSV(d.restaurantCity || d.location || 'Ipiales'),
+            escapeCSV(d.lat || ''),
+            escapeCSV(d.lng || ''),
+            escapeCSV(0),
+            escapeCSV(0),
+            escapeCSV(d.subscriptionPlan || d.plan || 'free'),
+            escapeCSV(d.createdAt || ''),
+            escapeCSV(''),
+            escapeCSV(`Slug: @${d.username || ''} | Rating: ${d.rating || 5} (${d.ratingCount || 0}) | Horario: ${d.restaurantDeliveryTime || ''}`)
+          ].join(','));
+        });
+      } catch (e) {
+        console.warn('Error fetching profiles for CSV:', e);
+      }
+
+      // 2. Fetch Pedidos (orders)
+      try {
+        const snap = await getDocs(collection(db, 'orders'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          const itemsSummary = (d.items || []).map((i: any) => `${i.quantity || 1}x ${i.name || 'Item'} ($${i.price || 0})`).join('; ');
+          rows.push([
+            escapeCSV('PEDIDO'),
+            escapeCSV(docSnap.id),
+            escapeCSV(`Orden #${d.orderNumber || ''} - ${d.customerName || 'Cliente'}`),
+            escapeCSV(d.status || 'pending'),
+            escapeCSV(d.deliveryType || 'ryyco'),
+            escapeCSV(d.customerPhone || ''),
+            escapeCSV(d.customerAddress || ''),
+            escapeCSV('Ipiales'),
+            escapeCSV(d.customerLat || ''),
+            escapeCSV(d.customerLng || ''),
+            escapeCSV(d.totalAmount || 0),
+            escapeCSV(d.deliveryFee || 0),
+            escapeCSV(d.paymentMethod || 'cash'),
+            escapeCSV(d.createdAt || ''),
+            escapeCSV(d.storeOwnerId || ''),
+            escapeCSV(`PIN: ${d.deliveryCode || 'N/A'} | Repartidor: ${d.deliveryDriverName || d.deliveryDriverId || 'Sin asignar'} | Items: [${itemsSummary}] | Tienda: ${d.storeName || ''}`)
+          ].join(','));
+        });
+      } catch (e) {
+        console.warn('Error fetching orders for CSV:', e);
+      }
+
+      // 3. Fetch Domiciliarios (drivers)
+      try {
+        const snap = await getDocs(collection(db, 'drivers'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          rows.push([
+            escapeCSV('DOMICILIARIO'),
+            escapeCSV(docSnap.id),
+            escapeCSV(`${d.firstName || ''} ${d.lastName || ''}`.trim() || 'Repartidor'),
+            escapeCSV(d.status || (d.isAvailable ? 'disponible' : 'inactivo')),
+            escapeCSV(d.vehicleType || 'moto'),
+            escapeCSV(d.phone || ''),
+            escapeCSV(d.address || ''),
+            escapeCSV(d.city || 'Ipiales'),
+            escapeCSV(d.currentLocation?.lat || ''),
+            escapeCSV(d.currentLocation?.lng || ''),
+            escapeCSV(d.totalEarnings || 0),
+            escapeCSV(0),
+            escapeCSV(d.status || 'aprobado'),
+            escapeCSV(d.createdAt || ''),
+            escapeCSV(''),
+            escapeCSV(`Placa: ${d.vehiclePlate || 'N/A'} | Entregas: ${d.completedDeliveriesCount || 0} | Rating: ${d.rating || 5} (${d.ratingCount || 0}) | Doc: ${d.docType || 'CC'} ${d.docNumber || ''}`)
+          ].join(','));
+        });
+      } catch (e) {
+        console.warn('Error fetching drivers for CSV:', e);
+      }
+
+      // 4. Fetch Productos (products)
+      try {
+        const snap = await getDocs(collection(db, 'products'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          rows.push([
+            escapeCSV('PRODUCTO'),
+            escapeCSV(docSnap.id),
+            escapeCSV(d.name || 'Producto'),
+            escapeCSV(d.active ? 'activo' : 'inactivo'),
+            escapeCSV(d.category || 'General'),
+            escapeCSV(''),
+            escapeCSV(''),
+            escapeCSV(''),
+            escapeCSV(''),
+            escapeCSV(''),
+            escapeCSV(d.price || 0),
+            escapeCSV(0),
+            escapeCSV(d.compareAtPrice ? `Oferta vs $${d.compareAtPrice}` : 'Precio Normal'),
+            escapeCSV(d.createdAt || ''),
+            escapeCSV(d.userId || ''),
+            escapeCSV(`Tienda: ${d.storeName || ''} | Stock: ${d.stock || 0} | Variantes: ${(d.variantsList || []).join(', ')} | Desc: ${d.description || ''}`)
+          ].join(','));
+        });
+      } catch (e) {
+        console.warn('Error fetching products for CSV:', e);
+      }
+
+      // 5. Fetch Clientes (customers)
+      try {
+        const snap = await getDocs(collection(db, 'customers'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          rows.push([
+            escapeCSV('CLIENTE'),
+            escapeCSV(docSnap.id),
+            escapeCSV(d.name || 'Cliente'),
+            escapeCSV('activo'),
+            escapeCSV('cliente_ipiales'),
+            escapeCSV(d.phone || ''),
+            escapeCSV(d.address || ''),
+            escapeCSV('Ipiales'),
+            escapeCSV(d.lat || ''),
+            escapeCSV(d.lng || ''),
+            escapeCSV(0),
+            escapeCSV(0),
+            escapeCSV('cliente_registrado'),
+            escapeCSV(d.createdAt || ''),
+            escapeCSV(''),
+            escapeCSV(`Total pedidos realizados: ${d.orderCount || 0} | Ref: ${d.reference || ''}`)
+          ].join(','));
+        });
+      } catch (e) {
+        console.warn('Error fetching customers for CSV:', e);
+      }
+
+      // Create and trigger download with UTF-8 BOM
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      const dateStr = new Date().toISOString().split('T')[0];
+      link.setAttribute('download', `ryyco_firebase_datos_completos_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error generating master CSV:', err);
+    } finally {
+      setExportingCSV(false);
+    }
   };
 
   const DAYS_OF_WEEK_LIST: Array<{ id: string; label: string; shortLabel: string }> = [
@@ -5073,6 +5265,146 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <p className="text-[11px] text-gray-400 font-medium mt-1">
                     Gestione las variables del sistema, costo predeterminado de domicilio/envío y opciones globales de soporte.
                   </p>
+                </div>
+              </div>
+
+              {/* Firebase CSV Data Export Section for AI Analysis */}
+              <div className="bg-gradient-to-br from-[#0c1427] via-[#09101f] to-[#060b16] border border-emerald-500/40 p-5 sm:p-6 rounded-2xl space-y-4 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-800/80 pb-4">
+                  <div className="flex items-start sm:items-center gap-3">
+                    <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20 shadow-inner shrink-0">
+                      <FileText className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">
+                          Exportación CSV de Datos Firebase (Alimentación General para IA)
+                        </h4>
+                        <span className="px-2.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full text-[10px] font-black tracking-wider uppercase font-mono">
+                          FORMATO CSV TABULAR (EXCEL / IA)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-400 mt-1 max-w-2xl">
+                        Archivo CSV consolidado con toda la información de la base de datos: Tiendas (<span className="text-amber-300 font-mono">profiles</span>), Pedidos (<span className="text-blue-300 font-mono">orders</span>), Domiciliarios (<span className="text-purple-300 font-mono">drivers</span>), Productos (<span className="text-emerald-300 font-mono">products</span>) y Clientes (<span className="text-pink-300 font-mono">customers</span>). Diseñado específicamente para pasar a modelos de Inteligencia Artificial (ChatGPT, Claude, Gemini) para análisis de métricas, rendimiento y auditoría.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    {/* Live CSV Export Button (Queries Firebase in real time) */}
+                    <button
+                      type="button"
+                      disabled={exportingCSV}
+                      onClick={handleExportLiveCSV}
+                      className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      title="Descargar archivo CSV actualizado con todos los registros actuales de Firebase"
+                    >
+                      {exportingCSV ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-black" />
+                          <span>Generando CSV...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 stroke-[2.5]" />
+                          <span>Descargar CSV (Datos en Vivo)</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Direct CSV file link */}
+                    <a
+                      href="/firebase_datos_generales.csv"
+                      download="firebase_datos_generales.csv"
+                      className="px-3.5 py-2.5 bg-gray-900 hover:bg-gray-800 text-emerald-300 hover:text-white font-bold text-xs rounded-xl border border-gray-750 transition flex items-center gap-2 cursor-pointer"
+                      title="Descarga directa del archivo CSV maestro pregenerado"
+                    >
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      <span>Descarga Directa CSV</span>
+                    </a>
+
+                    {/* Copy AI Prompt Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const promptText = `Adjunto el archivo CSV con toda la información de la base de datos de Firebase de la plataforma RYYCO (Tiendas, Pedidos, Domiciliarios, Productos y Clientes). Por favor analiza a fondo: métricas de ventas y pedidos, rendimiento de repartidores, tiempos de entrega, catálogo de platos más populares y recomendaciones estratégicas para optimizar la operación.`;
+                        navigator.clipboard?.writeText(promptText);
+                        setCopiedDataModelPrompt(true);
+                        setTimeout(() => setCopiedDataModelPrompt(false), 2500);
+                      }}
+                      className="px-3.5 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white font-bold text-xs rounded-xl border border-gray-750 transition flex items-center gap-2 cursor-pointer"
+                      title="Copiar prompt listo para usar en ChatGPT, Claude o Gemini"
+                    >
+                      {copiedDataModelPrompt ? (
+                        <>
+                          <Check className="w-4 h-4 text-emerald-400" />
+                          <span className="text-emerald-400">¡Prompt Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4 text-gray-400" />
+                          <span>Copiar Prompt IA</span>
+                        </>
+                      )}
+                    </button>
+
+                    {/* Secondary SVG Visual Diagram link */}
+                    <a
+                      href="/firebase_data_architecture.svg"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-2.5 bg-gray-950 hover:bg-gray-900 text-gray-400 hover:text-amber-400 font-bold text-[11px] rounded-xl border border-gray-800 transition flex items-center gap-1.5 cursor-pointer"
+                      title="Ver diagrama de arquitectura SVG en nueva pestaña"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Diagrama SVG</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Badges of entities covered in the CSV */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 pt-1 text-xs">
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center gap-2">
+                    <Store className="w-4 h-4 text-amber-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white text-[11px] block">Tiendas</span>
+                      <span className="text-[10px] text-amber-300/80 font-mono">/profiles</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-blue-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white text-[11px] block">Pedidos</span>
+                      <span className="text-[10px] text-blue-300/80 font-mono">/orders</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center gap-2">
+                    <Bike className="w-4 h-4 text-purple-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white text-[11px] block">Domiciliarios</span>
+                      <span className="text-[10px] text-purple-300/80 font-mono">/drivers</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-2">
+                    <Package className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white text-[11px] block">Productos</span>
+                      <span className="text-[10px] text-emerald-300/80 font-mono">/products</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-pink-500/10 border border-pink-500/20 flex items-center gap-2 col-span-2 sm:col-span-1">
+                    <Users className="w-4 h-4 text-pink-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white text-[11px] block">Clientes</span>
+                      <span className="text-[10px] text-pink-300/80 font-mono">/customers</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 

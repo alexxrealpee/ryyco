@@ -7,11 +7,10 @@ import express from 'express';
 import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Root directory resolution compatible with both ESM (tsx dev) and bundled CJS (production dist/server.cjs)
+const appDirname = process.cwd();
 import { GoogleGenAI, Type, Modality } from '@google/genai';
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
@@ -44,7 +43,7 @@ if (!process.env.OPENAI_API_KEY) {
     path.resolve(process.cwd(), 'keys.php'),
     path.resolve(process.cwd(), 'public', 'keys.php'),
     path.resolve(process.cwd(), 'public', 'api', 'keys.php'),
-    path.resolve(__dirname, 'keys.php')
+    path.resolve(appDirname, 'keys.php')
   ];
   for (const kf of candidateKeys) {
     if (fs.existsSync(kf)) {

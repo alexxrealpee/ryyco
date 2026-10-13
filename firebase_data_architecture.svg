@@ -1,0 +1,874 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1500" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#080C14"/>
+      <stop offset="50%" stop-color="#0D1322"/>
+      <stop offset="100%" stop-color="#05080E"/>
+    </linearGradient>
+
+    <!-- Node Gradients -->
+    <linearGradient id="headerStore" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+
+    <linearGradient id="headerProduct" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <linearGradient id="headerOrder" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+
+    <linearGradient id="headerDriver" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+
+    <linearGradient id="headerCustomer" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#EC4899"/>
+      <stop offset="100%" stop-color="#BE185D"/>
+    </linearGradient>
+
+    <linearGradient id="headerAux" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#64748B"/>
+      <stop offset="100%" stop-color="#475569"/>
+    </linearGradient>
+
+    <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+
+    <filter id="glowYellow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#F59E0B" flood-opacity="0.5"/>
+    </filter>
+
+    <!-- Marker Arrows -->
+    <marker id="arrowGold" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#F59E0B" />
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#3B82F6" />
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#10B981" />
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#8B5CF6" />
+    </marker>
+    <marker id="arrowPink" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#EC4899" />
+    </marker>
+  </defs>
+
+  <style>
+    .title { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 32px; font-weight: 800; fill: #F8FAFC; }
+    .subtitle { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 15px; font-weight: 500; fill: #94A3B8; }
+    .card-title { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 17px; font-weight: 700; fill: #FFFFFF; }
+    .card-subtitle { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 11px; font-weight: 600; fill: rgba(255,255,255,0.85); text-transform: uppercase; letter-spacing: 0.5px; }
+    .field-pk { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; font-weight: 700; fill: #FBBF24; }
+    .field-fk { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; font-weight: 700; fill: #60A5FA; }
+    .field-name { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; font-weight: 500; fill: #E2E8F0; }
+    .field-type { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 11px; font-weight: 400; fill: #64748B; }
+    .field-desc { font-family: system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: 400; fill: #94A3B8; }
+    .badge { font-family: system-ui, sans-serif; font-size: 10px; font-weight: 700; }
+    .card-bg { fill: #111827; stroke: #1F2937; stroke-width: 1.5; rx: 12; }
+    .rel-line { fill: none; stroke-width: 2.5; stroke-dasharray: 6 4; }
+    .flow-title { font-family: system-ui, sans-serif; font-size: 15px; font-weight: 700; fill: #F1F5F9; }
+    .flow-step { font-family: system-ui, sans-serif; font-size: 11px; font-weight: 600; fill: #CBD5E1; }
+  </style>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="2000" height="1500" fill="url(#bgGrad)"/>
+
+  <!-- Subtle Blueprint Grid -->
+  <g opacity="0.07" stroke="#94A3B8" stroke-width="1">
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40"/>
+    </pattern>
+    <rect width="2000" height="1500" fill="url(#grid)" />
+  </g>
+
+  <!-- ================= TOP HEADER ================= -->
+  <g transform="translate(60, 45)">
+    <rect x="0" y="0" width="56" height="56" rx="14" fill="#F59E0B" filter="url(#glowYellow)"/>
+    <text x="28" y="38" text-anchor="middle" font-family="system-ui" font-size="28" font-weight="900" fill="#0F172A">R</text>
+
+    <text x="75" y="28" class="title">RYYCO PLATFORM — MODELO GENERAL DE DATOS (FIREBASE FIRESTORE)</text>
+    <text x="75" y="52" class="subtitle">Arquitectura completa de Entidades, Relaciones y Ciclos de Vida: Tiendas, Pedidos, Domiciliarios, Productos y Clientes</text>
+    
+    <!-- Meta tags for AI parsers -->
+    <rect x="1450" y="8" width="430" height="42" rx="8" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+    <text x="1465" y="26" class="badge" fill="#38BDF8">EXPORTABLE PARA MODELOS LLM / VISION</text>
+    <text x="1465" y="40" font-family="'JetBrains Mono', monospace" font-size="11" fill="#94A3B8">Database: Firestore (ai-studio-be9196c8...)</text>
+  </g>
+
+  <!-- ================= ENTITY 1: PROFILES (TIENDAS / COMERCIOS) ================= -->
+  <g id="entity-profiles" transform="translate(60, 130)" filter="url(#shadow)">
+    <rect x="0" y="0" width="420" height="550" class="card-bg" stroke="#F59E0B"/>
+    <path d="M 0 12 Q 0 0 12 0 L 408 0 Q 420 0 420 12 L 420 54 L 0 54 Z" fill="url(#headerStore)"/>
+    
+    <text x="20" y="28" class="card-title">profiles (Tiendas &amp; Restaurantes)</text>
+    <text x="20" y="46" class="card-subtitle">Colección Firestore /profiles — Id: user.uid</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <!-- PK -->
+      <text x="0" y="0" class="field-pk">[PK] uid</text>
+      <text x="160" y="0" class="field-type">string (Auth UID)</text>
+      
+      <text x="0" y="22" class="field-name">username</text>
+      <text x="160" y="22" class="field-type">string (Slug único @tienda)</text>
+
+      <text x="0" y="44" class="field-name">displayName / storeName</text>
+      <text x="160" y="44" class="field-type">string (Nombre visible)</text>
+
+      <text x="0" y="66" class="field-name">role / plan</text>
+      <text x="160" y="66" class="field-type">UserRole | UserPlan</text>
+
+      <text x="0" y="88" class="field-name">bio / coverURL / photoURL</text>
+      <text x="160" y="88" class="field-type">string (Logos y Banner)</text>
+
+      <text x="0" y="110" class="field-name">whatsapp / ownerWhatsapp</text>
+      <text x="160" y="110" class="field-type">string (Teléfono pedidos)</text>
+
+      <text x="0" y="132" class="field-name">restaurantAddress</text>
+      <text x="160" y="132" class="field-type">string (Dirección física)</text>
+
+      <text x="0" y="154" class="field-name">restaurantCity / Reference</text>
+      <text x="160" y="154" class="field-type">string (Ipiales, Nariño)</text>
+
+      <text x="0" y="176" class="field-name">lat / lng / mapUrl</text>
+      <text x="160" y="176" class="field-type">number (Geolocalización GPS)</text>
+
+      <text x="0" y="198" class="field-name">weeklySchedule</text>
+      <text x="160" y="198" class="field-type">WeeklySchedule (Días/Horas)</text>
+
+      <text x="0" y="220" class="field-name">isClosed / scheduleEnabled</text>
+      <text x="160" y="220" class="field-type">boolean (Estado apertura)</text>
+
+      <text x="0" y="242" class="field-name">restaurantDeliveryTime</text>
+      <text x="160" y="242" class="field-type">string ("25-35 min")</text>
+
+      <text x="0" y="264" class="field-name">restaurantAveragePrice</text>
+      <text x="160" y="264" class="field-type">string ("$$")</text>
+
+      <text x="0" y="286" class="field-name">restaurantAcceptsDelivery</text>
+      <text x="160" y="286" class="field-type">boolean (Despacho a dom)</text>
+
+      <text x="0" y="308" class="field-name">bankAccounts[]</text>
+      <text x="160" y="308" class="field-type">BankAccount[] (QR / Bancos)</text>
+
+      <text x="0" y="330" class="field-name">subscriptionStatus</text>
+      <text x="160" y="330" class="field-type">trial | active | expired</text>
+
+      <text x="0" y="352" class="field-name">rating / ratingCount</text>
+      <text x="160" y="352" class="field-type">number (4.9 / 120)</text>
+
+      <text x="0" y="374" class="field-name">category / layout</text>
+      <text x="160" y="374" class="field-type">food | liquor | default</text>
+
+      <text x="0" y="396" class="field-name">createdAt / updatedAt</text>
+      <text x="160" y="396" class="field-type">string (ISO 8601)</text>
+    </g>
+
+    <!-- Note footer -->
+    <rect x="15" y="495" width="390" height="40" rx="6" fill="#1E293B"/>
+    <text x="25" y="514" class="field-desc" fill="#FDE68A">💡 Maneja tiendas físicas y virtuales con horarios, ubicación,</text>
+    <text x="25" y="528" class="field-desc" fill="#FDE68A">bancos para transferencias y configuración de domicilios.</text>
+  </g>
+
+  <!-- ================= ENTITY 2: PRODUCTS (CATÁLOGO DE PRODUCTOS) ================= -->
+  <g id="entity-products" transform="translate(60, 715)" filter="url(#shadow)">
+    <rect x="0" y="0" width="420" height="520" class="card-bg" stroke="#10B981"/>
+    <path d="M 0 12 Q 0 0 12 0 L 408 0 Q 420 0 420 12 L 420 54 L 0 54 Z" fill="url(#headerProduct)"/>
+    
+    <text x="20" y="28" class="card-title">products (Productos y Menú)</text>
+    <text x="20" y="46" class="card-subtitle">Colección Firestore /products — Id autogenerado</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <!-- PK -->
+      <text x="0" y="0" class="field-pk">[PK] id</text>
+      <text x="160" y="0" class="field-type">string (Document ID)</text>
+
+      <!-- FK -->
+      <text x="0" y="22" class="field-fk">[FK] userId</text>
+      <text x="160" y="22" class="field-type">string ➔ profiles.uid</text>
+      
+      <text x="0" y="44" class="field-name">name</text>
+      <text x="160" y="44" class="field-type">string (Nombre del plato)</text>
+
+      <text x="0" y="66" class="field-name">description</text>
+      <text x="160" y="66" class="field-type">string (Ingredientes/detalle)</text>
+
+      <text x="0" y="88" class="field-name">price / compareAtPrice</text>
+      <text x="160" y="88" class="field-type">number (Precio COP / Oferta)</text>
+
+      <text x="0" y="110" class="field-name">imageURL / imageFileName</text>
+      <text x="160" y="110" class="field-type">string (WebP optimizado)</text>
+
+      <text x="0" y="132" class="field-name">category</text>
+      <text x="160" y="132" class="field-type">string (Hamburguesas, Bebidas)</text>
+
+      <text x="0" y="154" class="field-name">stock / active</text>
+      <text x="160" y="154" class="field-type">number | boolean (Disponible)</text>
+
+      <text x="0" y="176" class="field-name">variantsList[]</text>
+      <text x="160" y="176" class="field-type">string[] (Personalizaciones)</text>
+
+      <text x="0" y="198" class="field-name">variantPrices{}</text>
+      <text x="160" y="198" class="field-type">Record&lt;string, number&gt; (Precios)</text>
+
+      <text x="0" y="220" class="field-name">allowsHalfAndHalf</text>
+      <text x="160" y="220" class="field-type">boolean (Mitad y Mitad)</text>
+
+      <text x="0" y="242" class="field-name">flavorsList[]</text>
+      <text x="160" y="242" class="field-type">string[] (Lista de sabores)</text>
+
+      <text x="0" y="264" class="field-name">allowSingleFlavor</text>
+      <text x="160" y="264" class="field-type">boolean (Sabor único permitido)</text>
+
+      <text x="0" y="286" class="field-name">storeName / storeUsername</text>
+      <text x="160" y="286" class="field-type">string (Desnormalizado)</text>
+
+      <text x="0" y="308" class="field-name">createdAt / updatedAt</text>
+      <text x="160" y="308" class="field-type">string (ISO Timestamp)</text>
+    </g>
+
+    <!-- Note footer -->
+    <rect x="15" y="455" width="390" height="45" rx="6" fill="#1E293B"/>
+    <text x="25" y="474" class="field-desc" fill="#A7F3D0">💡 Soporta menú inteligente, variantes de precio, modificadores,</text>
+    <text x="25" y="488" class="field-desc" fill="#A7F3D0">pizzas mitad y mitad, inventario activo y caché SEO.</text>
+  </g>
+
+  <!-- ================= ENTITY 3: ORDERS (PEDIDOS & LOGÍSTICA) - CENTRAL ================= -->
+  <g id="entity-orders" transform="translate(540, 130)" filter="url(#shadow)">
+    <rect x="0" y="0" width="480" height="1105" class="card-bg" stroke="#3B82F6" stroke-width="2"/>
+    <path d="M 0 12 Q 0 0 12 0 L 468 0 Q 480 0 480 12 L 480 54 L 0 54 Z" fill="url(#headerOrder)"/>
+    
+    <text x="20" y="28" class="card-title">orders (Pedidos &amp; Logística General)</text>
+    <text x="20" y="46" class="card-subtitle">Colección Firestore /orders — Núcleo Operativo RYYCO</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <!-- PK -->
+      <text x="0" y="0" class="field-pk">[PK] id</text>
+      <text x="190" y="0" class="field-type">string (Firestore Doc Id)</text>
+
+      <text x="0" y="22" class="field-name">orderNumber</text>
+      <text x="190" y="22" class="field-type">number (# consecutivo e.g. 1042)</text>
+
+      <!-- FKs -->
+      <text x="0" y="44" class="field-fk">[FK] storeOwnerId</text>
+      <text x="190" y="44" class="field-type">string ➔ profiles.uid</text>
+
+      <text x="0" y="66" class="field-fk">[FK] deliveryDriverId / driverId</text>
+      <text x="190" y="66" class="field-type">string ➔ drivers.uid (opcional)</text>
+
+      <text x="0" y="88" class="field-fk">[FK] customerId</text>
+      <text x="190" y="88" class="field-type">string ➔ customers.id (opcional)</text>
+
+      <!-- Order Status -->
+      <text x="0" y="114" class="field-pk">● status (Estado General)</text>
+      <text x="190" y="114" class="field-type">pending | preparing | ready |</text>
+      <text x="190" y="130" class="field-type">picked_up | delivering | delivered | cancelled</text>
+
+      <!-- Delivery Step -->
+      <text x="0" y="154" class="field-pk">● deliveryStep (Ruta Domiciliario)</text>
+      <text x="190" y="154" class="field-type">accepted | to_store | at_store |</text>
+      <text x="190" y="170" class="field-type">picked_up | to_client | at_destination | delivered</text>
+
+      <!-- Customer Info -->
+      <text x="0" y="196" class="field-name">customerName / Phone</text>
+      <text x="190" y="196" class="field-type">string (Datos de contacto)</text>
+
+      <text x="0" y="218" class="field-name">customerAddress / Reference</text>
+      <text x="190" y="218" class="field-type">string (Dirección &amp; Barrio/Apto)</text>
+
+      <text x="0" y="240" class="field-name">customerLat / customerLng</text>
+      <text x="190" y="240" class="field-type">number (Geolocalización destino)</text>
+
+      <!-- Store Info -->
+      <text x="0" y="262" class="field-name">storeName / storePhone</text>
+      <text x="190" y="262" class="field-type">string (Datos restaurante)</text>
+
+      <text x="0" y="284" class="field-name">storeAddress / storeReference</text>
+      <text x="190" y="284" class="field-type">string (Punto recogida)</text>
+
+      <text x="0" y="306" class="field-name">storeLat / storeLng</text>
+      <text x="190" y="306" class="field-type">number (GPS Restaurante)</text>
+
+      <!-- Items & Totals -->
+      <text x="0" y="328" class="field-name">items[] (Carrito)</text>
+      <text x="190" y="328" class="field-type">CartItem[] (Prod, cant, precio, var)</text>
+
+      <text x="0" y="350" class="field-name">totalAmount / deliveryFee</text>
+      <text x="190" y="350" class="field-type">number (Total platos + Envío COP)</text>
+
+      <text x="0" y="372" class="field-name">paymentMethod</text>
+      <text x="190" y="372" class="field-type">whatsapp | transfer | delivery_cash | cod</text>
+
+      <text x="0" y="394" class="field-name">deliveryType</text>
+      <text x="190" y="394" class="field-type">'ryyco' (Flota) | 'restaurant' (Propio)</text>
+
+      <text x="0" y="416" class="field-name">proofImage</text>
+      <text x="190" y="416" class="field-type">string (Foto comprobante pago Base64)</text>
+
+      <!-- Delivery Pin & Security -->
+      <text x="0" y="438" class="field-pk">● deliveryCode (PIN 4 dígitos)</text>
+      <text x="190" y="438" class="field-type">string ("4829" para validar entrega)</text>
+
+      <text x="0" y="460" class="field-name">deliveryCodeVerified</text>
+      <text x="190" y="460" class="field-type">boolean (true al digitar PIN)</text>
+
+      <text x="0" y="482" class="field-name">deliveryCodeVerifiedAt</text>
+      <text x="190" y="482" class="field-type">string (ISO fecha verificación)</text>
+
+      <!-- Driver assignment details -->
+      <text x="0" y="504" class="field-name">deliveryDriverName / Phone</text>
+      <text x="190" y="504" class="field-type">string (Datos repartidor activo)</text>
+
+      <text x="0" y="526" class="field-name">deliveryVehicle / VehiclePlate</text>
+      <text x="190" y="526" class="field-type">string (Moto / Placa ej. ABC12D)</text>
+
+      <!-- Settlement with Restaurant (Etapa 1) -->
+      <text x="0" y="548" class="field-name">restaurantPaymentStatus</text>
+      <text x="190" y="548" class="field-type">unconfirmed | already_paid | not_paid</text>
+
+      <text x="0" y="570" class="field-name">customerCodConfirmed</text>
+      <text x="190" y="570" class="field-type">boolean (Cliente pagará en efectivo)</text>
+
+      <text x="0" y="592" class="field-name">driverPaidToRestaurant</text>
+      <text x="190" y="592" class="field-type">boolean (Domiciliario pagó en local)</text>
+
+      <text x="0" y="614" class="field-name">driverPaidAmount</text>
+      <text x="190" y="614" class="field-type">number (Monto pagado al local)</text>
+
+      <!-- Duration telemetry & Metrics -->
+      <text x="0" y="636" class="field-name">pendingDuration</text>
+      <text x="190" y="636" class="field-type">number (segundos en espera tienda)</text>
+
+      <text x="0" y="658" class="field-name">processingDuration</text>
+      <text x="190" y="658" class="field-type">number (segundos en cocina)</text>
+
+      <text x="0" y="680" class="field-name">shippingDuration</text>
+      <text x="190" y="680" class="field-type">number (segundos en ruta reparto)</text>
+
+      <text x="0" y="702" class="field-name">totalDuration</text>
+      <text x="190" y="702" class="field-type">number (segundos inicio a fin)</text>
+
+      <!-- Audit History -->
+      <text x="0" y="724" class="field-name">orderStatusHistory[]</text>
+      <text x="190" y="724" class="field-type">OrderStatusHistoryItem[] (Auditoría)</text>
+
+      <text x="0" y="746" class="field-name">notes / cancellationReason</text>
+      <text x="190" y="746" class="field-type">string (Instrucciones o motivo cancel)</text>
+
+      <text x="0" y="768" class="field-name">driverRatingGiven</text>
+      <text x="190" y="768" class="field-type">boolean (Calificación completada)</text>
+
+      <text x="0" y="790" class="field-name">createdAt / deliveredAt</text>
+      <text x="190" y="790" class="field-type">string (Timestamps oficiales)</text>
+    </g>
+
+    <!-- Subcollection Banner -->
+    <rect x="15" y="885" width="450" height="95" rx="8" fill="#1E293B" stroke="#60A5FA" stroke-width="1"/>
+    <text x="30" y="908" class="card-title" font-size="14" fill="#93C5FD">📂 SUBCOLECCIÓN: orders/{orderId}/chat_messages</text>
+    <text x="30" y="928" class="field-desc" fill="#E2E8F0">• senderRole: 'driver' | 'customer' | 'system'</text>
+    <text x="30" y="944" class="field-desc" fill="#E2E8F0">• text, createdAt, timestamp, readByCustomer, readByDriver</text>
+    <text x="30" y="960" class="field-desc" fill="#94A3B8">• Permite mensajería en tiempo real y audio bidireccional.</text>
+
+    <!-- Life cycle box -->
+    <rect x="15" y="995" width="450" height="95" rx="8" fill="#0F172A" stroke="#334155"/>
+    <text x="30" y="1018" font-family="system-ui" font-size="12" font-weight="700" fill="#F8FAFC">⚡ CICLO DE VIDA COMPLETO DE LA ORDEN:</text>
+    <text x="30" y="1038" font-family="'JetBrains Mono', monospace" font-size="11" fill="#38BDF8">1. pending ➔ 2. preparing ➔ 3. ready</text>
+    <text x="30" y="1056" font-family="'JetBrains Mono', monospace" font-size="11" fill="#F59E0B">4. to_store ➔ 5. at_store ➔ 6. picked_up (Paga restaurante)</text>
+    <text x="30" y="1074" font-family="'JetBrains Mono', monospace" font-size="11" fill="#10B981">7. to_client ➔ 8. at_destination ➔ 9. delivered (PIN validado)</text>
+  </g>
+
+  <!-- ================= ENTITY 4: DRIVERS (DOMICILIARIOS / REPARTIDORES) ================= -->
+  <g id="entity-drivers" transform="translate(1080, 130)" filter="url(#shadow)">
+    <rect x="0" y="0" width="420" height="580" class="card-bg" stroke="#8B5CF6"/>
+    <path d="M 0 12 Q 0 0 12 0 L 408 0 Q 420 0 420 12 L 420 54 L 0 54 Z" fill="url(#headerDriver)"/>
+    
+    <text x="20" y="28" class="card-title">drivers (Domiciliarios / Repartidores)</text>
+    <text x="20" y="46" class="card-subtitle">Colección Firestore /drivers — Id: user.uid</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <!-- PK -->
+      <text x="0" y="0" class="field-pk">[PK] id / uid</text>
+      <text x="170" y="0" class="field-type">string (Auth UID Repartidor)</text>
+
+      <text x="0" y="22" class="field-name">firstName / lastName</text>
+      <text x="170" y="22" class="field-type">string (Nombres y Apellidos)</text>
+
+      <text x="0" y="44" class="field-name">email / phone</text>
+      <text x="170" y="44" class="field-type">string (Contacto móvil)</text>
+
+      <text x="0" y="66" class="field-name">docType / docNumber</text>
+      <text x="170" y="66" class="field-type">CC | CE | PASAPORTE | NIT</text>
+
+      <text x="0" y="88" class="field-name">city / address</text>
+      <text x="170" y="88" class="field-type">string (Ipiales)</text>
+
+      <text x="0" y="110" class="field-name">vehicleType</text>
+      <text x="170" y="110" class="field-type">moto | carro | bicicleta | otro</text>
+
+      <text x="0" y="132" class="field-name">vehicleBrand / vehiclePlate</text>
+      <text x="170" y="132" class="field-type">string (Placa ej: XYZ-12A)</text>
+
+      <text x="0" y="154" class="field-name">driverLicenseUrl</text>
+      <text x="170" y="154" class="field-type">string (Foto Licencia de Conducir)</text>
+
+      <text x="0" y="176" class="field-name">vehicleOwnershipCardUrl</text>
+      <text x="170" y="176" class="field-type">string (Tarjeta de Propiedad)</text>
+
+      <text x="0" y="198" class="field-pk">● status (Aprobación)</text>
+      <text x="170" y="198" class="field-type">pending | approved |</text>
+      <text x="170" y="214" class="field-type">rejected | suspended</text>
+
+      <text x="0" y="236" class="field-pk">● isAvailable / isOnline</text>
+      <text x="170" y="236" class="field-type">boolean (Switch Disponible)</text>
+
+      <text x="0" y="258" class="field-name">rating / ratingCount</text>
+      <text x="170" y="258" class="field-type">number (Promedio 1-5 estrellas)</text>
+
+      <text x="0" y="280" class="field-name">completedDeliveriesCount</text>
+      <text x="170" y="280" class="field-type">number (Historial de entregas)</text>
+
+      <text x="0" y="302" class="field-name">totalEarnings</text>
+      <text x="170" y="302" class="field-type">number (Ganancias acumuladas COP)</text>
+
+      <text x="0" y="324" class="field-name">currentLocation (Live)</text>
+      <text x="170" y="324" class="field-type">{ lat, lng, speed, heading }</text>
+
+      <text x="0" y="346" class="field-name">activeOrderId</text>
+      <text x="170" y="346" class="field-type">string (ID pedido en curso)</text>
+
+      <text x="0" y="368" class="field-name">createdAt / approvedAt</text>
+      <text x="170" y="368" class="field-type">string (Timestamps)</text>
+
+      <text x="0" y="390" class="field-name">lastActiveAt</text>
+      <text x="170" y="390" class="field-type">string (Heartbeat en línea)</text>
+    </g>
+
+    <!-- Note footer -->
+    <rect x="15" y="490" width="390" height="75" rx="6" fill="#1E293B"/>
+    <text x="25" y="512" class="field-desc" fill="#DDD6FE">💡 Cuenta con portal exclusivo (/domiciliario), alertas de sonido,</text>
+    <text x="25" y="528" class="field-desc" fill="#DDD6FE">despacho automático, navegación con Google Maps / Waze,</text>
+    <text x="25" y="544" class="field-desc" fill="#DDD6FE">geolocalización en vivo y validación de cobro contra entrega.</text>
+  </g>
+
+  <!-- ================= ENTITY 5: CUSTOMERS (CLIENTES & DIRECCIONES) ================= -->
+  <g id="entity-customers" transform="translate(1080, 740)" filter="url(#shadow)">
+    <rect x="0" y="0" width="420" height="380" class="card-bg" stroke="#EC4899"/>
+    <path d="M 0 12 Q 0 0 12 0 L 408 0 Q 420 0 420 12 L 420 54 L 0 54 Z" fill="url(#headerCustomer)"/>
+    
+    <text x="20" y="28" class="card-title">customers (Clientes &amp; Direcciones)</text>
+    <text x="20" y="46" class="card-subtitle">Colección Firestore /customers — Indexado por Celular</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <!-- PK -->
+      <text x="0" y="0" class="field-pk">[PK] id / authUid</text>
+      <text x="160" y="0" class="field-type">string (ID o UID Auth)</text>
+
+      <text x="0" y="22" class="field-name">name / email</text>
+      <text x="160" y="22" class="field-type">string (Nombre cliente)</text>
+
+      <text x="0" y="44" class="field-pk">● phone (Clave de Búsqueda)</text>
+      <text x="160" y="44" class="field-type">string (Sanitizado 57...)</text>
+
+      <text x="0" y="66" class="field-name">address / reference</text>
+      <text x="160" y="66" class="field-type">string (Dirección principal)</text>
+
+      <text x="0" y="88" class="field-name">lat / lng / mapUrl</text>
+      <text x="160" y="88" class="field-type">number (Geolocalización casa)</text>
+
+      <text x="0" y="110" class="field-name">savedAddresses[]</text>
+      <text x="160" y="110" class="field-type">CustomerAddress[] (Historial)</text>
+
+      <text x="0" y="132" class="field-name">orderCount</text>
+      <text x="160" y="132" class="field-type">number (Total pedidos realizados)</text>
+
+      <text x="0" y="154" class="field-name">favoriteStores[]</text>
+      <text x="160" y="154" class="field-type">string[] (IDs restaurantes fav)</text>
+
+      <text x="0" y="176" class="field-name">createdAt / updatedAt</text>
+      <text x="160" y="176" class="field-type">string (ISO 8601)</text>
+    </g>
+
+    <!-- Note footer -->
+    <rect x="15" y="280" width="390" height="85" rx="6" fill="#1E293B"/>
+    <text x="25" y="302" class="field-desc" fill="#FBCFE8">💡 Modal de primera visita solicita dirección y WhatsApp en Ipiales,</text>
+    <text x="25" y="318" class="field-desc" fill="#FBCFE8">reutilizado en el carrito para Checkout en 1-click sin necesidad</text>
+    <text x="25" y="334" class="field-desc" fill="#FBCFE8">de registro obligatorio o contraseñas complejas.</text>
+  </g>
+
+  <!-- ================= ENTITY 6 & 7: AUXILIARY COLLECTIONS ================= -->
+  <g id="entity-aux" transform="translate(1540, 130)" filter="url(#shadow)">
+    <rect x="0" y="0" width="400" height="380" class="card-bg" stroke="#64748B"/>
+    <path d="M 0 12 Q 0 0 12 0 L 388 0 Q 400 0 400 12 L 400 54 L 0 54 Z" fill="url(#headerAux)"/>
+    
+    <text x="20" y="28" class="card-title">driver_ratings (Calificaciones)</text>
+    <text x="20" y="46" class="card-subtitle">Colección Firestore /driver_ratings</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <text x="0" y="0" class="field-pk">[PK] id</text>
+      <text x="140" y="0" class="field-type">string</text>
+
+      <text x="0" y="22" class="field-fk">[FK] driverId</text>
+      <text x="140" y="22" class="field-type">string ➔ drivers.uid</text>
+
+      <text x="0" y="44" class="field-fk">[FK] orderId</text>
+      <text x="140" y="44" class="field-type">string ➔ orders.id</text>
+
+      <text x="0" y="66" class="field-name">stars</text>
+      <text x="140" y="66" class="field-type">number (1 a 5)</text>
+
+      <text x="0" y="88" class="field-name">punctuality</text>
+      <text x="140" y="88" class="field-type">number (Puntualidad 1-5)</text>
+
+      <text x="0" y="110" class="field-name">attention</text>
+      <text x="140" y="110" class="field-type">number (Amabilidad 1-5)</text>
+
+      <text x="0" y="132" class="field-name">condition</text>
+      <text x="140" y="132" class="field-type">number (Cuidado comida)</text>
+
+      <text x="0" y="154" class="field-name">comment</text>
+      <text x="140" y="154" class="field-type">string (Opinión cliente)</text>
+
+      <text x="0" y="176" class="field-name">createdAt</text>
+      <text x="140" y="176" class="field-type">string (Timestamp)</text>
+    </g>
+
+    <rect x="15" y="275" width="370" height="85" rx="6" fill="#1E293B"/>
+    <text x="25" y="297" class="field-desc" fill="#CBD5E1">💡 Evalúa al repartidor inmediatamente tras digitar el PIN.</text>
+    <text x="25" y="313" class="field-desc" fill="#CBD5E1">Actualiza automáticamente el promedio (rating) y el</text>
+    <text x="25" y="329" class="field-desc" fill="#CBD5E1">contador de entregas en la colección /drivers.</text>
+  </g>
+
+  <!-- PUSH NOTIFICATIONS & DISPATCH TOKENS -->
+  <g id="entity-tokens" transform="translate(1540, 540)" filter="url(#shadow)">
+    <rect x="0" y="0" width="400" height="280" class="card-bg" stroke="#64748B"/>
+    <path d="M 0 12 Q 0 0 12 0 L 388 0 Q 400 0 400 12 L 400 54 L 0 54 Z" fill="url(#headerAux)"/>
+    
+    <text x="20" y="28" class="card-title">fcm_tokens (Alertas &amp; Despacho)</text>
+    <text x="20" y="46" class="card-subtitle">driver_fcm_tokens / seller_fcm_tokens / admin</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <text x="0" y="0" class="field-pk">[PK] token</text>
+      <text x="140" y="0" class="field-type">string (FCM Push Token)</text>
+
+      <text x="0" y="22" class="field-fk">[FK] uid</text>
+      <text x="140" y="22" class="field-type">string (Repartidor / Tienda)</text>
+
+      <text x="0" y="44" class="field-name">platform</text>
+      <text x="140" y="44" class="field-type">web | android | ios</text>
+
+      <text x="0" y="66" class="field-name">soundAlert</text>
+      <text x="140" y="66" class="field-type">boolean (Timbre alto volumen)</text>
+
+      <text x="0" y="88" class="field-name">updatedAt</text>
+      <text x="140" y="88" class="field-type">string (Timestamp)</text>
+    </g>
+
+    <rect x="15" y="180" width="370" height="85" rx="6" fill="#1E293B"/>
+    <text x="25" y="202" class="field-desc" fill="#CBD5E1">💡 Alertas Push automáticas con Service Worker en segundo plano.</text>
+    <text x="25" y="218" class="field-desc" fill="#CBD5E1">Despierta el teléfono del domiciliario cuando entra un nuevo pedido</text>
+    <text x="25" y="234" class="field-desc" fill="#CBD5E1">incluso con la pantalla bloqueada o en otra aplicación.</text>
+  </g>
+
+  <!-- RECOMMENDATIONS & STATS -->
+  <g id="entity-recommendations" transform="translate(1540, 850)" filter="url(#shadow)">
+    <rect x="0" y="0" width="400" height="270" class="card-bg" stroke="#64748B"/>
+    <path d="M 0 12 Q 0 0 12 0 L 388 0 Q 400 0 400 12 L 400 54 L 0 54 Z" fill="url(#headerAux)"/>
+    
+    <text x="20" y="28" class="card-title">recommendations (Recomendaciones)</text>
+    <text x="20" y="46" class="card-subtitle">recommendations &amp; product_recommendations</text>
+
+    <!-- Fields -->
+    <g transform="translate(20, 75)">
+      <text x="0" y="0" class="field-pk">[PK] id</text>
+      <text x="140" y="0" class="field-type">${storeId}_${userId}</text>
+
+      <text x="0" y="22" class="field-fk">[FK] storeId / prodId</text>
+      <text x="140" y="22" class="field-type">string ➔ profiles / products</text>
+
+      <text x="0" y="44" class="field-name">recommended</text>
+      <text x="140" y="44" class="field-type">boolean (Corazón / Like)</text>
+
+      <text x="0" y="66" class="field-name">feedbackTag</text>
+      <text x="140" y="66" class="field-type">string ("¡Sabor delicioso!", etc.)</text>
+
+      <text x="0" y="88" class="field-name">createdAt</text>
+      <text x="140" y="88" class="field-type">string (Timestamp)</text>
+    </g>
+
+    <rect x="15" y="180" width="370" height="75" rx="6" fill="#1E293B"/>
+    <text x="25" y="202" class="field-desc" fill="#CBD5E1">💡 Motor de confianza social para impulsar ventas locales.</text>
+    <text x="25" y="218" class="field-desc" fill="#CBD5E1">Permite sugerencias inteligentes y ranking de popularidad.</text>
+  </g>
+
+  <!-- ================= RELATIONSHIP CONNECTORS ================= -->
+  <!-- 1. Store -> Products (1:N) -->
+  <path d="M 270 680 L 270 715" class="rel-line" stroke="#10B981" marker-end="url(#arrowGreen)"/>
+  <rect x="235" y="688" width="70" height="18" rx="4" fill="#064E3B"/>
+  <text x="270" y="701" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#34D399" text-anchor="middle">1 : N</text>
+
+  <!-- 2. Store -> Orders (1:N) -->
+  <path d="M 480 280 L 540 280" class="rel-line" stroke="#F59E0B" marker-end="url(#arrowGold)"/>
+  <rect x="492" y="268" width="38" height="18" rx="4" fill="#78350F"/>
+  <text x="511" y="281" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#FBBF24" text-anchor="middle">1:N</text>
+
+  <!-- 3. Driver -> Orders (1:N) -->
+  <path d="M 1080 320 L 1020 320" class="rel-line" stroke="#8B5CF6" marker-end="url(#arrowPurple)"/>
+  <rect x="1032" y="308" width="38" height="18" rx="4" fill="#4C1D95"/>
+  <text x="1051" y="321" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#C4B5FD" text-anchor="middle">1:N</text>
+
+  <!-- 4. Customer -> Orders (1:N) -->
+  <path d="M 1080 820 L 1020 820" class="rel-line" stroke="#EC4899" marker-end="url(#arrowPink)"/>
+  <rect x="1032" y="808" width="38" height="18" rx="4" fill="#831843"/>
+  <text x="1051" y="821" font-family="'JetBrains Mono', monospace" font-size="10" font-weight="700" fill="#F472B6" text-anchor="middle">1:N</text>
+
+  <!-- 5. Order -> Driver Rating (1:1) -->
+  <path d="M 1020 450 L 1540 250" class="rel-line" stroke="#3B82F6" marker-end="url(#arrowBlue)"/>
+
+  <!-- ================= BOTTOM DATA PIPELINE & BUSINESS FLOW ================= -->
+  <g transform="translate(60, 1260)">
+    <rect x="0" y="0" width="1880" height="190" rx="12" fill="#0B132B" stroke="#1E293B" stroke-width="1.5" filter="url(#shadow)"/>
+    
+    <text x="30" y="32" class="flow-title">PIPELINE OPERATIVO COMPLETO DE ALIMENTACIÓN &amp; DESPACHO EN TIEMPO REAL</text>
+    <text x="30" y="52" class="subtitle">Flujo coordinado entre Cliente, Tienda, Central de Reparto RYYCO y Domiciliario</text>
+
+    <!-- Pipeline steps -->
+    <!-- Step 1 -->
+    <g transform="translate(30, 75)">
+      <rect x="0" y="0" width="330" height="95" rx="8" fill="#1E293B" stroke="#EC4899" stroke-width="1.5"/>
+      <circle cx="25" cy="25" r="14" fill="#EC4899"/>
+      <text x="25" y="30" font-family="system-ui" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">1</text>
+      <text x="50" y="28" class="flow-step" fill="#F472B6">CLIENTE HACE EL PEDIDO</text>
+      <text x="15" y="55" class="field-desc" fill="#E2E8F0">• Selecciona platos, opciones y sabores</text>
+      <text x="15" y="70" class="field-desc" fill="#E2E8F0">• Ingresa dirección o GPS en Ipiales</text>
+      <text x="15" y="85" class="field-desc" fill="#94A3B8">• status: 'pending' | Alerta sonora tienda</text>
+    </g>
+
+    <!-- Arrow 1 -> 2 -->
+    <path d="M 370 122 L 400 122" class="rel-line" stroke="#94A3B8" marker-end="url(#arrowGold)"/>
+
+    <!-- Step 2 -->
+    <g transform="translate(410, 75)">
+      <rect x="0" y="0" width="330" height="95" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5"/>
+      <circle cx="25" cy="25" r="14" fill="#F59E0B"/>
+      <text x="25" y="30" font-family="system-ui" font-size="12" font-weight="900" fill="#0F172A" text-anchor="middle">2</text>
+      <text x="50" y="28" class="flow-step" fill="#FBBF24">TIENDA ACEPTA &amp; COCINA</text>
+      <text x="15" y="55" class="field-desc" fill="#E2E8F0">• Estado cambia a 'preparing'</text>
+      <text x="15" y="70" class="field-desc" fill="#E2E8F0">• Notifica a repartidores disponibles</text>
+      <text x="15" y="85" class="field-desc" fill="#94A3B8">• Al terminar cocción: status: 'ready'</text>
+    </g>
+
+    <!-- Arrow 2 -> 3 -->
+    <path d="M 750 122 L 780 122" class="rel-line" stroke="#94A3B8" marker-end="url(#arrowPurple)"/>
+
+    <!-- Step 3 -->
+    <g transform="translate(790, 75)">
+      <rect x="0" y="0" width="330" height="95" rx="8" fill="#1E293B" stroke="#8B5CF6" stroke-width="1.5"/>
+      <circle cx="25" cy="25" r="14" fill="#8B5CF6"/>
+      <text x="25" y="30" font-family="system-ui" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">3</text>
+      <text x="50" y="28" class="flow-step" fill="#C4B5FD">DOMICILIARIO TOMA PEDIDO</text>
+      <text x="15" y="55" class="field-desc" fill="#E2E8F0">• Se asigna deliveryDriverId</text>
+      <text x="15" y="70" class="field-desc" fill="#E2E8F0">• Pasos: to_store ➔ at_store</text>
+      <text x="15" y="85" class="field-desc" fill="#94A3B8">• Botón GPS: "Ir al restaurante"</text>
+    </g>
+
+    <!-- Arrow 3 -> 4 -->
+    <path d="M 1130 122 L 1160 122" class="rel-line" stroke="#94A3B8" marker-end="url(#arrowBlue)"/>
+
+    <!-- Step 4 -->
+    <g transform="translate(1170, 75)">
+      <rect x="0" y="0" width="330" height="95" rx="8" fill="#1E293B" stroke="#3B82F6" stroke-width="1.5"/>
+      <circle cx="25" cy="25" r="14" fill="#3B82F6"/>
+      <text x="25" y="30" font-family="system-ui" font-size="12" font-weight="900" fill="#FFFFFF" text-anchor="middle">4</text>
+      <text x="50" y="28" class="flow-step" fill="#60A5FA">PAGO EN TIENDA &amp; RECOGIDA</text>
+      <text x="15" y="55" class="field-desc" fill="#E2E8F0">• Repartidor paga comida en caja (COD)</text>
+      <text x="15" y="70" class="field-desc" fill="#E2E8F0">• Marca 'picked_up' ➔ sale en ruta</text>
+      <text x="15" y="85" class="field-desc" fill="#94A3B8">• Pasos: to_client ➔ at_destination</text>
+    </g>
+
+    <!-- Arrow 4 -> 5 -->
+    <path d="M 1510 122 L 1540 122" class="rel-line" stroke="#94A3B8" marker-end="url(#arrowGreen)"/>
+
+    <!-- Step 5 -->
+    <g transform="translate(1550, 75)">
+      <rect x="0" y="0" width="300" height="95" rx="8" fill="#1E293B" stroke="#10B981" stroke-width="1.5"/>
+      <circle cx="25" cy="25" r="14" fill="#10B981"/>
+      <text x="25" y="30" font-family="system-ui" font-size="12" font-weight="900" fill="#0F172A" text-anchor="middle">5</text>
+      <text x="50" y="28" class="flow-step" fill="#34D399">PIN DE ENTREGA &amp; PAGO</text>
+      <text x="15" y="55" class="field-desc" fill="#E2E8F0">• Cliente da PIN 4 dígitos al repartidor</text>
+      <text x="15" y="70" class="field-desc" fill="#E2E8F0">• Cobro de comida + tarifa domicilio</text>
+      <text x="15" y="85" class="field-desc" fill="#94A3B8">• status: 'delivered' | Rating al chofer</text>
+    </g>
+  </g>
+
+  <!-- ================= MACHINE-READABLE SCHEMA (AI EMBEDDED METADATA) ================= -->
+  <metadata>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <rdf:Description>
+        <dc:title>RYYCO Firebase Architecture Schema</dc:title>
+        <dc:description>Complete Firestore data schema for Stores (profiles), Orders (orders), Drivers (drivers), Products (products), Customers (customers), Ratings and Tokens.</dc:description>
+        <dc:format>image/svg+xml</dc:format>
+        <dc:language>es</dc:language>
+      </rdf:Description>
+    </rdf:RDF>
+  </metadata>
+
+  <desc id="ai-structured-spec">
+    {
+      "platform": "RYYCO Delivery &amp; Ecommerce",
+      "database": "Google Cloud Firestore",
+      "core_collections": {
+        "profiles": {
+          "description": "Restaurantes y tiendas registradas en la plataforma",
+          "primary_key": "uid (Auth UID)",
+          "fields": {
+            "uid": "string",
+            "username": "string (slug único de la tienda ej: @delipizza)",
+            "displayName": "string (nombre comercial)",
+            "role": "'user' | 'admin' | 'driver'",
+            "plan": "'free' | 'pro' | 'business'",
+            "whatsapp": "string (número para recepción de pedidos)",
+            "ownerWhatsapp": "string (número del dueño)",
+            "restaurantAddress": "string (dirección física en Ipiales)",
+            "restaurantCity": "string",
+            "lat": "number (coordenada latitud Google Maps)",
+            "lng": "number (coordenada longitud Google Maps)",
+            "weeklySchedule": "WeeklySchedule (horarios por día lunes a domingo)",
+            "isClosed": "boolean (interruptor de cerrado)",
+            "restaurantDeliveryTime": "string (tiempo estimado ej: 20-30 min)",
+            "restaurantAveragePrice": "string (rango de precio)",
+            "restaurantAcceptsDelivery": "boolean",
+            "bankAccounts": "Array&lt;{bankName, accountType, accountNumber, qrCodeURL}&gt;",
+            "subscriptionStatus": "'trial' | 'active' | 'suspended'",
+            "rating": "number (promedio 1 a 5)",
+            "ratingCount": "number"
+          }
+        },
+        "products": {
+          "description": "Catálogo de platos y productos por tienda",
+          "primary_key": "id (auto-ID)",
+          "foreign_keys": { "userId": "profiles.uid" },
+          "fields": {
+            "id": "string",
+            "userId": "string (ID de la tienda propietaria)",
+            "name": "string (nombre del plato/producto)",
+            "description": "string",
+            "price": "number (precio en pesos COP)",
+            "compareAtPrice": "number (precio anterior para ofertas)",
+            "imageURL": "string (URL WebP)",
+            "category": "string (categoría dentro de la tienda)",
+            "stock": "number",
+            "active": "boolean",
+            "variantsList": "string[] (tamaños, adiciones o términos)",
+            "variantPrices": "Record&lt;string, number&gt;",
+            "allowsHalfAndHalf": "boolean (pizzas combinadas 2 sabores)",
+            "flavorsList": "string[]"
+          }
+        },
+        "orders": {
+          "description": "Pedidos realizados por clientes para entrega o consumo",
+          "primary_key": "id (auto-ID)",
+          "foreign_keys": {
+            "storeOwnerId": "profiles.uid",
+            "deliveryDriverId": "drivers.uid (asignado)",
+            "customerId": "customers.id"
+          },
+          "fields": {
+            "id": "string",
+            "orderNumber": "number (número consecutivo para cliente y cocina)",
+            "storeOwnerId": "string",
+            "deliveryDriverId": "string",
+            "customerId": "string",
+            "status": "'pending' | 'preparing' | 'ready' | 'picked_up' | 'delivering' | 'delivered' | 'cancelled'",
+            "deliveryStep": "'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered'",
+            "customerName": "string",
+            "customerPhone": "string",
+            "customerAddress": "string",
+            "customerReference": "string",
+            "customerLat": "number",
+            "customerLng": "number",
+            "storeName": "string",
+            "storeAddress": "string",
+            "items": "CartItem[] (plato, cantidad, precio, notas)",
+            "totalAmount": "number (total cuenta)",
+            "deliveryFee": "number (costo del domicilio)",
+            "paymentMethod": "'whatsapp' | 'transfer' | 'delivery_cash' | 'cod'",
+            "deliveryType": "'ryyco' | 'restaurant'",
+            "deliveryCode": "string (PIN de 4 dígitos de verificación al entregar)",
+            "deliveryCodeVerified": "boolean",
+            "restaurantPaymentStatus": "'unconfirmed' | 'already_paid' | 'not_paid'",
+            "driverPaidToRestaurant": "boolean (si el chofer adelantó pago en tienda)",
+            "driverPaidAmount": "number",
+            "pendingDuration": "number (duración en segundos en pendiente)",
+            "processingDuration": "number (duración en preparación)",
+            "shippingDuration": "number (duración en camino)",
+            "totalDuration": "number (duración total)",
+            "orderStatusHistory": "OrderStatusHistoryItem[]",
+            "createdAt": "string (ISO)"
+          },
+          "subcollections": {
+            "chat_messages": "orders/{orderId}/chat_messages ({senderRole, senderName, text, createdAt, readByCustomer, readByDriver})"
+          }
+        },
+        "drivers": {
+          "description": "Repartidores domiciliarios independientes de RYYCO",
+          "primary_key": "id / uid",
+          "fields": {
+            "id": "string",
+            "uid": "string (Auth UID)",
+            "firstName": "string",
+            "lastName": "string",
+            "phone": "string",
+            "city": "string",
+            "vehicleType": "'moto' | 'carro' | 'bicicleta' | 'otro'",
+            "vehiclePlate": "string (placa del vehículo)",
+            "status": "'pending' | 'approved' | 'rejected' | 'suspended'",
+            "isAvailable": "boolean (disponibilidad para recibir asignaciones)",
+            "isOnline": "boolean",
+            "rating": "number (1 a 5)",
+            "ratingCount": "number",
+            "completedDeliveriesCount": "number",
+            "totalEarnings": "number (COP)",
+            "activeOrderId": "string",
+            "currentLocation": "{ lat: number, lng: number, heading: number, speed: number }"
+          }
+        },
+        "customers": {
+          "description": "Clientes que compran en la plataforma",
+          "primary_key": "id / phone",
+          "fields": {
+            "id": "string",
+            "phone": "string (número de WhatsApp indexado)",
+            "name": "string",
+            "address": "string",
+            "reference": "string",
+            "lat": "number",
+            "lng": "number",
+            "savedAddresses": "Array&lt;CustomerAddress&gt;",
+            "orderCount": "number"
+          }
+        },
+        "driver_ratings": {
+          "description": "Calificaciones otorgadas a los repartidores tras la entrega",
+          "foreign_keys": { "driverId": "drivers.uid", "orderId": "orders.id" },
+          "fields": { "stars": "number (1-5)", "punctuality": "number", "attention": "number", "condition": "number", "comment": "string" }
+        }
+      }
+    }
+  </desc>
+</svg>
