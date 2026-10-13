@@ -524,7 +524,7 @@ export default function CustomerPortalModal({
         authUid: googleTempUser?.uid || customer?.authUid || '',
         address: addressInput.trim(),
         notes: notesInput.trim(),
-        points: customer?.points || 1000,
+        points: customer?.points || 500,
         spinsAvailable: customer?.spinsAvailable !== undefined ? customer.spinsAvailable : 1
       });
 
@@ -533,7 +533,7 @@ export default function CustomerPortalModal({
       onCustomerUpdate?.(created);
       setShowGoogleCompleteModal(false);
       loadCustomerOrders(cleanPhone);
-      setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 1.000 RYYCOS ($1.000 COP) y 1 Giro gratis 🎁`);
+      setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 500 RYYCOS ($500 COP) y 1 Giro gratis 🎁`);
       setTimeout(() => setActionSuccessMsg(null), 5000);
     } catch (err: any) {
       setAuthError(err.message || "Error al guardar tus datos de entrega.");
@@ -589,7 +589,7 @@ export default function CustomerPortalModal({
       } else {
         // Automatically switch to registration with a friendly message
         setIsRegisterMode(true);
-        setAuthError("Este número celular aún no está registrado. Completa tu registro para ganar 1.000 RYYCOS ($1.000 COP) de bienvenida y 1 giro en la ruleta.");
+        setAuthError("Este número celular aún no está registrado. Completa tu registro para ganar 500 RYYCOS ($500 COP) de bienvenida y 1 giro en la ruleta.");
       }
     } catch (err: any) {
       setAuthError(err.message || "Error al buscar tu cuenta");
@@ -637,13 +637,13 @@ export default function CustomerPortalModal({
         address: addressInput.trim(),
         email: emailInput.trim(),
         notes: notesInput.trim(),
-        points: 1000, // Welcome bonus (1.000 RYYCOS = $1.000 COP)!
+        points: 500, // Welcome bonus (500 RYYCOS = $500 COP)!
         spinsAvailable: 1
       });
       setCustomer(newCust);
       setActiveCustomerSession(newCust);
       onCustomerUpdate?.(newCust);
-      setActionSuccessMsg("¡Cuenta creada con éxito! Ganaste 1.000 RYYCOS ($1.000 COP) y 1 Giro Gratis en la Ruleta 🎁");
+      setActionSuccessMsg("¡Cuenta creada con éxito! Ganaste 500 RYYCOS ($500 COP) y 1 Giro Gratis en la Ruleta 🎁");
       setTimeout(() => setActionSuccessMsg(null), 5000);
       loadCustomerOrders(cleaned);
     } catch (err: any) {
@@ -1215,7 +1215,7 @@ export default function CustomerPortalModal({
                   isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Crear Cuenta Nueva (¡+1.000 RYYCOS!)
+                Crear Cuenta Nueva (¡+500 RYYCOS!)
               </button>
             </div>
 
@@ -1498,7 +1498,7 @@ export default function CustomerPortalModal({
                 ) : isRegisterMode ? (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Registrarme como Cliente Comprador (+1.000 RYYCOS) 🎁
+                    Registrarme como Cliente Comprador (+500 RYYCOS) 🎁
                   </>
                 ) : (
                   <>
@@ -2794,7 +2794,7 @@ export default function CustomerPortalModal({
                 </div>
                 <h3 className="text-lg font-black text-white leading-tight">Completa tus datos de entrega</h3>
                 <p className="text-[11.5px] text-gray-400 mt-0.5">
-                  Ingresa tu WhatsApp y dirección para rastrear tus pedidos y activar tus <strong className="text-amber-400 font-black">1.000 RYYCOS de Bienvenida ($1.000 COP)</strong>.
+                  Ingresa tu WhatsApp y dirección para rastrear tus pedidos y activar tus <strong className="text-amber-400 font-black">500 RYYCOS de Bienvenida ($500 COP)</strong>.
                 </p>
               </div>
             </div>

@@ -1320,7 +1320,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       </header>
 
       {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-6 pb-28 sm:pb-12">
+      <main className={`max-w-6xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-6 ${activeDelivery ? 'pb-48 sm:pb-40' : 'pb-28 sm:pb-12'}`}>
 
         {/* ------------------------------------------------------------------
             STATUS 1: PENDING APPROVAL
@@ -1514,43 +1514,84 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
                 {/* ACTIVE DELIVERY IN PROGRESS TRACKER */}
                 {activeDelivery ? (
-                  <div className="bg-[#111827] border-2 border-[#E63946]/40 rounded-2xl p-6 shadow-2xl space-y-6">
-                    <div className="border-b border-[#232B3A] pb-4 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs sm:text-sm font-black font-mono text-gray-300">
-                          Pedido #{activeDelivery.orderNumber}
-                        </span>
-                      </div>
+                  <div className="bg-[#111827] border-2 border-[#E63946]/40 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5 sm:space-y-6">
+                    {(() => {
+                      const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
+                      const totalOrderAmount = activeDelivery.totalAmount || 0;
+                      const productsTotal = activeDelivery.items && activeDelivery.items.length > 0
+                        ? activeDelivery.items.reduce((acc, it) => acc + ((it.price || 0) * (it.quantity || 1)), 0)
+                        : Math.max(0, totalOrderAmount - deliveryFeeVal);
+                      const finalTotalAmount = totalOrderAmount || (productsTotal + deliveryFeeVal);
 
-                      {(() => {
-                        const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
-                        const totalOrderAmount = activeDelivery.totalAmount || 0;
-                        const productsTotal = activeDelivery.items && activeDelivery.items.length > 0
-                          ? activeDelivery.items.reduce((acc, it) => acc + ((it.price || 0) * (it.quantity || 1)), 0)
-                          : Math.max(0, totalOrderAmount - deliveryFeeVal);
+                      const paymentMethodLabel = (() => {
+                        const m = activeDelivery.paymentMethod;
+                        if (!m) return 'Contra Entrega';
+                        switch (m) {
+                          case 'cod':
+                          case 'delivery_cash':
+                            return 'Contra Entrega';
+                          case 'transfer':
+                            return 'Transferencia';
+                          case 'whatsapp':
+                            return 'Por WhatsApp';
+                          default:
+                            return m;
+                        }
+                      })();
 
-                        return (
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="text-left">
-                              <span className="text-xs text-[#A9B2C3] block font-medium">Valor del Domicilio</span>
-                              <span className="text-xl font-black text-[#E63946]">
+                      return (
+                        <div className="border-b border-[#232B3A] pb-4 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs sm:text-sm font-black font-mono text-gray-300">
+                              Pedido #{activeDelivery.orderNumber}
+                            </span>
+                            <div className="flex items-center gap-1.5 text-right">
+                              <span className="text-[10px] sm:text-xs font-bold text-[#A9B2C3] uppercase">
+                                Valor Domicilio:
+                              </span>
+                              <span className="text-xs sm:text-sm md:text-base font-black text-[#E63946]">
                                 ${deliveryFeeVal.toLocaleString('es-CO')}
                               </span>
                             </div>
+                          </div>
 
-                            <div className="text-right">
-                              <span className="text-xs text-[#A9B2C3] block font-medium">Valor del Pedido</span>
-                              <span className="text-xl font-black text-white">
+                          <div className="grid grid-cols-3 gap-2 sm:gap-4 items-start pt-1">
+                            {/* 1. Valor del Pedido */}
+                            <div className="text-left">
+                              <span className="text-[10px] sm:text-xs text-[#A9B2C3] block font-medium truncate">
+                                Valor del Pedido
+                              </span>
+                              <span className="text-xs sm:text-base md:text-xl font-black text-white leading-tight block">
                                 ${productsTotal.toLocaleString('es-CO')}
                               </span>
                             </div>
+
+                            {/* 2. Total de Pago */}
+                            <div className="text-left">
+                              <span className="text-[10px] sm:text-xs text-[#A9B2C3] block font-medium truncate">
+                                Total de Pago
+                              </span>
+                              <span className="text-xs sm:text-base md:text-xl font-black text-emerald-400 leading-tight block">
+                                ${finalTotalAmount.toLocaleString('es-CO')}
+                              </span>
+                            </div>
+
+                            {/* 3. Método de Pago */}
+                            <div className="text-right sm:text-left">
+                              <span className="text-[10px] sm:text-xs text-[#A9B2C3] block font-medium truncate">
+                                Método de Pago
+                              </span>
+                              <span className="text-[10px] sm:text-xs md:text-sm font-black text-amber-300 leading-tight block truncate uppercase">
+                                {paymentMethodLabel}
+                              </span>
+                            </div>
                           </div>
-                        );
-                      })()}
-                    </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Progressive Stepper Display */}
-                    <div className="bg-[#090B12] border border-[#232B3A] p-3 sm:p-4 rounded-2xl shadow-inner">
+                    <div className="py-1">
                       {(() => {
                         const currentIdx = getStepIndex(activeDelivery.deliveryStep);
 
@@ -1596,7 +1637,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                       </div>
                                       <div className="mt-1.5 text-center px-0.5">
                                         <span
-                                          className={`block text-[10px] sm:text-xs leading-tight font-extrabold transition-colors ${
+                                          className={`block text-[9.5px] min-[380px]:text-[10px] sm:text-xs leading-tight font-extrabold whitespace-nowrap transition-colors ${
                                             isCurrent
                                               ? 'text-[#E63946]'
                                               : isDone
@@ -1617,91 +1658,174 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                         })()}
                     </div>
 
-                    {/* Panel de Ruta: Domiciliario -> Restaurante -> Cliente */}
-                    {(() => {
-                      const currentStepIdx = getStepIndex(activeDelivery.deliveryStep);
-                      const isPickedUp = currentStepIdx >= 2;
 
-                      const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
-                      const totalOrderAmount = activeDelivery.totalAmount || 0;
-                      const foodCost = Math.max(0, totalOrderAmount - deliveryFeeVal);
-                      const restPaymentStatus = activeDelivery.restaurantPaymentStatus || 'unconfirmed';
-                      const codConfirmed = !!activeDelivery.customerCodConfirmed;
-                      const driverPaid = !!activeDelivery.driverPaidToRestaurant;
-                      const paidAmount = activeDelivery.driverPaidAmount || foodCost;
+                    {/* Locations & Contact Info */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Store Pickup Location */}
+                      {(() => {
+                        const currentStepIdx = getStepIndex(activeDelivery.deliveryStep);
+                        const isPickedUp = currentStepIdx >= 2;
+                        const deliveryFeeVal = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
+                        const totalOrderAmount = activeDelivery.totalAmount || 0;
+                        const foodCost = Math.max(0, totalOrderAmount - deliveryFeeVal);
+                        const restPaymentStatus = activeDelivery.restaurantPaymentStatus || 'unconfirmed';
+                        const codConfirmed = !!activeDelivery.customerCodConfirmed;
+                        const driverPaid = !!activeDelivery.driverPaidToRestaurant;
+                        const paidAmount = activeDelivery.driverPaidAmount || foodCost;
 
-                      return (
-                        <div className="bg-[#090D16] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl">
-                          {/* Visual Sequence: Domiciliario -> Restaurante */}
-                          <div className="grid grid-cols-1 gap-3.5">
-                            {/* Etapa 1 Card: Restaurante & Gestión de Pago */}
-                            <div className={`p-4 rounded-xl border transition flex flex-col justify-between ${
-                              !isPickedUp
-                                ? 'bg-gradient-to-b from-amber-500/10 via-[#0E1524] to-[#0A0E18] border-amber-500/40 text-white ring-1 ring-amber-500/30 shadow-lg'
-                                : 'bg-[#121824] border-[#232B3A] text-gray-400 opacity-80'
-                            }`}>
-                              <div>
-                                <div className="space-y-1">
-                                  <p className="text-[11px] text-gray-300 font-medium">
-                                    {!isPickedUp 
-                                      ? `Reclamar pedido en restaurante (${activeDelivery.storeName || 'Restaurante'})` 
-                                      : `Pedido reclamado en restaurante (${activeDelivery.storeName || 'Restaurante'}).`}
-                                  </p>
-                                  <p className="text-[10px] text-gray-400 truncate flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
-                                    <span>{activeDelivery.storeAddress}</span>
-                                  </p>
+                        return (
+                          <div className="bg-[#090B12] border border-[#232B3A] p-3.5 sm:p-4 rounded-xl space-y-3">
+                            <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                              <span className="text-[10px] sm:text-xs font-extrabold uppercase text-[#F4B400] truncate">
+                                1. Punto de Recogida
+                              </span>
 
-                                  {/* Compact preview of items to claim in store */}
-                                  {activeDelivery.items && activeDelivery.items.length > 0 && (
-                                    <div className="mt-2 p-2 bg-[#05070D] border border-[#232B3A] rounded-lg text-[11px] space-y-1">
-                                      <div className="flex items-center justify-between text-amber-300 font-bold">
-                                        <span className="flex items-center gap-1">
-                                          <ShoppingBag className="w-3 h-3 text-amber-400" />
-                                          <span>Productos a reclamar:</span>
+                              {effectiveStorePhone && (
+                                <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                                  <a
+                                    href={`tel:${effectiveStorePhone}`}
+                                    className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] text-[#F4B400] bg-amber-500/10 hover:bg-amber-500/20 px-2 sm:px-2.5 py-1 rounded-lg border border-amber-500/25 transition font-bold cursor-pointer shrink-0"
+                                    title="Llamar a la tienda"
+                                  >
+                                    <Phone className="w-3 h-3 shrink-0" />
+                                    <span>Llamar</span>
+                                  </a>
+                                  <a
+                                    href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor tenerlo en preparación, ya voy en camino a recogerlo.`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] bg-emerald-500/10 text-emerald-400 px-2 sm:px-2.5 py-1 rounded-lg border border-emerald-500/25 hover:bg-emerald-500/20 transition font-bold cursor-pointer shrink-0"
+                                    title="WhatsApp de la tienda"
+                                  >
+                                    <MessageSquare className="w-3 h-3 shrink-0" />
+                                    <span>WhatsApp</span>
+                                  </a>
+                                </div>
+                              )}
+                            </div>
+
+                            <div>
+                              <p className="text-base font-black text-white">
+                                {activeDelivery.storeName || 'Tienda en la plataforma'}
+                              </p>
+                              {!isPickedUp && (
+                                <p className="text-[11px] text-gray-300 font-medium whitespace-nowrap truncate">
+                                  Reclamar pedido en restaurante ({activeDelivery.storeName || 'Restaurante'})
+                                </p>
+                              )}
+                              <p className="text-xs text-[#A9B2C3] flex items-center gap-1.5 mt-1">
+                                <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
+                                <span>{activeDelivery.storeAddress || 'Dirección de la Tienda'}</span>
+                              </p>
+
+                              {/* Punto de Referencia para Domiciliarios (Tienda) */}
+                              {(activeStoreLocation?.reference || activeDelivery.storeReference || (activeDelivery as any).restaurantReference) && (
+                                <div className="bg-amber-500/10 border border-amber-500/25 p-2.5 rounded-xl flex items-start gap-2 mt-2">
+                                  <Navigation className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                  <div>
+                                    <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block">
+                                      Punto de Referencia para Domiciliarios:
+                                    </span>
+                                    <p className="text-xs font-semibold text-amber-100 mt-0.5">
+                                      {activeStoreLocation?.reference || activeDelivery.storeReference || (activeDelivery as any).restaurantReference}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Productos a reclamar */}
+                              {activeDelivery.items && activeDelivery.items.length > 0 && (
+                                <div className="mt-3 p-2.5 bg-[#05070D] border border-[#232B3A] rounded-xl text-[11px] space-y-1.5">
+                                  <div className="flex items-center justify-between text-amber-300 font-bold">
+                                    <span className="flex items-center gap-1.5">
+                                      <ShoppingBag className="w-3.5 h-3.5 text-amber-400" />
+                                      <span>Productos a reclamar:</span>
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-normal">
+                                      {activeDelivery.items.length} {activeDelivery.items.length === 1 ? 'ítem' : 'ítems'}
+                                    </span>
+                                  </div>
+                                  <div className="space-y-1 max-h-28 overflow-y-auto divide-y divide-[#1C2433]/60">
+                                    {activeDelivery.items.map((item, idx) => (
+                                      <div key={idx} className="pt-1.5 first:pt-0 flex justify-between items-center text-[11px]">
+                                        <span className="text-white truncate">
+                                          <strong className="text-amber-400 font-mono">{item.quantity}x</strong> {item.name}
+                                          {item.selectedVariant ? ` (${item.selectedVariant})` : ''}
                                         </span>
-                                        <span className="text-[10px] text-gray-400 font-normal">
-                                          {activeDelivery.items.length} {activeDelivery.items.length === 1 ? 'ítem' : 'ítems'}
+                                        <span className="text-gray-400 font-mono shrink-0 ml-2 text-[10px]">
+                                          ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
                                         </span>
                                       </div>
-                                      <div className="space-y-1 max-h-24 overflow-y-auto divide-y divide-[#1C2433]/60">
-                                        {activeDelivery.items.map((item, idx) => (
-                                          <div key={idx} className="pt-1 first:pt-0 flex justify-between items-center text-[11px]">
-                                            <span className="text-white truncate">
-                                              <strong className="text-amber-400 font-mono">{item.quantity}x</strong> {item.name}
-                                              {item.selectedVariant ? ` (${item.selectedVariant})` : ''}
-                                            </span>
-                                            <span className="text-gray-400 font-mono shrink-0 ml-2 text-[10px]">
-                                              ${((item.price || 0) * (item.quantity || 1)).toLocaleString('es-CO')}
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Gestión de Pago / Informar al restaurante */}
+                              {!isPickedUp && (
+                                <div className="mt-3 pt-3 border-t border-[#232B3A] space-y-2.5">
+                                  {paymentFeedbackMsg && (
+                                    <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold animate-fadeIn flex items-center gap-1.5">
+                                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                                      <span>{paymentFeedbackMsg}</span>
                                     </div>
                                   )}
-                                </div>
 
-                                {/* Flow when Etapa 1 is active: Payment Verification & COD confirmation */}
-                                {!isPickedUp && (
-                                  <div className="mt-3 pt-3 border-t border-amber-500/20 space-y-2.5">
-                                    {paymentFeedbackMsg && (
-                                      <div className="p-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-[11px] font-bold animate-fadeIn flex items-center gap-1.5">
-                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                                        <span>{paymentFeedbackMsg}</span>
+                                  {/* PASO 1: Preguntar al restaurante si el cliente ya pagó */}
+                                  <div className="bg-[#05070D] border border-[#232B3A] rounded-xl p-3 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                                        <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                                        Informar al restaurante
+                                      </span>
+                                      {restPaymentStatus !== 'unconfirmed' && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdatePaymentStatus('unconfirmed')}
+                                          className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
+                                        >
+                                          Cambiar
+                                        </button>
+                                      )}
+                                    </div>
+
+                                    {restPaymentStatus === 'unconfirmed' ? (
+                                      <div className="space-y-1">
+                                        <p className="text-[11px] text-gray-300">
+                                          Avisa al restaurante que vas por el pedido #{activeDelivery.orderNumber} y confirma si el cliente ya pagó.
+                                        </p>
+                                      </div>
+                                    ) : restPaymentStatus === 'already_paid' ? (
+                                      <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-start gap-2">
+                                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                        <div className="leading-snug">
+                                          <p className="text-white font-black">✓ Pedido Pagado al Restaurante</p>
+                                          <p className="text-[11px] text-emerald-200 mt-0.5">El cliente ya pagó al restaurante. No debes pagar ni cobrar el pedido. Solo reclamar y entregar.</p>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-start gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                        <div className="leading-snug">
+                                          <p className="text-white font-black">Restaurante confirmó: Pedido NO pagado</p>
+                                          <p className="text-[11px] text-amber-200 mt-0.5">Debes preguntar al cliente si pagará contra entrega.</p>
+                                        </div>
                                       </div>
                                     )}
+                                  </div>
 
-                                    {/* PASO 1: Preguntar al restaurante si el cliente ya pagó */}
-                                    <div className="bg-[#090D16] border border-[#232B3A] rounded-xl p-3 space-y-2">
+                                  {/* PASO 2: Si no ha pagado -> Preguntar al cliente si paga contra entrega */}
+                                  {restPaymentStatus === 'not_paid' && (
+                                    <div className="bg-[#05070D] border border-amber-500/40 rounded-xl p-3 space-y-2">
                                       <div className="flex items-center justify-between">
                                         <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                                          <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
-                                          Informar al restaurante
+                                          <Phone className="w-3.5 h-3.5 text-amber-400" />
+                                          2. Confirmar Contra Entrega con Cliente
                                         </span>
-                                        {restPaymentStatus !== 'unconfirmed' && (
+                                        {codConfirmed && (
                                           <button
                                             type="button"
-                                            onClick={() => handleUpdatePaymentStatus('unconfirmed')}
+                                            onClick={() => handleUpdatePaymentStatus('not_paid', false, false)}
                                             className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
                                           >
                                             Cambiar
@@ -1709,334 +1833,179 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                         )}
                                       </div>
 
-                                      {restPaymentStatus === 'unconfirmed' ? (
+                                      {!codConfirmed ? (
                                         <div className="space-y-2">
                                           <p className="text-[11px] text-gray-300">
-                                            Avisa al restaurante que vas por el pedido #{activeDelivery.orderNumber} y confirma si el cliente ya pagó.
+                                            Pregunta a <strong>{activeDelivery.customerName}</strong> si pagará contra entrega al recibir el pedido (Total: <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong>).
                                           </p>
 
                                           <div className="flex gap-2">
-                                            {effectiveStorePhone && (() => {
-                                              const itemsFormatted = activeDelivery.items && activeDelivery.items.length > 0
-                                                ? activeDelivery.items.map(it => `${it.quantity || 1}x ${it.name} $${((it.price || 0) * (it.quantity || 1)).toLocaleString('es-CO')}`).join(', ')
-                                                : '';
-                                              const clientPart = activeDelivery.customerName ? ` del cliente ${activeDelivery.customerName}` : '';
-                                              const itemsPart = itemsFormatted ? ` pedido ${itemsFormatted}` : '';
-                                              const waText = `Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}.${clientPart}${itemsPart} Ya voy en camino por el pedido, por favor me confirmas si el cliente ya pagó. Gracias.`;
-
-                                              return (
-                                                <a
-                                                  href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(waText)}`}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
-                                                >
-                                                  <MessageSquare className="w-3.5 h-3.5 fill-current" />
-                                                  <span>Preguntar por WhatsApp</span>
-                                                </a>
-                                              );
-                                            })()}
-                                            {effectiveStorePhone && (
+                                            {activeDelivery.customerPhone && (
                                               <a
-                                                href={`tel:${effectiveStorePhone}`}
+                                                href={`https://wa.me/${activeDelivery.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName}! 👋 Te habla tu domiciliario del pedido #${activeDelivery.orderNumber || ''}. El restaurante me indica que el pedido aún no está pagado. ¿Confirmas que vas a pagar contra entrega al recibirlo en tu dirección ($${totalOrderAmount.toLocaleString('es-CO')})? Quedo atento para pagar en la tienda y llevártelo inmediatamente.`)}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
+                                              >
+                                                <MessageSquare className="w-3.5 h-3.5 fill-current" />
+                                                <span>Preguntar por WhatsApp al Cliente</span>
+                                              </a>
+                                            )}
+                                            {activeDelivery.customerPhone && (
+                                              <a
+                                                href={`tel:${activeDelivery.customerPhone}`}
                                                 className="py-2 px-3 bg-[#1C2433] hover:bg-[#2A364A] text-gray-200 border border-gray-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1"
-                                                title="Llamar a restaurante"
+                                                title="Llamar al cliente"
                                               >
                                                 <Phone className="w-3.5 h-3.5" />
                                               </a>
                                             )}
                                           </div>
-                                        </div>
-                                      ) : restPaymentStatus === 'already_paid' ? (
-                                        <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold flex items-start gap-2">
-                                          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                          <div className="leading-snug">
-                                            <p className="text-white font-black">✓ Pedido Pagado al Restaurante</p>
-                                            <p className="text-[11px] text-emerald-200 mt-0.5">El cliente ya pagó al restaurante. No debes pagar ni cobrar el pedido. Solo reclamar y entregar.</p>
-                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
+                                            className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                                          >
+                                            <Banknote className="w-4 h-4" />
+                                            <span>✓ Cliente confirma: Paga Contra Entrega (${totalOrderAmount.toLocaleString('es-CO')})</span>
+                                          </button>
                                         </div>
                                       ) : (
-                                        <div className="p-2.5 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold flex items-start gap-2">
-                                          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                        <div className="p-2.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-start gap-2">
+                                          <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
                                           <div className="leading-snug">
-                                            <p className="text-white font-black">Restaurante confirmó: Pedido NO pagado</p>
-                                            <p className="text-[11px] text-amber-200 mt-0.5">Debes preguntar al cliente si pagará contra entrega.</p>
+                                            <p className="text-white font-black">✓ Cliente Confirmó Pago Contra Entrega</p>
+                                            <p className="text-[11px] text-cyan-200 mt-0.5">El cliente pagará <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong> en efectivo o transferencia al recibir.</p>
                                           </div>
                                         </div>
                                       )}
                                     </div>
+                                  )}
 
-                                    {/* PASO 2: Si no ha pagado -> Preguntar al cliente si paga contra entrega */}
-                                    {restPaymentStatus === 'not_paid' && (
-                                      <div className="bg-[#090D16] border border-amber-500/40 rounded-xl p-3 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                                            <Phone className="w-3.5 h-3.5 text-amber-400" />
-                                            2. Confirmar Contra Entrega con Cliente
-                                          </span>
-                                          {codConfirmed && (
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdatePaymentStatus('not_paid', false, false)}
-                                              className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
-                                            >
-                                              Cambiar
-                                            </button>
-                                          )}
-                                        </div>
-
-                                        {!codConfirmed ? (
-                                          <div className="space-y-2">
-                                            <p className="text-[11px] text-gray-300">
-                                              Pregunta a <strong>{activeDelivery.customerName}</strong> si pagará contra entrega al recibir el pedido (Total: <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong>).
-                                            </p>
-
-                                            <div className="flex gap-2">
-                                              {activeDelivery.customerPhone && (
-                                                <a
-                                                  href={`https://wa.me/${activeDelivery.customerPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName}! 👋 Te habla tu domiciliario del pedido #${activeDelivery.orderNumber || ''}. El restaurante me indica que el pedido aún no está pagado. ¿Confirmas que vas a pagar contra entrega al recibirlo en tu dirección ($${totalOrderAmount.toLocaleString('es-CO')})? Quedo atento para pagar en la tienda y llevártelo inmediatamente.`)}`}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-sm"
-                                                >
-                                                  <MessageSquare className="w-3.5 h-3.5 fill-current" />
-                                                  <span>Preguntar por WhatsApp al Cliente</span>
-                                                </a>
-                                              )}
-                                              {activeDelivery.customerPhone && (
-                                                <a
-                                                  href={`tel:${activeDelivery.customerPhone}`}
-                                                  className="py-2 px-3 bg-[#1C2433] hover:bg-[#2A364A] text-gray-200 border border-gray-700 rounded-lg text-xs font-bold flex items-center justify-center gap-1"
-                                                  title="Llamar al cliente"
-                                                >
-                                                  <Phone className="w-3.5 h-3.5" />
-                                                </a>
-                                              )}
-                                            </div>
-
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
-                                              className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
-                                            >
-                                              <Banknote className="w-4 h-4" />
-                                              <span>✓ Cliente confirma: Paga Contra Entrega (${totalOrderAmount.toLocaleString('es-CO')})</span>
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          <div className="p-2.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 text-xs font-bold flex items-start gap-2">
-                                            <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                                            <div className="leading-snug">
-                                              <p className="text-white font-black">✓ Cliente Confirmó Pago Contra Entrega</p>
-                                              <p className="text-[11px] text-cyan-200 mt-0.5">El cliente pagará <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong> en efectivo o transferencia al recibir.</p>
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {/* PASO 3: Pagar el pedido en el restaurante */}
-                                    {restPaymentStatus === 'not_paid' && codConfirmed && (
-                                      <div className="bg-[#090D16] border border-emerald-500/40 rounded-xl p-3 space-y-2.5">
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-                                            <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                                            3. Pagar Pedido en el Restaurante
-                                          </span>
-                                          {driverPaid && (
-                                            <button
-                                              type="button"
-                                              onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
-                                              className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
-                                            >
-                                              Corregir
-                                            </button>
-                                          )}
-                                        </div>
-
-                                        {/* Liquidación clara */}
-                                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-[#141B2D] p-2.5 rounded-lg border border-[#232B3A]">
-                                          <div>
-                                            <span className="text-gray-400 block text-[10px]">Pagas en Restaurante (Comida):</span>
-                                            <strong className="text-amber-300 text-sm font-mono font-black">${foodCost.toLocaleString('es-CO')}</strong>
-                                          </div>
-                                          <div>
-                                            <span className="text-gray-400 block text-[10px]">Cobras al Cliente al Entregar:</span>
-                                            <strong className="text-emerald-400 text-sm font-mono font-black">${totalOrderAmount.toLocaleString('es-CO')}</strong>
-                                          </div>
-                                        </div>
-
-                                        {!driverPaid ? (
+                                  {/* PASO 3: Pagar el pedido en el restaurante */}
+                                  {restPaymentStatus === 'not_paid' && codConfirmed && (
+                                    <div className="bg-[#05070D] border border-emerald-500/40 rounded-xl p-3 space-y-2.5">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                                          <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                                          3. Pagar Pedido en el Restaurante
+                                        </span>
+                                        {driverPaid && (
                                           <button
                                             type="button"
-                                            onClick={() => handleUpdatePaymentStatus('not_paid', true, true)}
-                                            className="w-full py-3 px-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-95"
+                                            onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
+                                            className="text-[10px] text-gray-400 hover:text-white underline cursor-pointer"
                                           >
-                                            <CreditCard className="w-4 h-4" />
-                                            <span>Pagar Pedido en Restaurante (${foodCost.toLocaleString('es-CO')})</span>
+                                            Corregir
                                           </button>
-                                        ) : (
-                                          <div className="space-y-2">
-                                            <div className="p-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-start gap-2">
-                                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                              <div className="leading-snug">
-                                                <p className="font-black text-white">✓ ¡Pedido Pagado en Restaurante (${paidAmount.toLocaleString('es-CO')})!</p>
-                                                <p className="text-[11px] text-emerald-200 mt-0.5">Recuerda cobrar <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong> al cliente al entregar.</p>
-                                              </div>
-                                            </div>
-
-                                            <button
-                                              type="button"
-                                              onClick={() => handleAdvanceStep('picked_up')}
-                                              className="w-full py-2.5 px-3 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#F4B400]/20 active:scale-95"
-                                            >
-                                              <ShoppingBag className="w-4 h-4" />
-                                              <span>2. Marcar Recogido en Tienda (Pasa a Enviado) ➔</span>
-                                            </button>
-                                          </div>
                                         )}
                                       </div>
-                                    )}
-                                  </div>
-                                )}
 
-                                {/* Compact summary when Etapa 1 is completed */}
-                                {isPickedUp && (
-                                  <div className="mt-2.5 pt-2 border-t border-[#232B3A]">
-                                    {restPaymentStatus === 'already_paid' ? (
-                                      <div className="text-[11px] text-emerald-400 font-bold flex items-center gap-1.5">
-                                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                                        <span>Pedido pagado directamente al restaurante por el cliente</span>
+                                      {/* Liquidación clara */}
+                                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-[#141B2D] p-2.5 rounded-lg border border-[#232B3A]">
+                                        <div>
+                                          <span className="text-gray-400 block text-[10px]">Pagas en Restaurante (Comida):</span>
+                                          <strong className="text-amber-300 text-sm font-mono font-black">${foodCost.toLocaleString('es-CO')}</strong>
+                                        </div>
+                                        <div>
+                                          <span className="text-gray-400 block text-[10px]">Cobras al Cliente al Entregar:</span>
+                                          <strong className="text-emerald-400 text-sm font-mono font-black">${totalOrderAmount.toLocaleString('es-CO')}</strong>
+                                        </div>
                                       </div>
-                                    ) : driverPaid ? (
-                                      <div className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5">
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                        <span>Pagaste ${paidAmount.toLocaleString('es-CO')} en restaurante • Cobrar ${totalOrderAmount.toLocaleString('es-CO')} al cliente</span>
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                )}
-                              </div>
+
+                                      {!driverPaid ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleUpdatePaymentStatus('not_paid', true, true)}
+                                          className="w-full py-3 px-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-95"
+                                        >
+                                          <CreditCard className="w-4 h-4" />
+                                          <span>Pagar Pedido en Restaurante (${foodCost.toLocaleString('es-CO')})</span>
+                                        </button>
+                                      ) : (
+                                        <div className="space-y-2">
+                                          <div className="p-2.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-start gap-2">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                                            <div className="leading-snug">
+                                              <p className="font-black text-white">✓ ¡Pedido Pagado en Restaurante (${paidAmount.toLocaleString('es-CO')})!</p>
+                                              <p className="text-[11px] text-emerald-200 mt-0.5">Recuerda cobrar <strong>${totalOrderAmount.toLocaleString('es-CO')}</strong> al cliente al entregar.</p>
+                                            </div>
+                                          </div>
+
+                                          <button
+                                            type="button"
+                                            onClick={() => handleAdvanceStep('picked_up')}
+                                            className="w-full py-2.5 px-3 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#F4B400]/20 active:scale-95"
+                                          >
+                                            <ShoppingBag className="w-4 h-4" />
+                                            <span>2. Marcar Recogido en Tienda (Pasa a Enviado) ➔</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Compact summary when Etapa 1 is completed */}
+                              {isPickedUp && (
+                                <div className="mt-2.5 pt-2 border-t border-[#232B3A]">
+                                  {restPaymentStatus === 'already_paid' ? (
+                                    <div className="text-[11px] text-emerald-400 font-bold flex items-center gap-1.5">
+                                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                                      <span>Pedido pagado directamente al restaurante por el cliente</span>
+                                    </div>
+                                  ) : driverPaid ? (
+                                    <div className="text-[11px] text-amber-300 font-bold flex items-center gap-1.5">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                      <span>Pagaste ${paidAmount.toLocaleString('es-CO')} en restaurante • Cobrar ${totalOrderAmount.toLocaleString('es-CO')} al cliente</span>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )}
                             </div>
                           </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => setTrackingPreviewOpen(true)}
-                              className="flex-1 py-3 px-4 bg-gradient-to-r from-[#161F30] via-[#1E293B] to-[#161F30] hover:from-[#1E293B] hover:to-[#2B384E] text-white font-bold text-xs sm:text-sm rounded-xl border border-[#2B384E] hover:border-cyan-500/50 transition shadow-lg shadow-black/40 flex items-center justify-center gap-2.5 active:scale-[0.99] cursor-pointer group"
-                            >
-                              <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center group-hover:scale-110 transition">
-                                <Compass className="w-4 h-4 text-cyan-400" />
-                              </div>
-                              <span>Ruta Completa</span>
-                            </button>
-
-                            <a
-                              href={(() => {
-                                const isGoingToStore = currentStepIdx === 0;
-                                const originParam = (currentCoords?.latitude && currentCoords?.longitude)
-                                  ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
-                                  : '';
-                                if (isGoingToStore) {
-                                  const baseNav = buildGoogleNavigationUrl({
-                                    lat: activeStoreLocation?.lat || activeDelivery.storeLat,
-                                    lng: activeStoreLocation?.lng || activeDelivery.storeLng,
-                                    mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
-                                    address: activeDelivery.storeAddress,
-                                    storeName: activeDelivery.storeName
-                                  });
-                                  return `${baseNav}${originParam}`;
-                                }
-                                const baseNav = buildGoogleNavigationUrl({
-                                  lat: activeDelivery.customerLat,
-                                  lng: activeDelivery.customerLng,
-                                  mapUrl: activeDelivery.customerMapUrl,
-                                  address: activeDelivery.customerAddress
-                                });
-                                return `${baseNav}${originParam}`;
-                              })()}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 shrink-0 active:scale-[0.99] cursor-pointer"
-                              title={currentStepIdx === 0 ? "Navegar hacia al restaurante" : "Navegar hacia el cliente"}
-                            >
-                              <Navigation className="w-4 h-4 text-white" />
-                              <span>
-                                {currentStepIdx === 0
-                                  ? 'Navegar hacia al restaurante'
-                                  : 'Navegar hacia el cliente'}
-                              </span>
-                              <ExternalLink className="w-3.5 h-3.5 text-white/80" />
-                            </a>
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Locations & Contact Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Store Pickup Location */}
-                      <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-extrabold uppercase text-[#F4B400] block">
-                            1. Punto de Recogida (Tienda)
-                          </span>
-                        </div>
-
-                        <div>
-                          <p className="text-base font-black text-white">
-                            {activeDelivery.storeName || 'Tienda en la plataforma'}
-                          </p>
-                          <p className="text-xs text-[#A9B2C3] flex items-center gap-1.5 mt-1">
-                            <MapPin className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
-                            <span>{activeDelivery.storeAddress || 'Dirección de la Tienda'}</span>
-                          </p>
-
-                          {/* Punto de Referencia para Domiciliarios (Tienda) */}
-                          {(activeStoreLocation?.reference || activeDelivery.storeReference || (activeDelivery as any).restaurantReference) && (
-                            <div className="bg-amber-500/10 border border-amber-500/25 p-2.5 rounded-xl flex items-start gap-2 mt-2">
-                              <Navigation className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block">
-                                  Punto de Referencia para Domiciliarios:
-                                </span>
-                                <p className="text-xs font-semibold text-amber-100 mt-0.5">
-                                  {activeStoreLocation?.reference || activeDelivery.storeReference || (activeDelivery as any).restaurantReference}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {effectiveStorePhone && (
-                          <div className="pt-1.5 border-t border-[#232B3A]/60 flex items-center justify-between">
-                            <a
-                              href={`tel:${effectiveStorePhone}`}
-                              className="inline-flex items-center gap-1.5 text-xs text-[#F4B400] hover:underline font-semibold"
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              <span>Llamar Tienda</span>
-                            </a>
-                            <a
-                              href={`https://wa.me/${effectiveStorePhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola! 👋 Soy el domiciliario asignado al pedido #${activeDelivery.orderNumber || ''}. Por favor tenerlo en preparación, ya voy en camino a recogerlo.`)}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-lg border border-emerald-500/20 hover:bg-emerald-500/20 transition font-bold"
-                            >
-                              <MessageSquare className="w-3 h-3" />
-                              <span>WhatsApp</span>
-                            </a>
-                          </div>
-                        )}
-                      </div>
+                        );
+                      })()}
 
                       {/* Customer Delivery Destination */}
-                      <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-3">
-                        <span className="text-[10px] font-extrabold uppercase text-[#E63946] block">
-                          2. Punto de Entrega (Cliente)
-                        </span>
+                      <div className="bg-[#090B12] border border-[#232B3A] p-3.5 sm:p-4 rounded-xl space-y-3">
+                        <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                          <span className="text-[10px] sm:text-xs font-extrabold uppercase text-[#E63946] truncate">
+                            2. Punto de Entrega
+                          </span>
+
+                          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                            {/* Live In-App Chat with Customer */}
+                            <button
+                              type="button"
+                              onClick={() => setIsOrderChatOpen(true)}
+                              className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white px-2 sm:px-2.5 py-1 rounded-lg font-bold transition shadow-sm active:scale-95 cursor-pointer relative shrink-0"
+                              title="Abrir chat interno en tiempo real con el cliente"
+                            >
+                              <MessageCircle className="w-3 h-3 shrink-0" />
+                              <span>Chatear</span>
+                              {Boolean(activeDelivery.driverUnreadChatCount && activeDelivery.driverUnreadChatCount > 0) && (
+                                <span className="w-3.5 h-3.5 rounded-full bg-amber-400 text-gray-950 text-[9px] font-black flex items-center justify-center animate-bounce ml-0.5">
+                                  {activeDelivery.driverUnreadChatCount}
+                                </span>
+                              )}
+                            </button>
+
+                            {activeDelivery.customerPhone && (
+                              <a
+                                href={`tel:${activeDelivery.customerPhone}`}
+                                className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] bg-[#161F30] hover:bg-[#1F293D] text-white px-2 sm:px-2.5 py-1 rounded-lg font-bold transition border border-[#232B3A] shadow-sm active:scale-95 cursor-pointer shrink-0"
+                                title={`Llamar al cliente (${activeDelivery.customerPhone})`}
+                              >
+                                <Phone className="w-3 h-3 text-emerald-400 shrink-0" />
+                                <span>Llamar</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+
                         <div>
                           <p className="text-base font-black text-white">
                             {activeDelivery.customerName}
@@ -2060,90 +2029,20 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               </div>
                             </div>
                           )}
-                        </div>
 
-
-                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#232B3A]/60">
-                          {/* Live In-App Chat with Customer (Exclusively Internal Chat) */}
-                          <button
-                            type="button"
-                            onClick={() => setIsOrderChatOpen(true)}
-                            className="inline-flex items-center gap-1.5 text-xs bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white px-3.5 py-2 rounded-xl font-bold transition shadow-md active:scale-95 cursor-pointer relative"
-                            title="Abrir chat interno en tiempo real con el cliente"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            <span>Chat con el Cliente</span>
-                            {Boolean(activeDelivery.driverUnreadChatCount && activeDelivery.driverUnreadChatCount > 0) && (
-                              <span className="w-4 h-4 rounded-full bg-amber-400 text-gray-950 text-[10px] font-black flex items-center justify-center animate-bounce">
-                                {activeDelivery.driverUnreadChatCount}
-                              </span>
-                            )}
-                          </button>
-
-                          <a
-                            href={`tel:${activeDelivery.customerPhone}`}
-                            className="inline-flex items-center gap-1.5 text-xs text-[#E63946] hover:underline font-semibold px-2 py-1"
-                          >
-                            <Phone className="w-3.5 h-3.5" />
-                            <span>{activeDelivery.customerPhone}</span>
-                          </a>
+                          {/* Observaciones adicionales si no están ya en la referencia */}
+                          {activeDelivery.notes && activeDelivery.notes !== activeDelivery.customerReference && (
+                            <p className="text-xs text-[#F4B400] bg-[#F4B400]/10 p-2 rounded-lg border border-[#F4B400]/20 mt-2">
+                              <strong>Observaciones:</strong> {activeDelivery.notes}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
 
-                    {/* Order Details & Items */}
-                    <div className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-2">
-                      <div className="flex justify-between text-xs text-[#A9B2C3] border-b border-[#232B3A] pb-2">
-                        <span>Método de Pago: <strong className="text-white uppercase">{activeDelivery.paymentMethod}</strong></span>
-                        <span>Total Pedido: <strong className="text-white">${activeDelivery.totalAmount?.toLocaleString('es-CO')}</strong></span>
-                      </div>
-                      {activeDelivery.restaurantPaymentStatus === 'already_paid' ? (
-                        <div className="p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-xs text-emerald-300 font-bold flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                            Pago en Restaurante:
-                          </span>
-                          <span className="text-white">Pagado previamente por el cliente ($0 a cobrar comida)</span>
-                        </div>
-                      ) : activeDelivery.driverPaidToRestaurant ? (
-                        <div className="p-2.5 rounded-lg bg-gradient-to-r from-emerald-500/20 to-amber-500/20 border border-emerald-500/35 text-xs text-emerald-200 font-bold flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
-                            <Banknote className="w-4 h-4 text-emerald-400" />
-                            Cobrar al Cliente Contra Entrega:
-                          </span>
-                          <span className="text-white font-black text-sm">${activeDelivery.totalAmount?.toLocaleString('es-CO')}</span>
-                        </div>
-                      ) : null}
-                      {activeDelivery.notes && (
-                        <p className="text-xs text-[#F4B400] bg-[#F4B400]/10 p-2 rounded-lg border border-[#F4B400]/20">
-                          <strong>Observaciones:</strong> {activeDelivery.notes}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Action Step Buttons */}
-                    <div className="pt-2 border-t border-[#232B3A] flex flex-wrap gap-3">
-                      {(activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store') && (
-                        <button
-                          onClick={() => handleAdvanceStep('picked_up')}
-                          className="flex-1 py-3.5 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-[#F4B400]/20 flex items-center justify-center gap-2"
-                        >
-                          <ShoppingBag className="w-4 h-4" />
-                          <span>Marcar como llegué al restaurante</span>
-                        </button>
-                      )}
-
-                      {activeDelivery.deliveryStep === 'picked_up' && (
-                        <button
-                          onClick={() => handleAdvanceStep('to_client')}
-                          className="flex-1 py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-[#E63946]/20 flex items-center justify-center gap-2"
-                        >
-                          <Bike className="w-4 h-4" />
-                          <span>3. Marcar En Camino al Cliente</span>
-                        </button>
-                      )}
-
-                      {(activeDelivery.deliveryStep === 'to_client' || activeDelivery.deliveryStep === 'at_destination') && (
+                    {/* Action Step: PIN Verification & Delivery Completion (when en camino al cliente) */}
+                    {(activeDelivery.deliveryStep === 'to_client' || activeDelivery.deliveryStep === 'at_destination') && (
+                      <div className="pt-2 space-y-2.5">
                         <div className="w-full space-y-3">
                           {activeDelivery.driverPaidToRestaurant && (
                             <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-100 flex items-center justify-between">
@@ -2263,9 +2162,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                             <span>4. Confirmar Pedido Entregado con Código ✓</span>
                           </button>
                         </div>
-                      )}
-
-                    </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   /* AVAILABLE REAL-TIME REQUESTS LIST */
@@ -2745,10 +2643,148 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         )}
       </main>
 
+      {/* Fixed Bottom Action Step Buttons for Active Delivery */}
+      {driver.status === 'approved' && activeDelivery && activeTab === 'deliveries' && (
+        <div className="fixed bottom-[58px] left-0 right-0 z-30 bg-[#0B0F19]/95 backdrop-blur-xl border-t border-[#232B3A] px-3.5 sm:px-4 py-2.5 shadow-[0_-12px_30px_rgba(0,0,0,0.85)]">
+          <div className="max-w-xl mx-auto w-full space-y-2">
+            {(activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store') && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleAdvanceStep('picked_up')}
+                  className="w-full py-3 sm:py-3.5 bg-[#F4B400] hover:bg-[#F4B400]/90 text-gray-950 font-black text-xs sm:text-sm rounded-xl transition cursor-pointer shadow-lg shadow-[#F4B400]/20 flex items-center justify-center gap-2 active:scale-[0.99] whitespace-nowrap"
+                >
+                  <ShoppingBag className="w-4 h-4 shrink-0" />
+                  <span className="whitespace-nowrap">Marcar como llegué al restaurante</span>
+                </button>
+
+                <div className="flex gap-2">
+                  <a
+                    href={(() => {
+                      const originParam = (currentCoords?.latitude && currentCoords?.longitude)
+                        ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
+                        : '';
+                      const baseNav = buildGoogleNavigationUrl({
+                        lat: activeStoreLocation?.lat || activeDelivery.storeLat,
+                        lng: activeStoreLocation?.lng || activeDelivery.storeLng,
+                        mapUrl: activeStoreLocation?.mapUrl || activeDelivery.storeMapUrl,
+                        address: activeDelivery.storeAddress,
+                        storeName: activeDelivery.storeName
+                      });
+                      return `${baseNav}${originParam}`;
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2.5 sm:py-3 px-3 sm:px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-1.5 sm:gap-2 active:scale-[0.99] cursor-pointer whitespace-nowrap"
+                    title="Ir al restaurante en Google Maps / Waze"
+                  >
+                    <Navigation className="w-4 h-4 text-white shrink-0" />
+                    <span className="whitespace-nowrap">Ir al restaurante</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-white/80 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingPreviewOpen(true)}
+                    className="py-2.5 sm:py-3 px-3 sm:px-3.5 bg-[#161F30] hover:bg-[#1E293B] text-gray-200 font-bold text-xs rounded-xl border border-[#2B384E] transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap"
+                    title="Ver Ruta Completa en el mapa"
+                  >
+                    <Compass className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="whitespace-nowrap">Ruta completa</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {activeDelivery.deliveryStep === 'picked_up' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleAdvanceStep('to_client')}
+                  className="w-full py-3 sm:py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl transition cursor-pointer shadow-lg shadow-[#E63946]/20 flex items-center justify-center gap-2 active:scale-[0.99]"
+                >
+                  <Bike className="w-4 h-4 shrink-0" />
+                  <span>3. Marcar En Camino al Cliente</span>
+                </button>
+
+                <div className="flex gap-2">
+                  <a
+                    href={(() => {
+                      const originParam = (currentCoords?.latitude && currentCoords?.longitude)
+                        ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
+                        : '';
+                      const baseNav = buildGoogleNavigationUrl({
+                        lat: activeDelivery.customerLat,
+                        lng: activeDelivery.customerLng,
+                        mapUrl: activeDelivery.customerMapUrl,
+                        address: activeDelivery.customerAddress
+                      });
+                      return `${baseNav}${originParam}`;
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2.5 sm:py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+                    title="Navegar hacia el cliente en Google Maps / Waze"
+                  >
+                    <Navigation className="w-4 h-4 text-white shrink-0" />
+                    <span>Navegar hacia el cliente</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-white/80 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingPreviewOpen(true)}
+                    className="py-2.5 sm:py-3 px-3.5 bg-[#161F30] hover:bg-[#1E293B] text-gray-200 font-bold text-xs rounded-xl border border-[#2B384E] transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    title="Ver Ruta Completa en el mapa"
+                  >
+                    <Compass className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>Ruta completa</span>
+                  </button>
+                </div>
+              </>
+            )}
+
+            {(activeDelivery.deliveryStep === 'to_client' || activeDelivery.deliveryStep === 'at_destination') && (
+              <div className="flex gap-2">
+                <a
+                  href={(() => {
+                    const originParam = (currentCoords?.latitude && currentCoords?.longitude)
+                      ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
+                      : '';
+                    const baseNav = buildGoogleNavigationUrl({
+                      lat: activeDelivery.customerLat,
+                      lng: activeDelivery.customerLng,
+                      mapUrl: activeDelivery.customerMapUrl,
+                      address: activeDelivery.customerAddress
+                    });
+                    return `${baseNav}${originParam}`;
+                  })()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 py-2.5 sm:py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
+                  title="Navegar hacia el cliente en Google Maps / Waze"
+                >
+                  <Navigation className="w-4 h-4 text-white shrink-0" />
+                  <span>Navegar hacia el cliente</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-white/80 shrink-0" />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setTrackingPreviewOpen(true)}
+                  className="py-2.5 sm:py-3 px-3.5 bg-[#161F30] hover:bg-[#1E293B] text-gray-200 font-bold text-xs rounded-xl border border-[#2B384E] transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                  title="Ver Ruta Completa en el mapa"
+                >
+                  <Compass className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Ruta completa</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Bottom Sticky Mobile Navigation Bar */}
       {driver.status === 'approved' && (
-        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#111827]/95 backdrop-blur-xl border-t border-[#232B3A] shadow-2xl px-6 py-2">
-          <div className="max-w-md mx-auto flex items-center justify-between">
+        <nav className="fixed bottom-0 left-0 right-0 h-[58px] z-40 bg-[#111827]/95 backdrop-blur-xl border-t border-[#232B3A] shadow-2xl px-6 py-2">
+          <div className="max-w-md mx-auto h-full flex items-center justify-between">
             <button
               onClick={() => setActiveTab('deliveries')}
               className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-3 ${

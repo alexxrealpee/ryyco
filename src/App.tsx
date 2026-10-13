@@ -324,15 +324,18 @@ export default function App() {
                           pathnameLower.includes('driver-register') ||
                           pathnameLower.includes('dashboard') ||
                           pathnameLower.includes('restaurante') ||
-                          pathnameLower.includes('pedidos');
+                          pathnameLower.includes('pedidos') ||
+                          view === 'driver-portal' ||
+                          view === 'driver-register' ||
+                          view === 'admin';
 
-    if (!savedAddress && !hasCompletedPrompt && !isSpecialPath && authMode !== 'driver' && authMode !== 'seller') {
+    if (!savedAddress && !hasCompletedPrompt && !isSpecialPath && authMode !== 'driver' && authMode !== 'seller' && view !== 'driver-portal' && view !== 'driver-register' && view !== 'admin') {
       const timer = setTimeout(() => {
         setIsFirstVisitAddressOpen(true);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, []);
+  }, [view]);
 
   // Listen for global address modal requests (e.g. from navbar address bar or store header)
   useEffect(() => {
@@ -777,11 +780,13 @@ export default function App() {
         />
       )}
 
-        {/* First-Visit / Customer Delivery Address Modal in Ipiales */}
-        <FirstVisitAddressModal
-          isOpen={isFirstVisitAddressOpen}
-          onClose={() => setIsFirstVisitAddressOpen(false)}
-        />
+        {/* First-Visit / Customer Delivery Address Modal in Ipiales (Only for customers, never for drivers or admin) */}
+        {view !== 'driver-portal' && view !== 'driver-register' && view !== 'admin' && view !== 'dashboard' && (
+          <FirstVisitAddressModal
+            isOpen={isFirstVisitAddressOpen}
+            onClose={() => setIsFirstVisitAddressOpen(false)}
+          />
+        )}
       </React.Suspense>
     </div>
   );

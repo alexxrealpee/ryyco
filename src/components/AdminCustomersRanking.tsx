@@ -570,9 +570,9 @@ export default function AdminCustomersRanking({
         spinsAvailable = Number(foundProfile.spinsAvailable) || 0;
         isRegisteredProfile = true;
       } else {
-        // Fallback for customer orders: 1.000 de bienvenida + 500 por cada pedido no cancelado
+        // Fallback for customer orders: 500 de bienvenida + 500 por cada pedido no cancelado
         const validOrders = data.orders.filter(o => o.status !== 'cancelled').length;
-        ryycos = 1000 + (validOrders * 500);
+        ryycos = 500 + (validOrders * 500);
         spinsAvailable = Math.max(1, validOrders);
         isRegisteredProfile = false;
       }

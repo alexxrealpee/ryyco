@@ -142,7 +142,7 @@ export default function CustomerOrderAuthPromptModal({
           password: passwordInput.trim(),
           address: customerAddress.trim(),
           notes: customerNotes?.trim() || '',
-          points: 1000, // 1.000 RYYCOS ($1.000 COP) welcome bonus!
+          points: 500, // 500 RYYCOS ($500 COP) welcome bonus!
           spinsAvailable: 1
         });
 
@@ -194,7 +194,7 @@ export default function CustomerOrderAuthPromptModal({
       setLoadingProfileStatusText(
         profile
           ? 'Cargando saldo de RYYCOS y datos guardados...'
-          : 'Creando tu perfil de cliente y activando bono de 1.000 RYYCOS...'
+          : 'Creando tu perfil de cliente y activando bono de 500 RYYCOS...'
       );
 
       const saved = await saveCustomerProfile({
@@ -206,7 +206,7 @@ export default function CustomerOrderAuthPromptModal({
         authUid: user.uid,
         address: customerAddress.trim() || profile?.address || '',
         notes: customerNotes?.trim() || profile?.notes || '',
-        points: profile ? (profile.points || 0) : 1000,
+        points: profile ? (profile.points || 0) : 500,
         spinsAvailable: profile ? (profile.spinsAvailable || 1) : 1
       });
 

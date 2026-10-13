@@ -6004,15 +6004,15 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     id: 'mov_welcome_' + phone,
     customerId: phone,
     type: 'welcome_bonus',
-    amount: 1000,
-    balanceAfter: 1000,
-    description: 'Bono de bienvenida: 1.000 RYYCOS de regalo para comida',
+    amount: 500,
+    balanceAfter: 500,
+    description: 'Bono de bienvenida: 500 RYYCOS de regalo para comida',
     createdAt: existing?.createdAt || now
   };
 
   const existingPoints = existing?.points !== undefined 
     ? Number(existing.points) 
-    : (existing?.ryycos !== undefined ? Number(existing.ryycos) : 1000);
+    : (existing?.ryycos !== undefined ? Number(existing.ryycos) : 500);
   const currentPoints = cust.points !== undefined 
     ? Number(cust.points) 
     : (cust.ryycos !== undefined ? Number(cust.ryycos) : existingPoints);
@@ -6034,7 +6034,7 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     authUid: cust.authUid ?? existing?.authUid ?? '',
     address: cust.address ?? existing?.address ?? '',
     notes: cust.notes ?? existing?.notes ?? '',
-    points: currentPoints, // Saldo de RYYCOS (1.000 bonus welcome RYYCOS = $1.000 COP)
+    points: currentPoints, // Saldo de RYYCOS (500 bonus welcome RYYCOS = $500 COP)
     ryycos: currentPoints,
     movements,
     totalOrdersCount: cust.totalOrdersCount !== undefined ? cust.totalOrdersCount : (existing?.totalOrdersCount || 0),
@@ -6160,7 +6160,7 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
       phone,
       name: order.customerName || 'Cliente Ryyco',
       address: isInvalidAddr(order.customerAddress) ? '' : (order.customerAddress || ''),
-      points: 1000, // Welcome bonus (1.000 RYYCOS = $1.000 COP)
+      points: 500, // Welcome bonus (500 RYYCOS = $500 COP)
       spinsAvailable: 1
     });
   }

@@ -5522,23 +5522,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </p>
                 </div>
 
-                {/* Hostinger Step-by-Step Instructions */}
-                <div className="p-4 bg-gray-900/60 border border-gray-800 rounded-xl space-y-2.5 text-xs text-gray-300">
-                  <span className="text-[11px] font-black uppercase text-amber-400 tracking-wider block flex items-center gap-1.5">
-                    <Info className="w-4 h-4 text-amber-400" /> Guía para que funcionen las APIs de GPT en Hostinger:
-                  </span>
-                  <ol className="list-decimal pl-4 space-y-1.5 text-[11px] text-gray-300 leading-relaxed">
-                    <li>
-                      <strong>Sube los archivos de la carpeta <code className="text-emerald-300">dist/</code></strong> directamente al directorio <code className="text-emerald-300">public_html/</code> de tu hosting en Hostinger (incluyendo el archivo <code className="text-emerald-300">.htaccess</code>, el archivo <code className="text-emerald-300">keys.php</code> y la carpeta <code className="text-emerald-300">api/</code>).
-                    </li>
-                    <li>
-                      <strong>Tus claves ya están configuradas en <code className="text-emerald-300">keys.php</code>:</strong> El archivo ya contiene tu clave de OpenAI GPT, Google Maps y FCM. El sistema lo carga de forma automática en Hostinger sin necesidad de configuraciones adicionales.
-                    </li>
-                    <li>
-                      <strong>Verificación en 1 clic:</strong> Haz clic arriba en <strong className="text-emerald-400">"Probar APIs (/api/health)"</strong> para comprobar que Hostinger responde con tus claves activas.
-                    </li>
-                  </ol>
-                </div>
               </div>
 
             </div>

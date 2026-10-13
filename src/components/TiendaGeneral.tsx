@@ -1555,7 +1555,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                               Ingresar como Cliente
                             </span>
                             <span className="text-[10px] text-emerald-400 font-bold block">
-                              +1.000 RYYCOS ($1.000 COP) Gratis
+                              +500 RYYCOS ($500 COP) Gratis
                             </span>
                           </div>
                         </div>
@@ -3545,9 +3545,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   
                   <div className="space-y-2">
                     {[
-                      { id: 'whatsapp', title: 'Pedir por WhatsApp', desc: 'Coordinar pago por chat' },
+                      { id: 'delivery_cash', title: deliveryType === 'pickup' ? 'Pago en Restaurante' : 'Pago contra Entrega', desc: deliveryType === 'pickup' ? 'Paga en efectivo o tarjeta al recoger' : 'Paga en efectivo al recibir' },
                       { id: 'transfer', title: 'Transferencia Bancaria', desc: 'Soporte de transferencia bancaria' },
-                      { id: 'delivery_cash', title: deliveryType === 'pickup' ? 'Pago en Restaurante' : 'Pago contra Entrega', desc: deliveryType === 'pickup' ? 'Paga en efectivo o tarjeta al recoger' : 'Paga en efectivo al recibir' }
+                      { id: 'whatsapp', title: 'Pedido por WhatsApp', desc: 'Coordinar pago por chat' }
                     ].map((opt) => (
                       <label 
                         key={opt.id}
