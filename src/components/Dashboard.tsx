@@ -111,6 +111,7 @@ import {
   isSubscriptionExpiredOrSuspended,
   getStoreOperatingScheduleInfo,
   getPlanProductLimit,
+  getPlanDrinkLimit,
   checkIsAdminEmail,
   fetchSystemSettings,
   listenToSystemSettings,
@@ -279,9 +280,10 @@ export const POPULAR_DRINKS_PRESETS: DrinkPreset[] = [
   }
 ];
 
-export const isDrinkItem = (p: ProductItem): boolean => {
+export const isDrinkItem = (p: { name?: string; category?: string; description?: string }): boolean => {
   const cat = (p.category || '').toLowerCase();
   const name = (p.name || '').toLowerCase();
+  const desc = (p.description || '').toLowerCase();
   return (
     cat.includes('bebida') ||
     cat.includes('gaseosa') ||
@@ -292,15 +294,25 @@ export const isDrinkItem = (p: ProductItem): boolean => {
     cat.includes('refresco') ||
     cat.includes('café') ||
     cat.includes('cafe') ||
+    cat.includes('malteada') ||
+    cat.includes('smoothie') ||
+    cat.includes('coctel') ||
+    cat.includes('cóctel') ||
+    cat.includes('trago') ||
     name.includes('coca-cola') ||
+    name.includes('coca cola') ||
     name.includes('postobon') ||
     name.includes('postobón') ||
     name.includes('pepsi') ||
     name.includes('sprite') ||
     name.includes('quatro') ||
-    name.includes('jugo ') ||
-    name.includes('cerveza ') ||
-    name.includes('agua ')
+    name.includes('jugo') ||
+    name.includes('cerveza') ||
+    name.includes('agua ') ||
+    name.includes('limonada') ||
+    name.includes('gaseosa') ||
+    name.includes('bebida') ||
+    desc.includes('bebida fría')
   );
 };
 
@@ -482,6 +494,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const drinksList = useMemo(() => {
     return products.filter(isDrinkItem);
   }, [products]);
+
+  const foodProductsList = useMemo(() => {
+    return products.filter(p => !isDrinkItem(p));
+  }, [products]);
+
+  const userCurrentPlan = profile.subscriptionPlan || profile.plan || 'basico';
+  const foodPlanLimit = useMemo(() => getPlanProductLimit(userCurrentPlan), [userCurrentPlan]);
+  const drinkPlanLimit = useMemo(() => getPlanDrinkLimit(userCurrentPlan), [userCurrentPlan]);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [isSyncingOrders, setIsSyncingOrders] = useState(false);
@@ -1323,13 +1343,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
 
     const userPlan = currentProf.subscriptionPlan || currentProf.plan || 'basico';
-    const limit = getPlanProductLimit(userPlan);
-    if (products.length >= limit) {
+    const foodLimit = getPlanProductLimit(userPlan);
+    const drinkLimit = getPlanDrinkLimit(userPlan);
+    const currentFoodCount = products.filter(p => !isDrinkItem(p)).length;
+
+    if (currentFoodCount >= foodLimit) {
       if (currentProf.subscriptionStatus === 'under_review' && currentProf.requestedPlan) {
-        const reqPlanName = currentProf.requestedPlan === 'medio' ? 'Plan Medio (12 productos)' : 'Plan Avanzado (24 productos)';
-        alert(`¡Límite de productos alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${limit} productos).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo de productos.`);
+        const reqPlanName = currentProf.requestedPlan === 'medio' ? 'Plan Medio (12 platos)' : 'Plan Avanzado (24 platos)';
+        alert(`¡Límite de productos normales alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${foodLimit} productos normales + ${drinkLimit} bebidas aparte).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo de productos.`);
       } else {
-        alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${limit} productos.\n\nPara pasar al Plan Medio (hasta 12 productos), ingresa a "Suscripción y Pagos", realiza la transferencia y envía tu comprobante de pago para que el Administrador lo apruebe.`);
+        alert(`¡Límite de productos normales alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${foodLimit} platos o productos normales (más ${drinkLimit} bebidas permitidas aparte).\n\nPara pasar a un plan superior y ampliar tu cupo de productos normales y bebidas, ingresa a "Suscripción y Pagos".`);
       }
       setActiveTab('subscription');
       return;
@@ -1371,13 +1394,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
 
     const userPlan = currentProf.subscriptionPlan || currentProf.plan || 'basico';
-    const limit = getPlanProductLimit(userPlan);
-    if (products.length >= limit) {
+    const foodLimit = getPlanProductLimit(userPlan);
+    const drinkLimit = getPlanDrinkLimit(userPlan);
+    const currentDrinkCount = products.filter(isDrinkItem).length;
+
+    if (currentDrinkCount >= drinkLimit) {
       if (currentProf.subscriptionStatus === 'under_review' && currentProf.requestedPlan) {
-        const reqPlanName = currentProf.requestedPlan === 'medio' ? 'Plan Medio (12 productos)' : 'Plan Avanzado (24 productos)';
-        alert(`¡Límite de productos alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${limit} productos).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo de productos.`);
+        const reqPlanName = currentProf.requestedPlan === 'medio' ? 'Plan Medio (4 bebidas)' : 'Plan Avanzado (6 bebidas)';
+        alert(`¡Límite de bebidas alcanzado!\n\nTu plan actual activo te permite hasta ${drinkLimit} bebidas (aparte de tus ${foodLimit} productos normales).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto sea aprobado, podrás publicar más bebidas.`);
       } else {
-        alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${limit} productos.\n\nPara pasar al Plan Medio (hasta 12 productos), ingresa a "Suscripción y Pagos", realiza la transferencia y envía tu comprobante de pago para que el Administrador lo apruebe.`);
+        alert(`¡Límite de bebidas alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite agregar hasta ${drinkLimit} bebidas aparte de tus productos normales:\n\n• Plan Básico (Primer Plan): 2 bebidas\n• Plan Medio (Segundo Plan): 4 bebidas\n• Plan Avanzado (Tercer Plan): 6 bebidas\n\nPara agregar más bebidas a tu menú, actualiza tu plan en "Suscripción y Pagos".`);
       }
       setActiveTab('subscription');
       return;
@@ -1526,19 +1552,42 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
 
     const userPlan = profile.subscriptionPlan || profile.plan || 'basico';
-    const limit = getPlanProductLimit(userPlan);
+    const foodLimit = getPlanProductLimit(userPlan);
+    const drinkLimit = getPlanDrinkLimit(userPlan);
+    const isSavingDrink = isDrinkItem({ name: prodName, category: prodCategory, description: prodDesc });
+
+    const currentFoodCount = products.filter(p => !isDrinkItem(p)).length;
+    const currentDrinkCount = products.filter(isDrinkItem).length;
 
     if (!editingProd) {
-      if (products.length >= limit) {
-        if (profile.subscriptionStatus === 'under_review' && profile.requestedPlan) {
-          const reqPlanName = profile.requestedPlan === 'medio' ? 'Plan Medio (12 productos)' : 'Plan Avanzado (24 productos)';
-          alert(`¡Límite de productos alcanzado!\n\nTu plan actual activo sigue siendo Plan Básico (${limit} productos).\n\nTu comprobante para ascender a ${reqPlanName} ya fue enviado y está en cola de revisión por el Administrador.\n\nTan pronto el Administrador apruebe tu pago, se activará tu nuevo cupo.`);
-        } else {
-          alert(`¡Límite de productos alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite subir hasta ${limit} productos.\n\nPara pasar al Plan Medio (hasta 12 productos), ingresa a "Suscripción y Pagos", realiza la transferencia y envía tu comprobante de pago para que el Administrador lo apruebe.`);
+      if (isSavingDrink) {
+        if (currentDrinkCount >= drinkLimit) {
+          alert(`¡Límite de bebidas alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite agregar hasta ${drinkLimit} bebidas aparte de tus ${foodLimit} productos normales:\n\n• Plan Básico (Primer Plan): 2 bebidas\n• Plan Medio (Segundo Plan): 4 bebidas\n• Plan Avanzado (Tercer Plan): 6 bebidas\n\nActualiza tu plan en "Suscripción y Pagos" para agregar más bebidas.`);
+          setActiveTab('subscription');
+          setIsAddingProd(false);
+          return;
         }
-        setActiveTab('subscription');
-        setIsAddingProd(false);
-        return;
+      } else {
+        if (currentFoodCount >= foodLimit) {
+          alert(`¡Límite de productos normales alcanzado!\n\nTu plan actual (${userPlan === 'medio' ? 'Plan Medio' : userPlan === 'pro' || userPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) te permite agregar hasta ${foodLimit} platos o productos normales (más ${drinkLimit} bebidas permitidas aparte).\n\nActualiza tu plan en "Suscripción y Pagos" para ampliar tu catálogo.`);
+          setActiveTab('subscription');
+          setIsAddingProd(false);
+          return;
+        }
+      }
+    } else {
+      // Editing existing product: verify if changing from food to drink or drink to food
+      const wasDrink = isDrinkItem(editingProd);
+      if (!wasDrink && isSavingDrink) {
+        if (currentDrinkCount >= drinkLimit) {
+          alert(`¡Límite de bebidas alcanzado!\n\nNo puedes convertir este plato en bebida porque ya alcanzaste tu cupo máximo de ${drinkLimit} bebidas permitidas para tu plan actual.`);
+          return;
+        }
+      } else if (wasDrink && !isSavingDrink) {
+        if (currentFoodCount >= foodLimit) {
+          alert(`¡Límite de productos normales alcanzado!\n\nNo puedes convertir esta bebida en plato normal porque ya alcanzaste tu cupo máximo de ${foodLimit} productos normales permitidos para tu plan actual.`);
+          return;
+        }
       }
     }
 
@@ -2328,14 +2377,36 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                    profile.subscriptionStatus === 'under_review' ? 'REVISIÓN' : 'VENCIDO'}
                 </span>
               </div>
-              <p className="text-gray-500 text-[10px]">
-                Límite: {products.length} / {getPlanProductLimit(profile.subscriptionPlan || profile.plan)} productos.
-              </p>
-              <div className="w-full bg-gray-900 h-1.5 rounded-full mt-2 overflow-hidden border border-gray-850">
-                <div 
-                  className={`h-full ${products.length >= getPlanProductLimit(profile.subscriptionPlan || profile.plan) ? 'bg-red-500' : 'bg-emerald-400'}`}
-                  style={{ width: `${Math.min(100, (products.length / getPlanProductLimit(profile.subscriptionPlan || profile.plan)) * 100)}%` }}
-                />
+              <div className="space-y-1.5 mt-2">
+                <div>
+                  <div className="flex justify-between text-[9.5px]">
+                    <span className="text-gray-400">Platos/Comidas:</span>
+                    <span className={`font-mono font-bold ${foodProductsList.length >= foodPlanLimit ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {foodProductsList.length} / {foodPlanLimit}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-900 h-1.5 rounded-full mt-0.5 overflow-hidden border border-gray-850">
+                    <div 
+                      className={`h-full ${foodProductsList.length >= foodPlanLimit ? 'bg-amber-500' : 'bg-emerald-400'}`}
+                      style={{ width: `${Math.min(100, (foodProductsList.length / foodPlanLimit) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-[9.5px]">
+                    <span className="text-gray-400">Bebidas (aparte):</span>
+                    <span className={`font-mono font-bold ${drinksList.length >= drinkPlanLimit ? 'text-red-400' : 'text-red-300'}`}>
+                      {drinksList.length} / {drinkPlanLimit}
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-900 h-1.5 rounded-full mt-0.5 overflow-hidden border border-gray-850">
+                    <div 
+                      className={`h-full ${drinksList.length >= drinkPlanLimit ? 'bg-red-500' : 'bg-[#D62839]'}`}
+                      style={{ width: `${Math.min(100, (drinksList.length / drinkPlanLimit) * 100)}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -2666,10 +2737,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   <div className="space-y-6">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-900 pb-4">
                       <div>
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2 flex-wrap">
                           Catálogo de Productos
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-900 text-gray-400 border border-gray-800">
-                            {products.length} / {getPlanProductLimit(profile.subscriptionPlan || profile.plan)}
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-gray-900 text-emerald-300 border border-gray-800" title="Platos y comidas normales">
+                            🍔 {foodProductsList.length} / {foodPlanLimit} platos
+                          </span>
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-red-950/40 text-red-300 border border-red-800/40" title="Bebidas permitidas aparte">
+                            🥤 {drinksList.length} / {drinkPlanLimit} bebidas
                           </span>
                         </h2>
                         <p className="text-xs text-gray-500 font-medium mt-0.5">
@@ -2782,17 +2856,17 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       </div>
                     )}
 
-                    {/* Banner Limit Reached Warning */}
-                    {products.length >= getPlanProductLimit(profile.subscriptionPlan || profile.plan) && (
+                    {/* Banner Limit Reached Warnings (Separated for Food and Drinks) */}
+                    {foodProductsList.length >= foodPlanLimit && (
                       <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-200 animate-fade-in">
                         <div className="flex items-center gap-3">
                           <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
                           <div>
                             <strong className="text-amber-300 font-bold block">
-                              Has alcanzado el límite de {getPlanProductLimit(profile.subscriptionPlan || profile.plan)} productos
+                              Cupo de platos normales completado ({foodProductsList.length}/{foodPlanLimit})
                             </strong>
                             <span className="text-gray-300 text-[11px]">
-                              Tu plan actual ({(profile.subscriptionPlan || profile.plan) === 'medio' ? 'Plan Medio' : (profile.subscriptionPlan || profile.plan) === 'pro' || (profile.subscriptionPlan || profile.plan) === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}) no te permite publicar más de {getPlanProductLimit(profile.subscriptionPlan || profile.plan)} productos. Actualiza tu plan para ampliar tu catálogo.
+                              Has alcanzado el límite de {foodPlanLimit} platos o comidas de tu {userCurrentPlan === 'medio' ? 'Plan Medio' : userCurrentPlan === 'pro' || userCurrentPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}. (Aún puedes agregar hasta {drinkPlanLimit} bebidas si no has llenado tu cupo de bebidas).
                             </span>
                           </div>
                         </div>
@@ -2802,6 +2876,29 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
                         >
                           ⚡ Actualizar Plan
+                        </button>
+                      </div>
+                    )}
+
+                    {drinksList.length >= drinkPlanLimit && (
+                      <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-red-200 animate-fade-in">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl shrink-0">🥤</span>
+                          <div>
+                            <strong className="text-red-300 font-bold block">
+                              Cupo de bebidas completado ({drinksList.length}/{drinkPlanLimit})
+                            </strong>
+                            <span className="text-gray-300 text-[11px]">
+                              Has alcanzado el límite de {drinkPlanLimit} bebidas permitidas para tu plan (aparte de tus {foodPlanLimit} productos normales). Actualiza al siguiente plan para agregar más bebidas.
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('subscription')}
+                          className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-extrabold px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
+                        >
+                          ⚡ Más Bebidas
                         </button>
                       </div>
                     )}
@@ -3727,11 +3824,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             Gestor y Catálogo de Bebidas
                           </h2>
                           <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-red-950/40 text-red-300 border border-red-800/40">
-                            {drinksList.length} registradas
+                            {drinksList.length} / {drinkPlanLimit} bebidas permitidas
                           </span>
                         </div>
                         <p className="text-xs text-gray-400 font-medium mt-1">
-                          Agrega gaseosas, jugos naturales, cervezas, aguas y bebidas para que tus clientes las añadan a sus pedidos.
+                          Agrega gaseosas, jugos naturales, cervezas, aguas y bebidas para que tus clientes las añadan a sus pedidos (aparte de tus platos normales).
                         </p>
                       </div>
 
@@ -3754,6 +3851,30 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         </button>
                       </div>
                     </div>
+
+                    {/* Banner Drinks Limit Reached */}
+                    {drinksList.length >= drinkPlanLimit && (
+                      <div className="bg-red-500/10 border border-red-500/30 p-4.5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-red-200 animate-fade-in">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl shrink-0">🥤</span>
+                          <div>
+                            <strong className="text-red-300 font-bold block text-sm">
+                              Has alcanzado el límite de {drinkPlanLimit} bebidas de tu {userCurrentPlan === 'medio' ? 'Plan Medio' : userCurrentPlan === 'pro' || userCurrentPlan === 'avanzado' ? 'Plan Avanzado' : 'Plan Básico'}
+                            </strong>
+                            <p className="text-gray-300 text-[11px] mt-0.5">
+                              En tu plan actual tienes cupo para {drinkPlanLimit} bebidas aparte de tus {foodPlanLimit} productos normales (Básico: 2 bebidas • Medio: 4 bebidas • Avanzado: 6 bebidas).
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('subscription')}
+                          className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-black px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
+                        >
+                          ⚡ Actualizar Plan
+                        </button>
+                      </div>
+                    )}
 
                     {/* Banner WhatsApp Requirement Warning */}
                     {(!profile.whatsapp || profile.whatsapp.replace(/\D/g, '').length < 7) && (
@@ -5745,22 +5866,42 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           </div>
                         )}
 
-                        <div>
-                          <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Cupo de Productos</p>
-                          <p className="text-xs text-white font-semibold mt-1">
-                            {products.length} / {getPlanProductLimit(profile.subscriptionPlan || profile.plan)} productos subidos
-                          </p>
-                          <div className="w-full bg-gray-900 h-1.5 rounded-full mt-2 overflow-hidden border border-gray-850">
-                            <div 
-                              className={`h-full ${products.length >= getPlanProductLimit(profile.subscriptionPlan || profile.plan) ? 'bg-red-500' : 'bg-emerald-400'}`}
-                              style={{ width: `${Math.min(100, (products.length / getPlanProductLimit(profile.subscriptionPlan || profile.plan)) * 100)}%` }}
-                            />
+                        <div className="space-y-2.5">
+                          <p className="text-[10px] text-gray-550 font-bold uppercase font-mono">Cupo del Plan</p>
+                          <div>
+                            <div className="flex justify-between text-[11px]">
+                              <span className="text-gray-400 font-medium">Platos / Comidas Normales:</span>
+                              <span className={`font-mono font-bold ${foodProductsList.length >= foodPlanLimit ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                {foodProductsList.length} / {foodPlanLimit}
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-900 h-1.5 rounded-full mt-1 overflow-hidden border border-gray-850">
+                              <div 
+                                className={`h-full ${foodProductsList.length >= foodPlanLimit ? 'bg-amber-500' : 'bg-emerald-400'}`}
+                                style={{ width: `${Math.min(100, (foodProductsList.length / foodPlanLimit) * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between text-[11px]">
+                              <span className="text-gray-400 font-medium">Bebidas (aparte):</span>
+                              <span className={`font-mono font-bold ${drinksList.length >= drinkPlanLimit ? 'text-red-400' : 'text-red-300'}`}>
+                                {drinksList.length} / {drinkPlanLimit}
+                              </span>
+                            </div>
+                            <div className="w-full bg-gray-900 h-1.5 rounded-full mt-1 overflow-hidden border border-gray-850">
+                              <div 
+                                className={`h-full ${drinksList.length >= drinkPlanLimit ? 'bg-red-500' : 'bg-[#D62839]'}`}
+                                style={{ width: `${Math.min(100, (drinksList.length / drinkPlanLimit) * 100)}%` }}
+                              />
+                            </div>
                           </div>
                         </div>
 
                         {(profile.subscriptionStatus === 'trial' || !profile.subscriptionStatus) && (
                           <div className="bg-amber-500/5 border border-amber-500/15 p-3 rounded-xl text-[10px] text-amber-200 font-semibold leading-relaxed">
-                            🎁 Tu período inicial es de <strong>1 semana (7 días) de prueba gratis</strong> en Plan Básico (hasta 5 productos). Al concluir los 7 días, los productos se ocultarán a los clientes si no se ha validado tu comprobante de pago ($49.000 COP/mes).
+                            🎁 Tu período inicial es de <strong>1 semana (7 días) de prueba gratis</strong> en Plan Básico (hasta 5 platos normales + 2 bebidas aparte). Al concluir los 7 días, los productos se ocultarán a los clientes si no se ha validado tu comprobante de pago ($49.000 COP/mes).
                           </div>
                         )}
                         {profile.subscriptionStatus === 'under_review' && (
@@ -5784,9 +5925,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           
                           <div className="grid sm:grid-cols-3 gap-4">
                             {[
-                              { id: 'basico', name: 'Plan Básico', price: 49000, limit: 5, desc: 'Hasta 5 productos para el inicio de tu negocio.' },
-                              { id: 'medio', name: 'Plan Medio', price: 79000, limit: 12, desc: 'Hasta 12 productos para tiendas en crecimiento.' },
-                              { id: 'pro', name: 'Plan Avanzado', price: 99000, limit: 24, desc: 'Hasta 24 productos para marcas de alto calibre.' }
+                              { id: 'basico', name: 'Plan Básico', price: 49000, limit: 5, drinkLimit: 2, desc: 'Hasta 5 platos normales + 2 bebidas aparte para el inicio de tu negocio.' },
+                              { id: 'medio', name: 'Plan Medio', price: 79000, limit: 12, drinkLimit: 4, desc: 'Hasta 12 platos normales + 4 bebidas aparte para tiendas en crecimiento.' },
+                              { id: 'pro', name: 'Plan Avanzado', price: 99000, limit: 24, drinkLimit: 6, desc: 'Hasta 24 platos normales + 6 bebidas aparte para marcas de alto calibre.' }
                             ].map((pl) => {
                               const isCurrentActive = (profile.subscriptionPlan === pl.id) || (!profile.subscriptionPlan && pl.id === 'basico');
                               const isPendingReview = profile.subscriptionStatus === 'under_review' && profile.requestedPlan === pl.id;
@@ -5820,7 +5961,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   </div>
                                   <div className="pt-2">
                                     <div className="text-lg font-mono font-extrabold text-white">${pl.price.toLocaleString()} <span className="text-[10px] text-gray-500 italic">COP/mes</span></div>
-                                    <div className="text-[9px] text-indigo-400 font-bold mt-1 uppercase tracking-wider">{pl.limit} Productos Máx.</div>
+                                    <div className="text-[9px] text-indigo-400 font-bold mt-1 uppercase tracking-wider flex items-center gap-1.5 flex-wrap">
+                                      <span>{pl.limit} Platos</span>
+                                      <span className="text-red-400 font-extrabold">+ {pl.drinkLimit} Bebidas</span>
+                                    </div>
                                     
                                     {isCurrentActive ? (
                                       <div className="w-full mt-3 h-8 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-extrabold text-[10px] rounded-xl flex items-center justify-center gap-1 uppercase tracking-wider">

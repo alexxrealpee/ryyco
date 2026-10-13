@@ -4022,6 +4022,21 @@ export function getPlanProductLimit(plan?: string | null): number {
 }
 
 /**
+ * Returns the maximum number of beverage/drink products a restaurant can publish,
+ * which are permitted APARTE of regular food products:
+ * - Plan 1 (Básico): 2 bebidas
+ * - Plan 2 (Medio): 4 bebidas
+ * - Plan 3 (Pro / Avanzado): 6 bebidas
+ */
+export function getPlanDrinkLimit(plan?: string | null): number {
+  if (!plan) return 2;
+  const p = plan.toLowerCase().trim();
+  if (p === 'medio') return 4;
+  if (p === 'pro' || p === 'avanzado') return 6;
+  return 2;
+}
+
+/**
  * Checks whether subscription is expired/suspended and provides status info.
  */
 export function isSubscriptionExpiredOrSuspended(user?: { 

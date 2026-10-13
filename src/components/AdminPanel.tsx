@@ -29,6 +29,7 @@ import {
   getSubscriptionDaysRemaining,
   isSubscriptionExpiredOrSuspended,
   getPlanProductLimit,
+  getPlanDrinkLimit,
   getOrderDeliveryCode
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
@@ -3398,7 +3399,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 <Zap className="w-3 h-3 text-amber-400" /> Plan de Tienda:
                               </span>
                               <span className="text-[9.5px] font-mono text-indigo-400 font-bold">
-                                Límite: {getPlanProductLimit(user.subscriptionPlan || 'basico')} productos
+                                Límite: {getPlanProductLimit(user.subscriptionPlan || 'basico')} platos + {getPlanDrinkLimit(user.subscriptionPlan || 'basico')} bebidas
                               </span>
                             </div>
                             <select
@@ -3406,9 +3407,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               onChange={(e) => handlePlanUpgrade(user, e.target.value as any)}
                               className="w-full rounded-xl py-2 px-2.5 text-[10.5px] uppercase font-black border cursor-pointer outline-none bg-indigo-500/10 hover:bg-indigo-500/15 text-indigo-300 border-indigo-500/30 transition shadow-sm text-center"
                             >
-                              <option value="basico" className="bg-gray-950 text-indigo-300">🥉 BÁSICO ($49.000 COP • 5 PROD.)</option>
-                              <option value="medio" className="bg-gray-950 text-indigo-300">🥈 MEDIO ($79.000 COP • 12 PROD.)</option>
-                              <option value="pro" className="bg-gray-950 text-indigo-300">🥇 AVANZADO / PRO ($99.000 COP • 24 PROD.)</option>
+                              <option value="basico" className="bg-gray-950 text-indigo-300">🥉 BÁSICO ($49.000 COP • 5 PLATOS + 2 BEBIDAS)</option>
+                              <option value="medio" className="bg-gray-950 text-indigo-300">🥈 MEDIO ($79.000 COP • 12 PLATOS + 4 BEBIDAS)</option>
+                              <option value="pro" className="bg-gray-950 text-indigo-300">🥇 AVANZADO / PRO ($99.000 COP • 24 PLATOS + 6 BEBIDAS)</option>
                             </select>
                           </div>
 
