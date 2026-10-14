@@ -137,6 +137,7 @@ import { BasicPlanTrialModal } from './BasicPlanTrialModal';
 import { DashboardTrialBanner } from './DashboardTrialBanner';
 import { getProductParsedVariants, getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import { generateRyycoImageName } from '../lib/seoImageRenamer';
+import { RestaurantSalesStats } from './RestaurantSalesStats';
 
 export const RESTAURANT_CATEGORIES = [
   '🍔 Hamburguesas',
@@ -2317,7 +2318,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             }`}
           >
             <BarChart3 className="w-4 h-4" />
-            Estadísticas / Visitas
+            Estadísticas de Ventas
           </button>
 
           <button
@@ -5724,71 +5725,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   />
                 )}
 
-                {/* 5. VISITOR ANALYTICS TAB */}
+                {/* 5. RESTAURANT SALES STATS TAB */}
                 {activeTab === 'analytics' && (
-                  <div className="space-y-6">
-                    <div className="border-b border-gray-900 pb-4">
-                      <h2 className="text-xl font-bold text-white">Reportes de Tránsito de la Tienda</h2>
-                      <p className="text-xs text-gray-500 font-medium">Analiza demografías de procedencia, plataformas referidoras, canales y clics.</p>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      
-                      {/* Referrers */}
-                      <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4">
-                        <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block border-b border-gray-900 pb-2">Plataformas Referidoras</span>
-                        <div className="space-y-3">
-                          {[
-                            { name: 'Instagram Bio', count: '45%' },
-                            { name: 'TikTok Links', count: '30%' },
-                            { name: 'WhatsApp', count: '15%' },
-                            { name: 'Google Search', count: '10%' }
-                          ].map((ref, i) => (
-                            <div key={i} className="flex justify-between items-center text-xs text-gray-400">
-                              <span className="font-semibold text-white">{ref.name}</span>
-                              <span className="font-mono text-indigo-400">{ref.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Devices */}
-                      <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4">
-                        <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block border-b border-gray-900 pb-2">Dispositivos Utilizados</span>
-                        <div className="space-y-3">
-                          {[
-                            { name: 'Móvil / Celulares', count: '85%' },
-                            { name: 'Ordenador / Computador', count: '12%' },
-                            { name: 'Tabletas', count: '3%' }
-                          ].map((dev, i) => (
-                            <div key={i} className="flex justify-between items-center text-xs text-gray-400">
-                              <span className="font-semibold text-white">{dev.name}</span>
-                              <span className="font-mono text-emerald-400">{dev.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Countries */}
-                      <div className="bg-gray-950 border border-gray-900 p-6 rounded-3xl space-y-4 col-span-1 md:col-span-2 lg:col-span-1">
-                        <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider block border-b border-gray-900 pb-2">Países de Audiencia</span>
-                        <div className="space-y-3">
-                          {[
-                            { name: 'Colombia 🇨🇴', count: '520 visitas' },
-                            { name: 'España 🇪🇸', count: '280 visitas' },
-                            { name: 'México 🇲🇽', count: '190 visitas' },
-                            { name: 'Argentina 🇦🇷', count: '90 visitas' }
-                          ].map((cnt, i) => (
-                            <div key={i} className="flex justify-between items-center text-xs text-gray-400">
-                              <span className="font-semibold text-white">{cnt.name}</span>
-                              <span className="font-mono text-white/80">{cnt.count}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
+                  <RestaurantSalesStats
+                    orders={orders}
+                    products={products}
+                    storeName={profile.displayName || profile.storeName || 'Mi Restaurante'}
+                    formatPrice={formatPrice}
+                    onNavigateToOrders={() => setActiveTab('orders')}
+                  />
                 )}
 
                 {/* 5. SUSCRIPCIÓN Y COBROS TAB (COP CURRENCY) */}
@@ -7216,7 +7161,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   }`}
                 >
                   <BarChart3 className="w-4 h-4 text-emerald-400" />
-                  <span>Estadísticas</span>
+                  <span>Estadísticas de Ventas</span>
                 </button>
 
                 {/* Diseñador de Tienda */}

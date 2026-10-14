@@ -175,104 +175,127 @@ export function generateSubscriptionCobroMessageByType(
   user: AdminUser, 
   templateType: 'standard' | 'urgent' | 'promo' | 'trial' = 'standard'
 ): string {
-  const storeName = user.storeName || user.username || 'Tu tienda';
-  const username = user.username ? `@${user.username}` : '';
-  const planName = user.subscriptionPlan === 'pro' 
-    ? 'Plan Avanzado / Pro' 
-    : user.subscriptionPlan === 'medio' 
-    ? 'Plan Medio' 
-    : 'Plan Básico';
-  const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
+  const storeName = user.storeName || user.username || 'su restaurante';
+  const isPro = user.subscriptionPlan === 'pro' || (user.subscriptionPlan as any) === 'avanzado';
+  const isMedio = user.subscriptionPlan === 'medio';
+  const planName = isPro 
+    ? 'Avanzado' 
+    : isMedio 
+    ? 'Medio' 
+    : 'Básico';
+  const planPrice = isPro 
+    ? 99000 
+    : isMedio 
+    ? 79000 
+    : 49000;
   const planPriceFormatted = `$${planPrice.toLocaleString('es-CO')} COP`;
-  const anchorDay = getSubscriptionAnchorDay(user);
+  const anchorDay = getSubscriptionAnchorDay(user) || 3;
   const { effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
 
   if (templateType === 'urgent') {
     return (
       `⚠️ *AVISO URGENTE DE COBRO - RYYCO.com* ⚠️\n\n` +
-      `Hola *${storeName}* ${username ? `(${username})` : ''}, te saludamos de la administración de *RYYCO.com* 🍔🛵\n\n` +
-      `Te informamos que la mensualidad de tu tienda se encuentra actualmente *EXPIRADA / VENCIDA* y tu catálogo ha sido pausado temporalmente para los clientes 🛑.\n\n` +
-      `¡No detengas tus ventas! Con solo renovar tu plan activo tu tienda volverá a recibir pedidos al instante.\n\n` +
-      `📋 *Datos de Renovación:*\n` +
-      `• Tienda: *${storeName}*\n` +
-      `• Plan: *${planName}*\n` +
-      `• Monto a pagar: *${planPriceFormatted}*\n` +
-      `• Día de corte: *Día ${anchorDay} de cada mes*\n\n` +
-      `💳 *Medios de Pago Inmediatos:*\n` +
-      `• *Nequi:* 3219730865\n` +
-      `• *Bancolombia (Ahorros):* 3219730865\n` +
-      `• *A nombre de:* RYYCO Administración\n\n` +
-      `Envíanos la foto o captura del comprobante por este chat y reactivaremos tu catálogo en https://ryyco.com/ en menos de 2 minutos 🚀`
+      `🍔 *¡Hola, equipo de ${storeName}!* 👋\n\n` +
+      `Reciban un cordial saludo de la administración de *RYYCO.com*.\n\n` +
+      `📊 *¡Conozcan los resultados de este mes!*\n\n` +
+      `Los invitamos a ingresar a su panel de administración para revisar los pedidos y el desempeño de su restaurante en nuestra plataforma.\n\n` +
+      `🔗 https://ryyco.com/pedidos-restaurante\n\n` +
+      `🔔 *ESTADO DE SUSCRIPCIÓN: VENCIDA / CATÁLOGO PAUSADO* 🛑\n\n` +
+      `Su mensualidad se encuentra vencida y su catálogo ha sido pausado temporalmente para los clientes. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.\n\n` +
+      `📋 *DETALLES DEL PLAN*\n` +
+      `🏪 Restaurante: ${storeName}\n` +
+      `📦 Plan: ${planName}\n` +
+      `💰 Mensualidad: *${planPriceFormatted}*\n` +
+      `📅 Día de corte: *${anchorDay} de cada mes*\n\n` +
+      `💳 *PAGO DE RENOVACIÓN*\n` +
+      `📱 Nequi: *3219730865*\n\n` +
+      `✅ *Para reactivar su restaurante*, realicen el pago y envíennos el comprobante por este chat. Una vez confirmado, procederemos con la reactivación inmediata.\n\n` +
+      `🚀 *¡Gracias por confiar en RYYCO! Seguimos trabajando para impulsar las ventas de su restaurante.*\n\n` +
+      `❤️ *Administración RYYCO*\n` +
+      `🌐 https://ryyco.com`
     );
   }
 
   if (templateType === 'promo') {
     return (
-      `¡Hola equipo de *${storeName}*! 🌟\n\n` +
-      `Te saludamos de *RYYCO.com*. Valoramos mucho tu presencia en nuestra plataforma y queremos que sigas vendiendo sin interrupciones 🍕🥗\n\n` +
-      `Notamos que tu suscripción mensual venció (*${planName}* - *${planPriceFormatted}*). Tus clientes te buscan y queremos ayudarte a seguir facturando.\n\n` +
-      `💳 *Revalida tu plan transfiriendo a:*\n` +
-      `• *Nequi / Bancolombia:* 3219730865\n` +
-      `• *Valor:* *${planPriceFormatted}*\n` +
-      `• *A nombre de:* RYYCO Administración\n\n` +
-      `📲 Envíanos tu soporte de pago por este WhatsApp y reactivaremos tu tienda de inmediato en https://ryyco.com/ ✨ ¡Quedamos muy atentos!`
+      `🍔 *¡Hola, equipo de ${storeName}!* 🌟\n\n` +
+      `Reciban un cordial saludo de la administración de *RYYCO.com*.\n\n` +
+      `📊 *¡Conozcan los resultados de este mes!*\n\n` +
+      `Los invitamos a ingresar a su panel de administración para revisar los pedidos y el desempeño de su restaurante en nuestra plataforma.\n\n` +
+      `🔗 https://ryyco.com/pedidos-restaurante\n\n` +
+      `🔔 *ESTADO DE SUSCRIPCIÓN: VENCIDA* ⚠️\n\n` +
+      `Valoramos mucho su presencia en RYYCO y queremos que sigan vendiendo sin interrupciones. Sus clientes los buscan y para mantener sus productos visibles y activos, es necesario renovar su suscripción.\n\n` +
+      `📋 *DETALLES DEL PLAN*\n` +
+      `🏪 Restaurante: ${storeName}\n` +
+      `📦 Plan: ${planName}\n` +
+      `💰 Mensualidad: *${planPriceFormatted}*\n` +
+      `📅 Día de corte: *${anchorDay} de cada mes*\n\n` +
+      `💳 *PAGO DE RENOVACIÓN*\n` +
+      `📱 Nequi: *3219730865*\n\n` +
+      `✅ *Para reactivar su restaurante*, realicen el pago y envíennos el comprobante por este chat. Una vez confirmado, procederemos con la reactivación.\n\n` +
+      `🚀 *¡Gracias por confiar en RYYCO! Seguimos trabajando para impulsar las ventas de su restaurante.*\n\n` +
+      `❤️ *Administración RYYCO*\n` +
+      `🌐 https://ryyco.com`
     );
   }
 
   if (templateType === 'trial') {
     return (
-      `¡Hola equipo de *${storeName}*! 🎉\n\n` +
-      `Esperamos que hayan tenido una gran experiencia en sus 7 días de prueba gratuita en *RYYCO.com* 🍔.\n\n` +
-      `Tu período de prueba ha culminado con éxito. Para mantener tus productos visibles, seguir recibiendo pedidos de clientes y disfrutando de todas las herramientas de la plataforma, por favor realiza el pago de tu primera mensualidad:\n\n` +
-      `📋 *Detalles del Plan:*\n` +
-      `• Plan: *${planName}*\n` +
-      `• Valor: *${planPriceFormatted} / mes*\n` +
-      `• Día de corte mensual: *Día ${anchorDay} de cada mes*\n\n` +
-      `💳 *Cuentas Oficiales de Pago:*\n` +
-      `• *Nequi:* 3219730865\n` +
-      `• *Bancolombia (Ahorros):* 3219730865\n` +
-      `• *A nombre de:* RYYCO Administración\n\n` +
-      `Envíanos tu comprobante por este chat para dejar tu cuenta 100% activa en https://ryyco.com/ 🚀`
+      `🍔 *¡Hola, equipo de ${storeName}!* 🎉\n\n` +
+      `Reciban un cordial saludo de la administración de *RYYCO.com*.\n\n` +
+      `📊 *¡Conozcan los resultados de este mes!*\n\n` +
+      `Los invitamos a ingresar a su panel de administración para revisar los pedidos y el desempeño de su restaurante en nuestra plataforma.\n\n` +
+      `🔗 https://ryyco.com/pedidos-restaurante\n\n` +
+      `🔔 *ESTADO DE SUSCRIPCIÓN: PRUEBA GRATUITA FINALIZADA* ⚠️\n\n` +
+      `Su período de prueba gratuita de 7 días ha concluido con éxito. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario activar su primera mensualidad.\n\n` +
+      `📋 *DETALLES DEL PLAN*\n` +
+      `🏪 Restaurante: ${storeName}\n` +
+      `📦 Plan: ${planName}\n` +
+      `💰 Mensualidad: *${planPriceFormatted}*\n` +
+      `📅 Día de corte: *${anchorDay} de cada mes*\n\n` +
+      `💳 *PAGO DE RENOVACIÓN*\n` +
+      `📱 Nequi: *3219730865*\n\n` +
+      `✅ *Para reactivar su restaurante*, realicen el pago y envíennos el comprobante por este chat. Una vez confirmado, procederemos con la reactivación.\n\n` +
+      `🚀 *¡Gracias por confiar en RYYCO! Seguimos trabajando para impulsar las ventas de su restaurante.*\n\n` +
+      `❤️ *Administración RYYCO*\n` +
+      `🌐 https://ryyco.com`
     );
   }
 
   // Standard template
-  let statusBadge = '🔴 EXPIRADA / VENCIDA';
-  let statusExplanation = 'Te informamos que la suscripción de tu tienda en la plataforma se encuentra actualmente *EXPIRADA / VENCIDA* ⚠️.\n\nAl estar vencida, tu catálogo y productos se ocultan para los clientes y tus pedidos no pueden procesarse con normalidad.';
+  let statusTitle = 'VENCIDA';
+  let statusText = 'Su mensualidad se encuentra vencida. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.';
 
   if (effectiveStatus === 'suspended') {
-    statusBadge = '⚠️ SUSPENDIDA';
-    statusExplanation = 'Te informamos que tu tienda se encuentra *SUSPENDIDA TEMPORALMENTE* por pago pendiente de mensualidad ⚠️.';
+    statusTitle = 'SUSPENDIDA';
+    statusText = 'Su mensualidad se encuentra pendiente y su restaurante está suspendido temporalmente. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.';
   } else if (effectiveStatus === 'trial') {
-    statusBadge = '🆓 PERÍODO DE PRUEBA FINALIZADO';
-    statusExplanation = 'Tu semana de prueba gratuita de 7 días ha concluido con éxito. Para que tus productos continúen visibles y actives tu tienda en RYYCO, requerimos la confirmación de pago de tu mensualidad.';
+    statusTitle = 'PRUEBA FINALIZADA';
+    statusText = 'Su período de prueba gratuita de 7 días ha concluido con éxito. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario activar su suscripción mensual.';
   } else if (effectiveStatus === 'pending_payment') {
-    statusBadge = '🟡 PENDIENTE DE PAGO';
-    statusExplanation = 'Te recordamos que tenemos pendiente la validación del pago mensual de tu suscripción en la plataforma.';
-  } else if (effectiveStatus === 'active') {
-    statusBadge = '🟢 RECORDATORIO DE CORTE';
-    statusExplanation = `Te saludamos cordialmente para compartirte los datos de renovación de tu suscripción mensual (Día de corte: ${anchorDay}).`;
+    statusTitle = 'PENDIENTE DE PAGO';
+    statusText = 'Su mensualidad se encuentra pendiente de pago. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.';
   }
 
   return (
-    `¡Hola estimado equipo de *${storeName}*! 👋\n\n` +
-    `Te saludamos desde la administración de *RYYCO.com* 🍔🍕\n\n` +
-    `🔔 *Estado de tu cuenta:* ${statusBadge}\n\n` +
-    `${statusExplanation}\n\n` +
-    `📋 *Detalles de tu Plan:*\n` +
-    `• Tienda: *${storeName}* ${username ? `(${username})` : ''}\n` +
-    `• Plan: *${planName}*\n` +
-    `• Valor a pagar: *${planPriceFormatted} / mes*\n` +
-    `• Día de corte mensual: *Día ${anchorDay} de cada mes*\n\n` +
-    `💳 *Medios de Pago para Reactivación Inmediata:*\n` +
-    `• *Nequi:* 3219730865\n` +
-    `• *Bancolombia (Ahorros):* 3219730865\n` +
-    `• *A nombre de:* RYYCO Administración\n\n` +
-    `📲 *¿Cómo reactivar tu tienda?*\n` +
-    `1. Realiza tu transferencia por *${planPriceFormatted}*.\n` +
-    `2. Envíanos la captura o foto del comprobante respondiendo a este chat.\n` +
-    `3. Nuestro equipo reactivará tu catálogo y visibilidad al instante en https://ryyco.com/ 🚀\n\n` +
-    `¡Muchas gracias por ser parte de RYYCO y quedamos atentos a tu comprobante! 🙏`
+    `🍔 *¡Hola, equipo de ${storeName}!* 👋\n\n` +
+    `Reciban un cordial saludo de la administración de *RYYCO.com*.\n\n` +
+    `📊 *¡Conozcan los resultados de este mes!*\n\n` +
+    `Los invitamos a ingresar a su panel de administración para revisar los pedidos y el desempeño de su restaurante en nuestra plataforma.\n\n` +
+    `🔗 https://ryyco.com/pedidos-restaurante\n\n` +
+    `🔔 *ESTADO DE SUSCRIPCIÓN: ${statusTitle}* ⚠️\n\n` +
+    `${statusText}\n\n` +
+    `📋 *DETALLES DEL PLAN*\n` +
+    `🏪 Restaurante: ${storeName}\n` +
+    `📦 Plan: ${planName}\n` +
+    `💰 Mensualidad: *${planPriceFormatted}*\n` +
+    `📅 Día de corte: *${anchorDay} de cada mes*\n\n` +
+    `💳 *PAGO DE RENOVACIÓN*\n` +
+    `📱 Nequi: *3219730865*\n\n` +
+    `✅ *Para reactivar su restaurante*, realicen el pago y envíennos el comprobante por este chat. Una vez confirmado, procederemos con la reactivación.\n\n` +
+    `🚀 *¡Gracias por confiar en RYYCO! Seguimos trabajando para impulsar las ventas de su restaurante.*\n\n` +
+    `❤️ *Administración RYYCO*\n` +
+    `🌐 https://ryyco.com`
   );
 }
 
@@ -7068,7 +7091,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     placeholder="Escribe el mensaje de cobro..."
                   />
                   <p className="text-[10px] text-gray-500 italic">
-                    💡 El mensaje incluye formato para WhatsApp (*negrita*), cuentas de Nequi / Bancolombia y enlace a https://ryyco.com/.
+                    💡 El mensaje incluye formato para WhatsApp (*negrita*), cuenta Nequi, enlace al panel de pedidos y portal de RYYCO.
                   </p>
                 </div>
 
