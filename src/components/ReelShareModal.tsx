@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
   Share2, 
@@ -13,7 +13,9 @@ import {
   CheckCircle2, 
   HelpCircle, 
   Smartphone, 
-  ChevronDown 
+  ChevronDown,
+  Instagram,
+  Facebook
 } from 'lucide-react';
 import { ProductItem, UserProfile } from '../types';
 
@@ -22,6 +24,8 @@ interface ReelShareModalProps {
   onClose: () => void;
   product: ProductItem | null;
   profile?: UserProfile | null;
+  customShareUrl?: string;
+  source?: 'reel' | 'product';
 }
 
 export const ReelShareModal: React.FC<ReelShareModalProps> = ({
@@ -29,6 +33,8 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
   onClose,
   product,
   profile,
+  customShareUrl,
+  source = 'reel'
 }) => {
   const [copied, setCopied] = useState(false);
   const [isGeneratingStory, setIsGeneratingStory] = useState(false);
@@ -39,9 +45,12 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
   if (!isOpen || !product) return null;
 
   const dishImage = product.imageURL || '';
-  const reelUrl = `${window.location.origin}/reels?id=${encodeURIComponent(product.id)}`;
-  const storeHandle = profile?.username ? `@${profile.username}` : (product.storeUsername ? `@${product.storeUsername}` : '@ryyco');
-  const storeName = profile?.displayName || product.storeName || 'Ryyco';
+  const defaultReelUrl = `${window.location.origin}/reels?id=${encodeURIComponent(product.id)}`;
+  const reelUrl = customShareUrl || defaultReelUrl;
+  const storeHandle = profile?.username 
+    ? `@${profile.username.replace(/^@/, '')}` 
+    : (product.storeUsername ? `@${product.storeUsername.replace(/^@/, '')}` : '@ryyco');
+  const storeName = profile?.displayName || profile?.storeName || product.storeName || 'Ryyco';
   const priceFormatted = new Intl.NumberFormat('es-CO', {
     style: 'currency',
     currency: 'COP',
@@ -302,13 +311,13 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
       } catch (e) {}
 
       const blob = await generateStoryCardBlob();
-      const fileName = `reel-${product.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-historia.jpg`;
+      const fileName = `${source === 'product' ? 'producto' : 'reel'}-${product.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-historia.jpg`;
 
       if (blob && navigator.canShare) {
         const file = new File([blob], fileName, { type: 'image/jpeg' });
         const shareData = {
           title: `${product.name} • ${storeName}`,
-          text: `🔥 Mira este plato en Ryyco: ${reelUrl}`,
+          text: `🔥 ¡Pide este plato en Ryyco! 👉 ${reelUrl}`,
           files: [file],
         };
 
@@ -342,6 +351,106 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
     }
   };
 
+  // Specific handler for Instagram Stories
+  const handleShareToInstagram = async () => {
+    setIsGeneratingStory(true);
+    try {
+      try {
+        await navigator.clipboard.writeText(reelUrl);
+        setCopied(true);
+      } catch (e) {}
+
+      const blob = await generateStoryCardBlob();
+      const fileName = `instagram-story-${product.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`;
+
+      if (blob && navigator.canShare) {
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+        const shareData = {
+          title: `${product.name} • ${storeName}`,
+          text: `🔥 Pídelo en Ryyco: ${reelUrl}`,
+          files: [file],
+        };
+
+        if (navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          showFeedback('¡Listo! Enlace copiado. Pégalo en el sticker 🔗 ENLACE de tu historia.');
+          return;
+        }
+      }
+
+      // Fallback: download the image and copy link
+      if (blob) {
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        showFeedback('¡Tarjeta 9:16 guardada! Abre Instagram y añade el sticker 🔗 ENLACE.');
+      } else {
+        showFeedback('¡Enlace copiado para tu sticker de Instagram!');
+      }
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        showFeedback('Enlace copiado para Instagram.');
+      }
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  };
+
+  // Specific handler for Facebook Stories and Feed
+  const handleShareToFacebook = async () => {
+    setIsGeneratingStory(true);
+    try {
+      try {
+        await navigator.clipboard.writeText(reelUrl);
+        setCopied(true);
+      } catch (e) {}
+
+      const blob = await generateStoryCardBlob();
+      const fileName = `facebook-story-${product.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}.jpg`;
+
+      // If mobile can share file directly to Facebook Stories:
+      if (blob && navigator.canShare) {
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+        const shareData = {
+          title: `${product.name} • ${storeName}`,
+          text: `🔥 Pídelo en Ryyco: ${reelUrl}`,
+          files: [file],
+        };
+
+        if (navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          showFeedback('¡Diseño listo para tu historia de Facebook!');
+          return;
+        }
+      }
+
+      // Fallback: open Facebook share dialog and download image if desired
+      if (blob) {
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+      }
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(reelUrl)}`, '_blank');
+      showFeedback('¡Diseño 9:16 descargado y ventana de Facebook abierta!');
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(reelUrl)}`, '_blank');
+      }
+    } finally {
+      setIsGeneratingStory(false);
+    }
+  };
+
   // 3. Download the 9:16 Story Card
   const handleDownloadStoryCard = async () => {
     setIsGeneratingStory(true);
@@ -365,7 +474,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
         setCopied(true);
       } catch (e) {}
 
-      showFeedback('¡Historia 9:16 descargada! Pega el enlace en el sticker de Instagram.');
+      showFeedback('¡Historia 9:16 descargada! Pega el enlace en el sticker de Instagram o Facebook.');
     } catch (e) {
       showFeedback('Error descargando la historia.');
     } finally {
@@ -378,7 +487,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
     try {
       await navigator.clipboard.writeText(reelUrl);
       setCopied(true);
-      showFeedback('¡Enlace del reel copiado! Pégalo en el sticker de tu historia.');
+      showFeedback('¡Enlace copiado! Pégalo en el sticker de tu historia.');
       setTimeout(() => setCopied(false), 3000);
     } catch (e) {
       showFeedback('No se pudo copiar el enlace.');
@@ -387,8 +496,27 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
 
   // 5. Share on WhatsApp
   const handleWhatsAppShare = () => {
-    const text = `🔥 Mira este delicioso plato de *${storeName}* en Ryyco:\n*${product.name}* (${priceFormatted})\n👉 Pide aquí: ${reelUrl}`;
+    const text = `🔥 ¡Mira este delicioso plato de *${storeName}* en Ryyco!\n✨ *${product.name}* (${priceFormatted})\n👉 Pídelo aquí directamente: ${reelUrl}`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+  };
+
+  // 6. Simple link share (native OS share dialog)
+  const handleSimpleShare = async () => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${product.name} | ${storeName}`,
+          text: `🍽️ ¡Mira este plato de ${storeName} en Ryyco!\n${product.name} (${priceFormatted})`,
+          url: reelUrl,
+        });
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          handleCopyLink();
+        }
+      }
+    } else {
+      handleCopyLink();
+    }
   };
 
   return (
@@ -413,10 +541,12 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-black text-white tracking-tight flex items-center gap-1.5">
-                  Compartir en Historias
+                  {source === 'product' ? 'Compartir Plato en Historias' : 'Compartir en Historias'}
                 </h3>
                 <p className="text-[11px] text-gray-400 font-medium">
-                  Extrae la imagen del plato para Instagram y WhatsApp
+                  {source === 'product'
+                    ? 'Publica en Historias de Instagram y Facebook con el diseño 9:16'
+                    : 'Extrae la imagen del plato para Instagram, Facebook y WhatsApp'}
                 </p>
               </div>
             </div>
@@ -475,7 +605,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
                     {priceFormatted}
                   </span>
                   <span className="text-[10px] font-bold text-gray-400">
-                    Reel Gastronómico
+                    {source === 'product' ? 'Diseño 9:16 Historias' : 'Reel Gastronómico'}
                   </span>
                 </div>
               </div>
@@ -489,17 +619,65 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
             >
               <Smartphone className="w-5 h-5" />
               <span>
-                {isGeneratingStory ? 'Extrayendo y preparando...' : 'Compartir a Historias (Instagram / WhatsApp)'}
+                {isGeneratingStory ? 'Preparando diseño 9:16...' : 'Compartir a Historias con Diseño (Instagram / Facebook)'}
               </span>
             </button>
 
-            {/* Extraction & Download Options */}
-            <div>
+            {/* Extraction & Social Network Options */}
+            <div className="space-y-2">
+              {/* Option: Instagram Stories */}
+              <button
+                onClick={handleShareToInstagram}
+                disabled={isGeneratingStory}
+                className="w-full flex items-center justify-between p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-pink-500/50 rounded-2xl text-white transition active:scale-[0.99] group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#fd5949] via-[#d6249f] to-[#285AEB] flex items-center justify-center text-white group-hover:scale-110 transition shrink-0 shadow-md">
+                    <Instagram className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-xs font-black text-white block">
+                      Historias de Instagram
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      Diseño 9:16 con enlace copiado para sticker
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-pink-400 bg-pink-500/10 px-2.5 py-1 rounded-lg border border-pink-500/20 group-hover:bg-pink-500/20 transition">
+                  Publicar
+                </span>
+              </button>
+
+              {/* Option: Facebook Stories and Feed */}
+              <button
+                onClick={handleShareToFacebook}
+                disabled={isGeneratingStory}
+                className="w-full flex items-center justify-between p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-[#1877F2]/50 rounded-2xl text-white transition active:scale-[0.99] group cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#1877F2]/15 border border-[#1877F2]/30 flex items-center justify-center text-[#1877F2] group-hover:scale-110 transition shrink-0">
+                    <Facebook className="w-5 h-5 text-[#1877F2]" />
+                  </div>
+                  <div className="text-left">
+                    <span className="text-xs font-black text-white block">
+                      Historias y Feed de Facebook
+                    </span>
+                    <span className="text-[10px] text-gray-400">
+                      Diseño 9:16 y publicación directa en Facebook
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[11px] font-bold text-[#1877F2] bg-[#1877F2]/10 px-2.5 py-1 rounded-lg border border-[#1877F2]/20 group-hover:bg-[#1877F2]/20 transition">
+                  Publicar
+                </span>
+              </button>
+
               {/* Option: Download 9:16 Story Card */}
               <button
                 onClick={handleDownloadStoryCard}
                 disabled={isGeneratingStory}
-                className="w-full flex items-center justify-between p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-white/30 rounded-2xl text-white transition active:scale-[0.99] group cursor-pointer"
+                className="w-full flex items-center justify-between p-3 bg-gray-900/90 hover:bg-gray-800/90 border border-gray-700/80 hover:border-purple-500/40 rounded-2xl text-white transition active:scale-[0.99] group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 group-hover:scale-110 transition shrink-0">
@@ -510,7 +688,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
                       Tarjeta 9:16 HD
                     </span>
                     <span className="text-[10px] text-gray-400">
-                      Imagen vertical con diseño lista para Historias
+                      Imagen vertical con diseño lista para tu galería
                     </span>
                   </div>
                 </div>
@@ -557,9 +735,19 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
                   )}
                 </button>
               </div>
+
+              {/* Simple link share */}
+              <button
+                onClick={handleSimpleShare}
+                type="button"
+                className="w-full py-2 px-3 text-center text-gray-400 hover:text-white text-xs font-medium hover:bg-gray-800/50 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                <span>Compartir enlace simple u otras aplicaciones</span>
+              </button>
             </div>
 
-            {/* Collapsible Step-by-Step Guide for Instagram Stories */}
+            {/* Collapsible Step-by-Step Guide for Instagram Stories & Facebook */}
             <div className="border border-gray-800 rounded-2xl overflow-hidden bg-gray-900/40">
               <button
                 onClick={() => setShowGuide(!showGuide)}
@@ -567,7 +755,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
               >
                 <span className="flex items-center gap-2 text-gray-300">
                   <HelpCircle className="w-4 h-4 text-[#F4B400]" />
-                  ¿Cómo poner el enlace en tu historia de Instagram?
+                  ¿Cómo poner el enlace en tu historia de Instagram o Facebook?
                 </span>
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showGuide ? 'rotate-180' : ''}`} />
               </button>
@@ -579,7 +767,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
                       1
                     </span>
                     <span>
-                      Toca <strong className="text-white">Compartir a Historias</strong> o descarga la tarjeta/foto del plato.
+                      Toca <strong className="text-white">Compartir a Historias</strong> o descarga la tarjeta 9:16 HD del plato en tu galería.
                     </span>
                   </div>
                   <div className="flex items-start gap-2">
@@ -587,7 +775,7 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
                       2
                     </span>
                     <span>
-                      En Instagram Stories, toca el icono de stickers 🏷️ arriba y selecciona el sticker <strong className="text-[#F4B400]">🔗 ENLACE</strong>.
+                      En <strong className="text-white">Instagram Stories</strong> o <strong className="text-white">Facebook Stories</strong>, selecciona la imagen desde tu galería de fotos.
                     </span>
                   </div>
                   <div className="flex items-start gap-2">
@@ -595,7 +783,15 @@ export const ReelShareModal: React.FC<ReelShareModalProps> = ({
                       3
                     </span>
                     <span>
-                      Pega el enlace del reel copiado. ¡Tus seguidores podrán ver el reel y pedir este plato con 1 toque!
+                      Toca el icono de stickers 🏷️ arriba y selecciona el sticker <strong className="text-[#F4B400]">🔗 ENLACE</strong> (o pégalo en el texto de tu publicación).
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="w-5 h-5 rounded-full bg-white/10 text-white font-black flex items-center justify-center shrink-0 text-[10px]">
+                      4
+                    </span>
+                    <span>
+                      Pega el enlace copiado. ¡Tus seguidores y amigos podrán ver el plato con su diseño y pedirlo a domicilio con 1 toque!
                     </span>
                   </div>
                 </div>

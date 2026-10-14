@@ -2525,10 +2525,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           />
                           <ProductShareButton
                             product={product}
-                            storeUsername={profile?.username || ''}
-                            storeName={profile?.storeName || profile?.displayName || ''}
+                            storeUsername={product.storeUsername || profile?.username || ''}
+                            storeName={product.storeName || profile?.storeName || profile?.displayName || ''}
                             currency={currency}
                             variant="card-overlay"
+                            profile={profile}
                           />
                         </div>
                       </div>
@@ -2775,10 +2776,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           />
                           <ProductShareButton
                             product={selectedProduct}
-                            storeUsername={profile?.username || ''}
-                            storeName={profile?.storeName || profile?.displayName || ''}
+                            storeUsername={selectedProduct.storeUsername || profile?.username || ''}
+                            storeName={selectedProduct.storeName || profile?.storeName || profile?.displayName || ''}
                             currency={currency}
                             variant="compact"
+                            profile={profile}
                           />
                         </div>
                       </div>
