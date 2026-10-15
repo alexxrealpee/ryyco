@@ -82,9 +82,9 @@ export function buildDriverOrderWhatsAppMessage(
     ? order.items.map(i => `• ${i.quantity}x ${i.name}${i.selectedVariant ? ` (${i.selectedVariant})` : ''}`).join('\n')
     : (order.notes ? `• ${order.notes}` : '• Productos del pedido');
 
-  // Calcular valor total de los productos (costo de la comida a comprar en el restaurante)
+  // Calcular valor total de los productos (costo de la comida y empaques a comprar en el restaurante)
   const productsSubtotal = (order.items && order.items.length > 0)
-    ? order.items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0)
+    ? order.items.reduce((sum, i) => sum + ((Number(i.price) || 0) * (Number(i.quantity) || 1)), 0) + (Number(order.packagingCost) || 0)
     : Math.max(0, (Number(order.totalAmount) || 0) - (Number(order.deliveryCost || order.deliveryFee || 0)));
 
   const finalProductsAmount = productsSubtotal > 0 ? productsSubtotal : (Number(order.totalAmount) || 0);

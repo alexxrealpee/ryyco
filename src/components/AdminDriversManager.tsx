@@ -572,11 +572,22 @@ export default function AdminDriversManager() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 pt-1 border-t border-gray-850 text-gray-400 text-[11px]">
-                  <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <span>
-                    Vehículo: <strong className="text-white uppercase">{dr.vehicleType}</strong> ({dr.vehicleBrand || 'N/A'}) - Placa: <strong className="text-white">{dr.vehiclePlate || 'N/A'}</strong>
-                  </span>
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-gray-850 text-gray-400 text-[11px]">
+                  <div className="flex items-center gap-2">
+                    <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span>
+                      Vehículo: <strong className="text-white uppercase">{dr.vehicleType}</strong> ({dr.vehicleBrand || 'N/A'}) - Placa: <strong className="text-white">{dr.vehiclePlate || 'N/A'}</strong>
+                    </span>
+                  </div>
+                  {dr.hasDeliveryBag !== false ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                      🎒 Con Maletín Térmico
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/15 text-red-300 border border-red-500/30 text-[10px] font-bold">
+                      ⚠️ Sin Maletín
+                    </span>
+                  )}
                 </div>
 
                 {/* Vehicle & Document Attachments Preview */}

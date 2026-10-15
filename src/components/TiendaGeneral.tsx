@@ -1251,8 +1251,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     try {
       for (const [sellerId, sellerCart] of Object.entries(itemsBySeller)) {
         const subtotal = sellerCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+        const sellerPackagingCost = sellerCart.reduce((sum, item) => {
+          const prod = item?.product || (item as any) || {};
+          const prodId = prod.id || (item as any)?.productId;
+          const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(prod.name || '').trim().toLowerCase()));
+          const cost = (typeof prod.packagingCost === 'number' && !isNaN(prod.packagingCost) && prod.packagingCost > 0)
+            ? prod.packagingCost
+            : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+            ? matchedProd.packagingCost
+            : (typeof prod.packagingCost === 'number' ? prod.packagingCost : (parseFloat((prod as any).packagingCost) || 0));
+          return sum + (cost * (item.quantity || 1));
+        }, 0);
         const deliveryFee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
-        const totalSum = subtotal + deliveryFee;
+        const totalSum = subtotal + sellerPackagingCost + deliveryFee;
         const rNo = Math.floor(1000 + Math.random() * 9000);
 
         const sellerProfile = profiles[sellerId] || findStoreForProduct(sellerCart[0]?.product, profiles);
@@ -1279,16 +1290,25 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           customerLng: custCoordinates?.lng,
           items: sellerCart.map(item => {
             const prod = item?.product || (item as any) || {};
+            const prodId = prod.id || (item as any)?.productId || item.id || '';
+            const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(prod.name || '').trim().toLowerCase()));
+            const unitPackaging = (typeof prod.packagingCost === 'number' && !isNaN(prod.packagingCost) && prod.packagingCost > 0)
+              ? prod.packagingCost
+              : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+              ? matchedProd.packagingCost
+              : (typeof prod.packagingCost === 'number' ? prod.packagingCost : (parseFloat((prod as any).packagingCost) || undefined));
             return {
-              productId: prod.id || (item as any)?.productId || item.id || '',
+              productId: prodId,
               name: prod.name || (item as any)?.name || 'Producto',
               price: typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0),
+              packagingCost: unitPackaging,
               quantity: item.quantity || 1,
               selectedVariant: item.selectedVariant || undefined
             };
           }),
           totalAmount: totalSum,
           deliveryFee: deliveryFee,
+          packagingCost: sellerPackagingCost > 0 ? sellerPackagingCost : undefined,
           orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
           paymentMethod: payMethod === 'whatsapp' ? 'whatsapp' : payMethod === 'transfer' ? 'transfer' : 'delivery_cash',
           notes: custNotes.trim() || undefined,
@@ -1403,6 +1423,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
     const feeVal = order.deliveryFee ?? (isPickup ? 0 : systemDeliveryFee);
     msg += `Subtotal: ${currency}${subtotalVal.toLocaleString()}\n`;
+    if (order.packagingCost && order.packagingCost > 0) {
+      msg += `🥡 Recipientes para llevar: ${currency}${order.packagingCost.toLocaleString()}\n`;
+    }
     msg += `Tipo de Entrega: *${isPickup ? '🛍️ Recoger en Restaurante / Local (Sin costo de envío)' : '🛵 Envío a Domicilio'}*\n`;
     if (!isPickup) {
       msg += `Domicilio: ${currency}${feeVal.toLocaleString('es-CO')}\n`;
@@ -3243,9 +3266,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
                     return sum + (price * (item.quantity || 1));
                   }, 0);
+                  const cartPackagingFee = cart.reduce((sum, item) => {
+                    const p = item?.product || (item as any) || {};
+                    const prodId = p.id || (item as any)?.productId;
+                    const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+                    const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+                      ? p.packagingCost
+                      : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+                      ? matchedProd.packagingCost
+                      : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+                    return sum + (cost * (item.quantity || 1));
+                  }, 0);
                   const uniqueSellersCount = Math.max(1, new Set(cart.map(item => item?.product?.userId || (item as any)?.userId || 'store')).size);
                   const totalDeliveryFee = uniqueSellersCount * systemDeliveryFee;
-                  const total = subtotal + totalDeliveryFee;
+                  const total = subtotal + cartPackagingFee + totalDeliveryFee;
                   const firstUserId = cart[0]?.product?.userId || (cart[0] as any)?.userId;
                   const curr = (firstUserId ? profiles[firstUserId]?.currency : undefined) || '$';
 
@@ -3255,6 +3289,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         <span>Subtotal:</span>
                         <span className="font-mono text-white">{curr}{subtotal.toLocaleString()}</span>
                       </div>
+                      {cartPackagingFee > 0 && (
+                        <div className="flex justify-between items-center text-xs text-amber-300 font-bold">
+                          <span>🥡 Recipientes para llevar:</span>
+                          <span className="font-mono text-white">{curr}{cartPackagingFee.toLocaleString()}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
                         <span>Domicilio ({uniqueSellersCount} {uniqueSellersCount === 1 ? 'restaurante' : 'restaurantes'}):</span>
                         <span className="font-mono text-[#F4B400]">{curr}{totalDeliveryFee.toLocaleString()}</span>
@@ -3581,9 +3621,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
                     return sum + (price * (item.quantity || 1));
                   }, 0);
+                  const totalPackagingFee = cart.reduce((sum, item) => {
+                    const p = item?.product || (item as any) || {};
+                    const prodId = p.id || (item as any)?.productId;
+                    const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+                    const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+                      ? p.packagingCost
+                      : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+                      ? matchedProd.packagingCost
+                      : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+                    return sum + (cost * (item.quantity || 1));
+                  }, 0);
                   const uniqueSellersCount = Math.max(1, new Set(cart.map(item => item?.product?.userId || (item as any)?.userId || 'store')).size);
                   const totalDeliveryFee = deliveryType === 'pickup' ? 0 : uniqueSellersCount * systemDeliveryFee;
-                  const total = subtotal + totalDeliveryFee;
+                  const total = subtotal + totalPackagingFee + totalDeliveryFee;
                   const firstUserId = cart[0]?.product?.userId || (cart[0] as any)?.userId;
                   const curr = (firstUserId ? profiles[firstUserId]?.currency : undefined) || '$';
 
@@ -3592,6 +3643,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
                         <span>Subtotal de productos:</span>
                         <span className="font-mono text-white">{curr}{subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
+                        <span className="flex items-center gap-1.5">
+                          <span>🥡 Costo de recipiente para llevar:</span>
+                        </span>
+                        <span className={`font-mono ${totalPackagingFee > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}`}>
+                          {totalPackagingFee > 0 ? `${curr}${totalPackagingFee.toLocaleString()}` : '$0'}
+                        </span>
                       </div>
                       <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
                         <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : `(${uniqueSellersCount} ${uniqueSellersCount === 1 ? 'envío' : 'envíos'})`}:</span>

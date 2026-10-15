@@ -522,6 +522,21 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     return cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
   }, [cart]);
 
+  const totalPackagingCost = useMemo(() => {
+    if (deliveryType === 'table') return 0;
+    return cart.reduce((sum, item) => {
+      const p = item?.product || (item as any) || {};
+      const prodId = p.id || (item as any)?.productId;
+      const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+      const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+        ? p.packagingCost
+        : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+        ? matchedProd.packagingCost
+        : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+      return sum + (cost * (item.quantity || 1));
+    }, 0);
+  }, [cart, deliveryType, products]);
+
   const totalCartUnitsCount = useMemo(() => {
     return cart.reduce((uq, item) => uq + item.quantity, 0);
   }, [cart]);
@@ -894,8 +909,19 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const isTable = deliveryType === 'table';
     const isPickup = deliveryType === 'pickup';
     const deliveryFee = (isPickup || isTable) ? 0 : systemDeliveryFee;
+    const packagingCost = isTable ? 0 : cart.reduce((sum, item) => {
+      const p = item?.product || (item as any) || {};
+      const prodId = p.id || (item as any)?.productId;
+      const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+      const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+        ? p.packagingCost
+        : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+        ? matchedProd.packagingCost
+        : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+      return sum + (cost * (item.quantity || 1));
+    }, 0);
     const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
-    const totalSum = Math.max(0, subtotal + deliveryFee - finalDiscount);
+    const totalSum = Math.max(0, subtotal + deliveryFee + packagingCost - finalDiscount);
     const rNo = Math.floor(1000 + Math.random() * 9000);
 
     const formattedPhone = formatColombianPhoneWith57(custPhone.trim() || customer.phone);
@@ -932,15 +958,27 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       customerMapUrl: custCoordinates?.mapUrl || (custAddress.trim() ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(custAddress.trim())}` : undefined),
       customerLat: custCoordinates?.lat,
       customerLng: custCoordinates?.lng,
-      items: cart.map(item => ({
-        productId: item?.product?.id || (item as any)?.productId || item?.id || '',
-        name: item?.product?.name || (item as any)?.name || 'Producto',
-        price: typeof item?.product?.price === 'number' ? item.product.price : (Number((item as any)?.price) || 0),
-        quantity: item?.quantity || 1,
-        selectedVariant: item?.selectedVariant || undefined
-      })),
+      items: cart.map(item => {
+        const prod = item?.product || (item as any) || {};
+        const prodId = prod.id || (item as any)?.productId || item.id || '';
+        const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(prod.name || '').trim().toLowerCase()));
+        const unitPackaging = (typeof prod.packagingCost === 'number' && !isNaN(prod.packagingCost) && prod.packagingCost > 0)
+          ? prod.packagingCost
+          : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+          ? matchedProd.packagingCost
+          : (typeof prod.packagingCost === 'number' ? prod.packagingCost : (parseFloat((prod as any).packagingCost) || undefined));
+        return {
+          productId: prodId,
+          name: prod.name || (item as any)?.name || 'Producto',
+          price: typeof prod.price === 'number' ? prod.price : (Number((item as any)?.price) || 0),
+          packagingCost: unitPackaging,
+          quantity: item?.quantity || 1,
+          selectedVariant: item?.selectedVariant || undefined
+        };
+      }),
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
+      packagingCost: packagingCost > 0 ? packagingCost : undefined,
       orderType: isTable ? 'table' : isPickup ? 'pickup' : 'delivery',
       isTableOrder: isTable,
       tableNumber: isTable ? tableNumber.trim() : undefined,
@@ -1097,6 +1135,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     } else {
       msg += `Tipo de Entrega: *🛵 Envío a Domicilio*\n`;
       msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
+    }
+    if (order.packagingCost && order.packagingCost > 0) {
+      msg += `🥡 Recipientes para llevar: ${profile.currency || '$'}${order.packagingCost.toLocaleString()}\n`;
     }
     msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
@@ -3133,6 +3174,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <span>Subtotal:</span>
                   <span className="font-mono">{getStoreCurrency()}{totalCartCost.toLocaleString()}</span>
                 </div>
+                {totalPackagingCost > 0 && (
+                  <div className="flex items-center justify-between font-bold text-xs text-amber-300">
+                    <span>🥡 Recipientes para llevar:</span>
+                    <span className="font-mono text-white">{getStoreCurrency()}{totalPackagingCost.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between font-bold text-xs text-gray-400">
                   <span>
                     {deliveryType === 'table' 
@@ -3150,7 +3197,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <div className="flex items-center justify-between font-extrabold text-sm text-white pt-1 border-t border-dashed border-gray-900">
                   <span>Total estimado:</span>
                   <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
-                    {getStoreCurrency()}{(totalCartCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee)).toLocaleString()}
+                    {getStoreCurrency()}{(totalCartCost + totalPackagingCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee)).toLocaleString()}
                   </span>
                 </div>
 
@@ -3740,6 +3787,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <span className="font-mono">{getStoreCurrency()}{totalCartCost.toLocaleString()}</span>
               </div>
               <div className="flex justify-between items-center text-xs text-gray-400 font-bold">
+                <span className="flex items-center gap-1.5">
+                  <span>🥡 Costo de recipiente para llevar:</span>
+                </span>
+                <span className={`font-mono ${totalPackagingCost > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}`}>
+                  {totalPackagingCost > 0 ? `${getStoreCurrency()}${totalPackagingCost.toLocaleString('es-CO')}` : '$0'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-gray-400 font-bold">
                 <span>
                   {deliveryType === 'table' 
                     ? 'Servicio en Mesa:' 
@@ -3762,7 +3817,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-gray-900 pt-2 text-white">
                 <span>Monto Total a Pagar:</span>
                 <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
-                  {getStoreCurrency()}{Math.max(0, totalCartCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
+                  {getStoreCurrency()}{Math.max(0, totalCartCost + totalPackagingCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
                 </span>
               </div>
             </div>

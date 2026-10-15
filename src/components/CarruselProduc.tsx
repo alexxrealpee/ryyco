@@ -1109,6 +1109,12 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                         <span>Subtotal:</span>
                         <span className="font-bold text-white">${summary.subtotal.toLocaleString('es-CO')} COP</span>
                       </div>
+                      {summary.packagingFee > 0 && (
+                        <div className="flex justify-between text-amber-300 font-bold">
+                          <span>🥡 Recipientes para llevar:</span>
+                          <span className="font-bold text-white">${summary.packagingFee.toLocaleString('es-CO')} COP</span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span>Domicilio estimado ({summary.storeCount} local{summary.storeCount === 1 ? '' : 'es'}):</span>
                         <span className="font-bold text-white">${summary.deliveryFee.toLocaleString('es-CO')} COP</span>

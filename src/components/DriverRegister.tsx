@@ -53,14 +53,15 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
   const [phone, setPhone] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [address, setAddress] = useState<string>('');
-  const [city, setCity] = useState<string>('Bogotá');
+  const [city, setCity] = useState<string>('Ipiales');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   
-  // Vehicle
+  // Vehicle & Equipment
   const [vehicleType, setVehicleType] = useState<VehicleType>('moto');
   const [vehicleBrand, setVehicleBrand] = useState<string>('');
   const [vehiclePlate, setVehiclePlate] = useState<string>('');
+  const [hasDeliveryBag, setHasDeliveryBag] = useState<boolean>(true);
   const [vehiclePhotoUrl, setVehiclePhotoUrl] = useState<string>('');
   const [vehicleOwnershipCardUrl, setVehicleOwnershipCardUrl] = useState<string>('');
   const [driverLicenseUrl, setDriverLicenseUrl] = useState<string>('');
@@ -213,6 +214,11 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
     e.preventDefault();
     setErrorMsg('');
 
+    if (!photoURL) {
+      setErrorMsg('La foto de perfil del domiciliario es obligatoria. Por favor sube una foto clara y legible de tu rostro.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
     if (!firstName.trim() || !lastName.trim()) {
       setErrorMsg('Por favor ingresa tu nombre y apellido completos.');
       return;
@@ -253,6 +259,10 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
       setErrorMsg('Por favor adjunta una foto clara de tu bicicleta para continuar.');
       return;
     }
+    if (!hasDeliveryBag) {
+      setErrorMsg('El maletín para transportar alimentos es obligatorio para poder registrarte y operar como domiciliario.');
+      return;
+    }
     if (!acceptedTerms) {
       setErrorMsg('Debes aceptar los términos y condiciones para continuar.');
       return;
@@ -268,7 +278,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
         id: driverUid,
         uid: driverUid,
         email: email.trim().toLowerCase(),
-        photoURL: photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(firstName)}`,
+        photoURL: photoURL.trim(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         docType,
@@ -282,6 +292,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
         vehicleType,
         vehicleBrand: vehicleBrand.trim(),
         vehiclePlate: vehiclePlate.trim().toUpperCase(),
+        hasDeliveryBag: Boolean(hasDeliveryBag),
         vehiclePhotoUrl: vehiclePhotoUrl || '',
         vehicleOwnershipCardUrl: vehicleOwnershipCardUrl || '',
         driverLicenseUrl: driverLicenseUrl || '',
@@ -420,14 +431,25 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* Profile Photo Section */}
-              <div className="bg-[#090B12] border border-[#232B3A] p-6 rounded-2xl flex flex-col sm:flex-row items-center gap-6">
+              {/* Profile Photo Section (Mandatory) */}
+              <div className={`p-6 rounded-2xl flex flex-col sm:flex-row items-center gap-6 transition border ${
+                photoURL 
+                  ? 'bg-[#090B12] border-emerald-500/30 shadow-lg shadow-emerald-950/10' 
+                  : 'bg-[#090B12] border-amber-500/40 hover:border-[#E63946] shadow-lg shadow-amber-950/10'
+              }`}>
                 <div className="relative group shrink-0">
-                  <img
-                    src={photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(firstName || 'driver')}`}
-                    alt="Foto de perfil"
-                    className="w-24 h-24 rounded-2xl object-cover border-2 border-[#E63946]/40 bg-[#111827] shadow-md"
-                  />
+                  {photoURL ? (
+                    <img
+                      src={photoURL}
+                      alt="Foto de perfil del domiciliario"
+                      className="w-24 h-24 rounded-2xl object-cover border-2 border-emerald-500/60 bg-[#111827] shadow-md"
+                    />
+                  ) : (
+                    <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-amber-500/60 bg-[#111827] flex flex-col items-center justify-center text-center p-2 text-amber-400 group-hover:border-[#E63946] transition">
+                      <User className="w-8 h-8 mb-1 text-amber-400/80 group-hover:text-[#E63946] transition" />
+                      <span className="text-[9px] font-black uppercase text-amber-300 tracking-tight leading-tight">Foto Requerida</span>
+                    </div>
+                  )}
                   {compressing.photo ? (
                     <div className="absolute inset-0 bg-black/80 rounded-2xl flex flex-col items-center justify-center text-white text-[10px] font-bold">
                       <Loader2 className="w-6 h-6 mb-1 text-[#E63946] animate-spin" />
@@ -436,26 +458,38 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                   ) : (
                     <label className="absolute inset-0 bg-black/60 rounded-2xl flex flex-col items-center justify-center text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 transition cursor-pointer">
                       <Upload className="w-5 h-5 mb-1 text-[#E63946]" />
-                      <span>Subir Foto</span>
+                      <span>{photoURL ? 'Cambiar Foto' : 'Subir Foto'}</span>
                       <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
                     </label>
                   )}
                 </div>
                 <div className="text-center sm:text-left flex-1">
                   <div className="flex flex-wrap items-center gap-2 mb-1 justify-center sm:justify-start">
-                    <h3 className="text-sm font-bold text-white">Foto de Perfil del Domiciliario</h3>
-                    {compressionStats.photo && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                      <span>Foto de Perfil del Domiciliario</span>
+                      <span className="text-[#E63946] font-black">* (Obligatoria)</span>
+                    </h3>
+                    {photoURL ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30">
                         <CheckCircle2 className="w-3 h-3" />
-                        Comprimida a {formatBytes(compressionStats.photo.compressedSize)} (-{compressionStats.photo.savedPercent}%)
+                        Foto cargada {compressionStats.photo ? `(${formatBytes(compressionStats.photo.compressedSize)})` : ''}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                        <AlertCircle className="w-3 h-3" />
+                        Obligatoria para registrarte
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-[#A9B2C3] mb-3">
-                    Sube una foto legible de tu rostro. Esta foto será visible para los clientes y administradores de las tiendas al realizar entregas.
+                    <strong className="text-white">Requisito obligatorio:</strong> Sube una foto nítida de tu rostro (de frente, sin gafas oscuras ni casco). Esta foto servirá para verificar tu identidad y será visible para los clientes y los restaurantes al realizar entregas.
                   </p>
                   <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                    <label className="px-3.5 py-1.5 bg-[#111827] hover:bg-[#232B3A] text-[#E63946] font-bold text-xs rounded-xl border border-[#232B3A] cursor-pointer inline-flex items-center gap-2 transition disabled:opacity-50">
+                    <label className={`px-3.5 py-1.5 font-bold text-xs rounded-xl border cursor-pointer inline-flex items-center gap-2 transition disabled:opacity-50 ${
+                      photoURL 
+                        ? 'bg-[#111827] hover:bg-[#232B3A] text-gray-200 border-[#232B3A]' 
+                        : 'bg-[#E63946] hover:bg-[#D62839] text-white border-[#E63946] shadow-md shadow-red-500/25'
+                    }`}>
                       {compressing.photo ? (
                         <>
                           <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -464,7 +498,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                       ) : (
                         <>
                           <Upload className="w-3.5 h-3.5" />
-                          <span>{photoURL ? 'Cambiar Foto' : 'Seleccionar Foto'}</span>
+                          <span>{photoURL ? 'Cambiar Foto de Perfil' : 'Subir Foto de Perfil * (Obligatoria)'}</span>
                         </>
                       )}
                       <input type="file" accept="image/*" onChange={handlePhotoUpload} disabled={compressing.photo} className="hidden" />
@@ -474,7 +508,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                       <>
                         <button
                           type="button"
-                          onClick={() => setPreviewModal({ url: photoURL, title: 'Foto de Perfil' })}
+                          onClick={() => setPreviewModal({ url: photoURL, title: 'Foto de Perfil del Domiciliario' })}
                           className="px-3 py-1.5 bg-[#111827] hover:bg-[#232B3A] text-gray-300 font-medium text-xs rounded-xl border border-[#232B3A] cursor-pointer inline-flex items-center gap-1.5 transition"
                         >
                           <ZoomIn className="w-3.5 h-3.5" />
@@ -661,18 +695,18 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                       required
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      placeholder="Ej. Bogotá, Medellín, Cali"
+                      placeholder="Ej. Ipiales, Pasto, Túquerres"
                       className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#E63946] transition"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Vehicle Information Group */}
+              {/* Vehicle & Equipment Information Group */}
               <div className="space-y-4 pt-2">
                 <h3 className="text-xs font-black uppercase text-[#E63946] tracking-wider flex items-center gap-2 border-b border-[#232B3A] pb-2">
                   <Bike className="w-4 h-4" />
-                  <span>2. Información del Vehículo</span>
+                  <span>2. Información del Vehículo y Equipamiento</span>
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -712,6 +746,69 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                       placeholder="Ej. ABC-123"
                       className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl px-3.5 py-2.5 text-sm text-white uppercase placeholder-gray-600 focus:outline-none focus:border-[#E63946] transition"
                     />
+                  </div>
+                </div>
+
+                {/* Maletín para transportar alimentos */}
+                <div className="bg-[#090B12] border border-[#232B3A] p-4 sm:p-5 rounded-2xl space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-white flex items-center gap-2">
+                        <span className="text-base">🎒</span>
+                        <span>¿Dispones de maletín para transportar alimentos?</span>
+                        <span className="text-[#E63946] font-black">* (Obligatorio)</span>
+                      </label>
+                      <p className="text-[11px] text-[#A9B2C3] mt-0.5">
+                        Indica si cuentas con maletín o mochila adecuada para transportar los pedidos de alimentos.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setHasDeliveryBag(true)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border ${
+                          hasDeliveryBag
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-md shadow-emerald-950/20'
+                            : 'bg-[#111827] text-gray-400 border-[#232B3A] hover:text-white'
+                        }`}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          hasDeliveryBag ? 'border-emerald-400 bg-emerald-500' : 'border-gray-600'
+                        }`}>
+                          {hasDeliveryBag && <CheckCircle2 className="w-2.5 h-2.5 text-black stroke-[3]" />}
+                        </span>
+                        <span>Sí, dispongo de maletín</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setHasDeliveryBag(false)}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border ${
+                          !hasDeliveryBag
+                            ? 'bg-red-500/20 text-red-300 border-red-500/50 shadow-md shadow-red-950/20'
+                            : 'bg-[#111827] text-gray-400 border-[#232B3A] hover:text-white'
+                        }`}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          !hasDeliveryBag ? 'border-red-400 bg-red-500' : 'border-gray-600'
+                        }`}>
+                          {!hasDeliveryBag && <CheckCircle2 className="w-2.5 h-2.5 text-black stroke-[3]" />}
+                        </span>
+                        <span>No dispongo</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Notica obligatoria */}
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-start gap-2.5 text-xs text-amber-200/90">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-black text-amber-300 block">Notica importante:</span>
+                      <span>
+                        El maletín para transportar alimentos es <strong>obligatorio</strong>. Es un requisito indispensable para poder entregar pedidos de los restaurantes, garantizando la higiene, seguridad y temperatura adecuada de los alimentos.
+                      </span>
+                    </div>
                   </div>
                 </div>
 

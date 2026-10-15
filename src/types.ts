@@ -37,13 +37,14 @@ export interface DriverProfile {
   address: string;
   city: string;
   
-  // Vehicle details
+  // Vehicle & Equipment details
   vehicleType: VehicleType;
   vehicleBrand?: string;
   vehiclePlate?: string;
   vehiclePhotoUrl?: string; // Foto del vehículo (moto, carro, bicicleta)
   vehicleOwnershipCardUrl?: string; // Foto de la tarjeta de propiedad
   driverLicenseUrl?: string; // Foto de la licencia de conducción
+  hasDeliveryBag?: boolean; // Dispone de maletín para transportar alimentos (Obligatorio)
   
   // Status & Availability
   status: DriverStatus;
@@ -194,6 +195,7 @@ export interface ProductItem {
   description: string;
   price: number;
   compareAtPrice?: number; // Original price for sales/discounts
+  packagingCost?: number; // Costo de recipiente / empaque para llevar (se muestra y cobra solo al finalizar la compra)
   imageURL?: string; // Product photo URL
   imageFileName?: string; // SEO-optimized WebP filename (e.g. ryyco-hamburguesa-especial-domicilio-ipiales-8f32ac.webp)
   category?: string; // e.g. "Ropa", "Calzado", "Accesorios"
@@ -281,6 +283,7 @@ export interface OrderItem {
   totalAmount: number;
   deliveryFee?: number; // Valor del domicilio
   deliveryCost?: number; // Alias alternativo del valor del domicilio
+  packagingCost?: number; // Costo total de recipientes para llevar
   notes?: string;
   createdAt: string;
   proofImage?: string; // Base64 data URL representing uploaded payment receipt or purchase transaction photo
@@ -412,6 +415,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   selectedVariant?: string;
+  packagingCost?: number;
   imageURL?: string;
 }
 

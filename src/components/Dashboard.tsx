@@ -900,6 +900,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [prodDesc, setProdDesc] = useState('');
   const [prodPrice, setProdPrice] = useState('');
   const [prodComparePrice, setProdComparePrice] = useState('');
+  const [prodPackagingCost, setProdPackagingCost] = useState('');
   const [prodImage, setProdImage] = useState('');
   const [prodImageFileName, setProdImageFileName] = useState('');
   const [prodCategory, setProdCategory] = useState('');
@@ -1364,6 +1365,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdDesc('');
     setProdPrice('');
     setProdComparePrice('');
+    setProdPackagingCost('');
     setProdImage('');
     setProdImageFileName('');
     setProdCategory('🍔 Hamburguesas');
@@ -1415,6 +1417,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdDesc(preset?.description || 'Bebida fría y refrescante para acompañar tus platos favoritos.');
     setProdPrice(preset?.price ? preset.price.toString() : '');
     setProdComparePrice('');
+    setProdPackagingCost('');
     setProdImage(preset?.imageURL || '');
     setProdImageFileName('');
     setProdCategory(preset?.category || '🥤 Bebidas');
@@ -1450,6 +1453,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdDesc(prod.description || '');
     setProdPrice(prod.price !== undefined && prod.price !== null ? prod.price.toString() : '');
     setProdComparePrice(prod.compareAtPrice !== undefined && prod.compareAtPrice !== null ? prod.compareAtPrice.toString() : '');
+    setProdPackagingCost(prod.packagingCost !== undefined && prod.packagingCost !== null ? prod.packagingCost.toString() : '');
     setProdImage(prod.imageURL || '');
     setProdImageFileName(prod.imageFileName || (prod.imageURL ? generateRyycoImageName({
       productName: prod.name,
@@ -1607,6 +1611,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
     }
 
+    let cleanPackagingCost: number | undefined = undefined;
+    if (prodPackagingCost && prodPackagingCost.trim() !== '') {
+      const parsedPack = parsePriceInput(prodPackagingCost);
+      if (!isNaN(parsedPack) && parsedPack >= 0) {
+        cleanPackagingCost = parsedPack;
+      }
+    }
+
     const cleanVariantPrices: Record<string, number> = {};
     if (prodVariantPrices && typeof prodVariantPrices === 'object') {
       Object.entries(prodVariantPrices).forEach(([k, v]) => {
@@ -1654,6 +1666,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       description: prodDesc ? prodDesc.trim() : '',
       price: cleanPrice,
       compareAtPrice: cleanComparePrice,
+      packagingCost: cleanPackagingCost,
       imageURL: prodImage || undefined,
       imageFileName: finalImageFileName,
       category: prodCategory ? prodCategory.trim() : 'General',
@@ -3336,9 +3349,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             />
                           </div>
 
-                          <div className="grid sm:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                              <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
                                 Precio de Venta ({profile.currency || '$'})
                                 {hasVariantsEntered && (
                                   <span className="text-emerald-400 font-bold ml-1.5 lowercase">
@@ -3364,7 +3377,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Precio Promoción ({profile.currency || '$'})</label>
+                              <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Precio Promoción ({profile.currency || '$'})</label>
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -3376,7 +3389,26 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             <div>
-                              <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Cantidad en Stock</label>
+                              <label className="text-[10px] font-black uppercase text-amber-300 tracking-wider block mb-1 flex items-center justify-between">
+                                <span className="truncate">🥡 Recipiente para llevar</span>
+                                <span className="text-[8px] text-gray-500 font-mono">({profile.currency || '$'})</span>
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                value={prodPackagingCost}
+                                onChange={(e) => setProdPackagingCost(e.target.value)}
+                                placeholder="Ej: 1500 (Opcional)"
+                                title="Costo del recipiente desechable para llevar. Solo se cobrará al finalizar la compra."
+                                className="w-full h-11 bg-gray-900 border border-amber-500/30 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder-gray-600"
+                              />
+                              <p className="text-[8.5px] text-gray-400 mt-1 leading-tight">
+                                Solo aparece al finalizar compra.
+                              </p>
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">Cantidad en Stock</label>
                               <input
                                 type="number"
                                 required
@@ -3765,6 +3797,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         <span>Inventario disponible:</span>
                                         <span className="text-white font-mono">{prod.stock} unids</span>
                                       </div>
+                                      {prod.packagingCost !== undefined && prod.packagingCost > 0 && (
+                                        <div className="flex justify-between items-center text-amber-300">
+                                          <span>🥡 Recipiente llevar:</span>
+                                          <span className="font-mono font-bold text-white">{formatPrice(prod.packagingCost)}</span>
+                                        </div>
+                                      )}
                                       {prod.variantsText && (
                                         <div className="flex justify-between">
                                           <span>Variantes:</span>
@@ -6411,6 +6449,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 ))}
               </div>
             </div>
+
+            {/* Packaging fee breakdown if present */}
+            {viewingOrder.packagingCost && viewingOrder.packagingCost > 0 ? (
+              <div className="flex items-center justify-between text-xs text-amber-300 font-semibold border-t border-gray-900 pt-2.5">
+                <span>🥡 Recipientes para llevar:</span>
+                <span className="font-mono text-white font-bold">{formatPrice(viewingOrder.packagingCost)}</span>
+              </div>
+            ) : null}
 
             {/* Accumulator total */}
             <div className="flex items-center justify-between border-t border-gray-900 pt-3 text-sm font-extrabold text-white">

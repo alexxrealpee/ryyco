@@ -115,6 +115,7 @@ export function rehydrateCartItem(item: GeneralCartItem): GeneralCartItem {
     description: String(p.description || ''),
     price: typeof p.price === 'number' && !isNaN(p.price) ? p.price : (parseFloat(p.price as any) || 0),
     compareAtPrice: p.compareAtPrice,
+    packagingCost: typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) ? p.packagingCost : (p.packagingCost !== undefined && p.packagingCost !== null ? parseFloat(p.packagingCost as any) : undefined),
     imageURL: img,
     category: p.category,
     variantsText: p.variantsText,
@@ -175,6 +176,7 @@ function compactCartItem(item: GeneralCartItem): GeneralCartItem {
       name: String(p.name || (item as any).name || 'Producto'),
       price: cleanPrice,
       compareAtPrice: cleanCompareAt,
+      packagingCost: typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) ? p.packagingCost : (p.packagingCost !== undefined && p.packagingCost !== null ? parseFloat(p.packagingCost as any) : undefined),
       imageURL: cleanImage,
       category: p.category,
       variantsText: p.variantsText,
@@ -379,6 +381,12 @@ export function calculateCartSummary(cart: GeneralCartItem[], deliveryFeePerStor
     const q = Number(item.quantity) || 1;
     return sum + (p * q);
   }, 0);
+  const packagingFee = cart.reduce((sum, item) => {
+    const p = item.product || (item as any);
+    const cost = typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat(p.packagingCost) || 0);
+    const q = Number(item.quantity) || 1;
+    return sum + (cost * q);
+  }, 0);
   
   // Group by store identifier
   const storesSet = new Set<string>();
@@ -389,11 +397,12 @@ export function calculateCartSummary(cart: GeneralCartItem[], deliveryFeePerStor
 
   const storeCount = cart.length > 0 ? Math.max(1, storesSet.size) : 0;
   const totalDeliveryFee = storeCount * deliveryFeePerStore;
-  const grandTotal = subtotal + totalDeliveryFee;
+  const grandTotal = subtotal + packagingFee + totalDeliveryFee;
 
   return {
     totalItems,
     subtotal,
+    packagingFee,
     storeCount,
     deliveryFee: totalDeliveryFee,
     grandTotal
