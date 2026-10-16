@@ -60,7 +60,7 @@ import {
   GeneralCartItem, 
   CART_UPDATED_EVENT 
 } from '../lib/cartHelper';
-import { RealtimeMeseroManager } from '../lib/realtimeMeseroAgent';
+import type { RealtimeMeseroManager } from '../lib/realtimeMeseroAgent';
 import { smartApiFetch } from '../lib/apiConfig';
 import { 
   initClientCatalogManager, 
@@ -657,6 +657,9 @@ export default function LinnkProVoiceAssistant({
         realtimeManagerRef.current = null;
       }
 
+      const { RealtimeMeseroManager } = await import('../lib/realtimeMeseroAgent');
+      // The user may close the call while the voice library is downloading.
+      if (!isInVoiceCallRef.current) return;
       realtimeManagerRef.current = new RealtimeMeseroManager({
         onStateChange: (state) => {
           setAssistantState(state);

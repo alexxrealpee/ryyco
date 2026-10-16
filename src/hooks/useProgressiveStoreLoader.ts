@@ -90,8 +90,7 @@ function getCachedStoreData(): {
 }
 
 export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
-  const initialDataRef = useRef(getCachedStoreData());
-  const initial = initialDataRef.current;
+  const [initial] = useState(getCachedStoreData);
 
   const [openRestaurants, setOpenRestaurants] = useState<UserProfile[]>(() => initial.openRestaurants);
   const [loadedLogos, setLoadedLogos] = useState<UserProfile[]>(() => initial.openRestaurants);

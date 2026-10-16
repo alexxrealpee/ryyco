@@ -638,10 +638,10 @@ export default function App() {
               setView('tienda');
             }}
           />
-          <FirstVisitAddressModal
+          {isFirstVisitAddressOpen && <FirstVisitAddressModal
             isOpen={isFirstVisitAddressOpen}
             onClose={() => setIsFirstVisitAddressOpen(false)}
-          />
+          />}
         </React.Suspense>
       </div>
     );

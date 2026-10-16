@@ -2333,8 +2333,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             src={store.photoURL}
                             alt={store.displayName || store.username}
                             draggable={false}
-                            loading="eager"
-                            fetchPriority={storeIdx < 8 ? "high" : "auto"}
+                            loading={storeIdx < 4 ? "eager" : "lazy"}
+                            fetchPriority="auto"
                             decoding="async"
                             width="64"
                             height="64"
@@ -2561,8 +2561,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         src={product.imageURL} 
                         alt={product.name}
                         referrerPolicy="no-referrer"
-                        loading={productIndex < 6 ? "eager" : "lazy"}
-                        fetchPriority={productIndex < 6 ? "high" : "auto"}
+                        loading={productIndex < 2 ? "eager" : "lazy"}
+                        fetchPriority="auto"
                         decoding="async"
                         width="300"
                         height="300"

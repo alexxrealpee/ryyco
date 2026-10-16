@@ -46,48 +46,32 @@
     <!-- Instant First-Load Optimization: Preload Catalog & Preconnect Assets -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" />
-    <link rel="preload" href="/api/catalog/available?initial=true" as="fetch" crossorigin="anonymous" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" />
+    <link rel="preload" href="/ryyco_combo.webp" as="image" fetchpriority="high" />
     <script>
       try {
-        window.__CATALOG_PREFETCH__ = fetch('/api/catalog/available?initial=true')
+        var catalogController = new AbortController();
+        var catalogTimeout = setTimeout(function() { catalogController.abort(); }, 2500);
+        window.__CATALOG_PREFETCH__ = fetch('/api/catalog/available?initial=true', { signal: catalogController.signal })
           .then(function(r) { 
             if (r.ok) {
               var ct = r.headers.get('content-type') || '';
               if (ct.indexOf('application/json') !== -1) return r.json();
             }
-            return fetch('/catalog-cache.json').then(function(cr) { return cr.ok ? cr.json() : null; });
+            return fetch('/catalog-initial.json').then(function(cr) { return cr.ok ? cr.json() : null; });
           })
           .then(function(d) {
             if (d && d.catalog) {
               window.__INITIAL_CATALOG_DATA__ = d;
             }
-            // Warm up the full catalog in the background once main execution settles
-            setTimeout(function() {
-              fetch('/api/catalog/available')
-                .then(function(res) { 
-                  if (res.ok && (res.headers.get('content-type') || '').indexOf('application/json') !== -1) {
-                    return res.json();
-                  }
-                  return fetch('/catalog-cache.json').then(function(cr) { return cr.ok ? cr.json() : null; });
-                })
-                .then(function(fullData) {
-                  if (fullData && fullData.catalog && typeof window !== 'undefined') {
-                    window.__INITIAL_CATALOG_DATA__ = fullData;
-                    try {
-                      window.dispatchEvent(new CustomEvent('linnk:catalog_updated', { detail: fullData }));
-                    } catch (e) {}
-                  }
-                })
-                .catch(function() {});
-            }, 600);
+            // The application manages the full catalog refresh.
             return d;
           })
           .catch(function() { 
-            return fetch('/catalog-cache.json')
+            return fetch('/catalog-initial.json')
               .then(function(cr) { return cr.ok ? cr.json() : null; })
               .catch(function() { return null; });
-          });
+          }).finally(function() { clearTimeout(catalogTimeout); });
       } catch (e) {}
     </script>
 

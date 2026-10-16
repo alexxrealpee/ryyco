@@ -9,7 +9,7 @@ import {
   Smartphone
 } from 'lucide-react';
 import { ProductItem, UserProfile } from '../types';
-import { ReelShareModal } from './ReelShareModal';
+const ReelShareModal = React.lazy(() => import('./ReelShareModal').then(module => ({ default: module.ReelShareModal })));
 
 interface ProductShareButtonProps {
   product: ProductItem;
@@ -104,14 +104,14 @@ export const ProductShareButton: React.FC<ProductShareButtonProps> = ({
     if (!showShareModal) return null;
 
     return (
-      <ReelShareModal
+      <React.Suspense fallback={null}><ReelShareModal
         isOpen={showShareModal}
         onClose={() => setShowShareModal(false)}
         product={product}
         profile={effectiveProfile}
         customShareUrl={shareUrl}
         source="product"
-      />
+      /></React.Suspense>
     );
   };
 
