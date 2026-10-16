@@ -36,9 +36,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
-  Play
+  Play,
+  Check
 } from 'lucide-react';
-import { ProductItem, UserProfile, OrderItem, CustomerProfile } from '../types';
+import { ProductItem, ProductAddon, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import { 
   db,
@@ -55,12 +56,14 @@ import {
   setActiveCustomerSession,
   saveCustomerProfile
 } from '../lib/firebase';
-import { cleanColombianPhone, formatColombianPhoneWith57 } from './PublicProfile';
+import { cleanColombianPhone, formatColombianPhoneWith57 } from '../lib/phoneUtils';
 import LinnkProLogo from './LinnkProLogo';
-import CustomerPortalModal from './CustomerPortalModal';
-import CustomerOrderAuthPromptModal from './CustomerOrderAuthPromptModal';
-import FullScreenSearchModal from './FullScreenSearchModal';
-import { MapLocationPickerModal } from './MapLocationPickerModal';
+
+// Lazy-load secondary modal components so initial home page paint is near-instantaneous
+const CustomerPortalModal = React.lazy(() => import('./CustomerPortalModal'));
+const CustomerOrderAuthPromptModal = React.lazy(() => import('./CustomerOrderAuthPromptModal'));
+const FullScreenSearchModal = React.lazy(() => import('./FullScreenSearchModal'));
+const MapLocationPickerModal = React.lazy(() => import('./MapLocationPickerModal'));
 import { DeliveryAddressCard, isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
@@ -71,6 +74,7 @@ import {
   getStoredCart, 
   saveStoredCart, 
   addProductToCart, 
+  getCartItemUnitPrice,
   updateCartQuantity, 
   removeProductFromCart, 
   clearAllCart, 
@@ -674,18 +678,32 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [chosenVariant, setChosenVariant] = useState('');
   const [chosenVariantPrice, setChosenVariantPrice] = useState<number>(0);
   const [isVariantValid, setIsVariantValid] = useState(true);
+  const [selectedAddons, setSelectedAddons] = useState<ProductAddon[]>([]);
+
+  const toggleAddon = (addon: ProductAddon) => {
+    setSelectedAddons(prev => {
+      const exists = prev.some(a => a.id === addon.id || a.name.toLowerCase() === addon.name.toLowerCase());
+      if (exists) {
+        return prev.filter(a => a.id !== addon.id && a.name.toLowerCase() !== addon.name.toLowerCase());
+      } else {
+        return [...prev, addon];
+      }
+    });
+  };
 
   const currentModalUnitPrice = useMemo(() => {
     if (!selectedProduct) return 0;
-    if (chosenVariantPrice > 0) return chosenVariantPrice;
-    return getVariantPrice(selectedProduct, chosenVariant);
-  }, [selectedProduct, chosenVariant, chosenVariantPrice]);
+    const base = chosenVariantPrice > 0 ? chosenVariantPrice : getVariantPrice(selectedProduct, chosenVariant);
+    const addonsTotal = selectedAddons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+    return base + addonsTotal;
+  }, [selectedProduct, chosenVariant, chosenVariantPrice, selectedAddons]);
 
-  // Whenever selectedProduct changes, reset chosenVariant, chosenVariantPrice and buyQuantity
+  // Whenever selectedProduct changes, reset chosenVariant, chosenVariantPrice, selectedAddons and buyQuantity
   useEffect(() => {
     if (selectedProduct) {
       setBuyQuantity(1);
       setIsVariantValid(true);
+      setSelectedAddons([]);
       const parsedVars = splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices);
       if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) {
         const firstVar = parsedVars.length > 0 ? parsedVars[0] : '';
@@ -1117,7 +1135,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     if (img) registerProductImages([prodToSave]);
 
-    const updated = addProductToCart(prodToSave, buyQuantity, chosenVariant || undefined);
+    const updated = addProductToCart(
+      prodToSave, 
+      buyQuantity, 
+      chosenVariant || undefined,
+      selectedAddons.length > 0 ? selectedAddons : undefined
+    );
     setCart(updated);
     setSelectedProduct(null);
     setIsCartOpen(true);
@@ -1125,9 +1148,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const handleAddToCartDirect = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    // If the product allows half-and-half or has multiple variants, open detail modal to customize!
+    // If the product allows half-and-half, has multiple variants, or has optional add-ons, open detail modal to customize!
     const parsedVariants = splitVariantsText(product.variantsText, product.variantPrices);
-    if ((product.allowsHalfAndHalf && product.flavorsText) || parsedVariants.length > 1) {
+    if ((product.allowsHalfAndHalf && product.flavorsText) || parsedVariants.length > 1 || (product.addons && product.addons.length > 0)) {
       setSelectedProduct(product);
       return;
     }
@@ -1332,13 +1355,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
               ? matchedProd.packagingCost
               : (typeof prod.packagingCost === 'number' ? prod.packagingCost : (parseFloat((prod as any).packagingCost) || undefined));
+            const itemUnitPrice = getCartItemUnitPrice(item);
             return {
               productId: prodId,
               name: prod.name || (item as any)?.name || 'Producto',
-              price: typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0),
+              price: itemUnitPrice > 0 ? itemUnitPrice : (typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0)),
               packagingCost: unitPackaging,
               quantity: item.quantity || 1,
-              selectedVariant: item.selectedVariant || undefined
+              selectedVariant: item.selectedVariant || undefined,
+              selectedAddons: item.selectedAddons && item.selectedAddons.length > 0 ? item.selectedAddons : undefined
             };
           }),
           totalAmount: totalSum,
@@ -1452,7 +1477,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     msg += `-----------------------------\n`;
     order.items.forEach(item => {
       const vText = item.selectedVariant ? ` (${item.selectedVariant})` : '';
-      msg += `• ${item.quantity} x ${item.name}${vText} - ${currency}${item.price.toLocaleString()}\n`;
+      const addonsText = item.selectedAddons && item.selectedAddons.length > 0
+        ? `\n   + Adicionales: ${item.selectedAddons.map(a => `${a.name}${a.price > 0 ? ` (+${currency}${a.price.toLocaleString()})` : ''}`).join(', ')}`
+        : '';
+      msg += `• ${item.quantity} x ${item.name}${vText} - ${currency}${item.price.toLocaleString()}${addonsText}\n`;
     });
     msg += `-----------------------------\n`;
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
@@ -2963,6 +2991,58 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         </div>
                       ) : null}
 
+                      {/* Adicionales opcionales para este producto */}
+                      {selectedProduct.addons && selectedProduct.addons.length > 0 && (
+                        <div className="space-y-2.5 w-full min-w-0 pt-3 border-t border-[#232B3A]">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-base select-none">🍟</span>
+                              <span className="text-[11px] font-black text-white uppercase tracking-wider">
+                                Adicionales opcionales
+                              </span>
+                            </div>
+                            <span className="text-[9.5px] font-bold text-[#A9B2C3] bg-[#111827] px-2 py-0.5 rounded-full border border-[#232B3A]">
+                              Elige los que gustes
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-2">
+                            {selectedProduct.addons.map((addon) => {
+                              const isChecked = selectedAddons.some(a => a.id === addon.id || a.name.toLowerCase() === addon.name.toLowerCase());
+                              return (
+                                <button
+                                  key={addon.id}
+                                  type="button"
+                                  onClick={() => toggleAddon(addon)}
+                                  className={`w-full p-2.5 sm:p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition cursor-pointer active:scale-[0.99] ${
+                                    isChecked
+                                      ? 'bg-amber-500/15 border-amber-500/60 shadow-sm'
+                                      : 'bg-[#111827] hover:bg-[#1A2333] border-[#232B3A]'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className={`w-4 h-4 rounded-md flex items-center justify-center shrink-0 border transition ${
+                                      isChecked
+                                        ? 'bg-amber-500 border-amber-400 text-black'
+                                        : 'border-gray-600 bg-transparent'
+                                    }`}>
+                                      {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                    </div>
+                                    <span className={`text-xs font-bold truncate ${isChecked ? 'text-amber-200' : 'text-gray-200'}`}>
+                                      {addon.name}
+                                    </span>
+                                  </div>
+
+                                  <span className="text-xs font-black font-mono text-emerald-400 shrink-0">
+                                    {addon.price > 0 ? `+${currency}${addon.price.toLocaleString('es-CO')}` : 'Gratis'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Bebidas sugeridas de este mismo restaurante */}
                       {(() => {
                         const modalStoreProf = findStoreForProduct(selectedProduct, profiles);
@@ -3136,7 +3216,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     const prod = item?.product || (item as any) || {};
                     const prodId = prod.id || (item as any)?.productId || item?.id || '';
                     const prodName = prod.name || (item as any)?.productName || 'Producto';
-                    const prodPrice = typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0);
+                    const unitPrice = getCartItemUnitPrice(item);
+                    const prodPrice = unitPrice > 0 ? unitPrice : (typeof prod.price === 'number' ? prod.price : (parseFloat((prod as any).price) || 0));
                     const prodUserId = prod.userId || (item as any)?.userId || (item as any)?.storeOwnerId || '';
                     const profile = profiles[prodUserId] || findStoreForProduct(prod as any, profiles);
                     const currency = profile?.currency || '$';
@@ -3176,6 +3257,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             <span className="text-[10px] font-bold text-[#A9B2C3] bg-[#090B12] border border-[#232B3A] px-2 py-0.5 rounded-md inline-block">
                               Var: {item.selectedVariant}
                             </span>
+                          )}
+                          {item.selectedAddons && item.selectedAddons.length > 0 && (
+                            <div className="text-[9.5px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md block truncate max-w-[190px]">
+                              + {item.selectedAddons.map(a => a.name).join(', ')}
+                            </div>
                           )}
 
                           <div className="flex items-center justify-between pt-1">
@@ -3831,107 +3917,100 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         )}
       </AnimatePresence>
 
-      {/* Checkout Customer Verification / Registration Modal */}
-      <CustomerOrderAuthPromptModal
-        isOpen={orderAuthPromptData.isOpen}
-        onClose={() => setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }))}
-        phone={orderAuthPromptData.phone}
-        customerName={custName}
-        customerAddress={deliveryType === 'pickup' ? (pickupNotes.trim() ? `Recoger en Restaurante (${pickupNotes.trim()})` : 'Recoger en Restaurante') : custAddress}
-        customerNotes={custNotes}
-        cartSummary={{
-          itemsCount: cart.reduce((sum, item) => sum + item.quantity, 0),
-          totalFormatted: (() => {
-            const sub = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-            const fee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
-            return `$${(sub + fee).toLocaleString('es-CO')}`;
-          })()
-        }}
-        isExistingCustomer={orderAuthPromptData.isExisting}
-        existingProfile={orderAuthPromptData.existingProfile}
-        onAuthenticated={handleAuthPromptSuccess}
-        onChangePhoneRequest={() => {
-          setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
-        }}
-      />
+      {/* Modals lazy-loaded on demand to ensure ultra-fast initial home page rendering */}
+      <React.Suspense fallback={null}>
+        {orderAuthPromptData.isOpen && (
+          <CustomerOrderAuthPromptModal
+            isOpen={orderAuthPromptData.isOpen}
+            onClose={() => setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }))}
+            phone={orderAuthPromptData.phone}
+            customerName={custName}
+            customerAddress={deliveryType === 'pickup' ? (pickupNotes.trim() ? `Recoger en Restaurante (${pickupNotes.trim()})` : 'Recoger en Restaurante') : custAddress}
+            customerNotes={custNotes}
+            cartSummary={{
+              itemsCount: cart.reduce((sum, item) => sum + item.quantity, 0),
+              totalFormatted: (() => {
+                const sub = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+                const fee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
+                return `$${(sub + fee).toLocaleString('es-CO')}`;
+              })()
+            }}
+            isExistingCustomer={orderAuthPromptData.isExisting}
+            existingProfile={orderAuthPromptData.existingProfile}
+            onAuthenticated={handleAuthPromptSuccess}
+            onChangePhoneRequest={() => {
+              setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
+            }}
+          />
+        )}
 
-      {/* Floating Cart Button (Halloween Edition - Flat Solid Color #D62839) */}
-      {cart.length > 0 && (
-        <button
-          onClick={() => setIsCartOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black p-4 rounded-full shadow-2xl shadow-black/60 flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-transform cursor-pointer border-2 border-red-400"
-        >
-          <span className="text-base select-none">🎃</span>
-          <ShoppingBag className="w-5 h-5 stroke-[2.5] text-white" />
-          <span className="font-black text-xs text-white">
-            {cart.reduce((sum, item) => sum + item.quantity, 0)} items
-          </span>
-        </button>
-      )}
+        {isCustomerPortalOpen && (
+          <CustomerPortalModal
+            isOpen={isCustomerPortalOpen}
+            onClose={() => {
+              setIsCustomerPortalOpen(false);
+              setIsCustomerRegisterMode(false);
+            }}
+            initialPhone={custPhone}
+            initialTab={customerPortalTab}
+            initialRegisterMode={isCustomerRegisterMode}
+            onCustomerUpdate={setActiveCustomer}
+          />
+        )}
 
-      {/* CUSTOMER LOYALTY, ACCOUNT, ORDERS & LUCKY WHEEL PORTAL MODAL */}
-      <CustomerPortalModal
-        isOpen={isCustomerPortalOpen}
-        onClose={() => {
-          setIsCustomerPortalOpen(false);
-          setIsCustomerRegisterMode(false);
-        }}
-        initialPhone={custPhone}
-        initialTab={customerPortalTab}
-        initialRegisterMode={isCustomerRegisterMode}
-        onCustomerUpdate={setActiveCustomer}
-      />
+        {isFullScreenSearchOpen && (
+          <FullScreenSearchModal
+            isOpen={isFullScreenSearchOpen}
+            onClose={() => setIsFullScreenSearchOpen(false)}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            products={products}
+            profiles={profiles}
+            onSelectProduct={(product) => {
+              setSelectedProduct(product);
+              setIsFullScreenSearchOpen(false);
+            }}
+            onAddToCartDirect={(product, e) => handleAddToCartDirect(product, e)}
+            onNavigateToStore={(username) => {
+              setIsFullScreenSearchOpen(false);
+              onNavigateToStore(username);
+            }}
+            cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
+            onOpenCart={() => {
+              setIsFullScreenSearchOpen(false);
+              setIsCartOpen(true);
+            }}
+          />
+        )}
 
-      {/* FULL SCREEN SEARCH MODAL VIEW */}
-      <FullScreenSearchModal
-        isOpen={isFullScreenSearchOpen}
-        onClose={() => setIsFullScreenSearchOpen(false)}
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        products={products}
-        profiles={profiles}
-        onSelectProduct={(product) => {
-          setSelectedProduct(product);
-          setIsFullScreenSearchOpen(false);
-        }}
-        onAddToCartDirect={(product, e) => handleAddToCartDirect(product, e)}
-        onNavigateToStore={(username) => {
-          setIsFullScreenSearchOpen(false);
-          onNavigateToStore(username);
-        }}
-        cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
-        onOpenCart={() => {
-          setIsFullScreenSearchOpen(false);
-          setIsCartOpen(true);
-        }}
-      />
-
-      {/* GOOGLE MAPS LOCATION PICKER MODAL FOR DELIVERY ADDRESS */}
-      <MapLocationPickerModal
-        isOpen={isMapPickerOpen}
-        onClose={() => setIsMapPickerOpen(false)}
-        initialLat={custCoordinates?.lat}
-        initialLng={custCoordinates?.lng}
-        initialAddress={custAddress}
-        onConfirm={(data) => {
-          const newAddress = (data.address || '').trim();
-          if (newAddress) {
-            setCustAddress(newAddress);
-            try {
-              localStorage.setItem('ryyco_customer_delivery_address', newAddress);
-            } catch (_) {}
-          }
-          const coords = {
-            lat: data.lat,
-            lng: data.lng,
-            mapUrl: data.mapUrl
-          };
-          setCustCoordinates(coords);
-          try {
-            localStorage.setItem('ryyco_customer_coordinates', JSON.stringify(coords));
-          } catch (_) {}
-        }}
-      />
+        {isMapPickerOpen && (
+          <MapLocationPickerModal
+            isOpen={isMapPickerOpen}
+            onClose={() => setIsMapPickerOpen(false)}
+            initialLat={custCoordinates?.lat}
+            initialLng={custCoordinates?.lng}
+            initialAddress={custAddress}
+            onConfirm={(data) => {
+              const newAddress = (data.address || '').trim();
+              if (newAddress) {
+                setCustAddress(newAddress);
+                try {
+                  localStorage.setItem('ryyco_customer_delivery_address', newAddress);
+                } catch (_) {}
+              }
+              const coords = {
+                lat: data.lat,
+                lng: data.lng,
+                mapUrl: data.mapUrl
+              };
+              setCustCoordinates(coords);
+              try {
+                localStorage.setItem('ryyco_customer_coordinates', JSON.stringify(coords));
+              } catch (_) {}
+            }}
+          />
+        )}
+      </React.Suspense>
 
       {/* 6. Footer */}
       <footer className="border-t border-[#232B3A] py-12 px-4 sm:px-6 md:px-8 bg-[#090B12] text-[#A9B2C3] text-center text-xs mt-12 space-y-3">

@@ -29,6 +29,15 @@ export interface CatalogProduct {
   active?: boolean;
   variants?: Array<{ name: string; price: number; options?: string[] }>;
   options?: Array<{ name: string; choices: string[] }>;
+  addons?: Array<{ id: string; name: string; price: number }>;
+  packagingCost?: number;
+  variantsText?: string;
+  variantPrices?: Record<string, number>;
+  allowsHalfAndHalf?: boolean;
+  flavorsText?: string;
+  flavorsList?: string[];
+  allowSingleFlavor?: boolean;
+  [key: string]: any;
 }
 
 export interface CatalogStore {
@@ -353,10 +362,17 @@ export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
           category: data.category || 'General',
           imageURL: data.imageURL || '',
           storeName: data.storeName || '',
-          storeUsername: data.storeUsername || '',
           active: data.active !== false,
           variants: data.variants || [],
-          options: data.options || []
+          options: data.options || [],
+          addons: data.addons || [],
+          packagingCost: data.packagingCost,
+          variantsText: data.variantsText,
+          variantPrices: data.variantPrices,
+          allowsHalfAndHalf: data.allowsHalfAndHalf,
+          flavorsText: data.flavorsText,
+          flavorsList: data.flavorsList,
+          allowSingleFlavor: data.allowSingleFlavor
         });
       });
     }
@@ -438,11 +454,17 @@ export function initBackendCatalogManager() {
             stock: typeof data.stock === 'number' ? data.stock : parseInt(data.stock) || 0,
             category: data.category || 'General',
             imageURL: data.imageURL || '',
-            storeName: data.storeName || '',
-            storeUsername: data.storeUsername || '',
             active: data.active !== false,
             variants: data.variants || [],
-            options: data.options || []
+            options: data.options || [],
+            addons: data.addons || [],
+            packagingCost: data.packagingCost,
+            variantsText: data.variantsText,
+            variantPrices: data.variantPrices,
+            allowsHalfAndHalf: data.allowsHalfAndHalf,
+            flavorsText: data.flavorsText,
+            flavorsList: data.flavorsList,
+            allowSingleFlavor: data.allowSingleFlavor
           });
         }
       });

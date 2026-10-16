@@ -188,6 +188,12 @@ export interface SubscriptionPayment {
   periodLabel?: string; // e.g. "Mes de Junio 2026"
 }
 
+export interface ProductAddon {
+  id: string; // Identificador único del adicional
+  name: string; // Nombre del adicional (ej: "Queso extra", "Tocineta", "Papas fritas")
+  price: number; // Precio del adicional (0 si es gratis)
+}
+
 export interface ProductItem {
   id: string;
   userId: string; // Store Owner UID
@@ -207,6 +213,7 @@ export interface ProductItem {
   flavorsText?: string; // Lista de sabores separados por coma para pizzas o productos multi-sabor
   flavorsList?: string[]; // Array de sabores preservando el texto completo de cada uno
   allowSingleFlavor?: boolean; // Permite pedir la pizza completa de 1 solo sabor (por defecto true)
+  addons?: ProductAddon[]; // Adicionales opcionales para este producto
   active: boolean;
   storeName?: string;
   storeUsername?: string;
@@ -415,6 +422,7 @@ export interface CartItem {
   price: number;
   quantity: number;
   selectedVariant?: string;
+  selectedAddons?: ProductAddon[];
   packagingCost?: number;
   imageURL?: string;
 }

@@ -121,6 +121,7 @@ import {
   UserProfile, 
   CustomTheme, 
   ProductItem, 
+  ProductAddon,
   OrderItem,
   PageViewAnalytic,
   SubscriptionPayment,
@@ -132,7 +133,7 @@ import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUti
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
 import { smartApiFetch } from '../lib/apiConfig';
 import LinnkProIsotype from './LinnkProIsotype';
-import { formatColombianPhoneWith57 } from './PublicProfile';
+import { formatColombianPhoneWith57 } from '../lib/phoneUtils';
 import { BasicPlanTrialModal } from './BasicPlanTrialModal';
 import { DashboardTrialBanner } from './DashboardTrialBanner';
 import { getProductParsedVariants, getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
@@ -1006,6 +1007,44 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdFlavorsList(updated);
     setProdFlavorsText(updated.join(', '));
   };
+
+  // Adicionales opcionales (Extras / Toppings) configurados por el vendedor
+  const [prodAddons, setProdAddons] = useState<ProductAddon[]>([]);
+  const [newAddonName, setNewAddonName] = useState('');
+  const [newAddonPrice, setNewAddonPrice] = useState('');
+
+  const handleAddAddon = (presetName?: string, presetPrice?: number) => {
+    const name = (presetName !== undefined ? presetName : newAddonName).trim();
+    if (!name) return;
+    const rawPrice = presetPrice !== undefined ? String(presetPrice) : newAddonPrice;
+    const parsedPrice = parsePriceInput(rawPrice);
+    const cleanPrice = !isNaN(parsedPrice) && parsedPrice >= 0 ? parsedPrice : 0;
+
+    if (prodAddons.some(a => a.name.toLowerCase() === name.toLowerCase())) {
+      setProdAddons(prev => prev.map(a => a.name.toLowerCase() === name.toLowerCase() ? { ...a, price: cleanPrice } : a));
+    } else {
+      const newAddon: ProductAddon = {
+        id: `addon_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        name,
+        price: cleanPrice
+      };
+      setProdAddons(prev => [...prev, newAddon]);
+    }
+
+    setNewAddonName('');
+    setNewAddonPrice('');
+  };
+
+  const handleRemoveAddon = (addonId: string) => {
+    setProdAddons(prev => prev.filter(a => a.id !== addonId));
+  };
+
+  const handleUpdateAddonPrice = (addonId: string, newPriceStr: string) => {
+    const parsed = parsePriceInput(newPriceStr);
+    const cleanPrice = !isNaN(parsed) && parsed >= 0 ? parsed : 0;
+    setProdAddons(prev => prev.map(a => a.id === addonId ? { ...a, price: cleanPrice } : a));
+  };
+
   const [prodActive, setProdActive] = useState(true);
   const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [isCompressingLogo, setIsCompressingLogo] = useState(false);
@@ -1378,6 +1417,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdFlavorsList([]);
     setNewFlavorInput('');
     setProdAllowSingleFlavor(true);
+    setProdAddons([]);
+    setNewAddonName('');
+    setNewAddonPrice('');
     setProdActive(true);
     setIsAddingProd(true);
   };
@@ -1430,6 +1472,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdFlavorsList([]);
     setNewFlavorInput('');
     setProdAllowSingleFlavor(true);
+    setProdAddons([]);
+    setNewAddonName('');
+    setNewAddonPrice('');
     setProdActive(true);
     setIsAddingProd(true);
   };
@@ -1490,6 +1535,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdFlavorsText(prod.flavorsText || '');
     setNewFlavorInput('');
     setProdAllowSingleFlavor(prod.allowSingleFlavor !== false);
+    setProdAddons(Array.isArray(prod.addons) ? [...prod.addons] : []);
+    setNewAddonName('');
+    setNewAddonPrice('');
     setProdActive(prod.active !== false);
     setIsAddingProd(true);
   };
@@ -1677,6 +1725,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       flavorsList: prodAllowsHalfAndHalf ? prodFlavorsList : [],
       flavorsText: prodAllowsHalfAndHalf ? (prodFlavorsList.length > 0 ? prodFlavorsList.join(', ') : prodFlavorsText.trim()) : '',
       allowSingleFlavor: prodAllowSingleFlavor,
+      addons: prodAddons.length > 0 ? prodAddons : undefined,
       active: prodActive
     };
 
@@ -3421,6 +3470,197 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
                           </div>
 
+                          {/* Adicionales Opcionales (Extras / Toppings) */}
+                          <div className="bg-gradient-to-br from-[#0c101d] via-gray-950 to-[#0c101d] border border-amber-500/25 rounded-2xl p-4 sm:p-5 space-y-4 shadow-xl relative overflow-hidden">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-gray-800">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0 border border-amber-500/30 shadow-inner">
+                                  <span className="text-base select-none">🍟</span>
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs sm:text-sm font-black text-white tracking-wide">
+                                      Adicionales Opcionales (Extras / Toppings)
+                                    </span>
+                                    {prodAddons.length > 0 && (
+                                      <span className="text-[10px] font-extrabold bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/30">
+                                        {prodAddons.length} {prodAddons.length === 1 ? 'adicional' : 'adicionales'}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-[11px] text-gray-400 block mt-0.5">
+                                    Opciones voluntarias con o sin costo que el cliente puede sumar al pedir este producto (ej: queso extra, tocineta, papas, salsas).
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Quick suggestions tags for rapid 1-click addition */}
+                            <div>
+                              <span className="text-[9.5px] font-bold uppercase text-gray-400 tracking-wider block mb-1.5">
+                                Sugerencias rápidas para agregar:
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {[
+                                  { name: 'Queso Mozzarella Extra', price: 3500 },
+                                  { name: 'Tocineta Crocante', price: 4000 },
+                                  { name: 'Papas a la Francesa', price: 5000 },
+                                  { name: 'Huevo Frito', price: 2000 },
+                                  { name: 'Doble Carne', price: 7000 },
+                                  { name: 'Porción de Aguacate', price: 3000 },
+                                  { name: 'Salsa Especial de la Casa', price: 1500 },
+                                  { name: 'Bebida 400ml', price: 3500 },
+                                  { name: 'Sin Cebolla', price: 0 }
+                                ].map((sug, sIdx) => {
+                                  const alreadyAdded = prodAddons.some(a => a.name.toLowerCase() === sug.name.toLowerCase());
+                                  return (
+                                    <button
+                                      key={sIdx}
+                                      type="button"
+                                      onClick={() => {
+                                        if (alreadyAdded) {
+                                          const existing = prodAddons.find(a => a.name.toLowerCase() === sug.name.toLowerCase());
+                                          if (existing) handleRemoveAddon(existing.id);
+                                        } else {
+                                          handleAddAddon(sug.name, sug.price);
+                                        }
+                                      }}
+                                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition flex items-center gap-1 cursor-pointer ${
+                                        alreadyAdded
+                                          ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                                          : 'bg-gray-900 hover:bg-gray-800 text-gray-300 border-gray-800 hover:border-gray-700'
+                                      }`}
+                                    >
+                                      <span>{alreadyAdded ? '✓' : '+'}</span>
+                                      <span>{sug.name}</span>
+                                      <span className="text-gray-400 font-mono text-[9px]">
+                                        ({sug.price > 0 ? `+${profile.currency || '$'}${sug.price.toLocaleString('es-CO')}` : 'Gratis'})
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Inputs to add custom extra/adicional */}
+                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end bg-gray-900/60 p-3 rounded-xl border border-gray-800/80">
+                              <div className="sm:col-span-7">
+                                <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1">
+                                  Nombre del Adicional
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newAddonName}
+                                  onChange={(e) => setNewAddonName(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddAddon();
+                                    }
+                                  }}
+                                  placeholder="Ej: Tocineta crocante, Queso extra..."
+                                  className="w-full h-11 bg-gray-950 border border-gray-800 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder-gray-500"
+                                />
+                              </div>
+
+                              <div className="sm:col-span-3">
+                                <label className="text-[10px] font-black uppercase text-gray-400 tracking-wider block mb-1 flex items-center justify-between">
+                                  <span>Precio Adicional</span>
+                                  <span className="text-[8px] text-gray-500 font-mono">({profile.currency || '$'})</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={newAddonPrice}
+                                  onChange={(e) => setNewAddonPrice(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      handleAddAddon();
+                                    }
+                                  }}
+                                  placeholder="Ej: 3500 (o 0 si es gratis)"
+                                  className="w-full h-11 bg-gray-950 border border-gray-800 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder-gray-500"
+                                />
+                              </div>
+
+                              <div className="sm:col-span-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddAddon()}
+                                  disabled={!newAddonName.trim()}
+                                  className="w-full h-11 bg-amber-500 hover:bg-amber-400 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shadow-md"
+                                  title="Agregar adicional"
+                                >
+                                  <Plus className="w-4 h-4 stroke-[3]" />
+                                  <span>Agregar</span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* List of configured adicionales */}
+                            {prodAddons.length > 0 ? (
+                              <div className="space-y-2 pt-1">
+                                <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center justify-between">
+                                  <span>Lista de adicionales disponibles para el cliente:</span>
+                                  <span className="text-amber-400 font-mono">{prodAddons.length} activos</span>
+                                </div>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {prodAddons.map((addon, aIdx) => (
+                                    <div
+                                      key={addon.id}
+                                      className="bg-gray-900 border border-gray-800 hover:border-amber-500/40 rounded-xl p-3 flex items-center justify-between gap-2.5 transition group"
+                                    >
+                                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                        <span className="w-5 h-5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-black flex items-center justify-center shrink-0 border border-amber-500/20">
+                                          {aIdx + 1}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <span className="text-xs font-bold text-white block truncate">
+                                            {addon.name}
+                                          </span>
+                                        </div>
+                                      </div>
+
+                                      {/* Price display / quick edit */}
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        <div className="flex items-center gap-1 bg-gray-950 px-2.5 py-1.5 rounded-lg border border-gray-800 focus-within:border-amber-400 w-28">
+                                          <span className="text-[11px] font-black text-amber-400 select-none">
+                                            +
+                                          </span>
+                                          <span className="text-[10px] font-mono text-gray-500 select-none">
+                                            {profile.currency || '$'}
+                                          </span>
+                                          <input
+                                            type="text"
+                                            inputMode="decimal"
+                                            value={addon.price !== undefined && addon.price !== null ? String(addon.price) : '0'}
+                                            onChange={(e) => handleUpdateAddonPrice(addon.id, e.target.value)}
+                                            className="w-full bg-transparent text-right text-xs font-mono font-bold text-emerald-400 outline-none"
+                                            title="Editar precio del adicional"
+                                          />
+                                        </div>
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemoveAddon(addon.id)}
+                                          className="w-8 h-8 rounded-lg bg-gray-950 border border-gray-800 text-gray-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10 flex items-center justify-center transition cursor-pointer shrink-0"
+                                          title={`Eliminar adicional ${addon.name}`}
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-center py-3 px-4 bg-gray-900/40 rounded-xl border border-dashed border-gray-800 text-gray-500 text-xs">
+                                <span>No has agregado adicionales opcionales para este plato. (Opcional) Usa las sugerencias o escribe uno nuevo arriba.</span>
+                              </div>
+                            )}
+                          </div>
+
                           {/* Imagen del Producto */}
                           <div>
                             <div className="flex items-center justify-between mb-1">
@@ -3817,6 +4057,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                               ? prod.flavorsList.length
                                               : (prod.flavorsText?.split(',').filter(Boolean).length || 0)} sabores
                                           </span>
+                                        </div>
+                                      )}
+                                      {prod.addons && prod.addons.length > 0 && (
+                                        <div className="flex justify-between items-center text-amber-300">
+                                          <span>🍟 Adicionales:</span>
+                                          <span className="font-mono font-bold text-white">{prod.addons.length} opciones</span>
                                         </div>
                                       )}
                                     </div>
@@ -6440,6 +6686,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       <div className="font-extrabold text-white">{item.name}</div>
                       {item.selectedVariant && (
                         <div className="text-[10px] text-indigo-400 font-bold">Variante: {item.selectedVariant}</div>
+                      )}
+                      {item.selectedAddons && item.selectedAddons.length > 0 && (
+                        <div className="text-[10px] text-amber-300 font-semibold mt-1 flex flex-wrap items-center gap-1">
+                          <span className="text-gray-400 font-bold">🍟 Adicionales:</span>
+                          {item.selectedAddons.map((add, aIdx) => (
+                            <span key={aIdx} className="bg-amber-500/10 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/20">
+                              +{add.name} {add.price > 0 ? `(${formatPrice(add.price)})` : '(Gratis)'}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                     <div className="font-mono text-right shrink-0">

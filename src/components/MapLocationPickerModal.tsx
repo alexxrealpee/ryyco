@@ -2331,3 +2331,4 @@ define('RYYCO_HOSTINGER_GOOGLE_MAPS_KEY', 'TU_API_KEY_DE_GOOGLE');`}
   );
 };
 
+export default MapLocationPickerModal;

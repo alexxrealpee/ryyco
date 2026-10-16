@@ -30,6 +30,7 @@ import {
   getStoredCart, 
   saveStoredCart, 
   addProductToCart, 
+  getCartItemUnitPrice,
   updateCartQuantity, 
   removeProductFromCart, 
   CART_UPDATED_EVENT, 
@@ -49,6 +50,7 @@ import {
   SocialLinks, 
   CustomTheme, 
   ProductItem, 
+  ProductAddon,
   OrderItem,
   LeadItem,
   BankAccount,
@@ -137,37 +139,8 @@ const Tiktok = ({ className = "w-4 h-4", ...props }: React.SVGProps<SVGSVGElemen
   </svg>
 );
 
-export function cleanColombianPhone(rawInput: string): string {
-  if (!rawInput) return '';
-  // 1. Remove all non-digits (spaces, dashes, parentheses, dots, etc.)
-  let digits = rawInput.replace(/\D/g, '');
-  
-  // 2. If it starts with '57' and has more than 10 digits, remove '57'
-  if (digits.startsWith('57') && digits.length > 10) {
-    digits = digits.slice(2);
-  }
-  
-  // 3. Keep only up to 10 digits
-  return digits.slice(0, 10);
-}
-
-export function formatColombianPhoneWith57(rawInput: string): string {
-  if (!rawInput) return '';
-  let digits = rawInput.replace(/\D/g, '');
-  if (digits.startsWith('57') && digits.length >= 12) {
-    return '+57' + digits.slice(2, 12);
-  }
-  if (digits.length === 10) {
-    return '+57' + digits;
-  }
-  if (digits.length > 0 && !digits.startsWith('57')) {
-    return '+57' + digits.slice(0, 10);
-  }
-  if (digits.startsWith('57')) {
-    return '+' + digits;
-  }
-  return digits ? '+57' + digits : '';
-}
+import { cleanColombianPhone, formatColombianPhoneWith57 } from '../lib/phoneUtils';
+export { cleanColombianPhone, formatColombianPhoneWith57 };
 
 interface PublicProfileProps {
   username: string;
@@ -407,12 +380,25 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [chosenVariantPrice, setChosenVariantPrice] = useState<number>(0);
   const [isVariantValid, setIsVariantValid] = useState(true);
   const [buyQuantity, setBuyQuantity] = useState(1);
+  const [selectedAddons, setSelectedAddons] = useState<ProductAddon[]>([]);
+
+  const toggleAddon = (addon: ProductAddon) => {
+    setSelectedAddons(prev => {
+      const exists = prev.some(a => a.id === addon.id || a.name.toLowerCase() === addon.name.toLowerCase());
+      if (exists) {
+        return prev.filter(a => a.id !== addon.id && a.name.toLowerCase() !== addon.name.toLowerCase());
+      } else {
+        return [...prev, addon];
+      }
+    });
+  };
 
   const currentModalUnitPrice = useMemo(() => {
     if (!selectedProduct) return 0;
-    if (chosenVariantPrice > 0) return chosenVariantPrice;
-    return getVariantPrice(selectedProduct, chosenVariant);
-  }, [selectedProduct, chosenVariant, chosenVariantPrice]);
+    const base = chosenVariantPrice > 0 ? chosenVariantPrice : getVariantPrice(selectedProduct, chosenVariant);
+    const addonsTotal = selectedAddons.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+    return (base > 0 ? base : (Number(selectedProduct.price) || 0)) + addonsTotal;
+  }, [selectedProduct, chosenVariant, chosenVariantPrice, selectedAddons]);
 
   const qrRef = useRef<HTMLDivElement>(null);
 
@@ -818,6 +804,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     setChosenVariantPrice(initialPrice);
     setIsVariantValid(true);
     setBuyQuantity(1);
+    setSelectedAddons([]);
   };
 
   const handleAddProductToCart = () => {
@@ -849,17 +836,23 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       registerProductImages([prodToSave]);
     }
 
-    const updated = addProductToCart(prodToSave, buyQuantity, chosenVariant || undefined);
+    const updated = addProductToCart(
+      prodToSave, 
+      buyQuantity, 
+      chosenVariant || undefined, 
+      selectedAddons.length > 0 ? selectedAddons : undefined
+    );
     setCart(updated);
     setSelectedProduct(null);
+    setSelectedAddons([]);
     setIsCartOpen(true);
   };
 
   const handleAddToCartDirect = (p: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const variants = splitVariantsText(p.variantsText, p.variantPrices);
-    if (variants.length > 1 || (p.allowsHalfAndHalf && p.flavorsText)) {
-      // Multiple variants or Pizza flavors require selection modal
+    if (variants.length > 1 || (p.allowsHalfAndHalf && p.flavorsText) || (p.addons && p.addons.length > 0)) {
+      // Multiple variants, Pizza flavors or optional Add-ons require selection modal
       handleOpenProductSelection(p);
       return;
     }
@@ -967,13 +960,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
           ? matchedProd.packagingCost
           : (typeof prod.packagingCost === 'number' ? prod.packagingCost : (parseFloat((prod as any).packagingCost) || undefined));
+        const itemUnitPrice = getCartItemUnitPrice(item);
         return {
           productId: prodId,
           name: prod.name || (item as any)?.name || 'Producto',
-          price: typeof prod.price === 'number' ? prod.price : (Number((item as any)?.price) || 0),
+          price: itemUnitPrice > 0 ? itemUnitPrice : (typeof prod.price === 'number' ? prod.price : (Number((item as any)?.price) || 0)),
           packagingCost: unitPackaging,
           quantity: item?.quantity || 1,
-          selectedVariant: item?.selectedVariant || undefined
+          selectedVariant: item?.selectedVariant || undefined,
+          selectedAddons: item?.selectedAddons && item.selectedAddons.length > 0 ? item.selectedAddons : undefined
         };
       }),
       totalAmount: totalSum,
@@ -1119,7 +1114,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     msg += `-----------------------------\n`;
     order.items.forEach(item => {
       const vText = item.selectedVariant ? ` (${item.selectedVariant})` : '';
-      msg += `• ${item.quantity} x ${item.name}${vText} - ${profile.currency || '$'}${item.price.toLocaleString()}\n`;
+      const addonsText = item.selectedAddons && item.selectedAddons.length > 0
+        ? `\n   + Adicionales: ${item.selectedAddons.map(a => `${a.name}${a.price > 0 ? ` (+${profile.currency || '$'}${a.price.toLocaleString()})` : ''}`).join(', ')}`
+        : '';
+      msg += `• ${item.quantity} x ${item.name}${vText} - ${profile.currency || '$'}${item.price.toLocaleString()}${addonsText}\n`;
     });
     msg += `-----------------------------\n`;
     const subtotalVal = order.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
@@ -2976,6 +2974,58 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       </div>
                     </div>
                   ) : null}
+
+                  {/* Adicionales opcionales para este producto */}
+                  {selectedProduct.addons && selectedProduct.addons.length > 0 && (
+                    <div className="space-y-2.5 w-full min-w-0 pt-3 border-t border-gray-800">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-base select-none">🍟</span>
+                          <span className="text-[11px] font-black text-white uppercase tracking-wider">
+                            Adicionales opcionales
+                          </span>
+                        </div>
+                        <span className="text-[9.5px] font-bold text-gray-400 bg-gray-900 px-2 py-0.5 rounded-full border border-gray-800">
+                          Elige los que gustes
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-2">
+                        {selectedProduct.addons.map((addon) => {
+                          const isChecked = selectedAddons.some(a => a.id === addon.id || a.name.toLowerCase() === addon.name.toLowerCase());
+                          return (
+                            <button
+                              key={addon.id}
+                              type="button"
+                              onClick={() => toggleAddon(addon)}
+                              className={`w-full p-2.5 sm:p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition cursor-pointer active:scale-[0.99] ${
+                                isChecked
+                                  ? 'bg-amber-500/15 border-amber-500/60 shadow-sm ring-1 ring-amber-500/30'
+                                  : 'bg-gray-900/90 hover:bg-gray-850 border-gray-800'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-4 h-4 rounded-md flex items-center justify-center shrink-0 border transition ${
+                                  isChecked
+                                    ? 'bg-amber-500 border-amber-400 text-black'
+                                    : 'border-gray-600 bg-transparent'
+                                }`}>
+                                  {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                                <span className={`text-xs font-bold truncate ${isChecked ? 'text-amber-200' : 'text-gray-200'}`}>
+                                  {addon.name}
+                                </span>
+                              </div>
+
+                              <span className="text-xs font-black font-mono text-emerald-400 shrink-0">
+                                {addon.price > 0 ? `+${getStoreCurrency()}${addon.price.toLocaleString('es-CO')}` : 'Gratis'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -3085,7 +3135,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                           {item.selectedVariant && (
                             <span className="text-[10px] text-indigo-400 font-extrabold block">Opción: {item.selectedVariant}</span>
                           )}
-                          <span className="font-mono text-[11px] font-semibold" style={{ color: storeAccent }}>{getStoreCurrency()}{(item?.product?.price ?? (item as any)?.price ?? 0).toLocaleString()}</span>
+                          {item.selectedAddons && item.selectedAddons.length > 0 && (
+                            <span className="text-[9.5px] text-amber-300 font-bold block truncate max-w-[160px]">
+                              + {item.selectedAddons.map(a => a.name).join(', ')}
+                            </span>
+                          )}
+                          <span className="font-mono text-[11px] font-semibold" style={{ color: storeAccent }}>{getStoreCurrency()}{(getCartItemUnitPrice(item)).toLocaleString()}</span>
                         </div>
                       </div>
 

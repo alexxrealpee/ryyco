@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ProductItem } from '../types';
+import { ProductItem, ProductAddon } from '../types';
 import { safeGetItem, safeSetItem } from './safeStorage';
 import { getVariantPrice, extractProductVariants } from './variantHelper';
 export { extractProductVariants };
 
 export interface GeneralCartItem {
-  id: string; // Composite ID: `${productId}_${variant || 'none'}`
+  id: string; // Composite ID: `${productId}_${variant || 'none'}_addons`
   product: ProductItem;
   selectedVariant?: string;
+  selectedAddons?: ProductAddon[];
   quantity: number;
 }
 
@@ -126,12 +127,14 @@ export function rehydrateCartItem(item: GeneralCartItem): GeneralCartItem {
     active: p.active !== false,
     stock: typeof p.stock === 'number' && !isNaN(p.stock) ? p.stock : 99,
     storeName: p.storeName,
-    storeUsername: p.storeUsername
+    storeUsername: p.storeUsername,
+    addons: Array.isArray(p.addons) ? p.addons : undefined
   };
 
   return {
-    id: item.id || getCartItemId(safeProdId, item.selectedVariant),
+    id: item.id || getCartItemId(safeProdId, item.selectedVariant, item.selectedAddons),
     selectedVariant: item.selectedVariant?.trim() || undefined,
+    selectedAddons: Array.isArray(item.selectedAddons) ? item.selectedAddons : undefined,
     quantity: Math.max(1, Number(item.quantity) || 1),
     product: safeProduct
   };
@@ -167,8 +170,9 @@ function compactCartItem(item: GeneralCartItem): GeneralCartItem {
   const cleanQuantity = Math.max(1, Number(item.quantity) || 1);
 
   return {
-    id: item.id || getCartItemId(safeProdId, item.selectedVariant),
+    id: item.id || getCartItemId(safeProdId, item.selectedVariant, item.selectedAddons),
     selectedVariant: item.selectedVariant?.trim() || undefined,
+    selectedAddons: Array.isArray(item.selectedAddons) ? item.selectedAddons : undefined,
     quantity: cleanQuantity,
     product: {
       id: safeProdId,
@@ -184,6 +188,7 @@ function compactCartItem(item: GeneralCartItem): GeneralCartItem {
       allowsHalfAndHalf: p.allowsHalfAndHalf,
       flavorsText: p.flavorsText,
       allowSingleFlavor: p.allowSingleFlavor,
+      addons: Array.isArray(p.addons) ? p.addons : undefined,
       active: p.active !== false,
       stock: typeof p.stock === 'number' && !isNaN(p.stock) ? p.stock : 99,
       storeName: p.storeName,
@@ -228,17 +233,34 @@ export function saveStoredCart(cart: GeneralCartItem[], source?: string): void {
   }
 }
 
-export function getCartItemId(productId: string | number | undefined, variant?: string): string {
+export function getCartItemId(productId: string | number | undefined, variant?: string, addons?: ProductAddon[]): string {
   let cleanId = productId ? String(productId).trim() : '';
   if (!cleanId || cleanId === 'undefined' || cleanId === 'null') {
     cleanId = 'item';
   }
   const cleanVar = variant?.trim();
-  return `${cleanId}_${cleanVar && cleanVar !== 'none' ? cleanVar : 'none'}`;
+  const sortedAddonsKey = (addons && addons.length > 0)
+    ? addons.map(a => `${a.id || a.name}:${a.price}`).sort().join(';')
+    : '';
+  const addonPart = sortedAddonsKey ? `_addons_${encodeURIComponent(sortedAddonsKey)}` : '';
+  return `${cleanId}_${cleanVar && cleanVar !== 'none' ? cleanVar : 'none'}${addonPart}`;
 }
 
-// Add item to cart with image preservation
-export function addProductToCart(product: ProductItem, quantity: number = 1, variant?: string): GeneralCartItem[] {
+export function getCartItemUnitPrice(item: GeneralCartItem): number {
+  if (!item || !item.product) return 0;
+  const basePrice = getVariantPrice(item.product, item.selectedVariant);
+  const unitBase = basePrice > 0 ? basePrice : (Number(item.product.price) || 0);
+  const addonsTotal = (item.selectedAddons || []).reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+  return unitBase + addonsTotal;
+}
+
+// Add item to cart with image preservation and optional add-ons support
+export function addProductToCart(
+  product: ProductItem, 
+  quantity: number = 1, 
+  variant?: string,
+  selectedAddons?: ProductAddon[]
+): GeneralCartItem[] {
   if (!product) return getStoredCart();
 
   // 1. Ensure robust, unique, non-empty product ID
@@ -263,26 +285,29 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
   const currentCart = getStoredCart();
   const actualQty = Math.max(1, Number(quantity) || 1);
   const actualVariant = variant?.trim() || (product.variantsText ? product.variantsText.split(',')[0].trim() : undefined);
-  const cartItemId = getCartItemId(validId, actualVariant);
+  const safeAddons = Array.isArray(selectedAddons) && selectedAddons.length > 0 ? selectedAddons : undefined;
+  const cartItemId = getCartItemId(validId, actualVariant, safeAddons);
   const variantSpecificPrice = getVariantPrice(product, actualVariant);
   
-  // 4. Match existing item ONLY when IDs strictly match AND variants match
+  // 4. Match existing item ONLY when IDs strictly match AND variants match AND addons match
   const existingIndex = currentCart.findIndex(item => {
     const itemProdId = item?.product?.id ? String(item.product.id).trim() : '';
     if (!itemProdId || !validId || itemProdId === 'undefined' || validId === 'undefined') {
       return false;
     }
 
-    const itemVar = (item.selectedVariant || '').trim() || 'none';
-    const newVar = (actualVariant || '').trim() || 'none';
-
-    // 4.1 Exact cart item ID match
+    // 4.1 Exact cart item ID match (which incorporates variant and addons)
     if (item.id && cartItemId && item.id === cartItemId) {
       return true;
     }
 
-    // 4.2 Exact product ID match AND variant match
-    return itemProdId === validId && itemVar === newVar;
+    const itemVar = (item.selectedVariant || '').trim() || 'none';
+    const newVar = (actualVariant || '').trim() || 'none';
+
+    const itemAddonKey = (item.selectedAddons || []).map(a => `${a.id || a.name}:${a.price}`).sort().join(';');
+    const newAddonKey = (safeAddons || []).map(a => `${a.id || a.name}:${a.price}`).sort().join(';');
+
+    return itemProdId === validId && itemVar === newVar && itemAddonKey === newAddonKey;
   });
 
   let newCart: GeneralCartItem[];
@@ -295,6 +320,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
           ...item,
           id: cartItemId,
           selectedVariant: actualVariant || item.selectedVariant,
+          selectedAddons: safeAddons || item.selectedAddons,
           quantity: item.quantity + actualQty,
           product: {
             ...item.product,
@@ -322,6 +348,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
           id: validId
         },
         selectedVariant: actualVariant,
+        selectedAddons: safeAddons,
         quantity: actualQty
       }
     ];
@@ -330,6 +357,7 @@ export function addProductToCart(product: ProductItem, quantity: number = 1, var
   saveStoredCart(newCart);
   return newCart.map(rehydrateCartItem);
 }
+
 
 // Update item quantity
 export function updateCartQuantity(cartItemId: string, quantity: number): GeneralCartItem[] {
