@@ -470,6 +470,31 @@ Formatos válidos para:
     const limitQuery = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 0;
     const limit = isInitial ? 6 : limitQuery;
 
+    const storeId = typeof req.query.storeId === 'string' ? req.query.storeId.trim() : '';
+    const storeUsername = typeof req.query.storeUsername === 'string' ? req.query.storeUsername.trim().toLowerCase() : '';
+
+    if (storeId || storeUsername) {
+      const storeProducts = (catalog.products || []).filter(p => 
+        (storeId && (p.userId === storeId || p.id?.startsWith(storeId))) ||
+        (storeUsername && p.storeUsername?.toLowerCase() === storeUsername)
+      );
+      const matchedStores = (catalog.stores || []).filter(s => 
+        (storeId && s.uid === storeId) || 
+        (storeUsername && s.username?.toLowerCase() === storeUsername)
+      );
+      res.json({
+        success: true,
+        catalog: {
+          stores: matchedStores.length > 0 ? matchedStores : catalog.stores,
+          products: limit > 0 ? storeProducts.slice(0, limit) : storeProducts
+        },
+        catalogUpdatedAt: catalog.catalogUpdatedAt,
+        version: catalog.version,
+        storeFiltered: true
+      });
+      return;
+    }
+
     if (limit > 0 && catalog.products && catalog.products.length > limit) {
       res.json({
         success: true,

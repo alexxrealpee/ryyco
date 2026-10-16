@@ -187,7 +187,6 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           const loadedList: Array<{ name: string; category?: string; logo?: string; username?: string }> = [];
 
           curatedPartnerList.forEach(item => {
-            // Find in database map by username or variations
             const prof = Object.values(map).find(p => {
               const u = (p.username || '').toLowerCase().trim();
               const d = (p.displayName || '').toLowerCase().trim();
@@ -275,185 +274,170 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
   const features = [
     {
-      icon: <Mic className="w-6 h-6 text-[#E63946]" />,
+      icon: <Mic className="w-5 h-5 text-[#D62839]" />,
       title: "Mesero Virtual IA por Voz Natural",
       desc: "Tus comensales y clientes pueden ordenar platos hablando con voz natural a un mesero virtual inteligente que responde, recomienda y arma el pedido al instante."
     },
     {
-      icon: <Bot className="w-6 h-6 text-[#F4B400]" />,
+      icon: <Bot className="w-5 h-5 text-[#E5A100]" />,
       title: "Administrador IA para Propietarios",
       desc: "Pregúntale por voz a tu panel cómo te fue en el día con ventas, pedidos o tu balance del mes. El Administrador IA te informa métricas y rendimiento financiero en segundos."
     },
     {
-      icon: <QrCode className="w-6 h-6 text-[#E63946]" />,
+      icon: <QrCode className="w-5 h-5 text-[#D62839]" />,
       title: "Menú Digital y Código QR en Mesa",
       desc: "Creamos un menú digital profesional con fotos, precios y categorías. Le entregamos un código QR personalizado para que sus clientes solo lo escaneen desde la mesa y pidan al instante."
     },
     {
-      icon: <Bike className="w-6 h-6 text-[#F4B400]" />,
+      icon: <Bike className="w-5 h-5 text-[#E5A100]" />,
       title: "Domicilios Rápidos y Exclusivos",
       desc: "Mejoramos la experiencia con domicilios rápidos, tomados con un pedido a la vez para que la comida llegue caliente y en buen estado a la puerta de sus clientes."
     },
     {
-      icon: <Share2 className="w-6 h-6 text-[#E63946]" />,
+      icon: <Share2 className="w-5 h-5 text-[#D62839]" />,
       title: "Publicidad en TikTok, FB e IG",
       desc: "Promocionamos su restaurante en TikTok, Facebook e Instagram. Así más personas descubren su negocio y se multiplican sus ventas cada mes."
     },
     {
-      icon: <MapPin className="w-6 h-6 text-[#F4B400]" />,
+      icon: <MapPin className="w-5 h-5 text-[#E5A100]" />,
       title: "Directorio de Restaurantes en Ipiales",
       desc: "Y lo más importante: su restaurante aparece en un directorio oficial junto a otros restaurantes de Ipiales, lo que aumenta significativamente su visibilidad local."
     },
     {
-      icon: <Smartphone className="w-6 h-6 text-[#E63946]" />,
+      icon: <Smartphone className="w-5 h-5 text-[#D62839]" />,
       title: "Panel Sencillo y Tiempo Real",
       desc: "Desde un panel sencillo, puede agregar platos, cambiar precios, actualizar fotos de su menú y recibir pedidos directos en tiempo real."
     },
     {
-      icon: <Award className="w-6 h-6 text-[#F4B400]" />,
+      icon: <Award className="w-5 h-5 text-[#E5A100]" />,
       title: "Tecnología, Publicidad y Domicilios",
       desc: "Nosotros ponemos la tecnología, la publicidad y los domicilios. Usted se dedica a lo que mejor sabe hacer: preparar deliciosa comida."
     }
   ];
 
   return (
-    <div className="bg-[#090B12] text-gray-100 min-h-screen selection:bg-[#E63946] selection:text-white font-sans">
+    <div className="bg-[#0B0E14] text-slate-100 min-h-screen selection:bg-[#D62839] selection:text-white font-sans antialiased">
       
-      {/* Navigation Header */}
-      <header className="border-b border-[#232B3A] backdrop-blur-md sticky top-0 z-50 bg-[#090B12]/95">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
+      {/* Top Header - Solid Flat Surface */}
+      <header className="border-b border-[#222B38] bg-[#0E121A] sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
           <LinnkProLogo 
             onClick={() => onNavigate('tienda')}
-            height={42}
-            imgClassName="h-7.5 sm:h-[42px]"
+            height={40}
+            imgClassName="h-8 sm:h-10 cursor-pointer"
           />
           
-          <div className="flex items-center justify-center sm:justify-end gap-2.5 sm:gap-4 w-full sm:w-auto">
+          <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
             <button 
               onClick={() => {
                 window.history.pushState({}, '', '/domiciliario');
                 onNavigate('driver-portal');
               }}
-              className="hidden sm:flex px-2 py-1.5 md:px-3 md:py-2 text-xs md:text-sm font-semibold text-[#E63946] hover:text-white transition-colors items-center gap-1 cursor-pointer whitespace-nowrap bg-[#E63946]/10 border border-[#E63946]/30 rounded-xl"
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-[#D62839] hover:text-white bg-[#1A222E] hover:bg-[#D62839] border border-[#2B374A] rounded-lg transition-colors cursor-pointer"
             >
-              <Bike className="w-3.5 h-3.5 text-[#E63946]" />
+              <Bike className="w-3.5 h-3.5" />
               <span>Domiciliarios</span>
             </button>
             <button 
               onClick={() => onNavigate('tienda')}
-              className="px-2 py-1.5 md:px-3 md:py-2 text-xs md:text-sm font-semibold text-[#A9B2C3] hover:text-white transition-colors flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-[#1A222E] rounded-lg transition-colors cursor-pointer"
             >
               <ShoppingBag className="w-3.5 h-3.5" />
               <span>Ver Vitrina</span>
             </button>
             <button 
               onClick={() => onNavigate('login')}
-              className="px-2 py-1.5 md:px-4 md:py-2 text-xs md:text-sm font-medium hover:text-white transition-colors text-[#A9B2C3] whitespace-nowrap"
+              className="px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-[#1A222E] rounded-lg transition-colors cursor-pointer"
             >
               <span className="hidden sm:inline">Acceso Vendedor</span>
               <span className="sm:hidden">Ingresar</span>
             </button>
             <button 
               onClick={() => onNavigate('signup')}
-              className="bg-[#E63946] text-white hover:bg-[#D62839] transition-all font-bold rounded-xl text-xs md:text-sm px-3 py-1.5 md:px-4.5 md:py-2 shadow-md hover:shadow-lg hover:shadow-[#E63946]/20 active:scale-[0.98] whitespace-nowrap cursor-pointer"
+              className="bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer"
             >
-              <span>Ingresar mi restaurante</span>
+              Ingresar mi restaurante
             </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-12 sm:pt-20 pb-12 sm:pb-20 px-3 sm:px-6">
-        {/* Glow Spheres */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] sm:w-[550px] h-[300px] sm:h-[550px] bg-[#E63946]/5 blur-[100px] sm:blur-[140px] rounded-full -z-10" />
-        <div className="absolute top-1/4 left-1/3 w-[200px] sm:w-[350px] h-[200px] sm:h-[350px] bg-[#F4B400]/5 blur-[80px] sm:blur-[110px] rounded-full -z-10" />
+      {/* Hero Section - Pure Flat Canvas */}
+      <section className="pt-12 sm:pt-16 pb-12 sm:pb-16 px-4 sm:px-6 border-b border-[#222B38] bg-[#0E121A]">
+        <div className="max-w-4xl mx-auto text-center">
+          
+          {/* Subtle Flat Badge */}
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#161C26] border border-[#2B374A] text-xs font-bold text-[#E5A100] mb-5">
+            <Sparkles className="w-3.5 h-3.5 text-[#E5A100]" />
+            <span>Plataforma Gastronómica Inteligente de Ipiales</span>
+          </div>
 
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.h1 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold tracking-tight text-white mb-6 leading-[1.15] break-words"
-          >
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-tight text-white mb-5 leading-tight">
             Descubre qué quieres <br className="hidden sm:inline" />
-            <span className="text-[#E63946]">comer </span><span className="text-[#F4B400]">hoy.</span>
-          </motion.h1>
+            <span className="text-[#D62839]">comer </span>
+            <span className="text-[#E5A100]">hoy.</span>
+          </h1>
 
-          <motion.p 
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.15 }}
-            className="text-sm sm:text-base md:text-lg text-[#A9B2C3] mb-6 max-w-3xl mx-auto leading-relaxed break-words px-2 font-medium"
-          >
-            <strong className="text-white">Ryyco</strong> es la plataforma gastronómica impulsada por <strong className="text-[#F4B400]">Inteligencia Artificial</strong>: tus clientes pueden pedir platos por <strong className="text-[#E63946]">voz natural con un Mesero Virtual</strong>, y tú como dueño tienes un <strong className="text-[#F4B400]">Administrador IA por voz</strong> para consultar ventas diarias, pedidos y tu balance del mes en tiempo real.
-          </motion.p>
+          <p className="text-sm sm:text-base md:text-lg text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed font-normal">
+            <strong className="text-white font-semibold">Ryyco</strong> es la plataforma gastronómica impulsada por <strong className="text-[#E5A100] font-semibold">Inteligencia Artificial</strong>: tus clientes pueden pedir platos por <strong className="text-[#D62839] font-semibold">voz natural con un Mesero Virtual</strong>, y tú como dueño tienes un <strong className="text-[#E5A100] font-semibold">Administrador IA por voz</strong> para consultar ventas diarias, pedidos y tu balance del mes en tiempo real.
+          </p>
 
-          {/* Subdomain Input claim bar */}
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="max-w-xl mx-auto mb-10"
-          >
-            <form onSubmit={handleClaim} className="flex flex-col sm:flex-row gap-2.5 bg-[#111827] border border-[#232B3A] p-2 rounded-2xl shadow-xl">
-              <div className="flex items-center flex-grow px-3 sm:px-4 py-2 bg-transparent text-[#A9B2C3] min-w-0">
-                <span className="text-[#A9B2C3] mr-0.5 select-none font-semibold text-xs sm:text-base shrink-0">ryyco.com/</span>
+          {/* Subdomain Input claim bar - Solid Flat Design */}
+          <div className="max-w-xl mx-auto mb-8">
+            <form onSubmit={handleClaim} className="flex flex-col sm:flex-row gap-2 bg-[#161C26] border border-[#2B374A] p-2 rounded-xl">
+              <div className="flex items-center flex-grow px-3 py-2 bg-[#0B0E14] border border-[#222B38] rounded-lg text-slate-300 min-w-0">
+                <span className="text-slate-400 select-none font-semibold text-xs sm:text-sm shrink-0">ryyco.com/</span>
                 <input 
                   type="text" 
                   value={storeSlug}
                   onChange={(e) => setStoreSlug(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
                   placeholder="nombre-restaurante" 
-                  className="bg-transparent focus:outline-none text-white text-xs sm:text-base w-full font-semibold placeholder:text-gray-500 focus:ring-0 min-w-0"
+                  className="bg-transparent focus:outline-none text-white text-xs sm:text-sm w-full font-medium placeholder:text-slate-500 min-w-0 ml-0.5"
                   required
                 />
               </div>
               <button 
                 type="submit"
                 disabled={checking}
-                className="bg-[#E63946] hover:bg-[#D62839] text-white font-bold px-5 sm:px-6 py-3 sm:py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/20 active:scale-[0.98] transition-all shrink-0 text-xs sm:text-base cursor-pointer"
+                className="bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shrink-0 text-xs sm:text-sm cursor-pointer disabled:opacity-50"
               >
-                {checking ? 'Creando...' : 'Crear Menú QR'}
+                {checking ? 'Ingresando...' : 'Ingresar mi restaurante'}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
-            <div className="text-xs text-center sm:text-start text-[#A9B2C3] mt-3 px-2 flex flex-wrap items-center gap-2 justify-center sm:justify-between">
-              <div className="flex items-center gap-1.5 flex-wrap justify-center">
-                <span>🚀 Lanzamiento Instantáneo</span>
-                <span className="text-[#232B3A]">•</span>
+
+            <div className="text-xs text-slate-400 mt-3 px-1 flex flex-wrap items-center gap-2 justify-center sm:justify-between">
+              <div className="flex items-center gap-2 flex-wrap justify-center">
+                <span className="text-slate-300 font-medium">Lanzamiento Instantáneo</span>
+                <span className="text-slate-600">·</span>
                 <button 
                   type="button" 
                   onClick={() => onNavigate('tienda')}
-                  className="text-[#F4B400] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                  className="text-[#E5A100] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
                   <span>Ver Directorio</span>
-                  <ChevronRight className="w-3 h-3" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
               <button
                 type="button"
                 onClick={() => setIsPrintModalOpen(true)}
-                className="text-[#E63946] hover:text-white font-bold inline-flex items-center gap-1 cursor-pointer bg-[#E63946]/10 border border-[#E63946]/30 px-2.5 py-1 rounded-lg hover:bg-[#E63946]/20 transition text-[11px] sm:text-xs"
+                className="text-[#D62839] hover:text-white font-bold inline-flex items-center gap-1.5 cursor-pointer bg-[#161C26] hover:bg-[#D62839] border border-[#2B374A] px-2.5 py-1 rounded-md transition-colors text-xs"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>Carta de Presentación (Imprimible)</span>
               </button>
             </div>
-          </motion.div>
+          </div>
 
-          {/* Restaurant Partners Badge Box with Logos and Names */}
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.25 }}
-            className="max-w-4xl mx-auto bg-[#111827] border border-[#232B3A] rounded-2xl p-4 sm:p-6 text-center shadow-xl"
-          >
-            <p className="text-[11px] sm:text-xs uppercase tracking-wider text-[#A9B2C3] font-bold mb-4 sm:mb-6 flex items-center justify-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#F4B400] shrink-0" />
+          {/* Restaurant Partners Section - Solid Flat Cards */}
+          <div className="max-w-4xl mx-auto bg-[#161C26] border border-[#2B374A] rounded-xl p-5 sm:p-6 text-center">
+            <p className="text-xs uppercase tracking-wider text-slate-300 font-bold mb-5 flex items-center justify-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#E5A100] shrink-0" />
               <span>Ya hacen parte de <strong className="text-white">Ryyco.com</strong> en Ipiales:</span>
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 items-start justify-items-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 items-start justify-items-center">
               {partnerStores.map((store, idx) => (
                 <button
                   key={idx}
@@ -465,40 +449,35 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       onNavigate('tienda');
                     }
                   }}
-                  className="flex flex-col items-center group cursor-pointer focus:outline-none transition-transform duration-200 hover:-translate-y-1 w-full max-w-[140px]"
+                  className="flex flex-col items-center bg-[#0E121A] hover:bg-[#1A222E] border border-[#222B38] hover:border-[#D62839] rounded-xl p-3 w-full transition-colors cursor-pointer group text-center"
                   title={`Ver tienda de ${store.name}`}
                 >
-                  {/* Circular Logo Container */}
-                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full p-0.5 bg-gradient-to-tr from-[#E63946] via-[#F4B400] to-[#E63946] shadow-lg shadow-[#E63946]/20 group-hover:shadow-[0_0_20px_rgba(230,57,70,0.5)] group-hover:scale-105 transition-all duration-300">
-                    <div className="w-full h-full rounded-full overflow-hidden bg-[#090B12] border-2 border-[#111827] flex items-center justify-center">
-                      {store.logo ? (
-                        <img 
-                          src={store.logo} 
-                          alt={store.name}
-                          referrerPolicy="no-referrer"
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                          onError={(e) => {
-                            if (store.username && !e.currentTarget.src.includes(`/stores/${store.username}`)) {
-                              e.currentTarget.src = `/stores/${store.username}.jpg`;
-                            }
-                          }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1F2937] to-[#111827] text-white font-black text-base sm:text-lg">
-                          {store.name.charAt(0)}
-                        </div>
-                      )}
-                    </div>
-                    {/* Active Store Indicator */}
-                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-emerald-500 border-2 border-[#111827] rounded-full shadow-xs" title="Tienda Activa" />
+                  <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-[#2B374A] group-hover:border-[#D62839] bg-[#0B0E14] flex items-center justify-center shrink-0 mb-2 transition-colors">
+                    {store.logo ? (
+                      <img 
+                        src={store.logo} 
+                        alt={store.name}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          if (store.username && !e.currentTarget.src.includes(`/stores/${store.username}`)) {
+                            e.currentTarget.src = `/stores/${store.username}.jpg`;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white font-bold text-sm bg-[#1A222E]">
+                        {store.name.charAt(0)}
+                      </div>
+                    )}
+                    <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[#0E121A] rounded-full" title="Tienda Activa" />
                   </div>
 
-                  {/* Store Name Underneath */}
-                  <span className="mt-2.5 text-xs sm:text-sm font-extrabold text-white group-hover:text-[#F4B400] transition-colors leading-tight text-center line-clamp-2 px-1">
+                  <span className="text-xs font-bold text-white group-hover:text-[#E5A100] transition-colors leading-tight line-clamp-1">
                     {store.name}
                   </span>
                   {store.category && (
-                    <span className="text-[10px] text-[#A9B2C3] font-medium mt-0.5 text-center line-clamp-1">
+                    <span className="text-[10px] text-slate-400 font-normal mt-0.5 line-clamp-1">
                       {store.category}
                     </span>
                   )}
@@ -506,406 +485,239 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               ))}
             </div>
 
-            <p className="text-xs sm:text-sm text-[#E63946] font-semibold mt-5">
-              Y cada vez somos más. ¡Únase hoy! Nosotros ponemos la tecnología, la publicidad y los domicilios.
+            <p className="text-xs text-slate-300 font-medium mt-4 pt-4 border-t border-[#222B38]">
+              Y cada vez somos más. ¡Únase hoy! <strong className="text-white">Nosotros ponemos la tecnología, la publicidad y los domicilios.</strong>
             </p>
-          </motion.div>
+          </div>
+
         </div>
       </section>
 
-      {/* Simulated Store Interactive mockup */}
-      <section className="pb-16 sm:pb-24 px-3 sm:px-6 flex justify-center">
-        <div className="relative max-w-5xl w-full bg-[#111827] border border-[#232B3A] rounded-2xl sm:rounded-[32px] p-4 sm:p-6 shadow-2xl overflow-hidden">
+      {/* Simulated Store Interactive Mockup - Flat Editorial Structure */}
+      <section className="py-12 sm:py-16 px-4 sm:px-6 border-b border-[#222B38] bg-[#0B0E14]">
+        <div className="max-w-6xl mx-auto bg-[#121721] border border-[#222B38] rounded-2xl p-5 sm:p-8">
           
-          {/* Header element of mockup */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#232B3A] pb-3 sm:pb-4 mb-4 sm:mb-6">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#E63946]/40 block shrink-0" />
-              <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-[#F4B400]/40 block shrink-0" />
-              <span className="w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-emerald-500/40 block shrink-0" />
-              <span className="text-[10px] sm:text-xs text-[#A9B2C3] font-mono ml-1.5 sm:ml-3 truncate max-w-[150px] sm:max-w-none">ryyco.com/panel-vendedor</span>
+          {/* Mockup Header Strip */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#222B38] pb-4 mb-6">
+            <div className="flex items-center gap-2">
+              <span className="w-3 h-3 rounded-full bg-[#D62839] block" />
+              <span className="w-3 h-3 rounded-full bg-[#E5A100] block" />
+              <span className="w-3 h-3 rounded-full bg-emerald-500 block" />
+              <span className="text-xs text-slate-400 font-mono ml-2">ryyco.com/panel-vendedor</span>
             </div>
-            <span className="bg-[#E63946]/15 text-[#E63946] border border-[#E63946]/30 rounded-full px-2.5 py-0.5 sm:px-3 sm:py-1 text-[9px] sm:text-[10px] font-black tracking-wider uppercase shrink-0">
-              CONSTRUCTOR LIVE
+            <span className="bg-[#1A222E] text-slate-300 border border-[#2B374A] rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider">
+              CONSTRUCTOR EN VIVO
             </span>
           </div>
 
-          <div className="grid lg:grid-cols-12 gap-6 sm:gap-8">
+          <div className="grid lg:grid-cols-12 gap-8 items-center">
             
-            {/* Admin Controls Panel */}
-            <div className="lg:col-span-7 flex flex-col justify-center space-y-4 sm:space-y-6">
+            {/* Left Content Column */}
+            <div className="lg:col-span-7 space-y-6">
               <div>
-                <h3 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white mb-2 leading-tight break-words">
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-2 leading-tight">
                   Diseñado para emprendedores y marcas
-                </h3>
-                <p className="text-[#A9B2C3] text-xs sm:text-sm md:text-base leading-relaxed break-words">
+                </h2>
+                <p className="text-slate-300 text-sm leading-relaxed">
                   Con el creador de Ryyco.com, tienes el control absoluto de tu negocio digital. Olvídate de configuraciones confusas o integraciones complejas. Crea tu catálogo, súbelo a la nube, controla tus pedidos en un panel inteligente y comunícate fluidamente con tus clientes.
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div className="flex gap-3 items-start p-3 bg-[#090B12] rounded-xl border border-[#232B3A]">
-                  <div className="bg-[#E63946]/10 p-2 rounded-lg text-[#E63946] shrink-0">
-                    <TrendingUp className="w-5 h-5" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
+                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#D62839] flex items-center justify-center mb-2.5">
+                    <TrendingUp className="w-4 h-4" />
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-white mb-1">Analíticas de Venta</h4>
-                    <p className="text-xs text-[#A9B2C3] font-medium leading-normal">Visualiza ingresos, visitas y conversión de carrito de compras.</p>
-                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">Analíticas de Venta</h4>
+                  <p className="text-xs text-slate-400 leading-normal">Visualiza ingresos, visitas y conversión de carrito de compras.</p>
                 </div>
 
-                <div className="flex gap-3 items-start p-3 bg-[#090B12] rounded-xl border border-[#232B3A]">
-                  <div className="bg-[#F4B400]/10 p-2 rounded-lg text-[#F4B400] shrink-0">
-                    <CreditCard className="w-5 h-5" />
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
+                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#E5A100] flex items-center justify-center mb-2.5">
+                    <CreditCard className="w-4 h-4" />
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-white mb-1">Múltiples Pagos</h4>
-                    <p className="text-xs text-[#A9B2C3] font-medium leading-normal">Soporta pedidos directos, transferencias y pagos contra entrega.</p>
-                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">Múltiples Pagos</h4>
+                  <p className="text-xs text-slate-400 leading-normal">Soporta pedidos directos, transferencias y pagos contra entrega.</p>
                 </div>
 
-                <div className="flex gap-3 items-start p-3 bg-[#090B12] rounded-xl border border-[#232B3A]">
-                  <div className="bg-[#E63946]/10 p-2 rounded-lg text-[#E63946] shrink-0">
-                    <ShoppingBag className="w-5 h-5" />
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
+                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#D62839] flex items-center justify-center mb-2.5">
+                    <ShoppingBag className="w-4 h-4" />
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-white mb-1">Variantes Dinámicas</h4>
-                    <p className="text-xs text-[#A9B2C3] font-medium leading-normal">Asigna tallas, colores o configuraciones específicas a tus productos.</p>
-                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">Variantes Dinámicas</h4>
+                  <p className="text-xs text-slate-400 leading-normal">Asigna tallas, sabores o configuraciones específicas a tus platos.</p>
                 </div>
 
-                <div className="flex gap-3 items-start p-3 bg-[#090B12] rounded-xl border border-[#232B3A]">
-                  <div className="bg-[#F4B400]/10 p-2 rounded-lg text-[#F4B400] shrink-0">
-                    <Coins className="w-5 h-5" />
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
+                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#E5A100] flex items-center justify-center mb-2.5">
+                    <Coins className="w-4 h-4" />
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-white mb-1">100% de Comisión Cero</h4>
-                    <p className="text-xs text-[#A9B2C3] font-medium leading-normal">Tus ganancias van directamente a tu cuenta. Sin tarifas ocultas.</p>
-                  </div>
+                  <h4 className="text-sm font-bold text-white mb-1">100% de Comisión Cero</h4>
+                  <p className="text-xs text-slate-400 leading-normal">Tus ganancias van directamente a tu cuenta. Sin tarifas ocultas.</p>
                 </div>
               </div>
 
-              <div className="pt-2 sm:pt-4">
+              <div>
                 <button 
                   onClick={() => onNavigate('signup')}
-                  className="w-full sm:w-auto bg-[#E63946] hover:bg-[#D62839] text-white font-bold rounded-2xl px-6 py-3.5 sm:py-4 flex items-center justify-center gap-2 text-sm transition-all cursor-pointer shadow-lg shadow-[#E63946]/20"
+                  className="bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold rounded-lg px-6 py-3 flex items-center justify-center gap-2 text-sm transition-colors cursor-pointer"
                 >
-                  Regístrate Ahora
+                  <span>Regístrate Ahora</span>
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Public Storefront Preview Simulator */}
-            <div className="lg:col-span-5 flex justify-center bg-[#090B12] rounded-3xl p-6 border border-[#232B3A]">
-              <div className="w-full max-w-[295px] border-[10px] border-[#232B3A] rounded-[44px] bg-[#090B12] overflow-hidden aspect-[9/19] shadow-2xl flex flex-col py-3 px-3 relative">
+            {/* Right Simulator Phone Mockup */}
+            <div className="lg:col-span-5 flex justify-center">
+              <div className="w-full max-w-[280px] bg-[#0B0E14] border-4 border-[#222B38] rounded-3xl p-3 flex flex-col space-y-3">
                 
-                {/* Simulated Smartphone Status Bar */}
-                <div className="flex items-center justify-between px-2.5 mb-3 shrink-0 text-[8px] text-[#A9B2C3] font-black font-mono">
+                {/* Phone Status bar */}
+                <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 px-1 border-b border-[#1A222E] pb-2">
                   <span>12:00</span>
-                  <div className="w-14 h-3 bg-[#232B3A] rounded-full flex items-center justify-center shrink-0">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#090B12]" />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span>LTE</span>
-                    <div className="w-3.5 h-2 border border-[#A9B2C3]/40 rounded-sm p-[1px] flex items-center">
-                      <div className="w-full h-full bg-[#E63946] rounded-3xs" />
-                    </div>
-                  </div>
+                  <span className="text-[#D62839] font-bold">● RYYCO</span>
+                  <span>4G</span>
                 </div>
-                
-                {/* Simulated Web View Container */}
-                <div className="flex-grow flex flex-col overflow-y-auto scrollbar-none space-y-3 pb-2 text-left select-none">
-                  
-                  {/* SEÑOR BARRIL Mock Header */}
-                  <div className="flex items-center justify-between pb-2.5 border-b border-[#232B3A] shrink-0">
-                    <div className="flex items-center gap-1.5">
-                      <div className="w-6 h-6 rounded-full bg-black border border-[#E63946]/40 flex items-center justify-center font-serif text-[5px] font-black text-[#E63946] shadow-inner shrink-0">
-                        SB
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[8px] font-black tracking-wider text-white leading-none">
-                          SEÑOR BARRIL
-                        </span>
-                        <span className="text-[5px] font-bold text-[#A9B2C3] tracking-widest uppercase">
-                          PARRILLA & BAR - IPIALES
-                        </span>
-                      </div>
-                    </div>
-                    
-                    {/* Header tools */}
-                    <div className="flex items-center gap-1.5">
-                      <Search className="w-2.5 h-2.5 text-[#A9B2C3]" />
-                      <QrCode className="w-2.5 h-2.5 text-[#A9B2C3]" />
-                      {/* Shopping Bag Red Pill Badge */}
-                      <div className="bg-[#E63946] text-white font-black px-1.5 py-0.5 rounded-full flex items-center gap-0.5 text-[6px]">
-                        <ShoppingBag className="w-2 h-2 text-white" />
-                        <span className="bg-white text-[#E63946] w-2.5 h-2.5 rounded-full flex items-center justify-center text-[5px] leading-none">
-                          {mockCart}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
 
-                  {/* SEÑOR BARRIL Mock Hero Section */}
-                  <div className="relative rounded-xl bg-gradient-to-b from-[#111827] to-[#090B12] p-3 text-center border border-[#232B3A] overflow-hidden shrink-0">
-                    <div className="absolute -top-12 left-1/2 -translate-x-1/2 w-24 h-24 bg-[#E63946]/10 blur-xl rounded-full pointer-events-none" />
-                    <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-20 h-20 bg-[#F4B400]/10 blur-xl rounded-full pointer-events-none" />
-
-                    <h4 className="text-[9px] font-black tracking-tight text-white mb-1 leading-tight uppercase relative z-10">
-                      EL MEJOR SABOR A LA <br />PARRILLA EN IPIALES
-                    </h4>
-                    <p className="text-[5px] text-[#A9B2C3] mb-2 leading-normal max-w-[140px] mx-auto relative z-10">
-                      Pide directo desde tu mesa con código QR o a domicilio caliente.
-                    </p>
-
-                    {/* Social networks circles row */}
-                    <div className="flex items-center justify-center gap-1.5 mb-2.5 relative z-10">
-                      {['chat', 'instagram', 'facebook', 'tiktok'].map((social) => (
-                        <div key={social} className="w-4 h-4 rounded-full border border-[#232B3A] bg-[#090B12] flex items-center justify-center text-[5px] text-[#A9B2C3]">
-                          {social === 'chat' && '💬'}
-                          {social === 'instagram' && '📸'}
-                          {social === 'facebook' && 'f'}
-                          {social === 'tiktok' && '🎵'}
-                        </div>
-                      ))}
-                    </div>
-
-                    <button 
-                      type="button"
-                      onClick={() => setMockCategory('PARRILLA')}
-                      className="bg-[#E63946] hover:bg-[#D62839] text-white font-black text-[6px] tracking-widest py-1 px-3 rounded-full flex items-center justify-center gap-1 mx-auto shadow-md transition active:scale-95 relative z-10"
-                    >
-                      VER MENÚ QR 🍖
-                    </button>
-                  </div>
-
-                  {/* Category Selection Filter Section */}
-                  <div className="shrink-0">
-                    <span className="text-[4px] font-black text-[#A9B2C3] tracking-wider uppercase block leading-none">Filtrar por Categoría</span>
-                    <h5 className="text-[8px] font-black text-white block mt-0.5 uppercase leading-none">Menú del Restaurante</h5>
-                    <span className="text-[5px] font-bold text-[#A9B2C3] block mt-0.5">Mostrando {filteredMockProducts.length} platos</span>
-
-                    {/* Horizontal scroll selection pills */}
-                    <div className="flex gap-1.5 overflow-x-auto pb-1 mt-1.5 scrollbar-none">
-                      {[
-                        { id: 'TODOS', label: 'TODOS' },
-                        { id: 'PARRILLA', label: 'PARRILLA' },
-                        { id: 'HAMBURGUESAS', label: 'HAMBURG...' },
-                        { id: 'COMIDAS RÁPIDAS', label: 'RÁPIDAS' },
-                        { id: 'PIZZAS', label: 'PIZZAS' }
-                      ].map((cat) => {
-                        const isSelected = mockCategory === cat.id;
-                        return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => setMockCategory(cat.id)}
-                            className={`flex items-center gap-1 p-1 rounded-md border text-left shrink-0 transition-all ${
-                              isSelected 
-                                ? 'bg-[#E63946]/15 border-[#E63946]' 
-                                : 'bg-[#111827] border-[#232B3A]'
-                            }`}
-                          >
-                            <div className={`p-0.5 rounded ${isSelected ? 'bg-[#E63946] text-white' : 'bg-[#232B3A] text-[#A9B2C3]'}`}>
-                              <Utensils className="w-2.5 h-2.5" />
-                            </div>
-                            <div className="min-w-0 pr-0.5">
-                              <span className="text-[3px] font-bold text-[#A9B2C3] uppercase block leading-none">Categoría</span>
-                              <span className="text-[5px] font-black text-white block truncate uppercase">{cat.label}</span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Product Grid Area */}
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {filteredMockProducts.map((p) => (
-                      <div key={p.id} className="bg-[#111827] border border-[#232B3A] rounded-lg p-1.5 flex flex-col justify-between shrink-0 shadow-sm relative">
-                        <div className="absolute top-1.5 right-1.5 bg-[#E63946]/10 text-[#E63946] font-bold text-[4px] px-1 py-0.2 rounded uppercase tracking-wider z-10 flex items-center gap-0.5">
-                          <span className="w-0.8 h-0.8 rounded-full bg-[#E63946] inline-block animate-ping" />
-                          FAVORITO
-                        </div>
-                        
-                        <div>
-                          {/* Image Box */}
-                          <div className="w-full aspect-square rounded bg-[#090B12] overflow-hidden mb-1 relative">
-                            <img 
-                              src={p.image} 
-                              alt={p.name} 
-                              className="w-full h-full object-cover" 
-                              referrerPolicy="no-referrer"
-                            />
-                          </div>
-                          
-                          <span className="text-[4px] font-black text-[#F4B400] uppercase tracking-wide block leading-none">{p.category}</span>
-                          <h6 className="text-[6px] font-bold text-white line-clamp-2 min-h-[14px] leading-tight mt-0.5">{p.name}</h6>
-                        </div>
-
-                        <div>
-                          <div className="text-[7px] font-black text-white mt-1">{p.price}</div>
-                          
-                          <button 
-                            type="button"
-                            onClick={() => setMockCart(prev => prev + 1)}
-                            className="mt-1 w-full py-1 bg-[#E63946] hover:bg-[#D62839] text-white font-black rounded text-[5px] flex items-center justify-center gap-0.5 transition active:scale-95 cursor-pointer"
-                          >
-                            <span>PEDIR</span> <Utensils className="w-1.5 h-1.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {filteredMockProducts.length === 0 && (
-                      <div className="col-span-2 py-4 text-center text-[#A9B2C3] text-[6px]">
-                        No hay productos en esta categoría.
-                      </div>
-                    )}
-                  </div>
-
-                  {/* SEÑOR BARRIL Mock Footer */}
-                  <div className="text-center pt-3 border-t border-[#232B3A] mt-2 pb-1.5">
-                    <div className="w-5 h-5 rounded-full bg-black border border-[#E63946]/40 flex items-center justify-center font-serif text-[4px] font-black text-[#E63946] mx-auto mb-0.5">
+                {/* Simulated Store Header */}
+                <div className="flex items-center justify-between border-b border-[#1A222E] pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded-full bg-[#1A222E] border border-[#2B374A] flex items-center justify-center text-[7px] font-bold text-[#D62839]">
                       SB
                     </div>
-                    <span className="text-[3px] font-black text-[#A9B2C3] uppercase tracking-widest block">RESTAURANTE</span>
-                    <h6 className="text-[6px] font-black text-white leading-none">Señor Barril</h6>
-                    <span className="text-[5px] font-black text-[#E63946] tracking-wider block mt-0.5">ryyco.com/senor-barril</span>
-                    <p className="text-[4px] text-[#A9B2C3] mt-1">El mejor sabor a la parrilla de Ipiales en tu mesa o domicilio.</p>
-                    
-                    <div className="flex items-center justify-center gap-1 mt-1.5 text-[4px] text-[#A9B2C3]">
-                      <Mail className="w-1.5 h-1.5" />
-                      <span>contacto@senorbarril.com</span>
+                    <div>
+                      <div className="text-[9px] font-bold text-white leading-none">SEÑOR BARRIL</div>
+                      <div className="text-[6px] text-slate-400 uppercase">Parrilla & Bar</div>
                     </div>
-
-                    <div className="flex justify-center gap-1 mt-2">
-                      {['💬', '📸', 'f', '🎵'].map((icon, idx) => (
-                        <div key={idx} className="w-3.5 h-3.5 rounded-full bg-[#090B12] border border-[#232B3A] flex items-center justify-center text-[4px] text-[#A9B2C3]">
-                          {icon}
-                        </div>
-                      ))}
-                    </div>
-                    
-                    <span className="text-[3px] font-black text-[#A9B2C3] uppercase tracking-widest block mt-3">MENÚ PRO POR ♥ RYYCO.COM</span>
                   </div>
-
+                  <div className="flex items-center gap-1 text-[8px] font-bold text-white bg-[#D62839] px-2 py-0.5 rounded-md">
+                    <ShoppingBag className="w-2.5 h-2.5" />
+                    <span>{mockCart}</span>
+                  </div>
                 </div>
 
-                {/* Floating WhatsApp Buttons Inside the Mockup Simulator */}
-                <div 
-                  onClick={() => setMockCart(prev => prev + 1)}
-                  className="absolute bottom-3 left-3 w-5 h-5 rounded-full bg-[#E63946] hover:bg-[#D62839] text-white shadow-md flex items-center justify-center cursor-pointer active:scale-95 transition"
-                >
-                  <span className="text-[6px]">💬</span>
+                {/* Categories row */}
+                <div>
+                  <div className="text-[7px] uppercase font-bold text-slate-400 mb-1">Categorías</div>
+                  <div className="flex gap-1 overflow-x-auto pb-1">
+                    {['TODOS', 'PARRILLA', 'HAMBURGUESAS', 'COMIDAS RÁPIDAS', 'PIZZAS'].map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => setMockCategory(cat)}
+                        className={`text-[7px] px-2 py-1 rounded font-bold whitespace-nowrap cursor-pointer transition-colors ${
+                          mockCategory === cat 
+                            ? 'bg-[#D62839] text-white' 
+                            : 'bg-[#161C26] text-slate-300 hover:bg-[#1A222E]'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div 
-                  onClick={() => setMockCart(prev => prev + 1)}
-                  className="absolute bottom-3 right-3 w-5 h-5 rounded-full bg-[#E63946] hover:bg-[#D62839] text-white shadow-md flex items-center justify-center cursor-pointer active:scale-95 transition"
-                >
-                  <span className="text-[6px]">💬</span>
+
+                {/* Product items in simulator */}
+                <div className="grid grid-cols-2 gap-1.5 max-h-[260px] overflow-y-auto">
+                  {filteredMockProducts.map((p) => (
+                    <div key={p.id} className="bg-[#161C26] border border-[#222B38] rounded-lg p-1.5 flex flex-col justify-between text-left">
+                      <div className="w-full aspect-square rounded bg-[#0B0E14] overflow-hidden mb-1">
+                        <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
+                      </div>
+                      <span className="text-[6px] font-bold text-[#E5A100] uppercase">{p.category}</span>
+                      <h6 className="text-[7px] font-bold text-white line-clamp-1 mt-0.5">{p.name}</h6>
+                      <div className="text-[8px] font-extrabold text-white mt-1">{p.price}</div>
+                      <button
+                        onClick={() => setMockCart(prev => prev + 1)}
+                        className="mt-1 w-full py-1 bg-[#D62839] hover:bg-[#b81d2d] text-white text-[7px] font-bold rounded flex items-center justify-center gap-0.5 cursor-pointer"
+                      >
+                        <Utensils className="w-2 h-2" />
+                        <span>PEDIR</span>
+                      </button>
+                    </div>
+                  ))}
                 </div>
 
               </div>
             </div>
 
           </div>
-
         </div>
       </section>
 
-      {/* DEDICATED AI VOICE SECTION: MESERO VIRTUAL & ADMINISTRADOR IA */}
-      <section className="py-20 px-3 sm:px-6 relative overflow-hidden bg-gradient-to-b from-[#090B12] via-[#0D111A] to-[#090B12] border-t border-[#232B3A]">
-        {/* Glow FX Background */}
-        <div className="absolute top-1/3 left-1/4 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-[#E63946]/10 blur-[130px] rounded-full -z-10 pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-[350px] sm:w-[500px] h-[350px] sm:h-[500px] bg-[#F4B400]/10 blur-[130px] rounded-full -z-10 pointer-events-none" />
-
+      {/* AI Voice Section: Mesero Virtual & Administrador IA - Pure Flat Solid Panels */}
+      <section className="py-14 sm:py-20 px-4 sm:px-6 border-b border-[#222B38] bg-[#0E121A]">
         <div className="max-w-7xl mx-auto">
-          {/* Section Header */}
-          <div className="text-center max-w-3xl mx-auto mb-14 sm:mb-20">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-[#E63946]/20 to-[#F4B400]/20 border border-[#E63946]/30 text-[#F4B400] text-xs font-black uppercase tracking-wider mb-4 shadow-sm">
-              <Sparkles className="w-4 h-4 text-[#F4B400] animate-pulse" />
+          
+          <div className="text-center max-w-3xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#161C26] border border-[#2B374A] text-xs font-bold text-[#E5A100] mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-[#E5A100]" />
               <span>Inteligencia Artificial con Voz Natural</span>
             </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-4 tracking-tight leading-tight">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-3 tracking-tight">
               Pide y administra tu restaurante <br className="hidden sm:inline" />
-              <span className="text-[#E63946]">hablando por voz natural</span>
+              <span className="text-[#D62839]">hablando por voz natural</span>
             </h2>
-            <p className="text-[#A9B2C3] text-sm sm:text-base md:text-lg leading-relaxed">
+            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
               En <strong className="text-white">Ryyco</strong> revolucionamos la experiencia gastronómica: tus clientes ordenan con un <strong>Mesero Virtual IA</strong> y tú tienes un <strong>Administrador IA</strong> que te reporta ventas del día y del mes al instante.
             </p>
           </div>
 
-          {/* Dual AI Pillars Grid */}
-          <div className="grid lg:grid-cols-2 gap-8 items-stretch">
+          {/* Dual Columns: Mesero Virtual & Administrador IA */}
+          <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 items-stretch">
             
-            {/* PILLAR 1: CLIENTES - MESERO VIRTUAL IA */}
-            <div className="bg-[#111827] border border-[#E63946]/30 hover:border-[#E63946]/70 transition-all duration-300 rounded-3xl p-6 sm:p-8 flex flex-col justify-between relative shadow-2xl group">
-              <div className="absolute -top-3.5 left-6 sm:left-8 bg-gradient-to-r from-[#E63946] to-[#D62839] text-white text-[11px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full shadow-md flex items-center gap-1.5">
-                <Mic className="w-3.5 h-3.5" />
-                <span>Para tus Clientes • Mesero Virtual</span>
-              </div>
-
+            {/* Pillar 1: Clientes - Mesero Virtual IA */}
+            <div className="bg-[#121721] border border-[#2B374A] hover:border-[#D62839] rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-colors">
               <div>
-                <div className="flex items-center gap-3.5 mb-5 mt-2">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#E63946]/15 border border-[#E63946]/30 text-[#E63946] flex items-center justify-center shrink-0 shadow-inner">
-                    <Mic className="w-6 h-6 sm:w-7 sm:h-7" />
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#D62839] text-white text-xs font-bold uppercase tracking-wider mb-5">
+                  <Mic className="w-3.5 h-3.5" />
+                  <span>Para tus Clientes · Mesero Virtual</span>
+                </div>
+
+                <div className="flex items-center gap-3.5 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-[#1A222E] text-[#D62839] border border-[#2B374A] flex items-center justify-center shrink-0">
+                    <Mic className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-xl sm:text-2xl font-black text-white leading-tight">
-                      Mesero Virtual por Voz Natural
-                    </h3>
-                    <p className="text-xs sm:text-sm text-[#A9B2C3] font-medium">
-                      Tus comensales piden platos hablando en vivo
-                    </p>
+                    <h3 className="text-xl sm:text-2xl font-bold text-white">Mesero Virtual por Voz Natural</h3>
+                    <p className="text-xs text-slate-400">Tus comensales piden platos hablando en vivo</p>
                   </div>
                 </div>
 
-                <p className="text-[#A9B2C3] text-xs sm:text-sm leading-relaxed mb-6">
+                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed mb-6">
                   Tus clientes ya no tienen que buscar plato por plato en la pantalla. Solo presionan el micrófono del mesero virtual, le hablan naturalmente y la IA les recomienda opciones, personaliza su plato y lo agrega de inmediato a la orden.
                 </p>
 
-                {/* Simulated Voice Dialogue Box */}
-                <div className="bg-[#090B12] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-3.5 mb-6">
-                  {/* Voice waveform simulation header */}
-                  <div className="flex items-center justify-between border-b border-[#232B3A] pb-2.5">
-                    <div className="flex items-center gap-2 text-xs font-bold text-emerald-400">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span>Mesero IA en Vivo</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="w-1 h-3 bg-[#E63946] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1 h-5 bg-[#F4B400] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1 h-4 bg-[#E63946] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      <span className="w-1 h-6 bg-[#F4B400] rounded-full animate-bounce" style={{ animationDelay: '450ms' }} />
-                      <span className="w-1 h-3 bg-[#E63946] rounded-full animate-bounce" style={{ animationDelay: '600ms' }} />
-                    </div>
+                {/* Simulated Conversation Box - Flat Solid UI */}
+                <div className="bg-[#0B0E14] border border-[#222B38] rounded-xl p-4 space-y-3 mb-6">
+                  <div className="flex items-center justify-between border-b border-[#1A222E] pb-2 text-xs">
+                    <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      Mesero IA en Vivo
+                    </span>
+                    <span className="text-slate-500 font-mono text-[11px]">Audio Bidireccional</span>
                   </div>
 
-                  {/* Customer phrase */}
                   <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-blue-500/20 text-blue-400 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-6 h-6 rounded bg-[#161C26] text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
                       Tú
-                    </div>
-                    <div className="bg-[#1F2937] text-white text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none font-medium leading-relaxed">
-                      🎙️ <em>"Mesero, recomiéndame una hamburguesa especial con tocineta y papas francesas."</em>
+                    </span>
+                    <div className="bg-[#161C26] border border-[#222B38] text-white text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                      "Mesero, recomiéndame una hamburguesa especial con tocineta y papas francesas."
                     </div>
                   </div>
 
-                  {/* AI Response phrase */}
                   <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-[#E63946]/20 text-[#E63946] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-6 h-6 rounded bg-[#D62839] text-white font-bold text-xs flex items-center justify-center shrink-0">
                       IA
-                    </div>
-                    <div className="bg-[#E63946]/10 border border-[#E63946]/20 text-gray-200 text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none leading-relaxed">
-                      <span className="text-[#F4B400] font-bold">Mesero Virtual:</span> "¡Con gusto! Te sugiero la <strong>Hamburguesa Doble Especial ($28.000)</strong>. La he añadido a tu carrito con papas francesas crujientes. ¿Deseas agregar gaseosa o postre?"
+                    </span>
+                    <div className="bg-[#1A222E] border border-[#2B374A] text-slate-200 text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                      <strong className="text-[#E5A100]">Mesero Virtual:</strong> "¡Con gusto! Te sugiero la <strong>Hamburguesa Doble Especial ($28.000)</strong>. La he añadido a tu carrito con papas francesas crujientes. ¿Deseas agregar gaseosa o postre?"
                     </div>
                   </div>
                 </div>
 
-                {/* Key Benefits List */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-[#A9B2C3] font-semibold mb-6">
+                {/* Key Benefits Checklist */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300 mb-6">
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span>Reconocimiento de voz natural fluido</span>
@@ -929,7 +741,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <button
                   type="button"
                   onClick={() => onNavigate('tienda')}
-                  className="w-full py-3.5 px-5 rounded-2xl bg-[#E63946] hover:bg-[#D62839] text-white font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#E63946]/25 cursor-pointer"
+                  className="w-full py-3 px-4 rounded-lg bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <Volume2 className="w-4 h-4" />
                   <span>Explorar Vitrina con Mesero IA</span>
@@ -937,88 +749,77 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               </div>
             </div>
 
-            {/* PILLAR 2: ADMINISTRADORES - ADMINISTRADOR IA DE VENTAS */}
-            <div className="bg-[#111827] border border-[#F4B400]/30 hover:border-[#F4B400]/70 transition-all duration-300 rounded-3xl p-6 sm:p-8 flex flex-col justify-between relative shadow-2xl group">
-              <div className="absolute -top-3.5 left-6 sm:left-8 bg-gradient-to-r from-[#F4B400] to-[#E0A600] text-black text-[11px] font-black uppercase tracking-wider px-3.5 py-1 rounded-full shadow-md flex items-center gap-1.5">
-                <Bot className="w-3.5 h-3.5 text-black" />
-                <span>Para Propietarios • Administrador IA</span>
-              </div>
-
+            {/* Pillar 2: Propietarios - Administrador IA */}
+            <div className="bg-[#121721] border border-[#2B374A] hover:border-[#E5A100] rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-colors">
               <div>
-                <div className="flex items-center gap-3.5 mb-5 mt-2">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#F4B400]/15 border border-[#F4B400]/30 text-[#F4B400] flex items-center justify-center shrink-0 shadow-inner">
-                    <Bot className="w-6 h-6 sm:w-7 sm:h-7" />
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#E5A100] text-black text-xs font-bold uppercase tracking-wider mb-5">
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Para Propietarios · Administrador IA</span>
+                </div>
+
+                <div className="flex items-center gap-3.5 mb-4">
+                  <div className="w-12 h-12 rounded-xl bg-[#1A222E] text-[#E5A100] border border-[#2B374A] flex items-center justify-center shrink-0">
+                    <Bot className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-xl sm:text-2xl font-black text-white leading-tight">
-                      Administrador IA de tu Negocio
-                    </h3>
-                    <p className="text-xs sm:text-sm text-[#A9B2C3] font-medium">
-                      Habla con tu panel para saber cómo va tu restaurante
-                    </p>
+                    <h3 className="text-xl sm:text-2xl font-bold text-white">Administrador IA de tu Negocio</h3>
+                    <p className="text-xs text-slate-400">Habla con tu panel para saber cómo va tu restaurante</p>
                   </div>
                 </div>
 
-                <p className="text-[#A9B2C3] text-xs sm:text-sm leading-relaxed mb-6">
+                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed mb-6">
                   Como dueño o encargado, no tienes que perder tiempo analizando tablas complejas. Habla por voz con tu Administrador IA y pregúntale cómo te fue hoy, cuántos pedidos se hicieron o cómo van las ventas acumuladas del mes.
                 </p>
 
-                {/* Simulated Voice Dialogue Box */}
-                <div className="bg-[#090B12] border border-[#232B3A] rounded-2xl p-4 sm:p-5 space-y-3.5 mb-6">
-                  {/* Status header */}
-                  <div className="flex items-center justify-between border-b border-[#232B3A] pb-2.5">
-                    <div className="flex items-center gap-2 text-xs font-bold text-[#F4B400]">
-                      <Activity className="w-3.5 h-3.5 text-[#F4B400] animate-pulse" />
-                      <span>Administrador IA Activo</span>
-                    </div>
-                    <span className="text-[10px] font-mono text-[#A9B2C3] bg-[#1F2937] px-2 py-0.5 rounded-md">
-                      Métricas en Tiempo Real
+                {/* Simulated Conversation Box - Flat Solid UI */}
+                <div className="bg-[#0B0E14] border border-[#222B38] rounded-xl p-4 space-y-3 mb-6">
+                  <div className="flex items-center justify-between border-b border-[#1A222E] pb-2 text-xs">
+                    <span className="font-bold text-[#E5A100] flex items-center gap-1.5">
+                      <Activity className="w-3.5 h-3.5" />
+                      Administrador IA Activo
                     </span>
+                    <span className="text-slate-500 font-mono text-[11px]">Métricas en Tiempo Real</span>
                   </div>
 
-                  {/* Admin phrase 1 */}
                   <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-6 h-6 rounded bg-[#161C26] text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
                       Tú
-                    </div>
-                    <div className="bg-[#1F2937] text-white text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none font-medium leading-relaxed">
-                      🎙️ <em>"¿Cómo me fue hoy en ventas y pedidos?"</em>
+                    </span>
+                    <div className="bg-[#161C26] border border-[#222B38] text-white text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                      "¿Cómo me fue hoy en ventas y pedidos?"
                     </div>
                   </div>
 
-                  {/* AI Response phrase 1 */}
                   <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-[#F4B400]/20 text-[#F4B400] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-6 h-6 rounded bg-[#E5A100] text-black font-bold text-xs flex items-center justify-center shrink-0">
                       IA
-                    </div>
-                    <div className="bg-[#F4B400]/10 border border-[#F4B400]/20 text-gray-200 text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none leading-relaxed">
-                      <span className="text-[#F4B400] font-bold">Administrador IA:</span> "Hoy registraste <strong>18 pedidos completados</strong> por un total de <strong>$468.000 COP</strong> en ventas. Tu plato más pedido fue la <em>Salchipapa Especial</em>."
+                    </span>
+                    <div className="bg-[#1A222E] border border-[#2B374A] text-slate-200 text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                      <strong className="text-[#E5A100]">Administrador IA:</strong> "Hoy registraste <strong>18 pedidos completados</strong> por un total de <strong>$468.000 COP</strong> en ventas. Tu plato más pedido fue la <em>Salchipapa Especial</em>."
                     </div>
                   </div>
 
-                  {/* Admin phrase 2 */}
                   <div className="flex items-start gap-2.5 pt-1">
-                    <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-6 h-6 rounded bg-[#161C26] text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
                       Tú
-                    </div>
-                    <div className="bg-[#1F2937] text-white text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none font-medium leading-relaxed">
-                      🎙️ <em>"¿Y cómo nos fue en el balance del mes?"</em>
+                    </span>
+                    <div className="bg-[#161C26] border border-[#222B38] text-white text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                      "¿Y cómo nos fue en el balance del mes?"
                     </div>
                   </div>
 
-                  {/* AI Response phrase 2 */}
                   <div className="flex items-start gap-2.5">
-                    <div className="w-6 h-6 rounded-full bg-[#F4B400]/20 text-[#F4B400] font-black text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                    <span className="w-6 h-6 rounded bg-[#E5A100] text-black font-bold text-xs flex items-center justify-center shrink-0">
                       IA
-                    </div>
-                    <div className="bg-[#F4B400]/10 border border-[#F4B400]/20 text-gray-200 text-xs sm:text-sm p-3 rounded-2xl rounded-tl-none leading-relaxed">
-                      <span className="text-[#F4B400] font-bold">Administrador IA:</span> "En el mes acumulas <strong>$11.450.000 COP en ventas</strong> (+24% vs mes anterior) con <strong>420 pedidos atendidos</strong> y 0% de comisiones retenidas."
+                    </span>
+                    <div className="bg-[#1A222E] border border-[#2B374A] text-slate-200 text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                      <strong className="text-[#E5A100]">Administrador IA:</strong> "En el mes acumulas <strong>$11.450.000 COP en ventas</strong> (+24% vs mes anterior) con <strong>420 pedidos atendidos</strong> y 0% de comisiones retenidas."
                     </div>
                   </div>
                 </div>
 
-                {/* Key Benefits List */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs text-[#A9B2C3] font-semibold mb-6">
+                {/* Key Benefits Checklist */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300 mb-6">
                   <div className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-emerald-400 shrink-0" />
                     <span>Reporte de ventas del día y del mes por voz</span>
@@ -1042,9 +843,9 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <button
                   type="button"
                   onClick={() => onNavigate('signup')}
-                  className="w-full py-3.5 px-5 rounded-2xl bg-[#F4B400] hover:bg-[#e0a600] text-black font-black text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-[#F4B400]/20 cursor-pointer"
+                  className="w-full py-3 px-4 rounded-lg bg-[#E5A100] hover:bg-[#c98d00] text-black font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
-                  <Bot className="w-4 h-4 text-black" />
+                  <Bot className="w-4 h-4" />
                   <span>Crear mi Tienda y Obtener Asistente IA</span>
                 </button>
               </div>
@@ -1054,249 +855,267 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Features Detail Grid */}
-      <section className="py-20 bg-[#090B12] border-y border-[#232B3A] px-6">
+      {/* Features Grid - 8 Solid Flat Cards */}
+      <section className="py-14 sm:py-20 bg-[#0B0E14] border-b border-[#222B38] px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">Todo lo necesario para comercializar de inmediato</h2>
-            <p className="text-[#A9B2C3] mb-2 text-sm md:text-base">Hemos automatizado las tareas complejas de comercio electrónico para que te enfoques en tus ventas.</p>
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-3">
+              Todo lo necesario para comercializar de inmediato
+            </h2>
+            <p className="text-slate-300 text-sm">
+              Hemos automatizado las tareas complejas de comercio electrónico para que te enfoques en tus ventas.
+            </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {features.map((feature, idx) => (
-              <div key={idx} className="bg-[#111827] border border-[#232B3A] p-6 md:p-8 rounded-2xl hover:border-[#E63946]/50 transition">
-                <div className="bg-[#090B12] p-3 rounded-xl w-fit mb-5 border border-[#232B3A]">
+              <div 
+                key={idx} 
+                className="bg-[#121721] border border-[#222B38] hover:border-[#2B374A] p-5 rounded-xl transition-colors flex flex-col justify-start"
+              >
+                <div className="w-10 h-10 rounded-lg bg-[#1A222E] flex items-center justify-center mb-4 border border-[#2B374A]">
                   {feature.icon}
                 </div>
-                <h3 className="text-lg font-bold text-white mb-2">{feature.title}</h3>
-                <p className="text-[#A9B2C3] text-sm leading-relaxed">{feature.desc}</p>
+                <h3 className="text-base font-bold text-white mb-2">{feature.title}</h3>
+                <p className="text-slate-400 text-xs leading-relaxed">{feature.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Steps Row */}
-      <section className="py-20 px-6 max-w-7xl mx-auto text-center">
-        <h2 className="text-2xl md:text-3xl font-extrabold text-white mb-3">¿Cómo crear tu tienda?</h2>
-        <p className="text-[#A9B2C3] mb-12 text-sm">Empieza hoy mismo tu emprendimiento digital en tres sencillos pasos.</p>
+      {/* 3 Steps Section - Clean Flat Process */}
+      <section className="py-14 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto text-center border-b border-[#222B38]">
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-2">¿Cómo crear tu tienda?</h2>
+        <p className="text-slate-400 mb-10 text-sm">Empieza hoy mismo tu emprendimiento digital en tres sencillos pasos.</p>
 
-        <div className="grid md:grid-cols-3 gap-8">
-          <div className="p-6 bg-[#111827] rounded-2xl border border-[#232B3A] flex flex-col items-center">
-            <span className="w-10 h-10 rounded-full bg-[#E63946]/15 text-[#E63946] font-black text-sm flex items-center justify-center mb-4">1</span>
-            <h4 className="font-bold text-white text-base mb-1.5">Regístrate en Segundos</h4>
-            <p className="text-[#A9B2C3] text-xs leading-relaxed max-w-xs">Elige tu nombre de usuario que será tu subdominio de tienda pública sin costo.</p>
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="p-6 bg-[#121721] rounded-xl border border-[#222B38] flex flex-col items-center text-center">
+            <span className="w-9 h-9 rounded-lg bg-[#D62839] text-white font-bold text-sm flex items-center justify-center mb-4">
+              1
+            </span>
+            <h4 className="font-bold text-white text-base mb-2">Regístrate en Segundos</h4>
+            <p className="text-slate-400 text-xs leading-relaxed max-w-xs">
+              Elige tu nombre de usuario que será tu subdominio de tienda pública sin costo.
+            </p>
           </div>
 
-          <div className="p-6 bg-[#111827] rounded-2xl border border-[#232B3A] flex flex-col items-center">
-            <span className="w-10 h-10 rounded-full bg-[#F4B400]/15 text-[#F4B400] font-black text-sm flex items-center justify-center mb-4">2</span>
-            <h4 className="font-bold text-white text-base mb-1.5">Completa tu Catálogo</h4>
-            <p className="text-[#A9B2C3] text-xs leading-relaxed max-w-xs">Añade imágenes de tus productos, precios con descuento, stock y variantes disponibles.</p>
+          <div className="p-6 bg-[#121721] rounded-xl border border-[#222B38] flex flex-col items-center text-center">
+            <span className="w-9 h-9 rounded-lg bg-[#E5A100] text-black font-bold text-sm flex items-center justify-center mb-4">
+              2
+            </span>
+            <h4 className="font-bold text-white text-base mb-2">Completa tu Catálogo</h4>
+            <p className="text-slate-400 text-xs leading-relaxed max-w-xs">
+              Añade imágenes de tus productos, precios con descuento, stock y variantes disponibles.
+            </p>
           </div>
 
-          <div className="p-6 bg-[#111827] rounded-2xl border border-[#232B3A] flex flex-col items-center">
-            <span className="w-10 h-10 rounded-full bg-[#E63946]/15 text-[#E63946] font-black text-sm flex items-center justify-center mb-4">3</span>
-            <h4 className="font-bold text-white text-base mb-1.5">Recibe Pedidos Directos</h4>
-            <p className="text-[#A9B2C3] text-xs leading-relaxed max-w-xs">Comparte tu enlace, tus clientes ingresarán al carrito y coordinarás ventas por WhatsApp o directo.</p>
+          <div className="p-6 bg-[#121721] rounded-xl border border-[#222B38] flex flex-col items-center text-center">
+            <span className="w-9 h-9 rounded-lg bg-[#D62839] text-white font-bold text-sm flex items-center justify-center mb-4">
+              3
+            </span>
+            <h4 className="font-bold text-white text-base mb-2">Recibe Pedidos Directos</h4>
+            <p className="text-slate-400 text-xs leading-relaxed max-w-xs">
+              Comparte tu enlace, tus clientes ingresarán al carrito y coordinarás ventas por WhatsApp o directo.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* PLANES DISPONIBLES */}
-      <section id="planes" className="py-16 px-4 sm:px-6 max-w-7xl mx-auto">
-        <div className="bg-[#111827] border border-[#232B3A] rounded-3xl p-6 sm:p-10 shadow-2xl">
-          {/* Section Header */}
-          <div className="flex items-center gap-2 text-[#F4B400] font-extrabold text-xs sm:text-sm uppercase tracking-wider mb-8">
-            <Sparkles className="w-4 h-4 text-[#F4B400]" />
+      {/* PLANES DISPONIBLES - 4 Clean Flat Pricing Cards */}
+      <section id="planes" className="py-14 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto border-b border-[#222B38]">
+        <div className="text-center max-w-2xl mx-auto mb-10">
+          <div className="inline-flex items-center gap-1.5 text-[#E5A100] font-bold text-xs uppercase tracking-wider mb-2">
+            <Sparkles className="w-3.5 h-3.5" />
             <span>PLANES DISPONIBLES</span>
           </div>
+          <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Tarifas claras, sin comisiones por pedido</h2>
+        </div>
 
-          {/* Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-left">
-            {/* Plan Básico */}
-            <div className="bg-[#090B12] border border-[#E63946]/30 hover:border-[#E63946] transition-all rounded-2xl p-6 flex flex-col justify-between relative shadow-lg">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-[#E63946]/10 text-[#E63946] flex items-center justify-center mb-4 border border-[#E63946]/20">
-                  <Package className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Plan Básico</h3>
-                <p className="text-[#A9B2C3] text-sm mb-6 min-h-[40px] leading-relaxed">
-                  Hasta 5 productos para tu inicio de tu negocio.
-                </p>
-
-                <div className="border-t border-[#232B3A] my-5" />
-
-                <div className="flex items-center gap-2.5 text-sm text-[#A9B2C3] font-semibold mb-6">
-                  <Tag className="w-4 h-4 text-[#E63946] shrink-0" />
-                  <span>Hasta <strong className="text-white font-extrabold">5</strong> productos</span>
-                </div>
+        {/* 4 Cards Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 text-left">
+          
+          {/* Plan Básico */}
+          <div className="bg-[#121721] border border-[#2B374A] hover:border-[#D62839] rounded-xl p-5 flex flex-col justify-between transition-colors">
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#D62839] flex items-center justify-center mb-3 border border-[#2B374A]">
+                <Package className="w-5 h-5" />
               </div>
+              <h3 className="text-lg font-bold text-white mb-1">Plan Básico</h3>
+              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+                Hasta 5 productos para el inicio de tu negocio.
+              </p>
 
-              <div>
-                <div className="border-t border-[#232B3A] my-5" />
-                <div className="mb-6">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-3xl font-extrabold text-white">$49.000</span>
-                    <span className="text-xs text-[#A9B2C3] font-medium">COP/mes</span>
-                  </div>
-                  <p className="text-[11px] font-extrabold text-[#F4B400] tracking-wider uppercase mt-1">
-                    FACTURACIÓN MENSUAL
-                  </p>
+              <div className="border-t border-[#222B38] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+                  <Tag className="w-3.5 h-3.5 text-[#D62839] shrink-0" />
+                  <span>Hasta <strong className="text-white font-bold">5</strong> productos</span>
                 </div>
-                <button
-                  onClick={() => onNavigate('signup')}
-                  className="w-full py-3 px-4 rounded-xl border border-[#E63946]/30 hover:border-[#E63946] bg-[#E63946]/10 hover:bg-[#E63946] text-[#E63946] hover:text-white font-bold text-sm transition-all cursor-pointer text-center"
-                >
-                  Elegir Plan
-                </button>
               </div>
             </div>
 
-            {/* Plan Medio */}
-            <div className="bg-[#090B12] border border-[#F4B400]/30 hover:border-[#F4B400] transition-all rounded-2xl p-6 flex flex-col justify-between relative shadow-lg">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-[#F4B400]/10 text-[#F4B400] flex items-center justify-center mb-4 border border-[#F4B400]/20">
-                  <ShoppingBag className="w-6 h-6" />
+            <div className="border-t border-[#222B38] pt-4">
+              <div className="mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl font-black text-white">$49.000</span>
+                  <span className="text-xs text-slate-400">COP/mes</span>
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Plan Medio</h3>
-                <p className="text-[#A9B2C3] text-sm mb-6 min-h-[40px] leading-relaxed">
-                  Hasta 12 productos para tiendas en crecimiento.
+                <p className="text-[10px] font-bold text-[#E5A100] tracking-wider uppercase mt-1">
+                  FACTURACIÓN MENSUAL
                 </p>
-
-                <div className="border-t border-[#232B3A] my-5" />
-
-                <div className="flex items-center gap-2.5 text-sm text-[#A9B2C3] font-semibold mb-6">
-                  <Tag className="w-4 h-4 text-[#F4B400] shrink-0" />
-                  <span>Hasta <strong className="text-white font-extrabold">12</strong> productos</span>
-                </div>
               </div>
-
-              <div>
-                <div className="border-t border-[#232B3A] my-5" />
-                <div className="mb-6">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-3xl font-extrabold text-white">$79.000</span>
-                    <span className="text-xs text-[#A9B2C3] font-medium">COP/mes</span>
-                  </div>
-                  <p className="text-[11px] font-extrabold text-[#F4B400] tracking-wider uppercase mt-1">
-                    FACTURACIÓN MENSUAL
-                  </p>
-                </div>
-                <button
-                  onClick={() => onNavigate('signup')}
-                  className="w-full py-3 px-4 rounded-xl border border-[#F4B400]/30 hover:border-[#F4B400] bg-[#F4B400]/10 hover:bg-[#F4B400] text-[#F4B400] hover:text-black font-bold text-sm transition-all cursor-pointer text-center"
-                >
-                  Elegir Plan
-                </button>
-              </div>
-            </div>
-
-            {/* Plan Avanzado */}
-            <div className="bg-[#090B12] border border-[#E63946]/30 hover:border-[#E63946] transition-all rounded-2xl p-6 flex flex-col justify-between relative shadow-lg">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-[#E63946]/10 text-[#E63946] flex items-center justify-center mb-4 border border-[#E63946]/20">
-                  <Rocket className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Plan Avanzado</h3>
-                <p className="text-[#A9B2C3] text-sm mb-6 min-h-[40px] leading-relaxed">
-                  Hasta 24 productos para marcas de alto calibre.
-                </p>
-
-                <div className="border-t border-[#232B3A] my-5" />
-
-                <div className="flex items-center gap-2.5 text-sm text-[#A9B2C3] font-semibold mb-6">
-                  <Tag className="w-4 h-4 text-[#E63946] shrink-0" />
-                  <span>Hasta <strong className="text-white font-extrabold">24</strong> productos</span>
-                </div>
-              </div>
-
-              <div>
-                <div className="border-t border-[#232B3A] my-5" />
-                <div className="mb-6">
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-3xl font-extrabold text-white">$99.000</span>
-                    <span className="text-xs text-[#A9B2C3] font-medium">COP/mes</span>
-                  </div>
-                  <p className="text-[11px] font-extrabold text-[#F4B400] tracking-wider uppercase mt-1">
-                    FACTURACIÓN MENSUAL
-                  </p>
-                </div>
-                <button
-                  onClick={() => onNavigate('signup')}
-                  className="w-full py-3 px-4 rounded-xl border border-[#E63946]/30 hover:border-[#E63946] bg-[#E63946]/10 hover:bg-[#E63946] text-[#E63946] hover:text-white font-bold text-sm transition-all cursor-pointer text-center"
-                >
-                  Elegir Plan
-                </button>
-              </div>
-            </div>
-
-            {/* Plan Especial */}
-            <div className="bg-[#090B12] border border-[#F4B400]/60 hover:border-[#F4B400] border-dashed transition-all rounded-2xl p-6 flex flex-col justify-between relative shadow-xl">
-              <span className="absolute top-5 right-5 bg-[#F4B400] text-black font-black text-[11px] px-2.5 py-1 rounded-lg uppercase tracking-wider shadow-sm">
-                ESPECIAL
-              </span>
-
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-[#F4B400]/10 text-[#F4B400] flex items-center justify-center mb-4 border border-[#F4B400]/20">
-                  <Star className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Plan Especial</h3>
-                <p className="text-[#A9B2C3] text-sm mb-6 min-h-[40px] leading-relaxed">
-                  Para tiendas con más de 24 productos y necesidades personalizadas.
-                </p>
-
-                <div className="border-t border-[#232B3A] my-5" />
-
-                <div className="flex items-center gap-2.5 text-sm text-[#A9B2C3] font-semibold mb-6">
-                  <Tag className="w-4 h-4 text-[#F4B400] shrink-0" />
-                  <span>Más de <strong className="text-[#F4B400] font-extrabold">24</strong> productos</span>
-                </div>
-              </div>
-
-              <div>
-                <div className="bg-[#111827] border border-[#232B3A] rounded-xl p-4 mb-6 flex items-start gap-3">
-                  <Headphones className="w-5 h-5 text-[#F4B400] shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="text-xs font-bold text-white">Comunícate con un asesor</h4>
-                    <p className="text-xs text-[#A9B2C3] leading-relaxed mt-0.5">
-                      Te ayudamos a encontrar el plan ideal para tu negocio.
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => window.open('https://wa.me/573219730865?text=Hola%20RYYCO,%20estoy%20interesado%20en%20el%20Plan%20Especial%20para%20mi%20tienda.', '_blank')}
-                  className="w-full py-3 px-4 rounded-xl bg-[#F4B400] hover:bg-[#e0a600] text-black font-black text-sm flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  <span>Contactar Asesor</span>
-                </button>
-              </div>
+              <button
+                onClick={() => onNavigate('signup')}
+                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#D62839] text-white font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#D62839]"
+              >
+                Elegir Plan
+              </button>
             </div>
           </div>
+
+          {/* Plan Medio */}
+          <div className="bg-[#121721] border border-[#2B374A] hover:border-[#E5A100] rounded-xl p-5 flex flex-col justify-between transition-colors">
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#E5A100] flex items-center justify-center mb-3 border border-[#2B374A]">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">Plan Medio</h3>
+              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+                Hasta 12 productos para tiendas en crecimiento.
+              </p>
+
+              <div className="border-t border-[#222B38] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+                  <Tag className="w-3.5 h-3.5 text-[#E5A100] shrink-0" />
+                  <span>Hasta <strong className="text-white font-bold">12</strong> productos</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-[#222B38] pt-4">
+              <div className="mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl font-black text-white">$79.000</span>
+                  <span className="text-xs text-slate-400">COP/mes</span>
+                </div>
+                <p className="text-[10px] font-bold text-[#E5A100] tracking-wider uppercase mt-1">
+                  FACTURACIÓN MENSUAL
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate('signup')}
+                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#E5A100] text-white hover:text-black font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#E5A100]"
+              >
+                Elegir Plan
+              </button>
+            </div>
+          </div>
+
+          {/* Plan Avanzado */}
+          <div className="bg-[#121721] border border-[#2B374A] hover:border-[#D62839] rounded-xl p-5 flex flex-col justify-between transition-colors">
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#D62839] flex items-center justify-center mb-3 border border-[#2B374A]">
+                <Rocket className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">Plan Avanzado</h3>
+              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+                Hasta 24 productos para marcas de alto calibre.
+              </p>
+
+              <div className="border-t border-[#222B38] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+                  <Tag className="w-3.5 h-3.5 text-[#D62839] shrink-0" />
+                  <span>Hasta <strong className="text-white font-bold">24</strong> productos</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-[#222B38] pt-4">
+              <div className="mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl sm:text-3xl font-black text-white">$99.000</span>
+                  <span className="text-xs text-slate-400">COP/mes</span>
+                </div>
+                <p className="text-[10px] font-bold text-[#E5A100] tracking-wider uppercase mt-1">
+                  FACTURACIÓN MENSUAL
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate('signup')}
+                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#D62839] text-white font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#D62839]"
+              >
+                Elegir Plan
+              </button>
+            </div>
+          </div>
+
+          {/* Plan Especial */}
+          <div className="bg-[#121721] border-2 border-[#E5A100] rounded-xl p-5 flex flex-col justify-between relative">
+            <span className="absolute top-4 right-4 bg-[#E5A100] text-black font-extrabold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider">
+              ESPECIAL
+            </span>
+
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#E5A100] flex items-center justify-center mb-3 border border-[#2B374A]">
+                <Star className="w-5 h-5" />
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">Plan Especial</h3>
+              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+                Para tiendas con más de 24 productos y necesidades personalizadas.
+              </p>
+
+              <div className="border-t border-[#222B38] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+                  <Tag className="w-3.5 h-3.5 text-[#E5A100] shrink-0" />
+                  <span>Más de <strong className="text-[#E5A100] font-bold">24</strong> productos</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-[#222B38] pt-4">
+              <div className="bg-[#0B0E14] border border-[#222B38] rounded-lg p-2.5 mb-3 flex items-start gap-2">
+                <Headphones className="w-4 h-4 text-[#E5A100] shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-[11px] font-bold text-white">Asesoría directa</h4>
+                  <p className="text-[10px] text-slate-400 leading-normal">
+                    Te ayudamos a encontrar el plan ideal para tu negocio.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => window.open('https://wa.me/573219730865?text=Hola%20RYYCO,%20estoy%20interesado%20en%20el%20Plan%20Especial%20para%20mi%20tienda.', '_blank')}
+                className="w-full py-2.5 px-4 rounded-lg bg-[#E5A100] hover:bg-[#c98d00] text-black font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                <span>Contactar Asesor</span>
+              </button>
+            </div>
+          </div>
+
         </div>
       </section>
 
-      {/* Interactive FAQ / Call to Action */}
-      <section className="bg-[#090B12] pb-20 pt-16 border-t border-[#232B3A] px-6 text-center">
-        <div className="max-w-4xl mx-auto bg-[#111827] border border-[#232B3A] rounded-3xl p-8 md:p-12">
-          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4 leading-tight">
+      {/* Final Call to Action - Flat Solid Banner */}
+      <section className="bg-[#0B0E14] py-14 sm:py-20 px-4 sm:px-6 text-center border-b border-[#222B38]">
+        <div className="max-w-3xl mx-auto bg-[#121721] border border-[#222B38] rounded-2xl p-8 sm:p-12">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white mb-3 leading-tight">
             ¿Listo para digitalizar tu negocio hoy?
           </h2>
-          <p className="text-[#A9B2C3] max-w-lg mx-auto mb-8 text-sm md:text-base leading-relaxed">
+          <p className="text-slate-300 max-w-lg mx-auto mb-6 text-xs sm:text-sm leading-relaxed">
             Únete a cientos de marcas, tiendas boutique y emprendedores que ya incrementan sus ingresos administrando inteligentemente sus productos y pedidos.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <button 
               onClick={() => onNavigate('signup')}
-              className="w-full sm:w-auto px-6 py-4 bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-sm rounded-xl transition shadow-lg shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold text-xs sm:text-sm rounded-lg transition-colors cursor-pointer"
             >
               Comenzar Mi Tienda
             </button>
             <button 
               onClick={() => onNavigate('login')}
-              className="w-full sm:w-auto px-6 py-4 bg-[#090B12] hover:bg-[#232B3A] border border-[#232B3A] text-[#A9B2C3] hover:text-white font-bold text-sm rounded-xl transition cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 bg-[#1A222E] hover:bg-[#252E3E] border border-[#2B374A] text-slate-300 hover:text-white font-bold text-xs sm:text-sm rounded-lg transition-colors cursor-pointer"
             >
               Acceder a mi panel
             </button>
@@ -1304,54 +1123,64 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </section>
 
-      {/* Minimal Footer */}
-      <footer className="border-t border-[#232B3A] py-12 px-6 bg-[#090B12] text-[#A9B2C3] text-center text-xs space-y-4">
+      {/* Comprehensive Footer - Pure Flat Surface */}
+      <footer className="py-12 px-4 sm:px-6 bg-[#0E121A] text-slate-400 text-center text-xs space-y-4">
         <div className="max-w-3xl mx-auto space-y-2">
-          <p className="font-extrabold text-white text-base">Ryyco — Pide comida, descubre restaurantes y recibe recomendaciones</p>
-          <p className="text-[#A9B2C3] text-xs leading-relaxed max-w-2xl mx-auto">
+          <p className="font-bold text-white text-sm sm:text-base">
+            Ryyco — Pide comida, descubre restaurantes y recibe recomendaciones
+          </p>
+          <p className="text-slate-400 text-xs leading-relaxed max-w-2xl mx-auto">
             Plataforma gastronómica inteligente en Colombia para pedir comida online, explorar restaurantes cerca de ti, consultar menús de platos y ordenar comida a domicilio con facilidad.
           </p>
         </div>
 
-        <p className="font-semibold text-gray-500 text-[11px]">© 2026 Ryyco (ryyco.com). Todos los derechos reservados.</p>
-        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+        <p className="font-medium text-slate-500 text-[11px]">
+          © 2026 Ryyco (ryyco.com). Todos los derechos reservados.
+        </p>
+
+        {/* Quick Navigation Action Links */}
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
           <button 
             onClick={() => {
               window.history.pushState({}, '', '/domiciliario');
               onNavigate('driver-portal');
             }}
-            className="inline-flex items-center gap-1.5 text-[#E63946] hover:text-white font-extrabold text-xs transition bg-[#E63946]/10 hover:bg-[#E63946]/20 px-4 py-2.5 rounded-xl border border-[#E63946]/30 active:scale-[0.98] cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs transition-colors bg-[#161C26] hover:bg-[#252E3E] px-3 py-2 rounded-lg border border-[#2B374A] cursor-pointer"
           >
-            <Bike className="w-4 h-4 text-[#E63946]" />
+            <Bike className="w-3.5 h-3.5 text-[#D62839]" />
             <span>Portal Domiciliario</span>
           </button>
+          
           <button 
             onClick={() => onNavigate('driver-register')}
-            className="inline-flex items-center gap-1.5 text-[#F4B400] hover:text-white font-extrabold text-xs transition bg-[#F4B400]/10 hover:bg-[#F4B400]/20 px-4 py-2.5 rounded-xl border border-[#F4B400]/30 active:scale-[0.98] cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs transition-colors bg-[#161C26] hover:bg-[#252E3E] px-3 py-2 rounded-lg border border-[#2B374A] cursor-pointer"
           >
-            <Bike className="w-4 h-4 text-[#F4B400]" />
+            <Bike className="w-3.5 h-3.5 text-[#E5A100]" />
             <span>Ser Domiciliario</span>
           </button>
+
           <button 
             onClick={() => {
               setFooterTermsTab('buyers');
               setIsBuyerTermsModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 text-gray-300 hover:text-white font-extrabold text-xs transition bg-[#182030] hover:bg-[#232B3A] px-4 py-2.5 rounded-xl border border-[#232B3A] active:scale-[0.98] cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs transition-colors bg-[#161C26] hover:bg-[#252E3E] px-3 py-2 rounded-lg border border-[#2B374A] cursor-pointer"
           >
-            <ShoppingBag className="w-4 h-4 text-[#E63946]" />
+            <ShoppingBag className="w-3.5 h-3.5 text-[#D62839]" />
             <span>Términos Compradores</span>
           </button>
+
           <button 
             onClick={() => {
               setFooterTermsTab('sellers');
               setIsTermsModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 text-gray-300 hover:text-white font-extrabold text-xs transition bg-[#182030] hover:bg-[#232B3A] px-4 py-2.5 rounded-xl border border-[#232B3A] active:scale-[0.98] cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs transition-colors bg-[#161C26] hover:bg-[#252E3E] px-3 py-2 rounded-lg border border-[#2B374A] cursor-pointer"
           >
-            <Scale className="w-4 h-4 text-[#F4B400]" />
+            <Scale className="w-3.5 h-3.5 text-[#E5A100]" />
             <span>Términos Vendedores</span>
           </button>
+
           <a
             href="/privacidad"
             onClick={(e) => {
@@ -1359,47 +1188,49 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               window.history.pushState({}, '', '/privacidad');
               window.dispatchEvent(new PopStateEvent('popstate'));
             }}
-            className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-white font-extrabold text-xs transition bg-emerald-500/10 hover:bg-emerald-500/20 px-4 py-2.5 rounded-xl border border-emerald-500/30 active:scale-[0.98] cursor-pointer"
+            className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs transition-colors bg-[#161C26] hover:bg-[#252E3E] px-3 py-2 rounded-lg border border-[#2B374A] cursor-pointer"
           >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>Política de Privacidad</span>
           </a>
+
           <a 
             href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20Ryyco"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-[#E63946] hover:text-white font-extrabold text-xs transition bg-[#E63946]/10 hover:bg-[#E63946]/20 px-4 py-2.5 rounded-xl border border-[#E63946]/30 active:scale-[0.98]"
+            className="inline-flex items-center gap-1.5 text-slate-200 hover:text-white font-semibold text-xs transition-colors bg-[#161C26] hover:bg-[#252E3E] px-3 py-2 rounded-lg border border-[#2B374A]"
           >
-            <MessageCircle className="w-3.5 h-3.5" />
-            Atención al Cliente: 3219730865
+            <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Atención al Cliente: 3219730865</span>
           </a>
         </div>
 
-        {/* Sección de Términos y Condiciones al Pie de Página (Compradores y Vendedores) */}
-        <div className="max-w-4xl mx-auto text-left mt-8 pt-6 border-t border-[#232B3A]/70">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#111827] border border-[#232B3A] rounded-2xl p-4">
+        {/* Section of Legal Terms on Footer - Clean Flat Accordion */}
+        <div className="max-w-4xl mx-auto text-left mt-8 pt-6 border-t border-[#222B38]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#121721] border border-[#222B38] rounded-xl p-4">
             <div className="flex items-start sm:items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center text-[#E63946] shrink-0">
-                <Scale className="w-4.5 h-4.5" />
+              <div className="w-8 h-8 rounded-lg bg-[#1A222E] text-[#D62839] flex items-center justify-center shrink-0 border border-[#2B374A]">
+                <Scale className="w-4 h-4" />
               </div>
               <div>
-                <h4 className="text-white font-extrabold text-xs sm:text-sm">
+                <h4 className="text-white font-bold text-xs sm:text-sm">
                   {footerTermsTab === 'buyers' 
                     ? 'Términos y Condiciones para Usuarios y Compradores' 
                     : 'Términos y Condiciones de Registro para Vendedores'}
                 </h4>
-                <p className="text-[11px] text-gray-400">
+                <p className="text-[11px] text-slate-400">
                   De conformidad con la Ley 1480 de 2011 (Estatuto del Consumidor), Ley 1581 de 2012 y Ley 527 de 1999
                 </p>
               </div>
             </div>
+
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowFooterTerms(!showFooterTerms)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1f293d] hover:bg-[#2c3a54] text-gray-200 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1A222E] hover:bg-[#252E3E] text-slate-200 hover:text-white rounded-lg text-xs font-bold transition-colors cursor-pointer border border-[#2B374A]"
               >
-                <span>{showFooterTerms ? 'Ocultar términos' : 'Consultar en el pie de página'}</span>
+                <span>{showFooterTerms ? 'Ocultar términos' : 'Consultar en el pie'}</span>
                 {showFooterTerms ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
               </button>
               <button
@@ -1411,7 +1242,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                     setIsTermsModalOpen(true);
                   }
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E63946]/20 hover:bg-[#E63946] text-[#E63946] hover:text-white border border-[#E63946]/30 rounded-xl text-xs font-bold transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#D62839] hover:bg-[#b81d2d] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>Modal completo</span>
@@ -1419,16 +1250,16 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </div>
           </div>
 
-          {/* Selector de pestañas para el pie de página */}
+          {/* Tab selector for footer terms */}
           {showFooterTerms && (
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
                 onClick={() => setFooterTermsTab('buyers')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
                   footerTermsTab === 'buyers'
-                    ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20'
-                    : 'bg-[#182030] text-gray-400 hover:text-white border border-[#232B3A]'
+                    ? 'bg-[#D62839] text-white'
+                    : 'bg-[#161C26] text-slate-400 hover:text-white border border-[#222B38]'
                 }`}
               >
                 <ShoppingBag className="w-3.5 h-3.5" />
@@ -1437,10 +1268,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               <button
                 type="button"
                 onClick={() => setFooterTermsTab('sellers')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1.5 ${
                   footerTermsTab === 'sellers'
-                    ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/20'
-                    : 'bg-[#182030] text-gray-400 hover:text-white border border-[#232B3A]'
+                    ? 'bg-[#D62839] text-white'
+                    : 'bg-[#161C26] text-slate-400 hover:text-white border border-[#222B38]'
                 }`}
               >
                 <Scale className="w-3.5 h-3.5" />
@@ -1450,50 +1281,50 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           )}
 
           {showFooterTerms && footerTermsTab === 'buyers' && (
-            <div className="mt-4 p-5 bg-[#0d121f] border border-[#232B3A] rounded-2xl space-y-5 text-xs text-gray-300">
-              <div className="p-3.5 bg-[#090B12] rounded-xl border border-[#232B3A] space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-[#E63946] tracking-wider block">
+            <div className="mt-4 p-5 bg-[#0B0E14] border border-[#222B38] rounded-xl space-y-4 text-xs text-slate-300">
+              <div className="p-3.5 bg-[#121721] rounded-lg border border-[#222B38] space-y-1">
+                <span className="text-[10px] uppercase font-bold text-[#D62839] tracking-wider block">
                   Marco Legal Colombiano para Compradores
                 </span>
-                <h5 className="text-xs sm:text-sm font-black text-white uppercase">
+                <h5 className="text-xs sm:text-sm font-bold text-white uppercase">
                   {BUYER_TERMS_PREAMBLE.title}
                 </h5>
-                <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">
+                <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">
                   {BUYER_TERMS_PREAMBLE.text}
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {BUYER_TERMS_SECTIONS.map((sec) => (
-                  <div key={sec.id} className="p-3.5 bg-[#141b2d]/60 rounded-xl border border-[#232B3A]/80 space-y-2">
-                    <h6 className="font-extrabold text-white text-xs flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-[#E63946]/20 text-[#E63946] text-[10px] font-black flex items-center justify-center border border-[#E63946]/30 shrink-0">
+                  <div key={sec.id} className="p-3.5 bg-[#121721] rounded-lg border border-[#222B38] space-y-2">
+                    <h6 className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded bg-[#161C26] text-[#D62839] text-[10px] font-bold flex items-center justify-center border border-[#2B374A] shrink-0">
                         {sec.number}
                       </span>
                       <span>{sec.title}</span>
                     </h6>
-                    <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">
+                    <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">
                       {sec.content}
                     </p>
                     {sec.points && sec.points.length > 0 && (
                       <ul className="space-y-1 pt-1 text-[11px]">
                         {sec.points.map((p, i) => (
-                          <li key={i} className="flex items-start gap-1.5 text-gray-300">
-                            <span className="text-[#F4B400] font-bold">•</span>
+                          <li key={i} className="flex items-start gap-1.5 text-slate-300">
+                            <span className="text-[#E5A100] font-bold">•</span>
                             <span>{p}</span>
                           </li>
                         ))}
                       </ul>
                     )}
                     {sec.subsections && sec.subsections.length > 0 && (
-                      <div className="space-y-1.5 pt-1.5">
+                      <div className="space-y-1 pt-1.5">
                         {sec.subsections.map((sub, i) => (
-                          <div key={i} className="p-2 bg-[#090B12] rounded-lg border border-[#232B3A] text-[10px] text-gray-300 space-y-0.5">
+                          <div key={i} className="p-2 bg-[#0B0E14] rounded border border-[#222B38] text-[10px] text-slate-300 space-y-0.5">
                             <div className="font-bold text-white flex items-center gap-1">
-                              {sub.letter && <span className="text-[#E63946]">{sub.letter}.</span>}
+                              {sub.letter && <span className="text-[#D62839]">{sub.letter}.</span>}
                               <span>{sub.label}</span>
                             </div>
-                            <p className="text-gray-400">{sub.text}</p>
+                            <p className="text-slate-400">{sub.text}</p>
                           </div>
                         ))}
                       </div>
@@ -1505,50 +1336,50 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           )}
 
           {showFooterTerms && footerTermsTab === 'sellers' && (
-            <div className="mt-4 p-5 bg-[#0d121f] border border-[#232B3A] rounded-2xl space-y-5 text-xs text-gray-300">
-              <div className="p-3.5 bg-[#090B12] rounded-xl border border-[#232B3A] space-y-1.5">
-                <span className="text-[10px] uppercase font-black text-[#E63946] tracking-wider block">
+            <div className="mt-4 p-5 bg-[#0B0E14] border border-[#222B38] rounded-xl space-y-4 text-xs text-slate-300">
+              <div className="p-3.5 bg-[#121721] rounded-lg border border-[#222B38] space-y-1">
+                <span className="text-[10px] uppercase font-bold text-[#D62839] tracking-wider block">
                   Marco Legal Colombiano Aplicable para Vendedores
                 </span>
-                <h5 className="text-xs sm:text-sm font-black text-white uppercase">
+                <h5 className="text-xs sm:text-sm font-bold text-white uppercase">
                   {SELLER_TERMS_PREAMBLE.title}
                 </h5>
-                <p className="text-[11px] text-gray-300 leading-relaxed">
+                <p className="text-[11px] text-slate-300 leading-relaxed">
                   {SELLER_TERMS_PREAMBLE.text}
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                 {SELLER_TERMS_SECTIONS.map((sec) => (
-                  <div key={sec.id} className="p-3.5 bg-[#141b2d]/60 rounded-xl border border-[#232B3A]/80 space-y-2">
-                    <h6 className="font-extrabold text-white text-xs flex items-center gap-1.5">
-                      <span className="w-4 h-4 rounded-full bg-[#E63946]/20 text-[#E63946] text-[10px] font-black flex items-center justify-center border border-[#E63946]/30 shrink-0">
+                  <div key={sec.id} className="p-3.5 bg-[#121721] rounded-lg border border-[#222B38] space-y-2">
+                    <h6 className="font-bold text-white text-xs flex items-center gap-1.5">
+                      <span className="w-4 h-4 rounded bg-[#161C26] text-[#D62839] text-[10px] font-bold flex items-center justify-center border border-[#2B374A] shrink-0">
                         {sec.number}
                       </span>
                       <span>{sec.title}</span>
                     </h6>
-                    <p className="text-[11px] text-gray-300 leading-relaxed whitespace-pre-line">
+                    <p className="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">
                       {sec.content}
                     </p>
                     {sec.points && sec.points.length > 0 && (
                       <ul className="space-y-1 pt-1 text-[11px]">
                         {sec.points.map((p, i) => (
-                          <li key={i} className="flex items-start gap-1.5 text-gray-300">
-                            <span className="text-[#F4B400] font-bold">•</span>
+                          <li key={i} className="flex items-start gap-1.5 text-slate-300">
+                            <span className="text-[#E5A100] font-bold">•</span>
                             <span>{p}</span>
                           </li>
                         ))}
                       </ul>
                     )}
                     {sec.subsections && sec.subsections.length > 0 && (
-                      <div className="space-y-1.5 pt-1.5">
+                      <div className="space-y-1 pt-1.5">
                         {sec.subsections.map((sub, i) => (
-                          <div key={i} className="p-2 bg-[#090B12] rounded-lg border border-[#232B3A] text-[10px] text-gray-300 space-y-0.5">
+                          <div key={i} className="p-2 bg-[#0B0E14] rounded border border-[#222B38] text-[10px] text-slate-300 space-y-0.5">
                             <div className="font-bold text-white flex items-center gap-1">
-                              {sub.letter && <span className="text-[#E63946]">{sub.letter}.</span>}
+                              {sub.letter && <span className="text-[#D62839]">{sub.letter}.</span>}
                               <span>{sub.label}</span>
                             </div>
-                            <p className="text-gray-400">{sub.text}</p>
+                            <p className="text-slate-400">{sub.text}</p>
                           </div>
                         ))}
                       </div>
@@ -1561,63 +1392,24 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
         </div>
       </footer>
 
-      {/* Floating WhatsApp Customer Support Button - Ultra Eye-catching & Animated */}
-      <div className="fixed bottom-4 right-3 sm:bottom-6 sm:right-6 z-50 pointer-events-auto print:hidden">
-        {/* Continuous Radiating Pulsing Glow Rings */}
-        <div className="absolute inset-0 rounded-full bg-[#E63946] opacity-40 animate-ping pointer-events-none" style={{ animationDuration: '3s' }}></div>
-        <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-[#FF4D4D] via-[#E63946] to-[#FF0055] opacity-50 blur-md animate-pulse pointer-events-none"></div>
-
-        <motion.a
+      {/* Floating WhatsApp Customer Support Button - Clean Flat Solid Button */}
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 print:hidden">
+        <a
           href="https://wa.me/573219730865?text=Hola!%20Necesito%20ayuda%20o%20soporte%20con%20Ryyco"
           target="_blank"
           rel="noopener noreferrer"
-          initial={{ opacity: 0, scale: 0.8, y: 30 }}
-          animate={{ 
-            opacity: 1, 
-            scale: 1,
-            y: [0, -6, 0],
-          }}
-          transition={{
-            y: {
-              repeat: Infinity,
-              duration: 2.4,
-              ease: "easeInOut"
-            },
-            opacity: { duration: 0.4 },
-            scale: { duration: 0.4 }
-          }}
-          whileHover={{ scale: 1.08, y: -8 }}
-          whileTap={{ scale: 0.94 }}
-          className="relative flex items-center gap-2 sm:gap-2.5 px-3.5 py-2.5 sm:px-5 sm:py-3.5 bg-gradient-to-r from-[#FF334B] via-[#E63946] to-[#D62839] hover:from-[#FF4D61] hover:to-[#E63946] text-white font-black text-xs sm:text-sm rounded-full shadow-[0_10px_30px_rgba(230,57,70,0.55)] border-2 border-white/30 backdrop-blur-md cursor-pointer transition-all overflow-hidden group"
+          className="flex items-center gap-2.5 px-4 py-2.5 bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold text-xs sm:text-sm rounded-full shadow-lg border border-white/20 transition-all cursor-pointer active:scale-95"
         >
-          {/* Shimmer sweep light effect */}
-          <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/25 to-transparent skew-x-12 pointer-events-none" />
-
-          {/* Active status pulse indicator */}
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-90"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400 border border-white/60"></span>
-          </span>
-
-          {/* Animated WhatsApp / Chat Icon */}
-          <motion.div
-            animate={{ rotate: [0, -10, 10, -10, 0] }}
-            transition={{ repeat: Infinity, duration: 3, repeatDelay: 2 }}
-            className="flex items-center justify-center"
-          >
-            <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 text-white stroke-[2.8] drop-shadow" />
-          </motion.div>
-
-          <span className="tracking-wide drop-shadow-sm font-extrabold whitespace-nowrap">
-            Atención al Cliente
-          </span>
-        </motion.a>
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 border border-white/60 shrink-0" />
+          <MessageCircle className="w-4 h-4 text-white" />
+          <span className="whitespace-nowrap">Atención al Cliente</span>
+        </a>
       </div>
 
       {/* Printable Presentation Letter Modal */}
       {isPrintModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto print:p-0 print:bg-white print:static">
-          <div className="bg-white text-gray-900 w-full max-w-[850px] rounded-2xl shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:max-w-none print:w-full my-8 print:my-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 overflow-y-auto print:p-0 print:bg-white print:static">
+          <div className="bg-white text-gray-900 w-full max-w-[850px] rounded-xl shadow-2xl overflow-hidden print:shadow-none print:rounded-none print:max-w-none print:w-full my-8 print:my-0">
             {/* Modal Actions Bar (Hidden on Print) */}
             <div className="flex items-center justify-between px-6 py-4 bg-gray-900 text-white border-b border-gray-800 print:hidden">
               <div className="flex items-center gap-2">
@@ -1627,14 +1419,14 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="bg-emerald-400 hover:bg-emerald-300 text-black font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition cursor-pointer"
+                  className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Imprimir / Guardar PDF</span>
                 </button>
                 <button
                   onClick={() => setIsPrintModalOpen(false)}
-                  className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2 rounded-lg transition"
+                  className="bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white p-2 rounded-lg transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1660,7 +1452,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
               {/* Salutation */}
               <div className="pt-2">
-                <h3 className="text-lg font-bold text-gray-900">
+                <h3 className="text-lg font-bold text-gray-900 font-sans">
                   Estimado propietario de restaurante,
                 </h3>
               </div>
@@ -1718,7 +1510,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 justify-items-center mb-3">
                   {partnerStores.slice(0, 4).map((store, idx) => (
                     <div key={idx} className="flex flex-col items-center text-center">
-                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-emerald-300 bg-white shadow-xs mb-1.5 flex items-center justify-center">
+                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-emerald-300 bg-white mb-1.5 flex items-center justify-center">
                         {store.logo ? (
                           <img 
                             src={store.logo} 
@@ -1732,14 +1524,14 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                             }}
                           />
                         ) : (
-                          <span className="font-black text-emerald-800 text-sm">{store.name.charAt(0)}</span>
+                          <span className="font-bold text-emerald-800 text-sm">{store.name.charAt(0)}</span>
                         )}
                       </div>
-                      <span className="text-xs font-black text-gray-900 leading-tight max-w-[110px]">
+                      <span className="text-xs font-bold text-gray-900 leading-tight max-w-[110px]">
                         {store.name}
                       </span>
                       {store.category && (
-                        <span className="text-[9px] text-gray-500 font-semibold">
+                        <span className="text-[10px] text-gray-500 font-medium">
                           {store.category}
                         </span>
                       )}
@@ -1757,7 +1549,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   Nosotros ponemos la tecnología, la publicidad y los domicilios.<br />
                   Usted se dedica a lo que mejor sabe hacer: <strong>preparar deliciosa comida.</strong>
                 </p>
-                <p className="text-xl font-black text-emerald-700 tracking-tight mt-3">
+                <p className="text-xl font-bold text-emerald-700 tracking-tight mt-3">
                   Más clientes. Más pedidos. Más ventas. Ryyco.com.
                 </p>
               </div>
@@ -1767,7 +1559,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             <div className="bg-gray-100 px-6 py-3 border-t border-gray-200 flex justify-end print:hidden">
               <button
                 onClick={() => setIsPrintModalOpen(false)}
-                className="bg-gray-800 hover:bg-gray-900 text-white font-bold px-5 py-2 rounded-lg text-xs"
+                className="bg-gray-800 hover:bg-gray-900 text-white font-bold px-5 py-2 rounded-lg text-xs cursor-pointer"
               >
                 Cerrar
               </button>

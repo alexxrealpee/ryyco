@@ -186,12 +186,32 @@ interface TiendaGeneralProps {
   onNavigateToStore: (username: string) => void;
 }
 
-// Ensure no stale stores are loaded from localStorage cache
+// Fast initial data for instant first paint
 const getInitialGeneralData = () => {
   try {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('linnk_all_active_data_cache');
-      localStorage.removeItem('linnk_profiles');
+      const init = (window as any).__INITIAL_CATALOG_DATA__;
+      if (init && init.catalog && Array.isArray(init.catalog.products)) {
+        const pMap: Record<string, UserProfile> = {};
+        (init.catalog.stores || []).forEach((s: any) => {
+          if (s && s.uid) {
+            pMap[s.uid] = s;
+            if (s.username) pMap[s.username.toLowerCase()] = s;
+          }
+        });
+        return {
+          products: init.catalog.products.slice(0, 6) as ProductItem[],
+          profiles: pMap,
+          hasCache: true
+        };
+      }
+      const rawSession = sessionStorage.getItem('linnk_fast_open_cache');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0 && Date.now() - (parsed.timestamp || 0) < 180000) {
+          return { products: parsed.products.slice(0, 6) as ProductItem[], profiles: (parsed.profiles || {}) as Record<string, UserProfile>, hasCache: true };
+        }
+      }
     }
   } catch (e) {}
   return { products: [] as ProductItem[], profiles: {} as Record<string, UserProfile>, hasCache: false };
@@ -311,49 +331,64 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [selectedStore, setSelectedStore] = useState('all');
   const [sortBy, setSortBy] = useState<'latest' | 'price_asc' | 'price_desc'>('latest');
 
-  // Lazy Load on Demand: Cargar productos de Firebase SOLAMENTE al hacer clic en el logo del restaurante
+  // Lazy Load on Demand: Cargar productos de Firebase al hacer clic en el logo del restaurante
   const handleSelectStore = useCallback(async (store: UserProfile) => {
     if (!store || !store.uid) return;
 
     if (selectedStore === store.uid) {
       setSelectedStore('all');
       setSelectedCategory('all');
+      setVisibleLimit(6);
       return;
     }
 
     setSelectedStore(store.uid);
     setSelectedCategory('all');
     setSearchTerm('');
-    setVisibleLimit(30);
+    setVisibleLimit(6); // Cargar inmediatamente los 6 primeros productos del restaurante
 
     // Asegurar que el perfil del restaurante esté registrado
     setProfiles(prev => ({
       ...prev,
       [store.uid]: store,
-      ...(store.username ? { [store.username.toLowerCase()]: store } : {})
+      ...(store.username ? { [store.username.toLowerCase()]: store } : {}),
+      ...(store.displayName ? { [store.displayName.toLowerCase()]: store } : {})
     }));
 
-    // 1. Mostrar inmediatamente el esqueleto de los 5 primeros productos
-    setLoadingStoreProducts(true);
-    setLoadingStoreId(store.uid);
+    // Verificar si ya tenemos productos de esta tienda en memoria para renderizado instantáneo
+    const existingStoreProducts = products.filter(p => 
+      p.userId === store.uid || 
+      (store.username && p.storeUsername?.toLowerCase() === store.username.toLowerCase())
+    );
+
+    // Solo activar skeleton si aún no tenemos productos cargados para este restaurante
+    if (existingStoreProducts.length === 0) {
+      setLoadingStoreProducts(true);
+      setLoadingStoreId(store.uid);
+    }
 
     try {
-      // 2. Leer a Firebase solamente cuando le dé clic en el restaurante
+      // Leer a Firebase directamente al hacer clic en el logo del restaurante
       const freshProducts = await fetchProductsForStoreOnDemand(store, 40);
 
-      setProducts(prev => {
-        const withoutStore = prev.filter(p => p.userId !== store.uid && (!store.username || p.storeUsername !== store.username));
-        const updated = [...withoutStore, ...freshProducts];
-        registerProductImages(freshProducts);
-        return updated;
-      });
+      if (freshProducts && freshProducts.length > 0) {
+        setProducts(prev => {
+          const withoutStore = prev.filter(p => 
+            p.userId !== store.uid && 
+            (!store.username || p.storeUsername?.toLowerCase() !== store.username.toLowerCase())
+          );
+          const updated = [...withoutStore, ...freshProducts];
+          registerProductImages(freshProducts);
+          return updated;
+        });
+      }
     } catch (err) {
       console.warn("Error fetching store products on demand from Firebase:", err);
     } finally {
       setLoadingStoreProducts(false);
       setLoadingStoreId(null);
     }
-  }, [selectedStore]);
+  }, [selectedStore, products]);
   
   // Quick View Modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
@@ -947,9 +982,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
 
-  // Reset limit when filter/search/sort changes (show full store products when store is selected)
+  // Reset limit when filter/search/sort changes (show initial 6 products whether on home or viewing a restaurant)
   useEffect(() => {
-    setVisibleLimit(selectedStore !== 'all' ? 30 : 6);
+    setVisibleLimit(6);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
   // Unified function to load the next batch of 6 products in order
@@ -2379,9 +2414,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
-            aria-label="Cargando los 5 primeros productos del restaurante"
+            aria-label="Cargando los 6 primeros productos del restaurante"
           >
-            {[0, 1, 2, 3, 4].map((idx) => (
+            {[0, 1, 2, 3, 4, 5].map((idx) => (
               <ProductCardSkeleton key={`store-skeleton-${idx}`} index={idx} />
             ))}
           </div>
@@ -2389,9 +2424,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
-            aria-label="Cargando productos"
+            aria-label="Cargando 6 productos"
           >
-            {[0, 1, 2, 3, 4].map((idx) => (
+            {[0, 1, 2, 3, 4, 5].map((idx) => (
               <ProductCardSkeleton key={`general-skeleton-${idx}`} index={idx} />
             ))}
           </div>

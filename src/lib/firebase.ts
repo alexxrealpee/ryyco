@@ -3677,72 +3677,84 @@ export async function fetchProductsForStoreOnDemand(
   try {
     const products: ProductItem[] = [];
 
-    // 1. Primary Query: query collection 'products' by store.uid
+    const mapProduct = (data: any, docId: string): ProductItem => ({
+      ...data,
+      id: docId,
+      userId: data.userId || store.uid,
+      storeName: data.storeName || store.displayName || store.username,
+      storeUsername: data.storeUsername || store.username,
+      name: data.name || 'Producto sin nombre',
+      price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
+      packagingCost: typeof data.packagingCost === 'number' && !isNaN(data.packagingCost) 
+        ? data.packagingCost 
+        : (data.packagingCost ? parseFloat(data.packagingCost as any) || 0 : undefined),
+      stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
+      active: true
+    });
+
+    // 1. Parallel execution: Firestore queries + ultra-fast server API check
+    const firestorePromises: Promise<void>[] = [];
+
+    // Query 1.1: by store.uid in collection 'products'
     if (store.uid) {
+      firestorePromises.push(
+        getDocs(query(collection(db, 'products'), where('userId', '==', store.uid), limit(limitCount)))
+          .then(snap => {
+            snap.forEach(docSnap => {
+              const data = docSnap.data();
+              if (data && data.active !== false) {
+                products.push(mapProduct(data, docSnap.id));
+              }
+            });
+          })
+          .catch(err => {
+            console.warn("Firestore products by uid error:", err);
+          })
+      );
+    }
+
+    // Query 1.2: by store.username in collection 'products'
+    if (store.username) {
+      firestorePromises.push(
+        getDocs(query(collection(db, 'products'), where('storeUsername', '==', store.username), limit(limitCount)))
+          .then(snap => {
+            snap.forEach(docSnap => {
+              const data = docSnap.data();
+              if (data && data.active !== false) {
+                products.push(mapProduct(data, docSnap.id));
+              }
+            });
+          })
+          .catch(err => {
+            console.warn("Firestore products by username error:", err);
+          })
+      );
+    }
+
+    // Query 1.3: Fast local server API check in parallel (tens of ms response time)
+    const apiPromise = (async () => {
       try {
-        const q = query(
-          collection(db, 'products'),
-          where('userId', '==', store.uid),
-          limit(limitCount)
-        );
-        const snap = await getDocs(q);
-        snap.forEach(docSnap => {
-          const data = docSnap.data() as ProductItem;
-          if (data && data.active !== false) {
-            products.push({
-              ...data,
-              id: docSnap.id,
-              userId: data.userId || store.uid,
-              storeName: data.storeName || store.displayName || store.username,
-              storeUsername: data.storeUsername || store.username,
-              name: data.name || 'Producto sin nombre',
-              price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
-              stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
-              active: true
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const res = await fetch(`/api/catalog/available?storeId=${encodeURIComponent(store.uid)}&storeUsername=${encodeURIComponent(store.username || '')}&limit=${limitCount}`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const apiData = await res.json();
+          if (apiData && apiData.catalog && Array.isArray(apiData.catalog.products)) {
+            apiData.catalog.products.forEach((p: any) => {
+              if (p && p.active !== false && p.id) {
+                products.push(mapProduct(p, String(p.id)));
+              }
             });
           }
-        });
-      } catch (err) {
-        console.warn("Error querying products by store uid:", err);
-      }
-    }
+        }
+      } catch (e) {}
+    })();
 
-    // 2. Secondary Query by storeUsername if products was empty
-    if (products.length === 0 && store.username) {
-      const cleanU = sanitizeUsername(store.username);
-      const cleanNoDash = cleanU.replace(/[-_]/g, '');
-      const candidates = Array.from(new Set([store.username, cleanU, cleanNoDash, store.username.toLowerCase()]));
+    // Await all parallel sources
+    await Promise.all([...firestorePromises, apiPromise]);
 
-      for (const cand of candidates) {
-        if (products.length > 0) break;
-        try {
-          const qUser = query(
-            collection(db, 'products'),
-            where('storeUsername', '==', cand),
-            limit(limitCount)
-          );
-          const snapUser = await getDocs(qUser);
-          snapUser.forEach(docSnap => {
-            const data = docSnap.data() as ProductItem;
-            if (data && data.active !== false) {
-              products.push({
-                ...data,
-                id: docSnap.id,
-                userId: data.userId || store.uid,
-                storeName: data.storeName || store.displayName || store.username,
-                storeUsername: data.storeUsername || store.username,
-                name: data.name || 'Producto sin nombre',
-                price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
-                stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
-                active: true
-              });
-            }
-          });
-        } catch (e) {}
-      }
-    }
-
-    // 3. Fallback: check localStorage
+    // 2. Fallback: check localStorage if still empty
     if (products.length === 0) {
       try {
         const localUid = localStorage.getItem(`linnk_products_${store.uid}`);
@@ -3751,7 +3763,7 @@ export async function fetchProductsForStoreOnDemand(
           if (Array.isArray(parsed)) {
             parsed.forEach((lp: any) => {
               if (lp && lp.active !== false && !products.some(p => p.id === lp.id)) {
-                products.push(lp);
+                products.push(mapProduct(lp, lp.id));
               }
             });
           }
@@ -3759,29 +3771,15 @@ export async function fetchProductsForStoreOnDemand(
       } catch (e) {}
     }
 
-    // 4. Also check matching by storeName
+    // 3. Fallback: check matching by storeName
     if (products.length === 0 && store.displayName) {
       try {
-        const qName = query(
-          collection(db, 'products'),
-          where('storeName', '==', store.displayName),
-          limit(limitCount)
-        );
+        const qName = query(collection(db, 'products'), where('storeName', '==', store.displayName), limit(limitCount));
         const snapName = await getDocs(qName);
         snapName.forEach(docSnap => {
-          const data = docSnap.data() as ProductItem;
+          const data = docSnap.data();
           if (data && data.active !== false && !products.some(p => p.id === docSnap.id)) {
-            products.push({
-              ...data,
-              id: docSnap.id,
-              userId: data.userId || store.uid,
-              storeName: data.storeName || store.displayName,
-              storeUsername: data.storeUsername || store.username,
-              name: data.name || 'Producto sin nombre',
-              price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
-              stock: typeof data.stock === 'number' && !isNaN(data.stock) ? data.stock : parseInt(data.stock as any) || 0,
-              active: true
-            });
+            products.push(mapProduct(data, docSnap.id));
           }
         });
       } catch (e) {}

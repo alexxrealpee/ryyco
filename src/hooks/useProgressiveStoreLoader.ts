@@ -38,7 +38,7 @@ export interface UseProgressiveStoreLoaderResult {
   isLoadingProducts: boolean;
 }
 
-// Ensure no stale restaurants are stored or read from cache across sessions
+// Fast First-Paint Store Data: uses head prefetch or short-lived session cache for instant load
 function getCachedStoreData(): {
   openRestaurants: UserProfile[];
   products: ProductItem[];
@@ -47,8 +47,43 @@ function getCachedStoreData(): {
 } {
   try {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('linnk_all_active_data_cache');
-      localStorage.removeItem('linnk_profiles');
+      // 1. Check window.__INITIAL_CATALOG_DATA__ from <head> prefetch
+      const init = (window as any).__INITIAL_CATALOG_DATA__;
+      if (init && init.catalog) {
+        const cat = init.catalog;
+        const pMap: Record<string, UserProfile> = {};
+        const openStores: UserProfile[] = [];
+        (cat.stores || []).forEach((s: any) => {
+          if (!s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
+            pMap[s.uid] = s;
+            if (s.username) pMap[s.username.toLowerCase()] = s;
+            openStores.push(s);
+          }
+        });
+        const initialProducts = (cat.products || []).slice(0, 6);
+        if (openStores.length > 0 || initialProducts.length > 0) {
+          return {
+            openRestaurants: openStores,
+            products: initialProducts,
+            profiles: pMap,
+            hasCache: true
+          };
+        }
+      }
+
+      // 2. Check sessionStorage for instant navigation restoration
+      const rawSession = sessionStorage.getItem('linnk_fast_open_cache');
+      if (rawSession) {
+        const parsed = JSON.parse(rawSession);
+        if (parsed && Array.isArray(parsed.stores) && Array.isArray(parsed.products) && Date.now() - (parsed.timestamp || 0) < 180000) {
+          return {
+            openRestaurants: parsed.stores,
+            products: parsed.products.slice(0, 6),
+            profiles: parsed.profiles || {},
+            hasCache: true
+          };
+        }
+      }
     }
   } catch (e) {}
   return { openRestaurants: [], products: [], profiles: {}, hasCache: false };
@@ -432,6 +467,14 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
           setLoadedProducts(initialSlice);
           setProfilesMap(prev => ({ ...prev, ...activeData.profiles }));
+          try {
+            sessionStorage.setItem('linnk_fast_open_cache', JSON.stringify({
+              stores: openStores,
+              products: initialSlice,
+              profiles: pMap,
+              timestamp: Date.now()
+            }));
+          } catch (e) {}
           // Ensure hasMore remains true so user can scroll to load the remaining products
           setHasMore(uniqueInitial.length > 6 || openStores.length > 0);
         } else if (openStores.length > 0) {
