@@ -60,38 +60,8 @@ export async function registerAdminFCMTokenWithServer(
   }
 }
 
-// Audio Chime Synthesizer using Web Audio API for high-reliability order alerts
-export function playOrderAlertChime() {
-  try {
-    if (typeof window === 'undefined') return;
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    const ctx = new AudioContextClass();
-    const playBeep = (freq: number, startTime: number, duration: number, volume = 0.35) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(volume, startTime + 0.03);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
-    };
-
-    const now = ctx.currentTime;
-    // Pleasant 4-tone ascending chime sequence
-    playBeep(587.33, now + 0.0, 0.22, 0.4);  // D5
-    playBeep(739.99, now + 0.18, 0.22, 0.45); // F#5
-    playBeep(880.00, now + 0.36, 0.25, 0.5);  // A5
-    playBeep(1174.66, now + 0.56, 0.6, 0.6); // D6
-  } catch (err) {
-    console.warn('[FCM] Error playing alert chime:', err);
-  }
-}
+export { playOrderNotificationSound as playOrderAlertChime } from './orderNotificationSound';
+import { playOrderNotificationSound as playOrderAlertChime } from './orderNotificationSound';
 
 // Spoken voice announcement helper
 export function speakOrderVoiceAlert(text: string) {
@@ -164,6 +134,7 @@ export function speakDriverVoiceAlert(text: string) {
  */
 export async function initializeFCM(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
+  if (messagingInstance && serviceWorkerReg) return true;
 
   try {
     const supported = await isSupported();
@@ -178,11 +149,12 @@ export async function initializeFCM(): Promise<boolean> {
     if ('serviceWorker' in navigator) {
       try {
         serviceWorkerReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-          scope: '/'
+          scope: '/', updateViaCache: 'none'
         });
         console.log('[FCM] Service worker registered successfully with scope:', serviceWorkerReg.scope);
       } catch (swErr) {
         console.warn('[FCM] Service worker registration error:', swErr);
+        return false;
       }
     }
 
@@ -193,7 +165,7 @@ export async function initializeFCM(): Promise<boolean> {
       console.log('[FCM] Foreground push message received:', payload);
       
       const isDriver = payload.data?.isDriver === 'true' || payload.data?.role === 'driver' || payload.data?.type === 'DRIVER_REQUEST';
-      const isSeller = !isDriver && (payload.data?.isSeller === 'true' || Boolean(payload.data?.storeOwnerId));
+      const isSeller = !isDriver && (payload.data?.isSeller === 'true' || (payload.data?.role !== 'admin' && payload.data?.isSeller !== 'false' && Boolean(payload.data?.storeOwnerId)));
       
       // STRICT REQUIREMENT: Only pending orders trigger notifications
       if (!isDriver && payload.data?.status && payload.data?.status !== 'pending') {
@@ -228,10 +200,7 @@ export async function initializeFCM(): Promise<boolean> {
       // 2. Speak voice alert
       if (isDriver) {
         speakDriverVoiceAlert('¡Atención! Nueva solicitud de domicilio disponible en RYYCO');
-      } else if (isSeller) {
-        speakOrderVoiceAlert('¡Atención! Nuevo pedido recibido en tu tienda');
-      } else {
-        speakOrderVoiceAlert('¡Atención! Nuevo pedido recibido en administración general');
+
       }
 
       // 3. Dispatch global browser event for React views
@@ -334,8 +303,8 @@ export async function requestAdminFCMPermission(adminUser?: {
     if (!messagingInstance) {
       // Fallback to standard web push if FCM instance cannot be constructed
       return {
-        success: true,
-        token: 'web_push_native_granted'
+        success: false,
+        error: 'No se pudo activar push en segundo plano. Usa HTTPS; en iPhone abre la app instalada en la pantalla de inicio.'
       };
     }
 
@@ -362,9 +331,11 @@ export async function requestAdminFCMPermission(adminUser?: {
       } catch (defaultTokenErr: any) {
         console.warn('[FCM] getToken default also returned error:', defaultTokenErr);
         // Fallback to web push token identifier
-        fcmToken = 'web_push_' + (adminUser?.uid || 'admin') + '_' + Date.now();
+        throw new Error('No se pudo registrar el dispositivo en Firebase. Revisa la clave VAPID y vuelve a activar las notificaciones.');
       }
     }
+
+    if (!fcmToken) throw new Error('Firebase no devolvió un token de notificaciones válido.');
 
     // Save token in localStorage
     localStorage.setItem('ryyco_admin_fcm_token', fcmToken);
@@ -386,6 +357,8 @@ export async function requestAdminFCMPermission(adminUser?: {
       console.log('[FCM] Admin FCM token saved to Firestore successfully.');
     } catch (saveErr) {
       console.warn('[FCM] Warning saving token to Firestore:', saveErr);
+      localStorage.removeItem('ryyco_admin_fcm_token');
+      throw new Error('No se pudo guardar este dispositivo para recibir notificaciones con la app cerrada.');
     }
 
     // Also register with server memory registry
@@ -437,7 +410,6 @@ export async function triggerAdminOrderPush(
   playOrderAlertChime();
 
   // 2. Announce with speech synthesis
-  speakOrderVoiceAlert(`¡Nuevo pedido número ${order.orderNumber || ''} en ${storeName}!`);
 
   // 3. Post message to active Service Worker to show background notification
   try {
@@ -549,7 +521,7 @@ export function getFCMStatus(): {
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token),
+    hasToken: Boolean(token && !/^(web_push_|seller_web_push_|seller_native_push_|driver_web_push_|driver_native_push_)/.test(token)),
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
 }
@@ -603,12 +575,14 @@ export async function requestSellerFCMPermission(seller: {
           });
         } catch (defaultErr: any) {
           console.warn('[FCM-SELLER] Default getToken fallback error:', defaultErr);
-          fcmToken = 'seller_web_push_' + seller.uid + '_' + Date.now();
+          throw new Error('No se pudo registrar el dispositivo en Firebase. Revisa la clave VAPID y vuelve a activar las notificaciones.');
         }
       }
     } else {
-      fcmToken = 'seller_native_push_' + seller.uid + '_' + Date.now();
+      throw new Error('Push no está disponible. Usa HTTPS; en iPhone abre la app instalada en la pantalla de inicio.');
     }
+
+    if (!fcmToken) throw new Error('Firebase no devolvió un token de notificaciones válido.');
 
     // Store in localStorage for the seller
     localStorage.setItem('ryyco_seller_fcm_token', fcmToken);
@@ -632,6 +606,8 @@ export async function requestSellerFCMPermission(seller: {
       console.log('[FCM-SELLER] Token de vendedor guardado en Firestore con éxito.');
     } catch (saveErr) {
       console.warn('[FCM-SELLER] Error al guardar token en Firestore:', saveErr);
+      localStorage.removeItem('ryyco_seller_fcm_token');
+      throw new Error('No se pudo guardar este dispositivo para recibir pedidos con la app cerrada.');
     }
 
     // Play confirmation chime and announce
@@ -673,7 +649,6 @@ export async function triggerSellerOrderPush(
   playOrderAlertChime();
 
   // 2. Announce with speech synthesis
-  speakOrderVoiceAlert(`¡Nuevo pedido número ${order.orderNumber || ''} para tu tienda!`);
 
   // 3. Post message to active Service Worker to show background notification
   try {
@@ -771,7 +746,7 @@ export function getSellerFCMStatus(storeOwnerId?: string): {
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token),
+    hasToken: Boolean(token && !/^(web_push_|seller_web_push_|seller_native_push_|driver_web_push_|driver_native_push_)/.test(token)),
     token,
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
@@ -1028,7 +1003,7 @@ export function getDriverFCMStatus(driverId?: string): {
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token),
+    hasToken: Boolean(token && !/^(web_push_|seller_web_push_|seller_native_push_|driver_web_push_|driver_native_push_)/.test(token)),
     token,
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
@@ -1272,7 +1247,6 @@ export function connectFCMStream(
         } else if (data.type === 'SELLER_ORDER_PUSH' && role === 'seller') {
           if (!entityUid || data.storeOwnerId === entityUid) {
             playOrderAlertChime();
-            speakOrderVoiceAlert(`¡Nuevo pedido número ${data.orderNumber || ''} en tu tienda!`);
             window.dispatchEvent(new CustomEvent('ryyco:new-seller-order', {
               detail: data
             }));
@@ -1283,7 +1257,6 @@ export function connectFCMStream(
             return;
           }
           playOrderAlertChime();
-          speakOrderVoiceAlert(`¡Nuevo pedido número ${data.orderNumber || ''} en RYYCO!`);
           window.dispatchEvent(new CustomEvent('ryyco:new-admin-order', {
             detail: data
           }));

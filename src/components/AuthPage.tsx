@@ -109,8 +109,13 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
 
     setUsernameStatus('checking');
     const delayDebounce = setTimeout(async () => {
-      const avail = await isUsernameAvailable(username);
-      setUsernameStatus(avail ? 'available' : 'taken');
+      try {
+        const avail = await isUsernameAvailable(username);
+        setUsernameStatus(avail ? 'available' : 'taken');
+      } catch (error: any) {
+        setUsernameStatus('idle');
+        setError(error.message);
+      }
     }, 500);
 
     return () => clearTimeout(delayDebounce);
@@ -128,11 +133,11 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
       let profile: UserProfile | null = null;
       
       try {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        const userCredential = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
         uid = userCredential.user.uid;
         // Let's load the user profile from DB or create a fallback
         const { fetchProfileByUid } = await import('../lib/firebase');
-        profile = await fetchProfileByUid(uid);
+        profile = await fetchProfileByUid(uid, { requireServer: true });
       } catch (authErr: any) {
         const cleanEmail = email.toLowerCase().trim();
         if (
@@ -163,19 +168,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
       }
       
       if (!profile) {
-        // Fallback profile
-        profile = {
-          uid,
-          email,
-          username: email.split('@')[0],
-          displayName: email.split('@')[0],
-          bio: '¡Bienvenido a nuestra tienda! Explora el catálogo y ordena al instante.',
-          role: 'user',
-          plan: 'free',
-          currency: '$',
-          createdAt: new Date().toISOString()
-        };
-        await saveProfile(profile);
+        throw new Error('No encontramos una tienda guardada para esta cuenta. Usa el mismo correo y método de acceso del celular anterior; no crees otra tienda.');
       }
 
       localStorage.setItem('ryyco_auth_mode', 'seller');
@@ -336,9 +329,10 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
       const user = result.user;
       
       const { fetchProfileByUid } = await import('../lib/firebase');
-      let profile = await fetchProfileByUid(user.uid);
+      let profile = await fetchProfileByUid(user.uid, { requireServer: true });
       
       if (!profile) {
+        if (view === 'login') throw new Error('Esta cuenta de Google no tiene una tienda registrada. Ingresa con la cuenta original.');
         setLoading(false);
         setIsCreatingStore(true);
         setCreationSuccess(false);

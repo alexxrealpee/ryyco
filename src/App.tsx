@@ -431,21 +431,10 @@ export default function App() {
         } else {
           // Seller mode (default for merchant login / admin)
           fetchSystemSettings().catch(() => {});
-          let profile = await fetchProfileByUid(user.uid);
+          let profile: UserProfile | null;
+          try { profile = await fetchProfileByUid(user.uid, { requireServer: true }); }
+          catch { setUserProfile(null); setInitLoading(false); setView(previous => previous === 'signup' ? previous : 'login'); return; }
           
-          if (!profile) {
-            // Check if there is pending profile in session or fallback registry
-            try {
-              const pendingStr = sessionStorage.getItem('ryyco_pending_signup_profile');
-              if (pendingStr) {
-                const parsed = JSON.parse(pendingStr);
-                if (parsed) {
-                  profile = { uid: user.uid, ...parsed };
-                }
-              }
-            } catch (e) {}
-          }
-
           // If no seller profile exists, check if user is actually a buyer / customer or on a public route
           if (!profile) {
             const activeCustomerPhone = localStorage.getItem('ryyco_active_customer_phone');
@@ -509,43 +498,8 @@ export default function App() {
               return prevView;
             });
           } else {
-            // Setup a temporary user profile for seller with 7-day reverse trial
-            const trialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-            const tempProfile: UserProfile = {
-              uid: user.uid,
-              email: user.email || '',
-              username: user.email?.split('@')[0] || `store_${Date.now().toString().substring(5)}`,
-              displayName: user?.displayName || 'Mi Tienda Online',
-              bio: '¡Bienvenido a nuestra tienda! Aquí encontrarás los mejores productos con envíos rápidos y seguros.',
-              role: 'user',
-              plan: 'free',
-              subscriptionPlan: 'basico',
-              subscriptionStatus: 'trial',
-              subscriptionTrialExpires: trialExpires,
-              currency: '$',
-              createdAt: new Date().toISOString()
-            };
-            setUserProfile(tempProfile);
-            
-            const activeUserProfileUrl = getUsernameFromUrl();
-            const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
-            const hashVal = window.location.hash.toLowerCase();
-            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
-              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
-
-            setView(prevView => {
-              if (prevView === 'signup') {
-                return 'signup';
-              }
-              const routeCheck = detectInitialRouteFromUrl();
-              if (routeCheck.view === 'admin' || prevView === 'admin') {
-                return 'admin';
-              }
-              if (!activeUserProfileUrl && !isPublicRoute) {
-                return 'dashboard';
-              }
-              return prevView;
-            });
+            setUserProfile(null);
+            setView(previous => previous === 'signup' ? previous : 'login');
           }
         }
       } else {

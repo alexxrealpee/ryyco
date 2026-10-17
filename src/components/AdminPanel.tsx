@@ -107,7 +107,6 @@ import {
   triggerAdminOrderPush,
   getFCMStatus,
   playOrderAlertChime,
-  speakOrderVoiceAlert,
   fetchSellerFCMTokens,
   deleteSellerFCMToken,
   sendAdminPushToSeller,
@@ -624,11 +623,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       }
     } catch (e) {}
 
-    // 2. High-clarity Web Audio 3-tone chime (E5 -> A5 -> C#6 bell sequence)
+    // 2. Shared Ryyco MP3 for incoming orders.
     playOrderAlertChime();
 
-    // 3. Spoken voice announcement
-    speakOrderVoiceAlert('¡Atención! Nuevo pedido recibido en administración general');
   };
 
   // Request push notification permission and register device FCM token

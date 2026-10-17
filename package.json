@@ -34,6 +34,7 @@
     "esbuild": "^0.25.0",
     "express": "^4.21.2",
     "firebase": "^12.15.0",
+    "firebase-admin": "^14.5.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

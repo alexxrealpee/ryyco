@@ -1,3 +1,50 @@
+// Notification click handler: focus tab or open administration / seller / driver dashboard
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+  const isDriver = event.notification.data?.isDriver === true;
+  const isSeller = event.notification.data?.isSeller === true;
+
+  let targetUrl = '/?view=admin&tab=orders';
+  if (isDriver) {
+    targetUrl = '/?view=driver';
+  } else if (isSeller) {
+    targetUrl = '/?view=dashboard&tab=orders';
+  }
+  if (event.notification.data?.url) {
+    targetUrl = event.notification.data.url;
+  }
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+      // If a tab is already open, focus it, navigate if needed, and broadcast event
+      for (let i = 0; i < clientList.length; i++) {
+        const client = clientList[i];
+        if ('focus' in client) {
+          const clickType = isDriver
+            ? 'RYYCO_DRIVER_NOTIFICATION_CLICK'
+            : (isSeller ? 'RYYCO_SELLER_ORDER_NOTIFICATION_CLICK' : 'RYYCO_ORDER_NOTIFICATION_CLICK');
+
+          client.postMessage({
+            type: clickType,
+            orderId: event.notification.data?.orderId,
+            orderNumber: event.notification.data?.orderNumber,
+            url: targetUrl
+          });
+
+          if ('navigate' in client && client.url !== new URL(targetUrl, self.location.origin).href) {
+            return client.navigate(targetUrl).then(function(updated) { return (updated || client).focus(); });
+          }
+          return client.focus();
+        }
+      }
+      // If no tab is open, open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
 /**
  * Firebase Cloud Messaging Service Worker for RYYCO
  * Handles background push notifications when new orders arrive in the general administration panel.
@@ -34,11 +81,12 @@ try {
 // Handle FCM Background Messages
 if (messaging) {
   messaging.onBackgroundMessage(function(payload) {
-    console.log('[firebase-messaging-sw.js] Received background message:', payload);
+    // Firebase already displays notification payloads; only render data messages here.
+    if (payload.notification) return;
 
     const isDriver = payload.data?.isDriver === 'true' || payload.data?.isDriver === true || payload.data?.role === 'driver' || payload.data?.type === 'DRIVER_REQUEST';
-    const isSeller = !isDriver && (payload.data?.isSeller === 'true' || payload.data?.isSeller === true || Boolean(payload.data?.storeOwnerId));
-    
+    const isSeller = !isDriver && (payload.data?.isSeller === 'true' || payload.data?.isSeller === true || (payload.data?.role !== 'admin' && payload.data?.isSeller !== 'false' && Boolean(payload.data?.storeOwnerId)));
+
     let defaultTitle = '🚨 ¡Nuevo Pedido en RYYCO!';
     let defaultBody = 'Ha llegado un nuevo pedido en administración general.';
     let clickUrl = '/?view=admin&tab=orders';
@@ -62,7 +110,7 @@ if (messaging) {
     const orderNumber = payload.data?.orderNumber || '';
     clickUrl = payload.data?.url || clickUrl;
 
-    const tag = orderId 
+    const tag = orderId
       ? (isDriver ? `driver-order-${orderId}` : (isSeller ? `seller-order-${orderId}` : `ryyco-order-${orderId}`))
       : `ryyco-order-${Date.now()}`;
 
@@ -112,9 +160,11 @@ self.addEventListener('push', function(event) {
 
   try {
     const data = event.data.json();
+    // Firebase owns FCM push events; the fallback must not display them twice.
+    if (data.from || data.fcmMessageId || data['google.c.a.e']) return;
     const isDriver = data.isDriver === true || data.isDriver === 'true' || data.role === 'driver' || data.type === 'DRIVER_REQUEST';
     const isSeller = !isDriver && (data.isSeller === true || data.isSeller === 'true' || Boolean(data.storeOwnerId));
-    
+
     let defaultTitle = '🚨 ¡Nuevo Pedido en RYYCO!';
     let defaultBody = 'Tienes un nuevo pedido en la administración general.';
     let clickUrl = '/?view=admin&tab=orders';
@@ -138,7 +188,7 @@ self.addEventListener('push', function(event) {
     const orderNumber = data.orderNumber || data.data?.orderNumber || '';
     clickUrl = data.url || data.data?.url || clickUrl;
 
-    const tag = orderId 
+    const tag = orderId
       ? (isDriver ? `driver-order-${orderId}` : (isSeller ? `seller-order-${orderId}` : `ryyco-order-${orderId}`))
       : `ryyco-push-${Date.now()}`;
 
@@ -276,51 +326,4 @@ self.addEventListener('message', function(event) {
       console.warn('[SW] showNotification driver suppressed:', err);
     });
   }
-});
-
-// Notification click handler: focus tab or open administration / seller / driver dashboard
-self.addEventListener('notificationclick', function(event) {
-  event.notification.close();
-  const isDriver = event.notification.data?.isDriver === true;
-  const isSeller = event.notification.data?.isSeller === true;
-  
-  let targetUrl = '/?view=admin&tab=orders';
-  if (isDriver) {
-    targetUrl = '/?view=driver';
-  } else if (isSeller) {
-    targetUrl = '/?view=dashboard&tab=orders';
-  }
-  if (event.notification.data?.url) {
-    targetUrl = event.notification.data.url;
-  }
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
-      // If a tab is already open, focus it, navigate if needed, and broadcast event
-      for (let i = 0; i < clientList.length; i++) {
-        const client = clientList[i];
-        if ('focus' in client) {
-          const clickType = isDriver 
-            ? 'RYYCO_DRIVER_NOTIFICATION_CLICK' 
-            : (isSeller ? 'RYYCO_SELLER_ORDER_NOTIFICATION_CLICK' : 'RYYCO_ORDER_NOTIFICATION_CLICK');
-
-          client.postMessage({
-            type: clickType,
-            orderId: event.notification.data?.orderId,
-            orderNumber: event.notification.data?.orderNumber,
-            url: targetUrl
-          });
-
-          if ('navigate' in client && client.url && isDriver && !client.url.includes('view=driver') && !client.url.includes('domiciliario')) {
-            client.navigate(targetUrl);
-          }
-          return client.focus();
-        }
-      }
-      // If no tab is open, open a new window
-      if (clients.openWindow) {
-        return clients.openWindow(targetUrl);
-      }
-    })
-  );
 });

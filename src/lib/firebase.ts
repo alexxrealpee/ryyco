@@ -23,6 +23,7 @@ import {
   memoryLocalCache,
   getDocFromCache,
   getDocsFromCache,
+  getDocsFromServer,
   getDocFromServer,
   doc, 
   setDoc, 
@@ -678,13 +679,10 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
 
   try {
     const q = query(collection(db, 'profiles'), where('username', '==', clean));
-    const snapshot = await getDocs(q);
+    const snapshot = await getDocsFromServer(q);
     return snapshot.empty;
   } catch (e) {
-    console.warn("Firebase check username unavailable, fallback to offline check");
-    // Offline / LocalStorage simulated guard
-    const localUsers = JSON.parse(localStorage.getItem('linnk_profiles') || '{}');
-    return !localUsers[clean] && !reserved.includes(clean);
+    throw new Error('No se pudo verificar el nombre de la tienda en el servidor. Revisa la conexión e inténtalo de nuevo.');
   }
 }
 
@@ -951,7 +949,7 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
     }), { merge: true });
 
   } catch (error) {
-    console.error("Firebase write error, saving to local state", error);
+    throw new Error('No se pudo guardar la tienda en el servidor. No está sincronizada con otros dispositivos; vuelve a intentarlo.');
   }
 
   // Backup locally to guarantee availability
@@ -987,7 +985,18 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
 }
 
 // Load profile for authenticated User
-export async function fetchProfileByUid(uid: string): Promise<UserProfile | null> {
+export async function fetchProfileByUid(uid: string, options: { requireServer?: boolean } = {}): Promise<UserProfile | null> {
+  if (options.requireServer) {
+    try {
+      const snapshot = await getDocFromServer(doc(db, 'profiles', uid));
+      if (!snapshot.exists()) return null;
+      const profile = { ...snapshot.data(), uid: snapshot.id } as UserProfile;
+      try { localStorage.setItem(`linnk_session_${uid}`, JSON.stringify(profile)); } catch {}
+      return profile;
+    } catch {
+      throw new Error('La sesión es válida, pero no se pudo recuperar tu tienda del servidor. Revisa tu conexión y vuelve a ingresar; no necesitas crear otra cuenta.');
+    }
+  }
   // Pre-load system settings into cache/memory to ensure admin emails are immediately available
   try {
     fetchSystemSettings().catch(() => {});
@@ -1179,7 +1188,7 @@ export async function saveProduct(product: ProductItem): Promise<ProductItem> {
       await setDoc(doc(db, 'products', product.id), cleanedResult, { merge: true });
     }
   } catch(e) {
-    console.warn("Error protecting product DB save, using offline caching", e);
+    throw new Error('No se pudo guardar el producto en el servidor. Revisa la conexión antes de cerrar esta pantalla.');
   }
   
   // Save locally under products list
@@ -1246,12 +1255,28 @@ export async function deleteProductItem(prodId: string, userId: string): Promise
 }
 
 // Fetch all products (both active and inactive) for the merchant dashboard
-export async function fetchProductsAllState(userId: string): Promise<ProductItem[]> {
+function cacheServerProducts(userId: string, products: ProductItem[]) {
+  const key = `linnk_products_${userId}`;
+  const previous = JSON.parse(localStorage.getItem(key) || '[]');
+  const ids = new Set(products.map(product => product.id));
+  const missing = Array.isArray(previous) ? previous.filter(product => product?.id && !ids.has(product.id)) : [];
+  if (missing.length) {
+    // Retain unsynced work from the original phone; never auto-publish deleted items.
+    const backupKey = `linnk_products_unsynced_backup_${userId}`;
+    const backup = JSON.parse(localStorage.getItem(backupKey) || '[]');
+    const byId = new Map((Array.isArray(backup) ? backup : []).map(product => [product.id, product]));
+    missing.forEach(product => byId.set(product.id, product));
+    localStorage.setItem(backupKey, JSON.stringify([...byId.values()]));
+  }
+  localStorage.setItem(key, JSON.stringify(products));
+}
+
+export async function fetchProductsAllState(userId: string, options: { requireServer?: boolean } = {}): Promise<ProductItem[]> {
   const products: ProductItem[] = [];
 
   try {
     const q = query(collection(db, 'products'), where('userId', '==', userId));
-    const snapshot = await getDocs(q);
+    const snapshot = await (options.requireServer ? getDocsFromServer(q) : getDocs(q));
     snapshot.forEach(doc => {
       const data = doc.data() as any;
       products.push({
@@ -1276,11 +1301,12 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
     });
   } catch (e) {
     console.warn("DB products read error, falling back locally", e);
+    if (options.requireServer) throw new Error('No se pudieron sincronizar los productos. Revisa la conexión y los permisos de tu cuenta.');
   }
 
   // Merge with local cached products so that offline or newly created products are never lost
   try {
-    const cached = localStorage.getItem(`linnk_products_${userId}`);
+    const cached = options.requireServer ? null : localStorage.getItem(`linnk_products_${userId}`);
     if (cached) {
       const localProds = JSON.parse(cached);
       if (Array.isArray(localProds)) {
@@ -1315,7 +1341,7 @@ export async function fetchProductsAllState(userId: string): Promise<ProductItem
 
   // Update local storage cache safely
   try {
-    localStorage.setItem(`linnk_products_${userId}`, JSON.stringify(dedupedProducts));
+    cacheServerProducts(userId, dedupedProducts);
   } catch (e) {}
 
   return dedupedProducts;
@@ -1656,13 +1682,13 @@ export function deduplicateProducts(productsList: ProductItem[]): ProductItem[] 
 }
 
 // FETCH ALL ORDERS FOR MERCHANT
-export async function fetchOrders(userId: string): Promise<OrderItem[]> {
+export async function fetchOrders(userId: string, options: { requireServer?: boolean } = {}): Promise<OrderItem[]> {
   try {
     const q = query(
       collection(db, 'orders'),
       where('storeOwnerId', '==', userId)
     );
-    const snapshot = await getDocs(q);
+    const snapshot = await (options.requireServer ? getDocsFromServer(q) : getDocs(q));
     const orders: OrderItem[] = [];
     snapshot.forEach(doc => {
       orders.push({ id: doc.id, ...doc.data() } as OrderItem);
@@ -1677,6 +1703,7 @@ export async function fetchOrders(userId: string): Promise<OrderItem[]> {
     return deduped;
   } catch (e) {
     console.warn("DB orders read error, reading from local cache", e);
+    if (options.requireServer) throw new Error('No se pudieron sincronizar los pedidos. Revisa la conexión y los permisos de tu cuenta.');
   }
 
   try {
@@ -1693,7 +1720,8 @@ export function subscribeOrders(userId: string, callback: (orders: OrderItem[]) 
     collection(db, 'orders'),
     where('storeOwnerId', '==', userId)
   );
-  return onSnapshot(q, (snapshot) => {
+  return onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
+    if (snapshot.metadata.fromCache && snapshot.empty) return;
     const orders: OrderItem[] = [];
     snapshot.forEach(doc => {
       orders.push({ id: doc.id, ...doc.data() } as OrderItem);
@@ -1716,7 +1744,8 @@ export function subscribeProducts(userId: string, callback: (products: ProductIt
     collection(db, 'products'),
     where('userId', '==', userId)
   );
-  return onSnapshot(q, (snapshot) => {
+  return onSnapshot(q, { includeMetadataChanges: true }, (snapshot) => {
+    if (snapshot.metadata.fromCache && snapshot.empty) return;
     const products: ProductItem[] = [];
     snapshot.forEach(doc => {
       const data = doc.data() as any;
@@ -1742,7 +1771,7 @@ export function subscribeProducts(userId: string, callback: (products: ProductIt
     });
     const deduped = deduplicateProducts(products);
     try {
-      localStorage.setItem(`linnk_products_${userId}`, JSON.stringify(deduped));
+      cacheServerProducts(userId, deduped);
     } catch (e) {}
     callback(deduped);
   }, (err) => {

@@ -279,7 +279,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       desc: "Tus comensales y clientes pueden ordenar platos hablando con voz natural a un mesero virtual inteligente que responde, recomienda y arma el pedido al instante."
     },
     {
-      icon: <Bot className="w-5 h-5 text-[#E5A100]" />,
+      icon: <Bot className="w-5 h-5 text-[#FBBF24]" />,
       title: "Administrador IA para Propietarios",
       desc: "Pregúntale por voz a tu panel cómo te fue en el día con ventas, pedidos o tu balance del mes. El Administrador IA te informa métricas y rendimiento financiero en segundos."
     },
@@ -289,7 +289,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       desc: "Creamos un menú digital profesional con fotos, precios y categorías. Le entregamos un código QR personalizado para que sus clientes solo lo escaneen desde la mesa y pidan al instante."
     },
     {
-      icon: <Bike className="w-5 h-5 text-[#E5A100]" />,
+      icon: <Bike className="w-5 h-5 text-[#FBBF24]" />,
       title: "Domicilios Rápidos y Exclusivos",
       desc: "Mejoramos la experiencia con domicilios rápidos, tomados con un pedido a la vez para que la comida llegue caliente y en buen estado a la puerta de sus clientes."
     },
@@ -299,7 +299,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       desc: "Promocionamos su restaurante en TikTok, Facebook e Instagram. Así más personas descubren su negocio y se multiplican sus ventas cada mes."
     },
     {
-      icon: <MapPin className="w-5 h-5 text-[#E5A100]" />,
+      icon: <MapPin className="w-5 h-5 text-[#FBBF24]" />,
       title: "Directorio de Restaurantes en Ipiales",
       desc: "Y lo más importante: su restaurante aparece en un directorio oficial junto a otros restaurantes de Ipiales, lo que aumenta significativamente su visibilidad local."
     },
@@ -309,25 +309,27 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       desc: "Desde un panel sencillo, puede agregar platos, cambiar precios, actualizar fotos de su menú y recibir pedidos directos en tiempo real."
     },
     {
-      icon: <Award className="w-5 h-5 text-[#E5A100]" />,
+      icon: <Award className="w-5 h-5 text-[#FBBF24]" />,
       title: "Tecnología, Publicidad y Domicilios",
       desc: "Nosotros ponemos la tecnología, la publicidad y los domicilios. Usted se dedica a lo que mejor sabe hacer: preparar deliciosa comida."
     }
   ];
 
   return (
-    <div className="bg-[#0B0E14] text-slate-100 min-h-screen selection:bg-[#D62839] selection:text-white font-sans antialiased">
+    <div className="landing-page [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-4 [&_button]:focus-visible:outline-[#D62839] [&_a]:focus-visible:outline-2 [&_a]:focus-visible:outline-[#D62839] bg-[#090B12] text-[#F3F4F6] min-h-screen selection:bg-[#D62839] selection:text-white font-sans antialiased">
       
       {/* Top Header - Solid Flat Surface */}
-      <header className="border-b border-[#222B38] bg-[#0E121A] sticky top-0 z-50">
+      <header className="border-b border-[#232B3A] bg-[#0E121A] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-0">
+          <div className="bg-[#171B23] rounded-xl px-4 py-2 shrink-0">
           <LinnkProLogo 
             onClick={() => onNavigate('tienda')}
             height={40}
             imgClassName="h-8 sm:h-10 cursor-pointer"
           />
+          </div>
           
-          <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
             <button 
               onClick={() => {
                 window.history.pushState({}, '', '/domiciliario');
@@ -340,14 +342,14 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </button>
             <button 
               onClick={() => onNavigate('tienda')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-[#1A222E] rounded-lg transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#A9B2C3] hover:text-[#F3F4F6] hover:bg-[#1A222E] rounded-lg transition-colors cursor-pointer"
             >
               <ShoppingBag className="w-3.5 h-3.5" />
               <span>Ver Vitrina</span>
             </button>
             <button 
               onClick={() => onNavigate('login')}
-              className="px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-[#1A222E] rounded-lg transition-colors cursor-pointer"
+              className="px-3 py-2 text-xs font-semibold text-[#A9B2C3] hover:text-[#F3F4F6] hover:bg-[#1A222E] rounded-lg transition-colors cursor-pointer"
             >
               <span className="hidden sm:inline">Acceso Vendedor</span>
               <span className="sm:hidden">Ingresar</span>
@@ -363,36 +365,38 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </header>
 
       {/* Hero Section - Pure Flat Canvas */}
-      <section className="pt-12 sm:pt-16 pb-12 sm:pb-16 px-4 sm:px-6 border-b border-[#222B38] bg-[#0E121A]">
-        <div className="max-w-4xl mx-auto text-center">
+      <section className="pt-10 sm:pt-20 pb-12 sm:pb-20 px-4 sm:px-6 border-b border-[#232B3A] bg-[#0E121A]">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.15fr_1fr] gap-10 lg:gap-16 items-center">
+          <div className="text-left min-w-0">
           
           {/* Subtle Flat Badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#161C26] border border-[#2B374A] text-xs font-bold text-[#E5A100] mb-5">
-            <Sparkles className="w-3.5 h-3.5 text-[#E5A100]" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#111827] border border-[#2B374A] text-xs font-bold text-[#FBBF24] mb-5">
+            <Sparkles className="w-3.5 h-3.5 text-[#FBBF24]" />
             <span>Plataforma Gastronómica Inteligente de Ipiales</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-black tracking-tight text-white mb-5 leading-tight">
+          <h1 className="text-4xl sm:text-6xl xl:text-7xl font-black tracking-tight text-[#F3F4F6] mb-5 leading-tight">
             Descubre qué quieres <br className="hidden sm:inline" />
             <span className="text-[#D62839]">comer </span>
-            <span className="text-[#E5A100]">hoy.</span>
+            <span className="text-[#FBBF24]">hoy.</span>
           </h1>
 
-          <p className="text-sm sm:text-base md:text-lg text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed font-normal">
-            <strong className="text-white font-semibold">Ryyco</strong> es la plataforma gastronómica impulsada por <strong className="text-[#E5A100] font-semibold">Inteligencia Artificial</strong>: tus clientes pueden pedir platos por <strong className="text-[#D62839] font-semibold">voz natural con un Mesero Virtual</strong>, y tú como dueño tienes un <strong className="text-[#E5A100] font-semibold">Administrador IA por voz</strong> para consultar ventas diarias, pedidos y tu balance del mes en tiempo real.
+          <p className="text-sm sm:text-base md:text-lg text-[#A9B2C3] mb-8 max-w-3xl mx-auto leading-relaxed font-normal">
+            <strong className="text-[#F3F4F6] font-semibold">Ryyco</strong> es la plataforma gastronómica impulsada por <strong className="text-[#FBBF24] font-semibold">Inteligencia Artificial</strong>: tus clientes pueden pedir platos por <strong className="text-[#D62839] font-semibold">voz natural con un Mesero Virtual</strong>, y tú como dueño tienes un <strong className="text-[#FBBF24] font-semibold">Administrador IA por voz</strong> para consultar ventas diarias, pedidos y tu balance del mes en tiempo real.
           </p>
 
           {/* Subdomain Input claim bar - Solid Flat Design */}
-          <div className="max-w-xl mx-auto mb-8">
-            <form onSubmit={handleClaim} className="flex flex-col sm:flex-row gap-2 bg-[#161C26] border border-[#2B374A] p-2 rounded-xl">
-              <div className="flex items-center flex-grow px-3 py-2 bg-[#0B0E14] border border-[#222B38] rounded-lg text-slate-300 min-w-0">
-                <span className="text-slate-400 select-none font-semibold text-xs sm:text-sm shrink-0">ryyco.com/</span>
+          <div className="max-w-xl mb-0">
+            <form onSubmit={handleClaim} className="flex flex-col sm:flex-row gap-2 bg-[#111827] border border-[#2B374A] p-2 rounded-xl">
+              <div className="flex items-center flex-grow px-3 py-2 bg-[#090B12] border border-[#232B3A] rounded-lg text-[#A9B2C3] min-w-0">
+                <span className="text-[#A9B2C3] select-none font-semibold text-xs sm:text-sm shrink-0">ryyco.com/</span>
                 <input 
                   type="text" 
                   value={storeSlug}
                   onChange={(e) => setStoreSlug(e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, ''))}
+                  aria-label="Nombre de tu restaurante para el enlace de Ryyco"
                   placeholder="nombre-restaurante" 
-                  className="bg-transparent focus:outline-none text-white text-xs sm:text-sm w-full font-medium placeholder:text-slate-500 min-w-0 ml-0.5"
+                  className="bg-transparent focus:outline-none text-[#F3F4F6] text-xs sm:text-sm w-full font-medium placeholder:text-slate-500 min-w-0 ml-0.5"
                   required
                 />
               </div>
@@ -406,14 +410,14 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               </button>
             </form>
 
-            <div className="text-xs text-slate-400 mt-3 px-1 flex flex-wrap items-center gap-2 justify-center sm:justify-between">
+            <div className="text-xs text-[#A9B2C3] mt-3 px-1 flex flex-wrap items-center gap-2 justify-center sm:justify-between">
               <div className="flex items-center gap-2 flex-wrap justify-center">
-                <span className="text-slate-300 font-medium">Lanzamiento Instantáneo</span>
+                <span className="text-[#A9B2C3] font-medium">Lanzamiento Instantáneo</span>
                 <span className="text-slate-600">·</span>
                 <button 
                   type="button" 
                   onClick={() => onNavigate('tienda')}
-                  className="text-[#E5A100] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                  className="text-[#FBBF24] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
                 >
                   <span>Ver Directorio</span>
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -422,7 +426,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               <button
                 type="button"
                 onClick={() => setIsPrintModalOpen(true)}
-                className="text-[#D62839] hover:text-white font-bold inline-flex items-center gap-1.5 cursor-pointer bg-[#161C26] hover:bg-[#D62839] border border-[#2B374A] px-2.5 py-1 rounded-md transition-colors text-xs"
+                className="text-[#D62839] hover:text-white font-bold inline-flex items-center gap-1.5 cursor-pointer bg-[#111827] hover:bg-[#D62839] border border-[#2B374A] px-2.5 py-1 rounded-md transition-colors text-xs"
               >
                 <FileText className="w-3.5 h-3.5" />
                 <span>Carta de Presentación (Imprimible)</span>
@@ -430,14 +434,16 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </div>
           </div>
 
+          </div>
+
           {/* Restaurant Partners Section - Solid Flat Cards */}
-          <div className="max-w-4xl mx-auto bg-[#161C26] border border-[#2B374A] rounded-xl p-5 sm:p-6 text-center">
-            <p className="text-xs uppercase tracking-wider text-slate-300 font-bold mb-5 flex items-center justify-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-[#E5A100] shrink-0" />
-              <span>Ya hacen parte de <strong className="text-white">Ryyco.com</strong> en Ipiales:</span>
+          <div className="w-full bg-[#111827] border border-[#2B374A] rounded-3xl p-5 sm:p-7 text-center">
+            <p className="text-xs uppercase tracking-wider text-[#A9B2C3] font-bold mb-5 flex items-center justify-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[#FBBF24] shrink-0" />
+              <span>Ya hacen parte de <strong className="text-[#F3F4F6]">Ryyco.com</strong> en Ipiales:</span>
             </p>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 items-start justify-items-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-2 gap-3 sm:gap-4 items-start justify-items-center">
               {partnerStores.map((store, idx) => (
                 <button
                   key={idx}
@@ -449,10 +455,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       onNavigate('tienda');
                     }
                   }}
-                  className="flex flex-col items-center bg-[#0E121A] hover:bg-[#1A222E] border border-[#222B38] hover:border-[#D62839] rounded-xl p-3 w-full transition-colors cursor-pointer group text-center"
+                  className="flex flex-col items-center bg-[#0E121A] hover:bg-[#1A222E] border border-[#232B3A] hover:border-[#D62839] rounded-xl p-3 w-full transition-colors cursor-pointer group text-center"
                   title={`Ver tienda de ${store.name}`}
                 >
-                  <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-[#2B374A] group-hover:border-[#D62839] bg-[#0B0E14] flex items-center justify-center shrink-0 mb-2 transition-colors">
+                  <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-[#2B374A] group-hover:border-[#D62839] bg-[#090B12] flex items-center justify-center shrink-0 mb-2 transition-colors">
                     {store.logo ? (
                       <img 
                         src={store.logo} 
@@ -466,18 +472,18 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                         }}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-white font-bold text-sm bg-[#1A222E]">
+                      <div className="w-full h-full flex items-center justify-center text-[#F3F4F6] font-bold text-sm bg-[#1A222E]">
                         {store.name.charAt(0)}
                       </div>
                     )}
                     <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-[#0E121A] rounded-full" title="Tienda Activa" />
                   </div>
 
-                  <span className="text-xs font-bold text-white group-hover:text-[#E5A100] transition-colors leading-tight line-clamp-1">
+                  <span className="text-xs font-bold text-[#F3F4F6] group-hover:text-[#D62839] transition-colors leading-snug">
                     {store.name}
                   </span>
                   {store.category && (
-                    <span className="text-[10px] text-slate-400 font-normal mt-0.5 line-clamp-1">
+                    <span className="text-[11px] text-[#A9B2C3] font-normal mt-1 leading-snug">
                       {store.category}
                     </span>
                   )}
@@ -485,8 +491,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               ))}
             </div>
 
-            <p className="text-xs text-slate-300 font-medium mt-4 pt-4 border-t border-[#222B38]">
-              Y cada vez somos más. ¡Únase hoy! <strong className="text-white">Nosotros ponemos la tecnología, la publicidad y los domicilios.</strong>
+            <p className="text-xs text-[#A9B2C3] font-medium mt-4 pt-4 border-t border-[#232B3A]">
+              Y cada vez somos más. ¡Únase hoy! <strong className="text-[#F3F4F6]">Nosotros ponemos la tecnología, la publicidad y los domicilios.</strong>
             </p>
           </div>
 
@@ -494,18 +500,18 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* Simulated Store Interactive Mockup - Flat Editorial Structure */}
-      <section className="py-12 sm:py-16 px-4 sm:px-6 border-b border-[#222B38] bg-[#0B0E14]">
-        <div className="max-w-6xl mx-auto bg-[#121721] border border-[#222B38] rounded-2xl p-5 sm:p-8">
+      <section className="py-14 sm:py-24 px-4 sm:px-6 border-b border-[#232B3A] bg-[#090B12]">
+        <div className="max-w-6xl mx-auto bg-[#111827] border border-[#232B3A] rounded-2xl p-5 sm:p-8">
           
           {/* Mockup Header Strip */}
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#222B38] pb-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#232B3A] pb-4 mb-6">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-[#D62839] block" />
               <span className="w-3 h-3 rounded-full bg-[#E5A100] block" />
               <span className="w-3 h-3 rounded-full bg-emerald-500 block" />
-              <span className="text-xs text-slate-400 font-mono ml-2">ryyco.com/panel-vendedor</span>
+              <span className="text-xs text-[#A9B2C3] font-mono ml-2">ryyco.com/panel-vendedor</span>
             </div>
-            <span className="bg-[#1A222E] text-slate-300 border border-[#2B374A] rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider">
+            <span className="bg-[#1A222E] text-[#A9B2C3] border border-[#2B374A] rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider">
               CONSTRUCTOR EN VIVO
             </span>
           </div>
@@ -515,45 +521,45 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             {/* Left Content Column */}
             <div className="lg:col-span-7 space-y-6">
               <div>
-                <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-2 leading-tight">
+                <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#F3F4F6] mb-2 leading-tight">
                   Diseñado para emprendedores y marcas
                 </h2>
-                <p className="text-slate-300 text-sm leading-relaxed">
+                <p className="text-[#A9B2C3] text-sm leading-relaxed">
                   Con el creador de Ryyco.com, tienes el control absoluto de tu negocio digital. Olvídate de configuraciones confusas o integraciones complejas. Crea tu catálogo, súbelo a la nube, controla tus pedidos en un panel inteligente y comunícate fluidamente con tus clientes.
                 </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
-                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#D62839] flex items-center justify-center mb-2.5">
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#232B3A]">
+                  <div className="w-8 h-8 rounded-lg bg-[#111827] text-[#D62839] flex items-center justify-center mb-2.5">
                     <TrendingUp className="w-4 h-4" />
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1">Analíticas de Venta</h4>
-                  <p className="text-xs text-slate-400 leading-normal">Visualiza ingresos, visitas y conversión de carrito de compras.</p>
+                  <h4 className="text-sm font-bold text-[#F3F4F6] mb-1">Analíticas de Venta</h4>
+                  <p className="text-xs text-[#A9B2C3] leading-normal">Visualiza ingresos, visitas y conversión de carrito de compras.</p>
                 </div>
 
-                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
-                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#E5A100] flex items-center justify-center mb-2.5">
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#232B3A]">
+                  <div className="w-8 h-8 rounded-lg bg-[#111827] text-[#FBBF24] flex items-center justify-center mb-2.5">
                     <CreditCard className="w-4 h-4" />
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1">Múltiples Pagos</h4>
-                  <p className="text-xs text-slate-400 leading-normal">Soporta pedidos directos, transferencias y pagos contra entrega.</p>
+                  <h4 className="text-sm font-bold text-[#F3F4F6] mb-1">Múltiples Pagos</h4>
+                  <p className="text-xs text-[#A9B2C3] leading-normal">Soporta pedidos directos, transferencias y pagos contra entrega.</p>
                 </div>
 
-                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
-                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#D62839] flex items-center justify-center mb-2.5">
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#232B3A]">
+                  <div className="w-8 h-8 rounded-lg bg-[#111827] text-[#D62839] flex items-center justify-center mb-2.5">
                     <ShoppingBag className="w-4 h-4" />
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1">Variantes Dinámicas</h4>
-                  <p className="text-xs text-slate-400 leading-normal">Asigna tallas, sabores o configuraciones específicas a tus platos.</p>
+                  <h4 className="text-sm font-bold text-[#F3F4F6] mb-1">Variantes Dinámicas</h4>
+                  <p className="text-xs text-[#A9B2C3] leading-normal">Asigna tallas, sabores o configuraciones específicas a tus platos.</p>
                 </div>
 
-                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#222B38]">
-                  <div className="w-8 h-8 rounded-lg bg-[#161C26] text-[#E5A100] flex items-center justify-center mb-2.5">
+                <div className="p-3.5 bg-[#0E121A] rounded-xl border border-[#232B3A]">
+                  <div className="w-8 h-8 rounded-lg bg-[#111827] text-[#FBBF24] flex items-center justify-center mb-2.5">
                     <Coins className="w-4 h-4" />
                   </div>
-                  <h4 className="text-sm font-bold text-white mb-1">100% de Comisión Cero</h4>
-                  <p className="text-xs text-slate-400 leading-normal">Tus ganancias van directamente a tu cuenta. Sin tarifas ocultas.</p>
+                  <h4 className="text-sm font-bold text-[#F3F4F6] mb-1">100% de Comisión Cero</h4>
+                  <p className="text-xs text-[#A9B2C3] leading-normal">Tus ganancias van directamente a tu cuenta. Sin tarifas ocultas.</p>
                 </div>
               </div>
 
@@ -570,10 +576,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
             {/* Right Simulator Phone Mockup */}
             <div className="lg:col-span-5 flex justify-center">
-              <div className="w-full max-w-[280px] bg-[#0B0E14] border-4 border-[#222B38] rounded-3xl p-3 flex flex-col space-y-3">
+              <div className="w-full max-w-[280px] bg-[#090B12] border-4 border-[#232B3A] rounded-3xl p-3 flex flex-col space-y-3">
                 
                 {/* Phone Status bar */}
-                <div className="flex items-center justify-between text-[9px] font-mono text-slate-400 px-1 border-b border-[#1A222E] pb-2">
+                <div className="flex items-center justify-between text-[9px] font-mono text-[#A9B2C3] px-1 border-b border-[#1A222E] pb-2">
                   <span>12:00</span>
                   <span className="text-[#D62839] font-bold">● RYYCO</span>
                   <span>4G</span>
@@ -586,8 +592,8 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       SB
                     </div>
                     <div>
-                      <div className="text-[9px] font-bold text-white leading-none">SEÑOR BARRIL</div>
-                      <div className="text-[6px] text-slate-400 uppercase">Parrilla & Bar</div>
+                      <div className="text-[9px] font-bold text-[#F3F4F6] leading-none">SEÑOR BARRIL</div>
+                      <div className="text-[6px] text-[#A9B2C3] uppercase">Parrilla & Bar</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 text-[8px] font-bold text-white bg-[#D62839] px-2 py-0.5 rounded-md">
@@ -598,7 +604,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
 
                 {/* Categories row */}
                 <div>
-                  <div className="text-[7px] uppercase font-bold text-slate-400 mb-1">Categorías</div>
+                  <div className="text-[7px] uppercase font-bold text-[#A9B2C3] mb-1">Categorías</div>
                   <div className="flex gap-1 overflow-x-auto pb-1">
                     {['TODOS', 'PARRILLA', 'HAMBURGUESAS', 'COMIDAS RÁPIDAS', 'PIZZAS'].map((cat) => (
                       <button
@@ -607,7 +613,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                         className={`text-[7px] px-2 py-1 rounded font-bold whitespace-nowrap cursor-pointer transition-colors ${
                           mockCategory === cat 
                             ? 'bg-[#D62839] text-white' 
-                            : 'bg-[#161C26] text-slate-300 hover:bg-[#1A222E]'
+                            : 'bg-[#1A222E] text-[#A9B2C3] hover:bg-[#252E3E]'
                         }`}
                       >
                         {cat}
@@ -619,13 +625,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 {/* Product items in simulator */}
                 <div className="grid grid-cols-2 gap-1.5 max-h-[260px] overflow-y-auto">
                   {filteredMockProducts.map((p) => (
-                    <div key={p.id} className="bg-[#161C26] border border-[#222B38] rounded-lg p-1.5 flex flex-col justify-between text-left">
-                      <div className="w-full aspect-square rounded bg-[#0B0E14] overflow-hidden mb-1">
+                    <div key={p.id} className="bg-[#111827] border border-[#232B3A] rounded-lg p-1.5 flex flex-col justify-between text-left">
+                      <div className="w-full aspect-square rounded bg-[#090B12] overflow-hidden mb-1">
                         <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                       </div>
-                      <span className="text-[6px] font-bold text-[#E5A100] uppercase">{p.category}</span>
-                      <h6 className="text-[7px] font-bold text-white line-clamp-1 mt-0.5">{p.name}</h6>
-                      <div className="text-[8px] font-extrabold text-white mt-1">{p.price}</div>
+                      <span className="text-[6px] font-bold text-[#FBBF24] uppercase">{p.category}</span>
+                      <h6 className="text-[7px] font-bold text-[#F3F4F6] line-clamp-1 mt-0.5">{p.name}</h6>
+                      <div className="text-[8px] font-extrabold text-[#F3F4F6] mt-1">{p.price}</div>
                       <button
                         onClick={() => setMockCart(prev => prev + 1)}
                         className="mt-1 w-full py-1 bg-[#D62839] hover:bg-[#b81d2d] text-white text-[7px] font-bold rounded flex items-center justify-center gap-0.5 cursor-pointer"
@@ -645,20 +651,20 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* AI Voice Section: Mesero Virtual & Administrador IA - Pure Flat Solid Panels */}
-      <section className="py-14 sm:py-20 px-4 sm:px-6 border-b border-[#222B38] bg-[#0E121A]">
+      <section className="py-14 sm:py-20 px-4 sm:px-6 border-b border-[#232B3A] bg-[#0E121A]">
         <div className="max-w-7xl mx-auto">
           
           <div className="text-center max-w-3xl mx-auto mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#161C26] border border-[#2B374A] text-xs font-bold text-[#E5A100] mb-3">
-              <Sparkles className="w-3.5 h-3.5 text-[#E5A100]" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#111827] border border-[#2B374A] text-xs font-bold text-[#FBBF24] mb-3">
+              <Sparkles className="w-3.5 h-3.5 text-[#FBBF24]" />
               <span>Inteligencia Artificial con Voz Natural</span>
             </div>
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mb-3 tracking-tight">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-[#F3F4F6] mb-3 tracking-tight">
               Pide y administra tu restaurante <br className="hidden sm:inline" />
               <span className="text-[#D62839]">hablando por voz natural</span>
             </h2>
-            <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-              En <strong className="text-white">Ryyco</strong> revolucionamos la experiencia gastronómica: tus clientes ordenan con un <strong>Mesero Virtual IA</strong> y tú tienes un <strong>Administrador IA</strong> que te reporta ventas del día y del mes al instante.
+            <p className="text-[#A9B2C3] text-sm sm:text-base leading-relaxed">
+              En <strong className="text-[#F3F4F6]">Ryyco</strong> revolucionamos la experiencia gastronómica: tus clientes ordenan con un <strong>Mesero Virtual IA</strong> y tú tienes un <strong>Administrador IA</strong> que te reporta ventas del día y del mes al instante.
             </p>
           </div>
 
@@ -666,7 +672,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           <div className="grid lg:grid-cols-2 gap-6 sm:gap-8 items-stretch">
             
             {/* Pillar 1: Clientes - Mesero Virtual IA */}
-            <div className="bg-[#121721] border border-[#2B374A] hover:border-[#D62839] rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-colors">
+            <div className="bg-[#111827] border border-[#2B374A] hover:border-[#D62839] rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-colors">
               <div>
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#D62839] text-white text-xs font-bold uppercase tracking-wider mb-5">
                   <Mic className="w-3.5 h-3.5" />
@@ -678,19 +684,19 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                     <Mic className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-xl sm:text-2xl font-bold text-white">Mesero Virtual por Voz Natural</h3>
-                    <p className="text-xs text-slate-400">Tus comensales piden platos hablando en vivo</p>
+                    <h3 className="text-xl sm:text-2xl font-bold text-[#F3F4F6]">Mesero Virtual por Voz Natural</h3>
+                    <p className="text-xs text-[#A9B2C3]">Tus comensales piden platos hablando en vivo</p>
                   </div>
                 </div>
 
-                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed mb-6">
+                <p className="text-[#A9B2C3] text-xs sm:text-sm leading-relaxed mb-6">
                   Tus clientes ya no tienen que buscar plato por plato en la pantalla. Solo presionan el micrófono del mesero virtual, le hablan naturalmente y la IA les recomienda opciones, personaliza su plato y lo agrega de inmediato a la orden.
                 </p>
 
                 {/* Simulated Conversation Box - Flat Solid UI */}
-                <div className="bg-[#0B0E14] border border-[#222B38] rounded-xl p-4 space-y-3 mb-6">
+                <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-3 mb-6">
                   <div className="flex items-center justify-between border-b border-[#1A222E] pb-2 text-xs">
-                    <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                    <span className="font-bold text-emerald-700 flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-emerald-400" />
                       Mesero IA en Vivo
                     </span>
@@ -698,10 +704,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   </div>
 
                   <div className="flex items-start gap-2.5">
-                    <span className="w-6 h-6 rounded bg-[#161C26] text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-6 h-6 rounded bg-[#111827] text-[#A9B2C3] font-bold text-xs flex items-center justify-center shrink-0">
                       Tú
                     </span>
-                    <div className="bg-[#161C26] border border-[#222B38] text-white text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                    <div className="bg-[#111827] border border-[#232B3A] text-[#F3F4F6] text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
                       "Mesero, recomiéndame una hamburguesa especial con tocineta y papas francesas."
                     </div>
                   </div>
@@ -711,27 +717,27 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       IA
                     </span>
                     <div className="bg-[#1A222E] border border-[#2B374A] text-slate-200 text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
-                      <strong className="text-[#E5A100]">Mesero Virtual:</strong> "¡Con gusto! Te sugiero la <strong>Hamburguesa Doble Especial ($28.000)</strong>. La he añadido a tu carrito con papas francesas crujientes. ¿Deseas agregar gaseosa o postre?"
+                      <strong className="text-[#FBBF24]">Mesero Virtual:</strong> "¡Con gusto! Te sugiero la <strong>Hamburguesa Doble Especial ($28.000)</strong>. La he añadido a tu carrito con papas francesas crujientes. ¿Deseas agregar gaseosa o postre?"
                     </div>
                   </div>
                 </div>
 
                 {/* Key Benefits Checklist */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#A9B2C3] mb-6">
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Reconocimiento de voz natural fluido</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Carga automática de platos al carrito</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Sugerencias de platos y combos</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Disponible en celular y computador</span>
                   </div>
                 </div>
@@ -750,7 +756,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </div>
 
             {/* Pillar 2: Propietarios - Administrador IA */}
-            <div className="bg-[#121721] border border-[#2B374A] hover:border-[#E5A100] rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-colors">
+            <div className="bg-[#111827] border border-[#2B374A] hover:border-[#E5A100] rounded-2xl p-6 sm:p-8 flex flex-col justify-between transition-colors">
               <div>
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#E5A100] text-black text-xs font-bold uppercase tracking-wider mb-5">
                   <Bot className="w-3.5 h-3.5" />
@@ -758,23 +764,23 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 </div>
 
                 <div className="flex items-center gap-3.5 mb-4">
-                  <div className="w-12 h-12 rounded-xl bg-[#1A222E] text-[#E5A100] border border-[#2B374A] flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-xl bg-[#1A222E] text-[#FBBF24] border border-[#2B374A] flex items-center justify-center shrink-0">
                     <Bot className="w-6 h-6" />
                   </div>
                   <div>
-                    <h3 className="text-xl sm:text-2xl font-bold text-white">Administrador IA de tu Negocio</h3>
-                    <p className="text-xs text-slate-400">Habla con tu panel para saber cómo va tu restaurante</p>
+                    <h3 className="text-xl sm:text-2xl font-bold text-[#F3F4F6]">Administrador IA de tu Negocio</h3>
+                    <p className="text-xs text-[#A9B2C3]">Habla con tu panel para saber cómo va tu restaurante</p>
                   </div>
                 </div>
 
-                <p className="text-slate-300 text-xs sm:text-sm leading-relaxed mb-6">
+                <p className="text-[#A9B2C3] text-xs sm:text-sm leading-relaxed mb-6">
                   Como dueño o encargado, no tienes que perder tiempo analizando tablas complejas. Habla por voz con tu Administrador IA y pregúntale cómo te fue hoy, cuántos pedidos se hicieron o cómo van las ventas acumuladas del mes.
                 </p>
 
                 {/* Simulated Conversation Box - Flat Solid UI */}
-                <div className="bg-[#0B0E14] border border-[#222B38] rounded-xl p-4 space-y-3 mb-6">
+                <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-3 mb-6">
                   <div className="flex items-center justify-between border-b border-[#1A222E] pb-2 text-xs">
-                    <span className="font-bold text-[#E5A100] flex items-center gap-1.5">
+                    <span className="font-bold text-[#FBBF24] flex items-center gap-1.5">
                       <Activity className="w-3.5 h-3.5" />
                       Administrador IA Activo
                     </span>
@@ -782,10 +788,10 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                   </div>
 
                   <div className="flex items-start gap-2.5">
-                    <span className="w-6 h-6 rounded bg-[#161C26] text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-6 h-6 rounded bg-[#111827] text-[#A9B2C3] font-bold text-xs flex items-center justify-center shrink-0">
                       Tú
                     </span>
-                    <div className="bg-[#161C26] border border-[#222B38] text-white text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                    <div className="bg-[#111827] border border-[#232B3A] text-[#F3F4F6] text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
                       "¿Cómo me fue hoy en ventas y pedidos?"
                     </div>
                   </div>
@@ -795,15 +801,15 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       IA
                     </span>
                     <div className="bg-[#1A222E] border border-[#2B374A] text-slate-200 text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
-                      <strong className="text-[#E5A100]">Administrador IA:</strong> "Hoy registraste <strong>18 pedidos completados</strong> por un total de <strong>$468.000 COP</strong> en ventas. Tu plato más pedido fue la <em>Salchipapa Especial</em>."
+                      <strong className="text-[#FBBF24]">Administrador IA:</strong> "Hoy registraste <strong>18 pedidos completados</strong> por un total de <strong>$468.000 COP</strong> en ventas. Tu plato más pedido fue la <em>Salchipapa Especial</em>."
                     </div>
                   </div>
 
                   <div className="flex items-start gap-2.5 pt-1">
-                    <span className="w-6 h-6 rounded bg-[#161C26] text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
+                    <span className="w-6 h-6 rounded bg-[#111827] text-[#A9B2C3] font-bold text-xs flex items-center justify-center shrink-0">
                       Tú
                     </span>
-                    <div className="bg-[#161C26] border border-[#222B38] text-white text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
+                    <div className="bg-[#111827] border border-[#232B3A] text-[#F3F4F6] text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
                       "¿Y cómo nos fue en el balance del mes?"
                     </div>
                   </div>
@@ -813,27 +819,27 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                       IA
                     </span>
                     <div className="bg-[#1A222E] border border-[#2B374A] text-slate-200 text-xs sm:text-sm p-3 rounded-lg leading-relaxed">
-                      <strong className="text-[#E5A100]">Administrador IA:</strong> "En el mes acumulas <strong>$11.450.000 COP en ventas</strong> (+24% vs mes anterior) con <strong>420 pedidos atendidos</strong> y 0% de comisiones retenidas."
+                      <strong className="text-[#FBBF24]">Administrador IA:</strong> "En el mes acumulas <strong>$11.450.000 COP en ventas</strong> (+24% vs mes anterior) con <strong>420 pedidos atendidos</strong> y 0% de comisiones retenidas."
                     </div>
                   </div>
                 </div>
 
                 {/* Key Benefits Checklist */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300 mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#A9B2C3] mb-6">
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Reporte de ventas del día y del mes por voz</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Control de pedidos pendientes y despachos</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Identificación de productos más vendidos</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <Check className="w-4 h-4 text-emerald-700 shrink-0" />
                     <span>Voz natural y respuestas en tiempo real</span>
                   </div>
                 </div>
@@ -856,13 +862,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* Features Grid - 8 Solid Flat Cards */}
-      <section className="py-14 sm:py-20 bg-[#0B0E14] border-b border-[#222B38] px-4 sm:px-6">
+      <section className="py-14 sm:py-20 bg-[#090B12] border-b border-[#232B3A] px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-3">
+            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#F3F4F6] mb-3">
               Todo lo necesario para comercializar de inmediato
             </h2>
-            <p className="text-slate-300 text-sm">
+            <p className="text-[#A9B2C3] text-sm">
               Hemos automatizado las tareas complejas de comercio electrónico para que te enfoques en tus ventas.
             </p>
           </div>
@@ -871,13 +877,13 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             {features.map((feature, idx) => (
               <div 
                 key={idx} 
-                className="bg-[#121721] border border-[#222B38] hover:border-[#2B374A] p-5 rounded-xl transition-colors flex flex-col justify-start"
+                className="bg-[#111827] border border-[#232B3A] hover:border-[#2B374A] p-6 rounded-2xl transition-colors flex flex-col justify-start"
               >
                 <div className="w-10 h-10 rounded-lg bg-[#1A222E] flex items-center justify-center mb-4 border border-[#2B374A]">
                   {feature.icon}
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">{feature.title}</h3>
-                <p className="text-slate-400 text-xs leading-relaxed">{feature.desc}</p>
+                <h3 className="text-base font-bold text-[#F3F4F6] mb-2">{feature.title}</h3>
+                <p className="text-[#A9B2C3] text-sm leading-relaxed">{feature.desc}</p>
               </div>
             ))}
           </div>
@@ -885,37 +891,37 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* 3 Steps Section - Clean Flat Process */}
-      <section className="py-14 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto text-center border-b border-[#222B38]">
-        <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-2">¿Cómo crear tu tienda?</h2>
-        <p className="text-slate-400 mb-10 text-sm">Empieza hoy mismo tu emprendimiento digital en tres sencillos pasos.</p>
+      <section className="py-14 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto text-center border-b border-[#232B3A]">
+        <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#F3F4F6] mb-2">¿Cómo crear tu tienda?</h2>
+        <p className="text-[#A9B2C3] mb-10 text-sm">Empieza hoy mismo tu emprendimiento digital en tres sencillos pasos.</p>
 
         <div className="grid md:grid-cols-3 gap-6">
-          <div className="p-6 bg-[#121721] rounded-xl border border-[#222B38] flex flex-col items-center text-center">
+          <div className="p-6 bg-[#111827] rounded-xl border border-[#232B3A] flex flex-col items-center text-center">
             <span className="w-9 h-9 rounded-lg bg-[#D62839] text-white font-bold text-sm flex items-center justify-center mb-4">
               1
             </span>
-            <h4 className="font-bold text-white text-base mb-2">Regístrate en Segundos</h4>
-            <p className="text-slate-400 text-xs leading-relaxed max-w-xs">
+            <h4 className="font-bold text-[#F3F4F6] text-base mb-2">Regístrate en Segundos</h4>
+            <p className="text-[#A9B2C3] text-sm leading-relaxed max-w-xs">
               Elige tu nombre de usuario que será tu subdominio de tienda pública sin costo.
             </p>
           </div>
 
-          <div className="p-6 bg-[#121721] rounded-xl border border-[#222B38] flex flex-col items-center text-center">
+          <div className="p-6 bg-[#111827] rounded-xl border border-[#232B3A] flex flex-col items-center text-center">
             <span className="w-9 h-9 rounded-lg bg-[#E5A100] text-black font-bold text-sm flex items-center justify-center mb-4">
               2
             </span>
-            <h4 className="font-bold text-white text-base mb-2">Completa tu Catálogo</h4>
-            <p className="text-slate-400 text-xs leading-relaxed max-w-xs">
+            <h4 className="font-bold text-[#F3F4F6] text-base mb-2">Completa tu Catálogo</h4>
+            <p className="text-[#A9B2C3] text-sm leading-relaxed max-w-xs">
               Añade imágenes de tus productos, precios con descuento, stock y variantes disponibles.
             </p>
           </div>
 
-          <div className="p-6 bg-[#121721] rounded-xl border border-[#222B38] flex flex-col items-center text-center">
+          <div className="p-6 bg-[#111827] rounded-xl border border-[#232B3A] flex flex-col items-center text-center">
             <span className="w-9 h-9 rounded-lg bg-[#D62839] text-white font-bold text-sm flex items-center justify-center mb-4">
               3
             </span>
-            <h4 className="font-bold text-white text-base mb-2">Recibe Pedidos Directos</h4>
-            <p className="text-slate-400 text-xs leading-relaxed max-w-xs">
+            <h4 className="font-bold text-[#F3F4F6] text-base mb-2">Recibe Pedidos Directos</h4>
+            <p className="text-[#A9B2C3] text-sm leading-relaxed max-w-xs">
               Comparte tu enlace, tus clientes ingresarán al carrito y coordinarás ventas por WhatsApp o directo.
             </p>
           </div>
@@ -923,50 +929,50 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* PLANES DISPONIBLES - 4 Clean Flat Pricing Cards */}
-      <section id="planes" className="py-14 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto border-b border-[#222B38]">
+      <section id="planes" className="scroll-mt-36 py-14 sm:py-20 px-4 sm:px-6 max-w-7xl mx-auto border-b border-[#232B3A]">
         <div className="text-center max-w-2xl mx-auto mb-10">
-          <div className="inline-flex items-center gap-1.5 text-[#E5A100] font-bold text-xs uppercase tracking-wider mb-2">
+          <div className="inline-flex items-center gap-1.5 text-[#FBBF24] font-bold text-xs uppercase tracking-wider mb-2">
             <Sparkles className="w-3.5 h-3.5" />
             <span>PLANES DISPONIBLES</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white">Tarifas claras, sin comisiones por pedido</h2>
+          <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#F3F4F6]">Tarifas claras, sin comisiones por pedido</h2>
         </div>
 
         {/* 4 Cards Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 text-left">
           
           {/* Plan Básico */}
-          <div className="bg-[#121721] border border-[#2B374A] hover:border-[#D62839] rounded-xl p-5 flex flex-col justify-between transition-colors">
+          <div className="bg-[#111827] border border-[#2B374A] hover:border-[#D62839] rounded-xl p-5 flex flex-col justify-between transition-colors">
             <div>
               <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#D62839] flex items-center justify-center mb-3 border border-[#2B374A]">
                 <Package className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Plan Básico</h3>
-              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+              <h3 className="text-lg font-bold text-[#F3F4F6] mb-1">Plan Básico</h3>
+              <p className="text-[#A9B2C3] text-xs mb-4 min-h-[36px] leading-relaxed">
                 Hasta 5 productos para el inicio de tu negocio.
               </p>
 
-              <div className="border-t border-[#222B38] pt-4 pb-4">
-                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+              <div className="border-t border-[#232B3A] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-[#A9B2C3] font-medium">
                   <Tag className="w-3.5 h-3.5 text-[#D62839] shrink-0" />
-                  <span>Hasta <strong className="text-white font-bold">5</strong> productos</span>
+                  <span>Hasta <strong className="text-[#F3F4F6] font-bold">5</strong> productos</span>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-[#222B38] pt-4">
+            <div className="border-t border-[#232B3A] pt-4">
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-black text-white">$49.000</span>
-                  <span className="text-xs text-slate-400">COP/mes</span>
+                  <span className="text-2xl sm:text-3xl font-black text-[#F3F4F6]">$49.000</span>
+                  <span className="text-xs text-[#A9B2C3]">COP/mes</span>
                 </div>
-                <p className="text-[10px] font-bold text-[#E5A100] tracking-wider uppercase mt-1">
+                <p className="text-[10px] font-bold text-[#FBBF24] tracking-wider uppercase mt-1">
                   FACTURACIÓN MENSUAL
                 </p>
               </div>
               <button
                 onClick={() => onNavigate('signup')}
-                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#D62839] text-white font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#D62839]"
+                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#D62839] text-[#F3F4F6] hover:text-white font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#D62839]"
               >
                 Elegir Plan
               </button>
@@ -974,37 +980,37 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
 
           {/* Plan Medio */}
-          <div className="bg-[#121721] border border-[#2B374A] hover:border-[#E5A100] rounded-xl p-5 flex flex-col justify-between transition-colors">
+          <div className="bg-[#111827] border border-[#2B374A] hover:border-[#E5A100] rounded-xl p-5 flex flex-col justify-between transition-colors">
             <div>
-              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#E5A100] flex items-center justify-center mb-3 border border-[#2B374A]">
+              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#FBBF24] flex items-center justify-center mb-3 border border-[#2B374A]">
                 <ShoppingBag className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Plan Medio</h3>
-              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+              <h3 className="text-lg font-bold text-[#F3F4F6] mb-1">Plan Medio</h3>
+              <p className="text-[#A9B2C3] text-xs mb-4 min-h-[36px] leading-relaxed">
                 Hasta 12 productos para tiendas en crecimiento.
               </p>
 
-              <div className="border-t border-[#222B38] pt-4 pb-4">
-                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
-                  <Tag className="w-3.5 h-3.5 text-[#E5A100] shrink-0" />
-                  <span>Hasta <strong className="text-white font-bold">12</strong> productos</span>
+              <div className="border-t border-[#232B3A] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-[#A9B2C3] font-medium">
+                  <Tag className="w-3.5 h-3.5 text-[#FBBF24] shrink-0" />
+                  <span>Hasta <strong className="text-[#F3F4F6] font-bold">12</strong> productos</span>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-[#222B38] pt-4">
+            <div className="border-t border-[#232B3A] pt-4">
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-black text-white">$79.000</span>
-                  <span className="text-xs text-slate-400">COP/mes</span>
+                  <span className="text-2xl sm:text-3xl font-black text-[#F3F4F6]">$79.000</span>
+                  <span className="text-xs text-[#A9B2C3]">COP/mes</span>
                 </div>
-                <p className="text-[10px] font-bold text-[#E5A100] tracking-wider uppercase mt-1">
+                <p className="text-[10px] font-bold text-[#FBBF24] tracking-wider uppercase mt-1">
                   FACTURACIÓN MENSUAL
                 </p>
               </div>
               <button
                 onClick={() => onNavigate('signup')}
-                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#E5A100] text-white hover:text-black font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#E5A100]"
+                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#E5A100] text-[#F3F4F6] hover:text-black font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#E5A100]"
               >
                 Elegir Plan
               </button>
@@ -1012,37 +1018,37 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
 
           {/* Plan Avanzado */}
-          <div className="bg-[#121721] border border-[#2B374A] hover:border-[#D62839] rounded-xl p-5 flex flex-col justify-between transition-colors">
+          <div className="bg-[#111827] border border-[#2B374A] hover:border-[#D62839] rounded-xl p-5 flex flex-col justify-between transition-colors">
             <div>
               <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#D62839] flex items-center justify-center mb-3 border border-[#2B374A]">
                 <Rocket className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Plan Avanzado</h3>
-              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+              <h3 className="text-lg font-bold text-[#F3F4F6] mb-1">Plan Avanzado</h3>
+              <p className="text-[#A9B2C3] text-xs mb-4 min-h-[36px] leading-relaxed">
                 Hasta 24 productos para marcas de alto calibre.
               </p>
 
-              <div className="border-t border-[#222B38] pt-4 pb-4">
-                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
+              <div className="border-t border-[#232B3A] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-[#A9B2C3] font-medium">
                   <Tag className="w-3.5 h-3.5 text-[#D62839] shrink-0" />
-                  <span>Hasta <strong className="text-white font-bold">24</strong> productos</span>
+                  <span>Hasta <strong className="text-[#F3F4F6] font-bold">24</strong> productos</span>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-[#222B38] pt-4">
+            <div className="border-t border-[#232B3A] pt-4">
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-3xl font-black text-white">$99.000</span>
-                  <span className="text-xs text-slate-400">COP/mes</span>
+                  <span className="text-2xl sm:text-3xl font-black text-[#F3F4F6]">$99.000</span>
+                  <span className="text-xs text-[#A9B2C3]">COP/mes</span>
                 </div>
-                <p className="text-[10px] font-bold text-[#E5A100] tracking-wider uppercase mt-1">
+                <p className="text-[10px] font-bold text-[#FBBF24] tracking-wider uppercase mt-1">
                   FACTURACIÓN MENSUAL
                 </p>
               </div>
               <button
                 onClick={() => onNavigate('signup')}
-                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#D62839] text-white font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#D62839]"
+                className="w-full py-2.5 px-4 rounded-lg bg-[#1A222E] hover:bg-[#D62839] text-[#F3F4F6] hover:text-white font-bold text-xs transition-colors cursor-pointer text-center border border-[#2B374A] hover:border-[#D62839]"
               >
                 Elegir Plan
               </button>
@@ -1050,34 +1056,34 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
           </div>
 
           {/* Plan Especial */}
-          <div className="bg-[#121721] border-2 border-[#E5A100] rounded-xl p-5 flex flex-col justify-between relative">
+          <div className="bg-[#111827] border-2 border-[#E5A100] rounded-xl p-5 flex flex-col justify-between relative">
             <span className="absolute top-4 right-4 bg-[#E5A100] text-black font-extrabold text-[10px] px-2 py-0.5 rounded uppercase tracking-wider">
               ESPECIAL
             </span>
 
             <div>
-              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#E5A100] flex items-center justify-center mb-3 border border-[#2B374A]">
+              <div className="w-10 h-10 rounded-lg bg-[#1A222E] text-[#FBBF24] flex items-center justify-center mb-3 border border-[#2B374A]">
                 <Star className="w-5 h-5" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-1">Plan Especial</h3>
-              <p className="text-slate-400 text-xs mb-4 min-h-[36px] leading-relaxed">
+              <h3 className="text-lg font-bold text-[#F3F4F6] mb-1">Plan Especial</h3>
+              <p className="text-[#A9B2C3] text-xs mb-4 min-h-[36px] leading-relaxed">
                 Para tiendas con más de 24 productos y necesidades personalizadas.
               </p>
 
-              <div className="border-t border-[#222B38] pt-4 pb-4">
-                <div className="flex items-center gap-2 text-xs text-slate-300 font-medium">
-                  <Tag className="w-3.5 h-3.5 text-[#E5A100] shrink-0" />
-                  <span>Más de <strong className="text-[#E5A100] font-bold">24</strong> productos</span>
+              <div className="border-t border-[#232B3A] pt-4 pb-4">
+                <div className="flex items-center gap-2 text-xs text-[#A9B2C3] font-medium">
+                  <Tag className="w-3.5 h-3.5 text-[#FBBF24] shrink-0" />
+                  <span>Más de <strong className="text-[#FBBF24] font-bold">24</strong> productos</span>
                 </div>
               </div>
             </div>
 
-            <div className="border-t border-[#222B38] pt-4">
-              <div className="bg-[#0B0E14] border border-[#222B38] rounded-lg p-2.5 mb-3 flex items-start gap-2">
-                <Headphones className="w-4 h-4 text-[#E5A100] shrink-0 mt-0.5" />
+            <div className="border-t border-[#232B3A] pt-4">
+              <div className="bg-[#090B12] border border-[#232B3A] rounded-lg p-2.5 mb-3 flex items-start gap-2">
+                <Headphones className="w-4 h-4 text-[#FBBF24] shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-[11px] font-bold text-white">Asesoría directa</h4>
-                  <p className="text-[10px] text-slate-400 leading-normal">
+                  <h4 className="text-[11px] font-bold text-[#F3F4F6]">Asesoría directa</h4>
+                  <p className="text-[10px] text-[#A9B2C3] leading-normal">
                     Te ayudamos a encontrar el plan ideal para tu negocio.
                   </p>
                 </div>
@@ -1097,12 +1103,12 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
       </section>
 
       {/* Final Call to Action - Flat Solid Banner */}
-      <section className="bg-[#0B0E14] py-14 sm:py-20 px-4 sm:px-6 text-center border-b border-[#222B38]">
-        <div className="max-w-3xl mx-auto bg-[#121721] border border-[#222B38] rounded-2xl p-8 sm:p-12">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-white mb-3 leading-tight">
+      <section className="bg-[#090B12] py-14 sm:py-20 px-4 sm:px-6 text-center border-b border-[#232B3A]">
+        <div className="max-w-3xl mx-auto bg-[#111827] border border-[#232B3A] rounded-2xl p-8 sm:p-12">
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-[#F3F4F6] mb-3 leading-tight">
             ¿Listo para digitalizar tu negocio hoy?
           </h2>
-          <p className="text-slate-300 max-w-lg mx-auto mb-6 text-xs sm:text-sm leading-relaxed">
+          <p className="text-[#A9B2C3] max-w-lg mx-auto mb-6 text-xs sm:text-sm leading-relaxed">
             Únete a cientos de marcas, tiendas boutique y emprendedores que ya incrementan sus ingresos administrando inteligentemente sus productos y pedidos.
           </p>
 
@@ -1115,7 +1121,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
             </button>
             <button 
               onClick={() => onNavigate('login')}
-              className="w-full sm:w-auto px-6 py-3 bg-[#1A222E] hover:bg-[#252E3E] border border-[#2B374A] text-slate-300 hover:text-white font-bold text-xs sm:text-sm rounded-lg transition-colors cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3 bg-[#1A222E] hover:bg-[#252E3E] border border-[#2B374A] text-[#A9B2C3] hover:text-[#F3F4F6] font-bold text-xs sm:text-sm rounded-lg transition-colors cursor-pointer"
             >
               Acceder a mi panel
             </button>

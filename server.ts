@@ -8,6 +8,7 @@ import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import { startOrderPush, getOrderPushStatus } from './server/orderPush';
 
 // Root directory resolution compatible with both ESM (tsx dev) and bundled CJS (production dist/server.cjs)
 const appDirname = process.cwd();
@@ -113,6 +114,8 @@ function getOpenAIClient(): OpenAI | null {
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
+  void startOrderPush();
+  app.get('/api/push/status', (_req, res) => res.json(getOrderPushStatus()));
 
   // Compress all responses with gzip / deflate to drastically accelerate network delivery
   app.use(compression() as any);

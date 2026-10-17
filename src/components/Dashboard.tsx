@@ -83,7 +83,6 @@ import {
   triggerSellerOrderPush, 
   getSellerFCMStatus, 
   playOrderAlertChime, 
-  speakOrderVoiceAlert,
   connectFCMStream 
 } from '../lib/fcmNotifications';
 import { 
@@ -131,7 +130,6 @@ import {
 import BankSettings from './BankSettings';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import LinnkAdminVoiceAssistant from './LinnkAdminVoiceAssistant';
-import { smartApiFetch } from '../lib/apiConfig';
 import LinnkProIsotype from './LinnkProIsotype';
 import { formatColombianPhoneWith57 } from '../lib/phoneUtils';
 import { BasicPlanTrialModal } from './BasicPlanTrialModal';
@@ -702,87 +700,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   // Ref to track known order IDs for real-time notification
   const knownOrderIdsRef = useRef<Set<string> | null>(null);
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Function to trigger voice "¡Llegó un pedido!", push notification, sound chime and vibration
+  // Play the shared Ryyco MP3, push notification and vibration.
   const playNewOrderNotification = async (order?: OrderItem) => {
-    // 1. Play Web Audio Chime (pleasant bell double-tone)
-    try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        const ctx = new AudioCtx();
-        if (ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-        const now = ctx.currentTime;
-
-        const osc1 = ctx.createOscillator();
-        const gain1 = ctx.createGain();
-        osc1.type = 'sine';
-        osc1.frequency.setValueAtTime(587.33, now); // D5
-        gain1.gain.setValueAtTime(0.4, now);
-        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-        osc1.connect(gain1);
-        gain1.connect(ctx.destination);
-        osc1.start(now);
-        osc1.stop(now + 0.35);
-
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(880, now + 0.15); // A5
-        gain2.gain.setValueAtTime(0.5, now + 0.15);
-        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start(now + 0.15);
-        osc2.stop(now + 0.7);
-      }
-    } catch (err) {
-      console.warn("Web Audio API chime error:", err);
-    }
-
-    // 2. Play Voice "¡Llegó un pedido!"
-    try {
-      if (notificationAudioRef.current) {
-        notificationAudioRef.current.pause();
-        notificationAudioRef.current = null;
-      }
-
-      // Try OpenAI TTS endpoint for high-quality natural Colombian voice
-      const res = await smartApiFetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: '¡Llegó un pedido!', voice: 'alloy' })
-      });
-
-      if (res.ok) {
-        const audioBlob = await res.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        notificationAudioRef.current = audio;
-        audio.onended = () => {
-          URL.revokeObjectURL(audioUrl);
-        };
-        await audio.play();
-      } else {
-        throw new Error("TTS endpoint returned non-ok");
-      }
-    } catch (err) {
-      // Fallback to browser speech synthesis
-      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance('¡Llegó un pedido!');
-          utterance.lang = 'es-CO';
-          utterance.rate = 1.0;
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
-        } catch (speechErr) {
-          console.warn("Speech synthesis fallback error:", speechErr);
-        }
-      }
-    }
+    void playOrderAlertChime();
 
     // 3. Browser Push Notification
     try {
@@ -891,6 +812,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // UI Utilities states
   const [copiedLink, setCopiedLink] = useState(false);
   const [loadingResources, setLoadingResources] = useState(true);
+  const [resourceSyncError, setResourceSyncError] = useState('');
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   
   // Form Product states
@@ -1074,9 +996,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   // Load Dashboard Data
   const loadDashboardData = async () => {
     setLoadingResources(true);
+    setResourceSyncError('');
     try {
       // Load products from Firestore
-      const prods = await fetchProductsAllState(profile.uid);
+      const [prods, syncedOrders] = await Promise.all([
+        fetchProductsAllState(profile.uid, { requireServer: true }),
+        fetchOrders(profile.uid, { requireServer: true })
+      ]);
       setProducts(prods);
 
       // Auto-sync locally-cached links to Firestore if any are missing
@@ -1102,7 +1028,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
 
       // Load orders
-      const ords = await fetchOrders(profile.uid);
+      const ords = syncedOrders;
       setOrders(ords);
       if (knownOrderIdsRef.current === null) {
         knownOrderIdsRef.current = new Set(ords.map(o => o.id));
@@ -1115,7 +1041,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       // Load theme and profile configuration
       const { fetchProfileByUsername } = await import('../lib/firebase');
       const details = await fetchProfileByUsername(profile.username);
-      if (details.profile) {
+      if (details.profile && details.profile.uid === profile.uid) {
         setProfile({
           ...details.profile,
           currency: details.profile.currency || '$'
@@ -1136,6 +1062,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
     } catch (e) {
       console.error("Error loading merchant resources", e);
+      setResourceSyncError(e instanceof Error ? e.message : 'No se pudieron sincronizar los datos de tu tienda.');
     } finally {
       setLoadingResources(false);
     }
@@ -2101,6 +2028,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   return (
     <div className="min-h-screen bg-[#090b12] flex flex-col font-sans select-text w-full max-w-full overflow-x-hidden">
+      {resourceSyncError && (
+        <div role="alert" className="bg-amber-950 text-amber-100 p-4 flex flex-wrap items-center gap-3">
+          <span>{resourceSyncError} Los datos pueden estar incompletos; esto no significa que se hayan borrado.</span>
+          <button type="button" disabled={loadingResources} onClick={loadDashboardData} className="underline font-bold disabled:opacity-50">Reintentar sincronización</button>
+        </div>
+      )}
       
       {/* Top Navbar */}
       <nav className="border-b border-[#232B3A] bg-[#090b12]/95 px-6 py-4 flex flex-col md:flex-row gap-4 items-center justify-between sticky top-0 z-40 backdrop-blur-md">
@@ -7799,7 +7732,6 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         type="button"
                         onClick={() => {
                           playOrderAlertChime();
-                          speakOrderVoiceAlert(`¡Nuevo pedido en tu tienda ${profile.displayName || profile.storeName || ''}!`);
                         }}
                         className="py-2.5 px-3 bg-gray-900 hover:bg-gray-850 text-emerald-300 border border-emerald-500/30 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer"
                         title="Prueba el timbre armónico y el sintetizador de voz"
