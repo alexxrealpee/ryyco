@@ -20,7 +20,7 @@ let isFCMSupported = false;
  * Official Firebase Cloud Messaging Web Push Certificate (VAPID Key)
  * From Firebase Project Console: studio-9002217802-13e05
  */
-export const DEFAULT_FCM_VAPID_KEY = 'BHxp46AT5NMBfuRVQJpU5KpSl-ktnNumkur002jGAEwqeaJHi_jJayQM_uIze1QPuA9o42INMAT5S6i8ZmIit80';
+export const DEFAULT_FCM_VAPID_KEY = 'BHxp46AT5NMBfuRVQJpU5KpSI-ktnNumkurOO2jGAEwqEaJHi_jJayQM_ulze1QPuA9o42INMAT5S6i8Zmlit80';
 
 /**
  * Retrieves the active Web Push VAPID key (custom or project default)
@@ -28,7 +28,16 @@ export const DEFAULT_FCM_VAPID_KEY = 'BHxp46AT5NMBfuRVQJpU5KpSl-ktnNumkur002jGAE
 export function getFCMVapidKey(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('ryyco_fcm_vapid_key');
-    if (custom && custom.trim().length > 10) return custom.trim();
+    // If stored key matches old corrupted/mistyped transcription, auto-heal to correct key
+    if (custom && (custom.includes('002jGAEwqea') || custom.includes('KpSl') || custom.includes('ZmIit') || custom.includes('_uIze'))) {
+      localStorage.removeItem('ryyco_fcm_vapid_key');
+    } else if (custom && custom.trim().length > 10) {
+      return custom.trim();
+    }
+  }
+  const envKey = (import.meta as any)?.env?.VITE_FCM_VAPID_KEY;
+  if (envKey && typeof envKey === 'string' && envKey.trim().length > 10) {
+    return envKey.trim();
   }
   return DEFAULT_FCM_VAPID_KEY;
 }

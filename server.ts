@@ -63,6 +63,10 @@ if (!process.env.OPENAI_API_KEY) {
         if (matchFcm && matchFcm[1] && !matchFcm[1].includes('tu-clave')) {
           process.env.FCM_SERVER_KEY = matchFcm[1].trim();
         }
+        const matchVapid = fileContent.match(/define\s*\(\s*['"](RYYCO_HOSTINGER_FCM_VAPID_KEY|RYYCO_HOSTINGER_FCM_SERVER_KEY)['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
+        if (matchVapid && matchVapid[2] && matchVapid[2].startsWith('B') && !matchVapid[2].includes('tu-clave')) {
+          process.env.VITE_FCM_VAPID_KEY = matchVapid[2].trim();
+        }
         if (process.env.OPENAI_API_KEY) break;
       } catch (e) {}
     }

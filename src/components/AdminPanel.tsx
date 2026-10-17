@@ -113,7 +113,8 @@ import {
   connectFCMStream,
   SellerFCMTokenRecord,
   registerAdminFCMTokenWithServer,
-  DEFAULT_FCM_VAPID_KEY
+  DEFAULT_FCM_VAPID_KEY,
+  getFCMVapidKey
 } from '../lib/fcmNotifications';
 import { 
   collection, 
@@ -482,6 +483,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
   const [isRequestingFCM, setIsRequestingFCM] = useState<boolean>(false);
   const [showFCMDetails, setShowFCMDetails] = useState<boolean>(false);
+  const [adminVapidKey, setAdminVapidKey] = useState<string>(() => getFCMVapidKey());
   const [sellerTokens, setSellerTokens] = useState<SellerFCMTokenRecord[]>([]);
   const [isLoadingSellerTokens, setIsLoadingSellerTokens] = useState(false);
   const [fcmActiveTab, setFcmActiveTab] = useState<'admin' | 'sellers'>('admin');
@@ -4019,26 +4021,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     <span>{isRequestingFCM ? 'Activando FCM...' : 'Activar PUSH (FCM)'}</span>
                   </button>
                 ) : (
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-xl text-xs font-bold font-mono">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
-                      <span>FCM Push Activo</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowFCMDetails(!showFCMDetails)}
-                      className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-900/90 hover:bg-gray-800 text-gray-300 border border-gray-700/60 rounded-xl text-[11px] font-medium transition cursor-pointer"
-                      title="Ver estado de la conexión FCM y token registrado"
-                    >
-                      <Smartphone className="w-3 h-3 text-cyan-400" />
-                      <span>{fcmToken ? 'Token OK' : 'FCM Config'}</span>
-                    </button>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 rounded-xl text-xs font-bold font-mono">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span>FCM Push Activo</span>
                   </div>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => setShowFCMDetails(!showFCMDetails)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-gray-900/90 hover:bg-gray-800 text-gray-300 border border-gray-700/60 rounded-xl text-[11px] font-medium transition cursor-pointer"
+                  title="Ver y configurar clave VAPID y conexión FCM"
+                >
+                  <Smartphone className="w-3 h-3 text-cyan-400" />
+                  <span>{fcmToken ? 'Token OK' : 'FCM Config'}</span>
+                </button>
 
                 <button
                   type="button"
@@ -4135,8 +4135,51 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         <p className="text-[10px] text-gray-500 font-mono uppercase">Clave VAPID Web Push</p>
                         <p className="text-white font-semibold flex items-center gap-1 mt-0.5 text-xs">
                           <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                          <span className="font-mono text-[11px] truncate" title={DEFAULT_FCM_VAPID_KEY}>Configurada ({DEFAULT_FCM_VAPID_KEY.slice(0, 10)}...{DEFAULT_FCM_VAPID_KEY.slice(-6)})</span>
+                          <span className="font-mono text-[11px] truncate" title={adminVapidKey}>Configurada ({adminVapidKey.slice(0, 10)}...{adminVapidKey.slice(-6)})</span>
                         </p>
+                      </div>
+                    </div>
+
+                    {/* VAPID Key editor */}
+                    <div className="p-2.5 bg-gray-900/80 rounded-xl border border-gray-800 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] text-gray-400 font-mono uppercase">Clave VAPID Web Push (Certificado Firebase):</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              localStorage.removeItem('ryyco_fcm_vapid_key');
+                              setAdminVapidKey(DEFAULT_FCM_VAPID_KEY);
+                              setNotif("✓ Clave VAPID restablecida a la oficial");
+                              setTimeout(() => setNotif(''), 3000);
+                            }
+                          }}
+                          className="text-[10px] text-cyan-400 hover:underline cursor-pointer"
+                        >
+                          Restablecer clave oficial
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={adminVapidKey}
+                          onChange={(e) => setAdminVapidKey(e.target.value)}
+                          className="flex-1 bg-black/60 border border-gray-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          placeholder="Pega aquí tu clave VAPID pública de Firebase"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (typeof window !== 'undefined') {
+                              localStorage.setItem('ryyco_fcm_vapid_key', adminVapidKey.trim());
+                              setNotif("✓ Clave VAPID guardada");
+                              setTimeout(() => setNotif(''), 3000);
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-lg text-xs cursor-pointer shrink-0"
+                        >
+                          Guardar
+                        </button>
                       </div>
                     </div>
 
