@@ -449,8 +449,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
   const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
 
-  // Orders progressive display pagination state
-  const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(20);
+  // Orders progressive display pagination state (initial batch of 6)
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(6);
   const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
 
   // Real-time Pending Orders Count - strictly pending/new orders without an assigned driver
@@ -2314,16 +2314,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         return matchesName || matchesPhone || matchesEmail || matchesNumber || matchesNotes || matchesDriverName || matchesDriverPhone || matchesDriverVehicle || matchesStore;
       }
       return true;
+    }).sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (timeB !== timeA) return timeB - timeA;
+      return (b.orderNumber || 0) - (a.orderNumber || 0);
     });
   }, [allOrders, selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery, storesMap, users]);
 
-  // Progressive orders display (first 20, then loads more on scroll)
+  // Progressive orders display (first 6, then loads more on scroll)
   const displayedOrders = useMemo(() => {
     return filteredOrders.slice(0, visibleOrdersCount);
   }, [filteredOrders, visibleOrdersCount]);
 
   useEffect(() => {
-    setVisibleOrdersCount(20);
+    setVisibleOrdersCount(6);
   }, [selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery]);
 
   // Progressive display scroll trigger when reaching bottom of orders table
@@ -2335,10 +2340,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       (entries) => {
         const target = entries[0];
         if (target.isIntersecting) {
-          setVisibleOrdersCount(prev => Math.min(prev + 20, filteredOrders.length));
+          setVisibleOrdersCount(prev => Math.min(prev + 6, filteredOrders.length));
         }
       },
-      { threshold: 0.1, rootMargin: '120px' }
+      { threshold: 0.1, rootMargin: '160px' }
     );
 
     const el = ordersSentinelRef.current;
@@ -5083,16 +5088,17 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 >
                   {displayedOrders.length < filteredOrders.length ? (
                     <div className="flex flex-col sm:flex-row items-center gap-3">
-                      <span className="text-[11px] text-gray-400 font-medium">
-                        Mostrando <strong className="text-white font-mono">{displayedOrders.length}</strong> de <strong className="text-white font-mono">{filteredOrders.length}</strong> pedidos
+                      <span className="text-[11px] text-gray-400 font-medium flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping inline-block" />
+                        Mostrando <strong className="text-white font-mono">{displayedOrders.length}</strong> de <strong className="text-white font-mono">{filteredOrders.length}</strong> pedidos (Carga automática al hacer scroll)
                       </span>
                       <button
                         type="button"
-                        onClick={() => setVisibleOrdersCount(prev => Math.min(prev + 20, filteredOrders.length))}
+                        onClick={() => setVisibleOrdersCount(prev => Math.min(prev + 6, filteredOrders.length))}
                         className="px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 font-extrabold text-xs rounded-xl border border-indigo-500/30 transition duration-150 cursor-pointer flex items-center gap-2 shadow-sm hover:scale-[1.01] active:scale-98"
                       >
                         <Download className="w-4 h-4" />
-                        <span>Cargar siguientes 20 pedidos</span>
+                        <span>Cargar siguientes 6 pedidos</span>
                       </button>
                     </div>
                   ) : (

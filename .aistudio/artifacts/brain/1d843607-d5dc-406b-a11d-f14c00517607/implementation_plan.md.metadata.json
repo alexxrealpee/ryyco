@@ -1,0 +1,6 @@
+{
+  "summary": "Plan de implementación para ordenar los pedidos del panel de administración general colocando el más reciente en la parte superior y estableciendo una carga inteligente de 6 pedidos con scroll infinito automático.",
+  "updatedAt": "2026-10-18T15:39:30.077826948Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
