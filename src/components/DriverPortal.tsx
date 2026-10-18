@@ -352,6 +352,23 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [activatingPush, setActivatingPush] = useState(false);
   const [pushNotificationFeedback, setPushNotificationFeedback] = useState<string>('');
 
+  // Sincronizar estado real de notificaciones activadas en el navegador
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        localStorage.setItem('ryyco_driver_notifications_enabled', 'true');
+        setFcmStatus(getDriverFCMStatus(driver?.id));
+      }
+    }
+  }, [driver?.id]);
+
+  const isPushNotificationsActive = Boolean(
+    fcmStatus.hasToken ||
+    (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') ||
+    (typeof window !== 'undefined' && localStorage.getItem('ryyco_driver_notifications_enabled') === 'true') ||
+    (typeof window !== 'undefined' && localStorage.getItem('ryyco_driver_fcm_token'))
+  );
+
   // Request & register FCM Push Notification token for this driver
   const handleEnablePushNotifications = async () => {
     if (!driver) return;
@@ -360,6 +377,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     try {
       const res = await requestDriverFCMPermission(driver);
       if (res.success) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('ryyco_driver_notifications_enabled', 'true');
+        }
         setFcmStatus(getDriverFCMStatus(driver.id));
         setPushNotificationFeedback('¡Notificaciones PUSH activadas con éxito en este dispositivo!');
         playDriverOrderAlertChime();
@@ -798,7 +818,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
     // If driver is turning on availability, request / refresh FCM push notification token if not granted
     if (nextState && typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default' || !fcmStatus.hasToken) {
+      if (!isPushNotificationsActive && Notification.permission === 'default') {
         handleEnablePushNotifications();
       }
     }
@@ -1252,7 +1272,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             {/* FCM Push Notification Control */}
             {driver.status === 'approved' && (
               <>
-                {fcmStatus.hasToken ? (
+                {isPushNotificationsActive ? (
                   <button
                     onClick={handleTestDriverAudioAlert}
                     title="Probar sonido y voz de alerta de pedido (Notificaciones PUSH Activas)"
@@ -1452,7 +1472,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             )}
 
             {/* Push Notifications Activation Card (If not yet enabled) */}
-            {!fcmStatus.hasToken && (
+            {!isPushNotificationsActive && (
               <div className="bg-gradient-to-r from-amber-500/10 via-[#E63946]/10 to-[#111827] border border-[#E63946]/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
                 <div className="flex items-start gap-3.5">
                   <div className="w-10 h-10 rounded-2xl bg-[#E63946]/20 border border-[#E63946]/30 text-[#E63946] flex items-center justify-center shrink-0 mt-0.5">
@@ -2149,18 +2169,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               </div>
                             )}
                           </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeliveryPinError('');
-                              setShowDeliveryCodeModal(true);
-                            }}
-                            className="w-full py-3 sm:py-3.5 px-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2 text-center"
-                          >
-                            <Key className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
-                            <span className="leading-tight break-words">4. Confirmar Pedido Entregado con Código ✓</span>
-                          </button>
                         </div>
                       </div>
                     )}

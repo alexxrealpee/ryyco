@@ -527,10 +527,11 @@ export function getFCMStatus(): {
   }
 
   const token = localStorage.getItem('ryyco_admin_fcm_token');
+  const isGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token && !/^(web_push_|seller_web_push_|seller_native_push_|driver_web_push_|driver_native_push_)/.test(token)),
+    hasToken: Boolean(token || isGranted),
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
 }
@@ -752,10 +753,11 @@ export function getSellerFCMStatus(storeOwnerId?: string): {
   }
 
   const token = localStorage.getItem('ryyco_seller_fcm_token');
+  const isGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token && !/^(web_push_|seller_web_push_|seller_native_push_|driver_web_push_|driver_native_push_)/.test(token)),
+    hasToken: Boolean(token || isGranted),
     token,
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
@@ -819,6 +821,7 @@ export async function requestDriverFCMPermission(driver: {
     // Save locally
     localStorage.setItem('ryyco_driver_fcm_token', fcmToken);
     localStorage.setItem('ryyco_driver_fcm_driver_id', driver.id);
+    localStorage.setItem('ryyco_driver_notifications_enabled', 'true');
 
     // Save in Firestore collection `driver_fcm_tokens`
     try {
@@ -1009,10 +1012,17 @@ export function getDriverFCMStatus(driverId?: string): {
   }
 
   const token = localStorage.getItem('ryyco_driver_fcm_token');
+  const isGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  const hasToken = Boolean(
+    isGranted ||
+    token ||
+    (typeof localStorage !== 'undefined' && localStorage.getItem('ryyco_driver_notifications_enabled') === 'true')
+  );
+
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token && !/^(web_push_|seller_web_push_|seller_native_push_|driver_web_push_|driver_native_push_)/.test(token)),
+    hasToken,
     token,
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
