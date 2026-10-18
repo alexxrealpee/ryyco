@@ -38,6 +38,15 @@ dotenv.config();
 if (!process.env.OPENAI_API_KEY) {
   dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 }
+
+// Clean up any known invalid Google Maps keys from process.env immediately
+if (process.env.VITE_GOOGLE_MAPS_API_KEY === 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA' || process.env.VITE_GOOGLE_MAPS_API_KEY?.includes('tu-clave') || (process.env.VITE_GOOGLE_MAPS_API_KEY?.length || 0) < 20) {
+  delete process.env.VITE_GOOGLE_MAPS_API_KEY;
+}
+if (process.env.GOOGLE_MAPS_API_KEY === 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA' || process.env.GOOGLE_MAPS_API_KEY?.includes('tu-clave') || (process.env.GOOGLE_MAPS_API_KEY?.length || 0) < 20) {
+  delete process.env.GOOGLE_MAPS_API_KEY;
+}
+
 // Also support keys.php (Hostinger configuration file) if OPENAI_API_KEY is not set
 if (!process.env.OPENAI_API_KEY) {
   const candidateKeys = [
@@ -55,9 +64,12 @@ if (!process.env.OPENAI_API_KEY) {
           process.env.OPENAI_API_KEY = matchOpenAI[1].trim();
         }
         const matchMaps = fileContent.match(/define\s*\(\s*['"]RYYCO_HOSTINGER_GOOGLE_MAPS_KEY['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
-        if (matchMaps && matchMaps[1] && !matchMaps[1].includes('tu-clave')) {
+        if (matchMaps && matchMaps[1] && !matchMaps[1].includes('tu-clave') && matchMaps[1].trim() !== 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA') {
           process.env.GOOGLE_MAPS_API_KEY = matchMaps[1].trim();
           process.env.VITE_GOOGLE_MAPS_API_KEY = matchMaps[1].trim();
+        } else if (matchMaps && matchMaps[1].trim() === 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA') {
+          delete process.env.GOOGLE_MAPS_API_KEY;
+          delete process.env.VITE_GOOGLE_MAPS_API_KEY;
         }
         const matchFcm = fileContent.match(/define\s*\(\s*['"]RYYCO_HOSTINGER_FCM_SERVER_KEY['"]\s*,\s*['"]([^'"]+)['"]\s*\)/);
         if (matchFcm && matchFcm[1] && !matchFcm[1].includes('tu-clave')) {
@@ -1174,7 +1186,10 @@ Formatos válidos para:
 
   // Google Maps Platform Configuration endpoint (provides client config and API key for interactive maps)
   app.get(['/api/maps/config', '/api/maps-config.php'], (req, res) => {
-    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+    let mapsKey = (process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
+    if (mapsKey === 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA' || mapsKey.includes('tu-clave') || mapsKey.length < 20) {
+      mapsKey = '';
+    }
     res.json({
       status: 'ok',
       configured: Boolean(mapsKey),
@@ -1185,7 +1200,10 @@ Formatos válidos para:
   });
 
   app.get('/api/maps/key', (req, res) => {
-    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '';
+    let mapsKey = (process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || '').trim();
+    if (mapsKey === 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA' || mapsKey.includes('tu-clave') || mapsKey.length < 20) {
+      mapsKey = '';
+    }
     res.json({
       status: 'ok',
       configured: Boolean(mapsKey),

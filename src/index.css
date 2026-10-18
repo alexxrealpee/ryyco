@@ -136,3 +136,8 @@ body {
   animation: pulse-spooky 2.5s ease-in-out infinite;
 }
 
+/* Watermark-free crisp dark mode for Leaflet OpenStreetMap */
+.leaflet-dark-tiles .leaflet-tile-pane {
+  filter: brightness(0.65) invert(1) contrast(3.2) hue-rotate(200deg) saturate(0.25);
+}
+

@@ -1971,10 +1971,10 @@ export default function CustomerPortalModal({
                                 <button
                                   type="button"
                                   onClick={() => setTrackingOrder(order)}
-                                  className="flex-1 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:from-[#d62839] hover:to-[#b71c1c] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-[#E63946]/20 active:scale-[0.98] cursor-pointer"
+                                  className="flex-1 py-3 bg-gradient-to-r from-[#E63946] via-[#ea384c] to-amber-500 hover:brightness-110 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/30 active:scale-[0.98] cursor-pointer"
                                 >
-                                  <Navigation className="w-3.5 h-3.5 text-white animate-pulse" />
-                                  <span>Seguir mi pedido</span>
+                                  <Navigation className="w-4 h-4 text-white animate-pulse" />
+                                  <span>Rastrear mi domicilio en vivo (Google Maps)</span>
                                 </button>
                               )}
 

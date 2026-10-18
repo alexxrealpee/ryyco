@@ -18,6 +18,7 @@ import {
   Map as MapIcon
 } from 'lucide-react';
 import { isPickupOrInvalidAddress } from './DeliveryAddressCard';
+import { isValidGoogleMapsKey, getGoogleMapsApiKey, clearGoogleMapsApiKey, saveGoogleMapsApiKey } from '../lib/mapsConfig';
 
 interface MapLocationPickerModalProps {
   isOpen: boolean;
@@ -694,21 +695,38 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
   const isUpdatingLocationRef = useRef<boolean>(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<AddressSuggestion | null>(null);
 
-  // Google Maps API key state (reads from env, localStorage or fetches from /api/maps/config on Hostinger)
+  // Google Maps API key state (reads safely from mapsConfig, env, or /api/maps/config)
+  const isKeyValid = (k?: string | null): boolean => {
+    return isValidGoogleMapsKey(k);
+  };
+
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(() => {
-    const envKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string) || '';
-    if (envKey) return envKey;
-    try {
-      const saved = localStorage.getItem('ryyco_google_maps_key');
-      if (saved) return saved;
-    } catch (_) {}
-    return '';
+    return getGoogleMapsApiKey();
   });
 
-  const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>('google');
+  const [mapProvider, setMapProvider] = useState<'google' | 'leaflet'>(() => {
+    const key = getGoogleMapsApiKey();
+    return isValidGoogleMapsKey(key) ? 'google' : 'leaflet';
+  });
   const [showKeyConfigModal, setShowKeyConfigModal] = useState<boolean>(false);
   const [manualKeyInput, setManualKeyInput] = useState<string>('');
   const [keySavedNotice, setKeySavedNotice] = useState<string>('');
+
+  // Fallback listener if Google Maps authentication fails (e.g. InvalidKeyMapError)
+  useEffect(() => {
+    const handleAuthFailure = () => {
+      console.warn('[Google Maps] gm_authFailure fired in MapLocationPickerModal. Switching to Leaflet.');
+      clearGoogleMapsApiKey();
+      setGoogleMapsApiKey('');
+      setMapProvider('leaflet');
+    };
+
+    (window as any).gm_authFailure = handleAuthFailure;
+    window.addEventListener('gm_authFailure', handleAuthFailure);
+    return () => {
+      window.removeEventListener('gm_authFailure', handleAuthFailure);
+    };
+  }, []);
 
   // Map instance reference for mobile zoom in / zoom out controls
   const googleMapRef = useRef<google.maps.Map | null>(null);
@@ -763,9 +781,9 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           }
           if (res.ok) {
             const data = await res.json();
-            if (data && data.apiKey) {
+            if (data && data.apiKey && isKeyValid(data.apiKey)) {
               setGoogleMapsApiKey(data.apiKey);
-              try { localStorage.setItem('ryyco_google_maps_key', data.apiKey); } catch (_) {}
+              saveGoogleMapsApiKey(data.apiKey);
               setMapProvider('google');
               return;
             }
@@ -1530,11 +1548,10 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
           zoomControl: false
         });
 
-        // inDrive-style dark map tiles
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // inDrive-style watermark-free dark map tiles
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          attribution: '© OpenStreetMap, © CARTO',
-          subdomains: 'abcd'
+          attribution: '© OpenStreetMap'
         }).addTo(map);
 
         const zoom = 16;
@@ -1728,10 +1745,13 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
     e.preventDefault();
     const cleanKey = manualKeyInput.trim();
     if (!cleanKey) return;
+    if (!isValidGoogleMapsKey(cleanKey)) {
+      setKeySavedNotice('⚠️ La clave ingresada no es válida. OpenStreetMap continuará activo.');
+      setTimeout(() => setKeySavedNotice(''), 3000);
+      return;
+    }
+    saveGoogleMapsApiKey(cleanKey);
     setGoogleMapsApiKey(cleanKey);
-    try {
-      localStorage.setItem('ryyco_google_maps_key', cleanKey);
-    } catch (_) {}
     setMapProvider('google');
     setKeySavedNotice('¡Clave guardada con éxito! Activando Google Maps...');
     setTimeout(() => {
@@ -2125,8 +2145,17 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
 
             {/* Interactive Map filling 100% of the modal */}
             <div className="relative flex-1 w-full h-full bg-[#18181b] overflow-hidden touch-manipulation">
-              {mapProvider === 'google' && googleMapsApiKey ? (
-                <APIProvider apiKey={googleMapsApiKey} libraries={['marker']}>
+              {mapProvider === 'google' && isKeyValid(googleMapsApiKey) ? (
+                <APIProvider
+                  apiKey={googleMapsApiKey}
+                  libraries={['marker']}
+                  onError={(err) => {
+                    console.warn('[MapLocationPickerModal] Google Maps API error, switching to Leaflet:', err);
+                    clearGoogleMapsApiKey();
+                    setGoogleMapsApiKey('');
+                    setMapProvider('leaflet');
+                  }}
+                >
                   <Map
                     defaultCenter={isWithinIpiales(lat, lng) ? { lat, lng } : { lat: DEFAULT_LAT, lng: DEFAULT_LNG }}
                     defaultZoom={16}
@@ -2159,7 +2188,7 @@ export const MapLocationPickerModal: React.FC<MapLocationPickerModalProps> = ({
                   </Map>
                 </APIProvider>
               ) : (
-                <div ref={leafletContainerRef} className="w-full h-full z-10" />
+                <div ref={leafletContainerRef} className="w-full h-full z-10 leaflet-dark-tiles" />
               )}
 
               {/* FIXED CENTER-UP PIN & CALLOUT BUBBLE */}
