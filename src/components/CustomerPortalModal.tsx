@@ -13,7 +13,8 @@ import {
   MessageCircle, ShieldCheck, Ticket, LogOut, ArrowRight,
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
   Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale,
-  Navigation, Send, ArrowUpRight, ArrowDownLeft, History, Share2, Wallet, CheckCheck, Coins, Key
+  Navigation, Send, ArrowUpRight, ArrowDownLeft, History, Share2, Wallet, CheckCheck, Coins, Key,
+  Bike, Package
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -1653,6 +1654,35 @@ export default function CustomerPortalModal({
                         const isCancelled = order.status === 'cancelled';
                         const isDelivered = order.status === 'delivered' || order.deliveryStep === 'delivered' || step >= 5;
 
+                        // Detailed cost breakdown calculations
+                        const itemsSubtotal = (order.items || []).reduce(
+                          (sum, it) => sum + (Number(it.price) || 0) * (Number(it.quantity) || 1),
+                          0
+                        );
+                        const orderPackagingCost = typeof order.packagingCost === 'number' && order.packagingCost > 0
+                          ? order.packagingCost
+                          : (order.items || []).reduce(
+                              (sum, it) => sum + ((Number((it as any).packagingCost) || 0) * (Number(it.quantity) || 1)),
+                              0
+                            );
+                        const isPickup = order.orderType === 'pickup';
+                        const isTable = order.orderType === 'table' || order.isTableOrder;
+                        const explicitDeliveryFee = 
+                          typeof order.deliveryFee === 'number'
+                            ? order.deliveryFee
+                            : typeof order.deliveryCost === 'number'
+                            ? order.deliveryCost
+                            : null;
+                        const orderDeliveryCost = isPickup || isTable
+                          ? 0
+                          : explicitDeliveryFee !== null
+                          ? explicitDeliveryFee
+                          : Math.max(0, (order.totalAmount || 0) - (itemsSubtotal + orderPackagingCost));
+                        const discountAmount = Math.max(
+                          0,
+                          (itemsSubtotal + orderPackagingCost + orderDeliveryCost) - (order.totalAmount || 0)
+                        );
+
                         return (
                           <div
                             key={order.id}
@@ -1949,17 +1979,71 @@ export default function CustomerPortalModal({
                               </div>
                             )}
 
-                            {/* Items list */}
-                            <div className="space-y-1 bg-black/40 p-3 rounded-xl border border-white/5 text-xs">
-                              {order.items.map((it, idx) => (
-                                <div key={idx} className="flex justify-between items-center text-gray-300">
-                                  <span>{it.quantity}x {it.name} {it.selectedVariant ? `(${it.selectedVariant})` : ''}</span>
-                                  <span className="font-mono text-gray-400">{storeCurrency}{(it.price * it.quantity).toLocaleString('es-CO')}</span>
+                            {/* Items list & Detalle Financiero del Pedido */}
+                            <div className="space-y-1.5 bg-black/40 p-3 sm:p-3.5 rounded-xl border border-white/5 text-xs">
+                              <div className="space-y-1">
+                                {order.items.map((it, idx) => (
+                                  <div key={idx} className="flex justify-between items-center text-gray-300">
+                                    <span className="truncate pr-2">{it.quantity}x {it.name} {it.selectedVariant ? `(${it.selectedVariant})` : ''}</span>
+                                    <span className="font-mono text-gray-400 shrink-0">{storeCurrency}{(it.price * it.quantity).toLocaleString('es-CO')}</span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Desglose de Costos: Subtotal, Costo de Domicilio y Costo de Recipiente si lo tiene */}
+                              <div className="pt-2 mt-2 border-t border-gray-800/80 space-y-1 text-[11px]">
+                                {(orderDeliveryCost > 0 || orderPackagingCost > 0 || isPickup || isTable) && (
+                                  <div className="flex justify-between items-center text-gray-400">
+                                    <span>Subtotal productos:</span>
+                                    <span className="font-mono text-gray-300">
+                                      {storeCurrency}{itemsSubtotal.toLocaleString('es-CO')}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Costo de Domicilio */}
+                                <div className="flex justify-between items-center text-gray-400">
+                                  <span className="flex items-center gap-1.5">
+                                    <Bike className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span>
+                                      {isPickup ? 'Para llevar (Recoger):' : isTable ? 'Servicio en mesa:' : 'Costo de domicilio:'}
+                                    </span>
+                                  </span>
+                                  <span className={`font-mono font-bold ${orderDeliveryCost > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                    {isPickup || isTable || orderDeliveryCost === 0
+                                      ? 'GRATIS ($0)'
+                                      : `${storeCurrency}${orderDeliveryCost.toLocaleString('es-CO')}`}
+                                  </span>
                                 </div>
-                              ))}
+
+                                {/* Costo de Recipiente si este lo tiene */}
+                                {orderPackagingCost > 0 && (
+                                  <div className="flex justify-between items-center text-amber-300/90">
+                                    <span className="flex items-center gap-1.5">
+                                      <Package className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                      <span>Costo de recipientes:</span>
+                                    </span>
+                                    <span className="font-mono font-bold text-amber-300">
+                                      {storeCurrency}{orderPackagingCost.toLocaleString('es-CO')}
+                                    </span>
+                                  </div>
+                                )}
+
+                                {/* Descuento de Premio o Promoción si aplica */}
+                                {discountAmount > 0 && (
+                                  <div className="flex justify-between items-center text-emerald-400 font-medium">
+                                    <span>Descuento aplicado:</span>
+                                    <span className="font-mono font-bold">
+                                      -{storeCurrency}{discountAmount.toLocaleString('es-CO')}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Total a Pagar */}
                               <div className="pt-2 mt-1 border-t border-gray-800 flex justify-between items-center font-black text-white text-xs">
                                 <span>Total a Pagar:</span>
-                                <span className="font-mono text-emerald-400 text-sm">
+                                <span className="font-mono text-emerald-400 text-sm font-black">
                                   {storeCurrency}{(order.totalAmount || 0).toLocaleString('es-CO')}
                                 </span>
                               </div>
