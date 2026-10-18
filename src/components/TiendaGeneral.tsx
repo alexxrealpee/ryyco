@@ -190,21 +190,33 @@ interface TiendaGeneralProps {
   onNavigateToStore: (username: string) => void;
 }
 
-// Fast initial data for instant first paint
+// Fast initial data for instant first paint strictly limited to open restaurants
 const getInitialGeneralData = () => {
   try {
     if (typeof window !== 'undefined') {
       const init = (window as any).__INITIAL_CATALOG_DATA__;
       if (init && init.catalog && Array.isArray(init.catalog.products)) {
         const pMap: Record<string, UserProfile> = {};
+        const openStores: UserProfile[] = [];
         (init.catalog.stores || []).forEach((s: any) => {
-          if (s && s.uid) {
+          if (s && s.uid && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
             pMap[s.uid] = s;
             if (s.username) pMap[s.username.toLowerCase()] = s;
+            openStores.push(s);
           }
         });
+
+        const openStoreUids = new Set(openStores.map(st => st.uid));
+        const openStoreUsernames = new Set(openStores.map(st => st.username?.toLowerCase()).filter(Boolean));
+
+        const openProducts = (init.catalog.products as ProductItem[]).filter(p => {
+          if (!p || p.active === false) return false;
+          return (p.userId && openStoreUids.has(p.userId)) || 
+                 (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase()));
+        });
+
         return {
-          products: init.catalog.products.slice(0, 6) as ProductItem[],
+          products: openProducts.slice(0, 6),
           profiles: pMap,
           hasCache: true
         };
@@ -753,9 +765,42 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return pClean.length > 0 && pClean === fClean;
   };
 
+  // Get list of unique store profiles with active products (memoized)
+  // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
+  // When a store closes in Firestore, it is removed immediately; when it opens, it appears immediately.
+  const uniqueStores = useMemo(() => {
+    const storeMap = new Map<string, UserProfile>();
+
+    (Object.values(profiles) as UserProfile[]).forEach(profile => {
+      if (!profile) return;
+      const uid = profile.uid;
+      const uname = profile.username?.toLowerCase();
+      const key = uid || uname;
+      if (!key) return;
+
+      const isSuspended = profile.suspended === true || profile.subscriptionStatus === 'suspended' || profile.subscriptionStatus === 'expired';
+      const isClosed = isSuspended || profile.isClosed === true || checkIsStoreClosed(profile);
+
+      if (!isClosed && (profile.displayName || profile.username)) {
+        storeMap.set(key, { ...profile, isClosed: false });
+      }
+    });
+
+    return Array.from(storeMap.values()).sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+  }, [profiles]);
+
   // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
   // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
+  // Validación estricta: Únicamente productos pertenecientes a restaurantes que se encuentren ABIERTOS.
   const availableBaseProducts = useMemo(() => {
+    // Si los perfiles ya se cargaron y ningún restaurante está abierto, no mostrar ningún producto
+    if (Object.keys(profiles).length > 0 && uniqueStores.length === 0) {
+      return [];
+    }
+
+    const openStoreUids = new Set(uniqueStores.map(s => s.uid));
+    const openStoreUsernames = new Set(uniqueStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+
     return products.filter(product => {
       // Si estamos en la página de inicio (sin tienda específica seleccionada), ocultar bebidas
       if (selectedStore === 'all' && isDrinkProduct(product)) {
@@ -768,12 +813,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       if (profile.subscriptionTrialExpires && new Date(profile.subscriptionTrialExpires).getTime() < Date.now() && profile.subscriptionStatus !== 'active') {
         return false;
       }
+
+      // El producto debe pertenecer a un restaurante estrictamente presente en la lista de abiertos
+      if (uniqueStores.length > 0) {
+        const isFromOpenStore = 
+          (product.userId && openStoreUids.has(product.userId)) ||
+          (profile.uid && openStoreUids.has(profile.uid)) ||
+          (product.storeUsername && openStoreUsernames.has(product.storeUsername.toLowerCase())) ||
+          (profile.username && openStoreUsernames.has(profile.username.toLowerCase()));
+        if (!isFromOpenStore) return false;
+      }
+
       if (selectedStore !== 'all' && product.userId !== selectedStore && profile.uid !== selectedStore) {
         return false;
       }
       return true;
     });
-  }, [products, profiles, selectedStore]);
+  }, [products, profiles, selectedStore, uniqueStores]);
 
   // Get list of unique categories ONLY from products that actually exist and are available (food categories first)
   // If a category has no available products, it will NOT be displayed!
@@ -813,30 +869,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
     }
   }, [availableBaseProducts]);
-
-  // Get list of unique store profiles with active products (memoized)
-  // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
-  // When a store closes in Firestore, it is removed immediately; when it opens, it appears immediately.
-  const uniqueStores = useMemo(() => {
-    const storeMap = new Map<string, UserProfile>();
-
-    (Object.values(profiles) as UserProfile[]).forEach(profile => {
-      if (!profile) return;
-      const uid = profile.uid;
-      const uname = profile.username?.toLowerCase();
-      const key = uid || uname;
-      if (!key) return;
-
-      const isSuspended = profile.suspended === true || profile.subscriptionStatus === 'suspended' || profile.subscriptionStatus === 'expired';
-      const isClosed = isSuspended || profile.isClosed === true || checkIsStoreClosed(profile);
-
-      if (!isClosed && (profile.displayName || profile.username)) {
-        storeMap.set(key, { ...profile, isClosed: false });
-      }
-    });
-
-    return Array.from(storeMap.values()).sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-  }, [profiles]);
 
   // If currently filtered store closes, automatically reset filter to all open stores
   useEffect(() => {
@@ -2136,11 +2168,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <StoresSkeleton />
           ) : uniqueStores.length > 0 ? (
             <div className="space-y-2 border-t border-slate-800 pt-4 transition-opacity duration-200">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between px-1 flex-wrap gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <Store className="w-4 h-4 text-[#D62839]" />
                   <span className="text-xs font-black uppercase text-red-200 tracking-wider flex items-center gap-1.5">
-                    🎃 Restaurantes Abiertos Ahora ({uniqueStores.length}) 👻
+                    Restaurantes Abiertos Ahora ({uniqueStores.length})
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>En servicio</span>
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2261,7 +2297,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     setSelectedStore('all');
                   }}
                   className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none"
-                  title="Ver todas las tiendas y restaurantes"
+                  title="Ver todas las tiendas y restaurantes abiertos"
                 >
                   <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full flex items-center justify-center transition-all duration-200 ${
                     selectedStore === 'all'
@@ -2273,7 +2309,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[70px] sm:max-w-[80px] text-center select-none ${
                     selectedStore === 'all' ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
                   }`}>
-                    Todas
+                    Todos ({uniqueStores.length})
                   </span>
                 </button>
 
@@ -2291,7 +2327,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     window.dispatchEvent(new Event('popstate'));
                   }}
                   className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none relative"
-                  title="Ver Reels y videos recomendados en Halloween"
+                  title="Ver Reels y videos recomendados"
                 >
                   <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-[2.5px] bg-[#D62839] transition-all duration-200 group-hover:scale-105 shadow-md shadow-[#D62839]/30 ring-2 ring-transparent group-hover:ring-[#D62839]/50 flex items-center justify-center">
                     <div className="w-full h-full rounded-full bg-slate-900 group-hover:bg-slate-800 flex items-center justify-center transition-colors relative overflow-hidden">
@@ -2321,9 +2357,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         handleSelectStore(store);
                       }}
                       className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group relative select-none"
-                      title={`Filtrar por ${store.displayName || `@${store.username}`}`}
+                      title={`Filtrar por ${store.displayName || `@${store.username}`} (Abierto ahora)`}
                     >
-                      <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 transition-all duration-200 ${
+                      <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 transition-all duration-200 relative ${
                         isSelected
                           ? 'bg-[#D62839] ring-4 ring-[#D62839]/50 shadow-lg shadow-[#D62839]/30 scale-105'
                           : 'bg-slate-900 hover:bg-[#D62839]/20 ring-2 ring-slate-700/80 hover:ring-[#D62839] group-hover:scale-105'
@@ -2345,6 +2381,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             {(store.displayName || store.username || 'T').substring(0, 2)}
                           </div>
                         )}
+
+                        {/* Pulsating green dot confirming live open status */}
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-slate-950 p-0.5 rounded-full z-10">
+                          <span className="flex items-center justify-center w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-slate-900" title="Restaurante abierto ahora">
+                            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
+                          </span>
+                        </div>
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
                         isSelected ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
@@ -2363,7 +2406,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 return (
                   <div className="mt-2.5 p-3 rounded-2xl bg-slate-900 border border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-700 bg-slate-950">
+                      <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 border border-slate-700 bg-slate-950 relative">
                         {currentStore.photoURL ? (
                           <img src={currentStore.photoURL} alt={currentStore.displayName || currentStore.username} loading="eager" decoding="async" className="w-full h-full object-cover" />
                         ) : (
@@ -2371,10 +2414,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             {(currentStore.displayName || currentStore.username || 'T').substring(0, 2)}
                           </div>
                         )}
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-900 animate-pulse" title="Abierto" />
                       </div>
                       <div>
                         <div className="text-xs font-black text-white flex items-center gap-2">
                           <span>{currentStore.displayName || `@${currentStore.username}`}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            Abierto Ahora
+                          </span>
                         </div>
                         <button
                           onClick={() => onNavigateToStore(currentStore.username)}
@@ -2400,6 +2447,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   </div>
                 );
               })()}
+            </div>
+          ) : !isRestaurantsLoading ? (
+            <div className="border-t border-slate-800 pt-4 transition-opacity duration-200">
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 shadow-lg">
+                <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 shrink-0 mt-0.5">
+                  <Store className="w-5 h-5" />
+                </div>
+                <div className="space-y-0.5">
+                  <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+                    <span>No hay restaurantes abiertos en este momento</span>
+                    <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  </h4>
+                  <p className="text-[11px] sm:text-xs text-[#A9B2C3] leading-relaxed">
+                    Para asegurar pedidos frescos y entregas rápidas, Ryyco únicamente muestra los restaurantes que se encuentran abiertos y listos para atenderte en Ipiales. Te esperamos en sus horarios habituales de atención.
+                  </p>
+                </div>
+              </div>
             </div>
           ) : null}
 
@@ -2494,12 +2558,24 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 Ver otros restaurantes
               </button>
             </div>
-          ) : null
+          ) : (
+            <div className="bg-[#111827] border border-[#232B3A] rounded-3xl py-14 px-4 text-center max-w-md mx-auto space-y-4">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-400">
+                <Store className="w-8 h-8 opacity-80" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-extrabold text-white text-base">Restaurantes fuera de horario</h3>
+                <p className="text-xs text-[#A9B2C3] max-w-xs mx-auto">
+                  Para asegurar la mejor calidad y entregas inmediatas, únicamente mostramos restaurantes abiertos. Vuelve a consultar en los horarios de atención de Ipiales.
+                </p>
+              </div>
+            </div>
+          )
         ) : (
           <>
             <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
               {displayedProducts.map((product, productIndex) => {
-              const profile = profiles[product.userId];
+              const profile = findStoreForProduct(product, profiles) || profiles[product.userId];
               const currency = profile?.currency || '$';
               const isOnSale = product.compareAtPrice && product.compareAtPrice > product.price;
               const discountPercentage = isOnSale 
@@ -2516,7 +2592,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   onClick={() => setSelectedProduct(product)}
                   className="bg-[#111827] border border-slate-800 hover:border-[#D62839]/70 hover:shadow-xl hover:shadow-[#D62839]/15 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
                 >
-                  {/* Store source badge on top left */}
+                  {/* Store source badge on top left with open indicator */}
                   <div className="absolute top-3 left-3 z-10 max-w-[85%]">
                     <button
                       onClick={(e) => {
@@ -2525,8 +2601,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           onNavigateToStore(profile.username);
                         }
                       }}
-                      className="flex items-center gap-1 px-2 py-0.5 bg-slate-950/90 hover:bg-slate-900 border border-slate-800 hover:border-[#D62839]/60 rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
+                      className="flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-950/90 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/60 rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
                     >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Restaurante abierto" />
                       <Store className="w-2.5 h-2.5 text-[#D62839] shrink-0" />
                       <span className="truncate">{profile?.displayName || 'Tienda'}</span>
                     </button>

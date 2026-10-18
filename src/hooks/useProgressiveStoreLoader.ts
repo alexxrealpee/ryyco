@@ -60,7 +60,14 @@ function getCachedStoreData(): {
             openStores.push(s);
           }
         });
-        const initialProducts = (cat.products || []).slice(0, 6);
+        const openStoreUids = new Set(openStores.map(st => st.uid));
+        const openStoreUsernames = new Set(openStores.map(st => st.username?.toLowerCase()).filter(Boolean));
+        const initialProducts = (cat.products || []).filter((p: any) => {
+          if (!p || p.active === false) return false;
+          return (p.userId && openStoreUids.has(p.userId)) || 
+                 (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase()));
+        }).slice(0, 6);
+
         if (openStores.length > 0 || initialProducts.length > 0) {
           return {
             openRestaurants: openStores,

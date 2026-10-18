@@ -316,17 +316,23 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
           </div>
         </div>
 
+        {/* Live Open Restaurants Status Pill */}
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold mt-2 mb-1">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>Restaurantes Abiertos Ahora en Ipiales</span>
+        </div>
+
         {/* Title */}
         <h2 
           id="first-visit-address-title"
-          className="text-[22px] sm:text-[25px] font-black text-white tracking-tight leading-tight mt-3 mb-2"
+          className="text-[22px] sm:text-[25px] font-black text-white tracking-tight leading-tight mt-1 mb-2"
         >
           Ingresa tu dirección en Ipiales:
         </h2>
 
         {/* Subtitle */}
-        <p className="text-[#A9B2C3] text-sm sm:text-base font-normal leading-relaxed mb-5 max-w-xs sm:max-w-sm mx-auto">
-          Mejor servicio, entregas más rápidas y los precios más convenientes!
+        <p className="text-[#A9B2C3] text-xs sm:text-sm font-normal leading-relaxed mb-5 max-w-xs sm:max-w-sm mx-auto">
+          Te indicaremos únicamente los restaurantes que están abiertos ahora con cobertura directa y despacho inmediato a tu puerta.
         </p>
 
         {/* Input Box with Clickable MapPin Icon */}
@@ -431,7 +437,7 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
           onClick={handleSkip}
           className="text-xs text-[#A9B2C3] hover:text-white font-medium transition cursor-pointer py-1.5 hover:underline"
         >
-          Explorar restaurantes sin dirección por ahora
+          Explorar restaurantes abiertos sin ingresar dirección por ahora
         </button>
       </div>
     </div>
