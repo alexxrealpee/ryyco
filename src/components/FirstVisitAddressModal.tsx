@@ -161,13 +161,13 @@ export const FirstVisitAddressModal: React.FC<FirstVisitAddressModalProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-labelledby="first-visit-address-title"
     >
       <div 
-        className="bg-[#111827] text-white rounded-[32px] sm:rounded-[36px] shadow-2xl p-6 sm:p-8 max-w-[440px] w-full relative text-center border border-[#232B3A] overflow-hidden animate-in zoom-in-95 duration-200 shadow-black/60"
+        className="bg-[#111827] text-white rounded-[28px] sm:rounded-[36px] shadow-2xl p-5 sm:p-8 max-w-[440px] w-full relative text-center border border-[#232B3A] overflow-y-auto max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] animate-in zoom-in-95 duration-200 shadow-black/60 my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button with red #E63946 background */}

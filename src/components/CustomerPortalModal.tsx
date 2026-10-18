@@ -1680,16 +1680,16 @@ export default function CustomerPortalModal({
                             {!isCancelled && (() => {
                               const stepperInfo = getOrderStepperInfo(order, step);
                               return (
-                                <div className="space-y-3 py-1 bg-[#05070D] p-3 sm:p-4 rounded-2xl border border-[#1E2638] shadow-inner">
-                                  {/* Dynamic Status Callout Banner */}
-                                  <div className={`p-2.5 sm:p-3 rounded-xl border flex items-center justify-between gap-2.5 transition ${stepperInfo.bannerBg}`}>
+                                <div className="space-y-3 py-1">
+                                  {/* Dynamic Status Callout Info (Sin contenedor encapsulado) */}
+                                  <div className="flex items-center justify-between gap-2.5 py-1">
                                     <div className="flex items-center gap-2.5 min-w-0">
-                                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${stepperInfo.iconBadge}`}>
+                                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${stepperInfo.iconBadge}`}>
                                         {stepperInfo.icon}
                                       </div>
                                       <div className="min-w-0">
                                         <div className="flex items-center gap-1.5">
-                                          <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-gray-300 truncate">
+                                          <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-gray-300">
                                             {stepperInfo.stageTitle}
                                           </span>
                                           {step < 5 && (
@@ -1697,7 +1697,7 @@ export default function CustomerPortalModal({
                                           )}
                                         </div>
                                         <div className="flex items-center gap-2 flex-wrap">
-                                          <p className="text-[11.5px] sm:text-xs font-bold text-white truncate mt-0.5">
+                                          <p className="text-xs sm:text-sm font-black text-white mt-0.5">
                                             {stepperInfo.headline}
                                           </p>
                                           {stepperInfo.subMessage && (
@@ -1710,7 +1710,7 @@ export default function CustomerPortalModal({
                                       </div>
                                     </div>
                                     <div className="text-right shrink-0">
-                                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${stepperInfo.tagBadge}`}>
+                                      <span className={`text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full border ${stepperInfo.tagBadge}`}>
                                         {stepperInfo.percentageLabel}
                                       </span>
                                     </div>
@@ -1733,12 +1733,12 @@ export default function CustomerPortalModal({
                                           step > 1 
                                             ? 'bg-amber-400 text-black shadow-sm' 
                                             : step === 1 
-                                              ? 'bg-amber-400 text-black ring-4 ring-amber-400/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              ? 'bg-amber-400 text-black ring-4 ring-amber-400/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black' 
                                               : 'bg-gray-800 text-gray-500'
                                         }`}>
                                           {step > 1 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '1'}
                                         </div>
-                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
                                           step >= 1 ? 'text-amber-400' : 'text-gray-500'
                                         }`}>
                                           Recibido
@@ -1751,12 +1751,12 @@ export default function CustomerPortalModal({
                                           step > 2 
                                             ? 'bg-blue-500 text-white shadow-sm' 
                                             : step === 2 
-                                              ? 'bg-blue-500 text-white ring-4 ring-blue-500/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              ? 'bg-blue-500 text-white ring-4 ring-blue-500/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black' 
                                               : 'bg-gray-800 text-gray-500'
                                         }`}>
                                           {step > 2 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '2'}
                                         </div>
-                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
                                           step >= 2 ? 'text-blue-400' : 'text-gray-500'
                                         }`}>
                                           Confirmado
@@ -1769,12 +1769,12 @@ export default function CustomerPortalModal({
                                           step > 3 
                                             ? 'bg-orange-500 text-white shadow-sm' 
                                             : step === 3 
-                                              ? 'bg-orange-500 text-white ring-4 ring-orange-500/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              ? 'bg-orange-500 text-white ring-4 ring-orange-500/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black' 
                                               : 'bg-gray-800 text-gray-500'
                                         }`}>
                                           {step > 3 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '3'}
                                         </div>
-                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
                                           step >= 3 ? 'text-orange-400' : 'text-gray-500'
                                         }`}>
                                           {order.status === 'ready' ? 'Listo' : 'En restaurante'}
@@ -1787,12 +1787,12 @@ export default function CustomerPortalModal({
                                           step > 4 
                                             ? 'bg-[#E63946] text-white shadow-sm' 
                                             : step === 4 
-                                              ? 'bg-[#E63946] text-white ring-4 ring-[#E63946]/25 ring-offset-2 ring-offset-[#090D16] animate-pulse font-black' 
+                                              ? 'bg-[#E63946] text-white ring-4 ring-[#E63946]/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black' 
                                               : 'bg-gray-800 text-gray-500'
                                         }`}>
                                           {step > 4 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '4'}
                                         </div>
-                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
                                           step >= 4 ? 'text-[#E63946]' : 'text-gray-500'
                                         }`}>
                                           En Camino
@@ -1803,12 +1803,12 @@ export default function CustomerPortalModal({
                                       <div className="flex flex-col items-center text-center">
                                         <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
                                           step >= 5 
-                                            ? 'bg-emerald-400 text-black ring-4 ring-emerald-400/25 ring-offset-2 ring-offset-[#090D16] shadow-sm font-black' 
+                                            ? 'bg-emerald-400 text-black ring-4 ring-emerald-400/25 ring-offset-2 ring-offset-[#111827] shadow-sm font-black' 
                                             : 'bg-gray-800 text-gray-500'
                                         }`}>
                                           {step >= 5 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '5'}
                                         </div>
-                                        <span className={`text-[8px] sm:text-[9.5px] font-bold mt-1 leading-tight truncate max-w-full px-0.5 ${
+                                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
                                           step >= 5 ? 'text-emerald-400' : 'text-gray-500'
                                         }`}>
                                           Entregado
@@ -1818,7 +1818,7 @@ export default function CustomerPortalModal({
                                   </div>
 
                                   {/* Helpful stage description note */}
-                                  <p className="text-[10.5px] sm:text-[11px] text-gray-400 px-1 pt-0.5">
+                                  <p className="text-[11px] sm:text-xs text-gray-300 px-0.5 pt-0.5 leading-relaxed">
                                     {stepperInfo.description}
                                   </p>
                                 </div>

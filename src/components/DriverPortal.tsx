@@ -1320,7 +1320,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       </header>
 
       {/* Main Content Area */}
-      <main className={`max-w-6xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-6 ${activeDelivery ? 'pb-48 sm:pb-40' : 'pb-28 sm:pb-12'}`}>
+      <main className={`max-w-6xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-6 ${activeDelivery ? 'pb-56 sm:pb-48' : 'pb-28 sm:pb-12'}`}>
 
         {/* ------------------------------------------------------------------
             STATUS 1: PENDING APPROVAL
@@ -2069,14 +2069,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           </div>
 
                           {/* Inline PIN verification card */}
-                          <div className="p-3.5 bg-[#090D16] border border-[#232B3A] rounded-xl space-y-2.5">
+                          <div className="p-3 sm:p-3.5 bg-[#090D16] border border-[#232B3A] rounded-xl space-y-2.5">
                             <div className="flex items-center justify-between">
                               <label className="text-[11px] font-black uppercase text-gray-300 tracking-wider">
                                 Código PIN del Cliente:
                               </label>
                               <span className="text-[10px] text-amber-400 font-semibold">4 Dígitos</span>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2">
                               <input
                                 type="text"
                                 inputMode="numeric"
@@ -2090,23 +2090,23 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                   if (deliveryPinError) setDeliveryPinError('');
                                 }}
                                 placeholder="••••"
-                                className="flex-1 py-3 px-3 bg-[#111827] border border-[#2B384E] focus:border-emerald-500 rounded-xl font-mono text-xl font-black text-center tracking-[0.4em] text-white outline-none placeholder-gray-600 transition"
+                                className="w-full sm:flex-1 py-2.5 sm:py-3 px-3 bg-[#111827] border border-[#2B384E] focus:border-emerald-500 rounded-xl font-mono text-xl sm:text-2xl font-black text-center tracking-[0.4em] text-white outline-none placeholder-gray-600 transition"
                               />
                               <button
                                 type="button"
                                 disabled={isVerifyingPin || deliveryPinInput.trim().length !== 4 || deliveryPinSuccess}
                                 onClick={() => handleAdvanceStep('delivered', deliveryPinInput.trim())}
-                                className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+                                className="w-full sm:w-auto px-4 sm:px-5 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs sm:text-sm font-black transition cursor-pointer shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 shrink-0"
                               >
                                 {isVerifyingPin ? (
                                   <>
-                                    <RefreshCw className="w-4 h-4 animate-spin" />
+                                    <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
                                     <span>Verificando...</span>
                                   </>
                                 ) : (
                                   <>
-                                    <CheckCircle2 className="w-4 h-4" />
-                                    <span>Verificar y Entregar</span>
+                                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                                    <span>Verificar y Confirmar Entrega</span>
                                   </>
                                 )}
                               </button>
@@ -2156,10 +2156,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                               setDeliveryPinError('');
                               setShowDeliveryCodeModal(true);
                             }}
-                            className="w-full py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2"
+                            className="w-full py-3 sm:py-3.5 px-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl transition cursor-pointer shadow-xl shadow-[#E63946]/30 flex items-center justify-center gap-2 text-center"
                           >
-                            <Key className="w-5 h-5" />
-                            <span>4. Confirmar Pedido Entregado con Código ✓</span>
+                            <Key className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+                            <span className="leading-tight break-words">4. Confirmar Pedido Entregado con Código ✓</span>
                           </button>
                         </div>
                       </div>
@@ -2743,39 +2743,53 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             )}
 
             {(activeDelivery.deliveryStep === 'to_client' || activeDelivery.deliveryStep === 'at_destination') && (
-              <div className="flex gap-2">
-                <a
-                  href={(() => {
-                    const originParam = (currentCoords?.latitude && currentCoords?.longitude)
-                      ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
-                      : '';
-                    const baseNav = buildGoogleNavigationUrl({
-                      lat: activeDelivery.customerLat,
-                      lng: activeDelivery.customerLng,
-                      mapUrl: activeDelivery.customerMapUrl,
-                      address: activeDelivery.customerAddress
-                    });
-                    return `${baseNav}${originParam}`;
-                  })()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex-1 py-2.5 sm:py-3 px-4 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-2 active:scale-[0.99] cursor-pointer"
-                  title="Navegar hacia el cliente en Google Maps / Waze"
-                >
-                  <Navigation className="w-4 h-4 text-white shrink-0" />
-                  <span>Navegar hacia el cliente</span>
-                  <ExternalLink className="w-3.5 h-3.5 text-white/80 shrink-0" />
-                </a>
+              <>
                 <button
                   type="button"
-                  onClick={() => setTrackingPreviewOpen(true)}
-                  className="py-2.5 sm:py-3 px-3.5 bg-[#161F30] hover:bg-[#1E293B] text-gray-200 font-bold text-xs rounded-xl border border-[#2B384E] transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
-                  title="Ver Ruta Completa en el mapa"
+                  onClick={() => {
+                    setDeliveryPinError('');
+                    setShowDeliveryCodeModal(true);
+                  }}
+                  className="w-full py-2.5 sm:py-3 px-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.99] text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition cursor-pointer"
                 >
-                  <Compass className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>Ruta completa</span>
+                  <Key className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Confirmar Entrega (Ingresar PIN)</span>
                 </button>
-              </div>
+
+                <div className="flex gap-2">
+                  <a
+                    href={(() => {
+                      const originParam = (currentCoords?.latitude && currentCoords?.longitude)
+                        ? `&origin=${currentCoords.latitude},${currentCoords.longitude}`
+                        : '';
+                      const baseNav = buildGoogleNavigationUrl({
+                        lat: activeDelivery.customerLat,
+                        lng: activeDelivery.customerLng,
+                        mapUrl: activeDelivery.customerMapUrl,
+                        address: activeDelivery.customerAddress
+                      });
+                      return `${baseNav}${originParam}`;
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2 sm:py-2.5 px-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs sm:text-sm rounded-xl border border-[#E63946]/50 transition shadow-lg shadow-[#E63946]/25 flex items-center justify-center gap-1.5 active:scale-[0.99] cursor-pointer min-w-0"
+                    title="Navegar hacia el cliente en Google Maps / Waze"
+                  >
+                    <Navigation className="w-3.5 h-3.5 text-white shrink-0" />
+                    <span className="truncate">Navegar al cliente</span>
+                    <ExternalLink className="w-3 h-3 text-white/80 shrink-0" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setTrackingPreviewOpen(true)}
+                    className="py-2 sm:py-2.5 px-3 bg-[#161F30] hover:bg-[#1E293B] text-gray-200 font-bold text-xs rounded-xl border border-[#2B384E] transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                    title="Ver Ruta Completa en el mapa"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span className="truncate">Ruta completa</span>
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -3137,9 +3151,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       )}
 
       {/* Customer Delivery Code (PIN) Verification Modal */}
+      {/* Modal de Verificación de Código de Entrega (PIN Obligatorio) */}
       {showDeliveryCodeModal && activeDelivery && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-md bg-[#111622] border border-[#232B3A] rounded-3xl p-6 sm:p-7 shadow-2xl relative text-left">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="w-full max-w-md bg-[#111622] border border-[#232B3A] rounded-2xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl relative text-left max-h-[calc(100dvh-1.5rem)] flex flex-col my-auto overflow-hidden">
             <button
               type="button"
               disabled={isVerifyingPin}
@@ -3148,164 +3163,169 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 setDeliveryPinError('');
                 setDeliveryPinInput('');
               }}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition cursor-pointer disabled:opacity-50"
+              className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition cursor-pointer disabled:opacity-50 z-10"
               title="Cerrar"
             >
               <X className="w-5 h-5" />
             </button>
 
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white shadow-lg shadow-[#E63946]/20 shrink-0">
-                <Key className="w-6 h-6 text-white" />
+            <div className="flex items-center gap-3 mb-3 sm:mb-4 shrink-0 pr-8">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white shadow-lg shadow-[#E63946]/20 shrink-0">
+                <Key className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
-              <div>
-                <h3 className="text-lg font-black text-white">Código de Entrega</h3>
-                <p className="text-xs text-[#A9B2C3]">Verificación obligatoria del cliente</p>
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-black text-white truncate">Código de Entrega</h3>
+                <p className="text-[11px] sm:text-xs text-[#A9B2C3] truncate">Verificación obligatoria del cliente</p>
               </div>
             </div>
 
-            <p className="text-xs text-gray-300 mb-4 leading-relaxed">
-              Pídele al cliente el <strong>código de 4 dígitos (PIN)</strong> que aparece en su pantalla de seguimiento de Ryyco. No puedes marcar el pedido como entregado sin este código.
-            </p>
+            <div className="overflow-y-auto pr-1 space-y-3 sm:space-y-3.5 flex-1 overscroll-contain">
+              <p className="text-xs text-gray-300 leading-relaxed">
+                Pídele al cliente el <strong>código de 4 dígitos (PIN)</strong> que aparece en su pantalla de seguimiento de Ryyco. No puedes marcar el pedido como entregado sin este código.
+              </p>
 
-            {/* Order info summary */}
-            <div className="bg-[#090D16] border border-[#232B3A] p-3.5 rounded-2xl mb-4 space-y-1.5 text-xs">
-              <div className="flex items-center justify-between text-gray-400">
-                <span>Pedido:</span>
-                <span className="font-mono font-black text-[#E63946] bg-[#E63946]/10 px-2 py-0.5 rounded border border-[#E63946]/20">
-                  #{activeDelivery.orderNumber}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-gray-400">
-                <span>Cliente:</span>
-                <span className="font-bold text-white">{activeDelivery.customerName}</span>
-              </div>
-              <div className="flex items-center justify-between text-gray-400">
-                <span>Dirección:</span>
-                <span className="text-gray-200 truncate max-w-[200px]">{activeDelivery.customerAddress}</span>
-              </div>
-              {activeDelivery.driverPaidToRestaurant && (
-                <div className="flex items-center justify-between pt-1.5 border-t border-[#1F2937] text-emerald-400 font-bold">
-                  <span>Cobrar al cliente:</span>
-                  <span className="font-mono text-sm text-white">
-                    ${(activeDelivery.totalAmount || 0).toLocaleString('es-CO')}
+              {/* Order info summary */}
+              <div className="bg-[#090D16] border border-[#232B3A] p-3 sm:p-3.5 rounded-xl sm:rounded-2xl space-y-1.5 text-xs">
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Pedido:</span>
+                  <span className="font-mono font-black text-[#E63946] bg-[#E63946]/10 px-2 py-0.5 rounded border border-[#E63946]/20">
+                    #{activeDelivery.orderNumber}
                   </span>
                 </div>
-              )}
-            </div>
-
-            {/* Error Message */}
-            {deliveryPinError && (
-              <div className="mb-4 p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 font-semibold space-y-2">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
-                  <span>{deliveryPinError}</span>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Cliente:</span>
+                  <span className="font-bold text-white truncate max-w-[180px]">{activeDelivery.customerName}</span>
                 </div>
-                {activeDelivery.customerPhone && (
-                  <div className="pt-1">
-                    <a
-                      href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
-                    >
-                      <MessageSquare className="w-3 h-3" />
-                      <span>Pedir PIN al cliente por WhatsApp</span>
-                    </a>
+                <div className="flex items-center justify-between text-gray-400">
+                  <span>Dirección:</span>
+                  <span className="text-gray-200 truncate max-w-[180px]">{activeDelivery.customerAddress}</span>
+                </div>
+                {activeDelivery.driverPaidToRestaurant && (
+                  <div className="flex items-center justify-between pt-1.5 border-t border-[#1F2937] text-emerald-400 font-bold">
+                    <span>Cobrar al cliente:</span>
+                    <span className="font-mono text-sm text-white">
+                      ${(activeDelivery.totalAmount || 0).toLocaleString('es-CO')}
+                    </span>
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Demo driver helper in modal */}
-            {(driver?.id === 'driver_demo' || driver?.docNumber === '12345678') && (
-              <div className="mb-4 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center justify-between">
-                <span>Modo Demostración: PIN ({getOrderDeliveryCode(activeDelivery)})</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeliveryPinInput(getOrderDeliveryCode(activeDelivery));
-                    if (deliveryPinError) setDeliveryPinError('');
-                  }}
-                  className="text-amber-200 underline font-black hover:text-white cursor-pointer ml-2"
-                >
-                  Autocompletar
-                </button>
-              </div>
-            )}
-
-            {/* Success Message */}
-            {deliveryPinSuccess && (
-              <div className="mb-4 p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs text-emerald-200 font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-                <span>✓ ¡Código correcto! Finalizando pedido entregado...</span>
-              </div>
-            )}
-
-            {/* 4-Digit Input Form */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!isVerifyingPin && deliveryPinInput.trim().length === 4) {
-                  handleAdvanceStep('delivered', deliveryPinInput.trim());
-                }
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="text-[11px] font-black uppercase tracking-wider text-gray-400 block mb-2 text-center">
-                  Ingresa el código PIN (4 dígitos):
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={4}
-                  autoFocus
-                  disabled={isVerifyingPin || deliveryPinSuccess}
-                  value={deliveryPinInput}
-                  onChange={(e) => {
-                    const cleaned = e.target.value.replace(/\D/g, '').slice(0, 4);
-                    setDeliveryPinInput(cleaned);
-                    if (deliveryPinError) setDeliveryPinError('');
-                  }}
-                  placeholder="••••"
-                  className="w-full py-3.5 px-4 bg-[#090B12] border-2 border-emerald-500/50 focus:border-emerald-400 rounded-2xl font-mono text-3xl font-black text-center tracking-[0.6em] text-white outline-none transition placeholder-gray-600 shadow-inner"
-                />
-              </div>
-
-              <div className="flex gap-2.5">
-                <button
-                  type="button"
-                  disabled={isVerifyingPin || deliveryPinSuccess}
-                  onClick={() => {
-                    setShowDeliveryCodeModal(false);
-                    setDeliveryPinError('');
-                    setDeliveryPinInput('');
-                  }}
-                  className="flex-1 py-3 bg-[#161F30] hover:bg-[#1E293B] text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isVerifyingPin || deliveryPinInput.trim().length !== 4 || deliveryPinSuccess}
-                  className="flex-[2] py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl text-xs font-black transition cursor-pointer shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isVerifyingPin ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Verificando...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      <span>Confirmar Entrega</span>
-                    </>
+              {/* Error Message */}
+              {deliveryPinError && (
+                <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/40 text-xs text-red-300 font-semibold space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+                    <span className="break-words">{deliveryPinError}</span>
+                  </div>
+                  {activeDelivery.customerPhone && (
+                    <div className="pt-1">
+                      <a
+                        href={`https://wa.me/${activeDelivery.customerPhone.replace(/\D/g, '').startsWith('57') ? activeDelivery.customerPhone.replace(/\D/g, '') : '57' + activeDelivery.customerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${activeDelivery.customerName || 'Cliente'}, soy tu domiciliario de RYYCO con tu pedido #${activeDelivery.orderNumber}. Ya estoy en tu dirección. Por favor indícame tu código PIN de 4 dígitos para confirmar tu entrega.`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400 hover:text-emerald-300 font-bold bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-lg transition"
+                      >
+                        <MessageSquare className="w-3 h-3 shrink-0" />
+                        <span>Pedir PIN al cliente por WhatsApp</span>
+                      </a>
+                    </div>
                   )}
-                </button>
-              </div>
-            </form>
+                </div>
+              )}
+
+              {/* Demo driver helper in modal */}
+              {(driver?.id === 'driver_demo' || driver?.docNumber === '12345678') && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center justify-between">
+                  <span>Modo Demostración: PIN ({getOrderDeliveryCode(activeDelivery)})</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeliveryPinInput(getOrderDeliveryCode(activeDelivery));
+                      if (deliveryPinError) setDeliveryPinError('');
+                    }}
+                    className="text-amber-200 underline font-black hover:text-white cursor-pointer ml-2"
+                  >
+                    Autocompletar
+                  </button>
+                </div>
+              )}
+
+              {/* Success Message */}
+              {deliveryPinSuccess && (
+                <div className="p-3 sm:p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-xs text-emerald-200 font-bold flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+                  <span>✓ ¡Código correcto! Finalizando pedido entregado...</span>
+                </div>
+              )}
+
+              {/* 4-Digit Input Form */}
+              <form
+                id="delivery-pin-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!isVerifyingPin && deliveryPinInput.trim().length === 4) {
+                    handleAdvanceStep('delivered', deliveryPinInput.trim());
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-wider text-gray-400 block mb-1.5 text-center">
+                    Ingresa el código PIN (4 dígitos):
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    autoFocus
+                    disabled={isVerifyingPin || deliveryPinSuccess}
+                    value={deliveryPinInput}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setDeliveryPinInput(cleaned);
+                      if (deliveryPinError) setDeliveryPinError('');
+                    }}
+                    placeholder="••••"
+                    className="w-full py-2.5 sm:py-3.5 px-3 bg-[#090B12] border-2 border-emerald-500/50 focus:border-emerald-400 rounded-xl sm:rounded-2xl font-mono text-2xl sm:text-3xl font-black text-center tracking-[0.5em] text-white outline-none transition placeholder-gray-600 shadow-inner"
+                  />
+                </div>
+              </form>
+            </div>
+
+            {/* Modal Actions Footer - always visible and never overflowed */}
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:gap-2.5 pt-3 mt-1 border-t border-[#232B3A] shrink-0">
+              <button
+                type="button"
+                disabled={isVerifyingPin || deliveryPinSuccess}
+                onClick={() => {
+                  setShowDeliveryCodeModal(false);
+                  setDeliveryPinError('');
+                  setDeliveryPinInput('');
+                }}
+                className="w-full sm:flex-1 py-2.5 sm:py-3 bg-[#161F30] hover:bg-[#1E293B] text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50 text-center"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                form="delivery-pin-form"
+                disabled={isVerifyingPin || deliveryPinInput.trim().length !== 4 || deliveryPinSuccess}
+                className="w-full sm:flex-[2] py-3 sm:py-3.5 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-black transition cursor-pointer shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed min-w-0"
+              >
+                {isVerifyingPin ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+                    <span>Verificando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>Confirmar Entrega</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
