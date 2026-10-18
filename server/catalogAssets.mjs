@@ -30,10 +30,10 @@ export function externalizeCatalogImages(catalog, directories) {
 
 export function writeCatalogCaches(catalog, directories) {
   for (const directory of directories) {
-    writeFileSync(path.join(directory, 'catalog-cache.json'), JSON.stringify({ success: true, catalog, isPartial: false }));
+    writeFileSync(path.join(directory, 'catalog-cache.json'), JSON.stringify({ success: true, source: 'static-cache', complete: false, catalog: { ...catalog, complete: false }, isPartial: false }));
     writeFileSync(path.join(directory, 'catalog-initial.json'), JSON.stringify({
-      success: true,
-      catalog: { ...catalog, products: catalog.products.slice(0, 6) },
+      success: true, source: 'static-cache', complete: false,
+      catalog: { ...catalog, complete: false, products: catalog.products.slice(0, 6) },
       isPartial: catalog.products.length > 6
     }));
   }

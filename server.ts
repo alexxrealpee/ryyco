@@ -495,14 +495,19 @@ Formatos válidos para:
 
   app.post(['/api/tts', '/api/tts.php', '/api/gemini/tts'], handleTTSRequest);
 
-  // Initialize Dynamic Available Catalog Manager (5-min refresh & real-time synchronization)
+  // Initialize the shared server-confirmed catalog listeners
   initBackendCatalogManager();
 
   // API Routes: Dynamic Available Catalog & Real-time Validation
   app.get(['/api/catalog/available', '/api/catalog-available.php'], async (req, res) => {
     let catalog = getAvailableCatalog();
-    if (!catalog.stores || catalog.stores.length === 0) {
-      catalog = await refreshCatalogFromFirestore();
+    res.setHeader('Cache-Control', 'no-store');
+    if (!catalog.complete) {
+      try { catalog = await refreshCatalogFromFirestore(); }
+      catch { res.status(503).json({ success: false, complete: false, error: 'catalog-unconfirmed' }); return; }
+    }
+    if (!catalog.complete) {
+      res.status(503).json({ success: false, complete: false, error: 'catalog-unconfirmed' }); return;
     }
     const isInitial = req.query.initial === 'true' || req.query.initial === '1';
     const limitQuery = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 0;
@@ -513,7 +518,7 @@ Formatos válidos para:
 
     if (storeId || storeUsername) {
       const storeProducts = (catalog.products || []).filter(p => 
-        (storeId && (p.userId === storeId || p.id?.startsWith(storeId))) ||
+        (storeId && (p.userId === storeId)) ||
         (storeUsername && p.storeUsername?.toLowerCase() === storeUsername)
       );
       const matchedStores = (catalog.stores || []).filter(s => 
@@ -528,6 +533,10 @@ Formatos válidos para:
         },
         catalogUpdatedAt: catalog.catalogUpdatedAt,
         version: catalog.version,
+        source: 'firestore-server',
+        complete: false,
+        isPartial: true,
+        totalProducts: storeProducts.length,
         storeFiltered: true
       });
       return;
@@ -542,6 +551,9 @@ Formatos válidos para:
         },
         catalogUpdatedAt: catalog.catalogUpdatedAt,
         version: catalog.version,
+        source: 'firestore-server',
+        complete: false,
+        totalProducts: catalog.products.length,
         isPartial: true
       });
       return;
@@ -550,6 +562,10 @@ Formatos válidos para:
     res.json({
       success: true,
       catalog,
+      source: 'firestore-server',
+      complete: true,
+      isPartial: false,
+      totalProducts: catalog.products.length,
       catalogUpdatedAt: catalog.catalogUpdatedAt,
       version: catalog.version
     });

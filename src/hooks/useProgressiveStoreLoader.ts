@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, onSnapshot, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, getDocsFromServer } from 'firebase/firestore';
 import { UserProfile, ProductItem } from '../types';
 import { 
   db,
@@ -35,6 +35,8 @@ export interface UseProgressiveStoreLoaderResult {
   isLoadingProducts: boolean;
   restaurantsError: { code: string; message: string } | null;
   retryRestaurants: () => void;
+  productsError: string | null;
+  retryProducts: () => Promise<ProductItem[]>;
 }
 
 // Purge legacy persistent session cache on module load to guarantee live freshness from Firebase
@@ -54,6 +56,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
   const [firstStore, setFirstStore] = useState<UserProfile | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
   const [restaurantsReady, setRestaurantsReady] = useState(false);
   const [restaurantsError, setRestaurantsError] = useState<{ code: string; message: string } | null>(null);
@@ -62,71 +65,90 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
   // State refs to prevent stale closures and avoid race conditions
   const isFetchingMoreRef = useRef(false);
-  const isInitializedRef = useRef(false);
-  const productRequestRef = useRef<Promise<ProductItem[]> | null>(null);
   const fullCatalogRequestRef = useRef<Promise<ProductItem[]> | null>(null);
   const catalogCompleteRef = useRef(false);
+  // null means the server-confirmed products collection covers even closed stores.
+  const coveredStoresRef = useRef<Set<string> | null>(new Set());
   const openRestaurantsRef = useRef<UserProfile[]>([]);
 
-  // Shared by initial loading and pagination: at most one full catalog download.
   const getFullCatalog = useCallback((): Promise<ProductItem[]> => {
-    if (!fullCatalogRequestRef.current) {
-      fullCatalogRequestRef.current = (async () => {
-        for (const url of ['/api/catalog/available', '/catalog-cache.json']) {
-          try {
-            const response = await fetch(url);
-            if (!response.ok || !response.headers.get('content-type')?.includes('json')) continue;
-            const data = await response.json();
-            if (data?.isPartial !== true && Array.isArray(data?.catalog?.products)) {
-              catalogCompleteRef.current = true;
-              return orderProductBatch(data.catalog.products as ProductItem[]);
-            }
-          } catch {}
+    if (fullCatalogRequestRef.current) return fullCatalogRequestRef.current;
+    fullCatalogRequestRef.current = (async () => {
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), 10000);
+      try {
+        // The HTML prefetch requests the same complete catalog; reuse it once.
+        const prefetched = (window as any).__CATALOG_PREFETCH__;
+        (window as any).__CATALOG_PREFETCH__ = null;
+        const response = prefetched ? await prefetched : await fetch('/api/catalog/available', {
+          signal: controller.signal, cache: 'no-store'
+        }).then(r => r.ok && r.headers.get('content-type')?.includes('json') ? r.json() : null);
+        if (response?.source === 'firestore-server' && response.complete === true &&
+            response.isPartial === false && !response.storeFiltered &&
+            Array.isArray(response.catalog?.products) && Array.isArray(response.catalog?.stores) &&
+            response.totalProducts === response.catalog.products.length) {
+          const covered = new Set<string>(response.catalog.stores.map((store: UserProfile) => store.uid));
+          if (openRestaurantsRef.current.every(store => covered.has(store.uid))) {
+            coveredStoresRef.current = covered;
+            return orderProductBatch(response.catalog.products);
+          }
         }
-        const snapshot = await getDocs(collection(db, 'products'));
-        catalogCompleteRef.current = true;
-        return orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
-          .filter(p => p.active !== false));
-      })();
-    }
+      } catch {} finally { clearTimeout(deadline); }
+      // A static JSON file is a preview, never evidence that Firestore is exhausted.
+      // Keep the pending SDK operation shared after a timeout to avoid duplicate reads.
+      const snapshot = await getDocsFromServer(collection(db, 'products'));
+      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) throw Error('unconfirmed-catalog');
+      coveredStoresRef.current = null;
+      return orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
+        .filter(product => product.active !== false));
+    })().catch(error => {
+      fullCatalogRequestRef.current = null;
+      throw error;
+    });
     return fullCatalogRequestRef.current;
   }, []);
 
-  // Keep every downloaded record in memory; TiendaGeneral reveals six at a time.
-  const appendProducts = useCallback((incoming: ProductItem[]) => {
-    setLoadedProducts(previous => {
-      const ids = new Set(previous.map(p => p.id));
-      const fresh = incoming.filter(p => {
-        if (!p?.id || ids.has(p.id)) return false;
-        ids.add(p.id);
-        return true;
-      });
-      return fresh.length ? [...previous, ...fresh] : previous;
-    });
-  }, []);
-
+  // Historical name retained for callers; metadata is buffered once, UI reveals six.
   const loadNextFourProducts = useCallback(async (): Promise<ProductItem[]> => {
     if (isFetchingMoreRef.current || catalogCompleteRef.current) return [];
     isFetchingMoreRef.current = true;
     setIsLoadingMore(true);
+    setProductsError(null);
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      // Reuse the first request if it is still running instead of racing it.
-      await productRequestRef.current;
-      if (catalogCompleteRef.current) return [];
-      const products = await getFullCatalog();
-      appendProducts(products);
+      const products = await Promise.race([getFullCatalog(), new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(Error('catalog-timeout')), 20000);
+      })]);
+      const unique = Array.from(new Map<string, ProductItem>(products.filter(p => p?.id).map(p => [p.id, p])).values());
+      // Replace: deleted/inactive products must not survive an authoritative refresh.
+      setLoadedProducts(unique);
+      catalogCompleteRef.current = true;
       setHasMore(false);
-      return products;
+      return unique;
     } catch (error) {
-      // Stop automatic scroll retries; a remount can retry a failed catalog request.
-      setHasMore(false);
-      console.warn('Could not load the remaining catalog:', error);
+      setProductsError('No se pudo confirmar el catálogo. Comprueba tu conexión y vuelve a intentar.');
+      setHasMore(true);
+      console.warn('Could not confirm catalog:', error);
       return [];
     } finally {
+      clearTimeout(timeout);
       isFetchingMoreRef.current = false;
       setIsLoadingMore(false);
+      setStage('idle');
     }
-  }, [getFullCatalog, appendProducts]);
+  }, [getFullCatalog]);
+
+  useEffect(() => { void loadNextFourProducts(); }, [loadNextFourProducts]);
+
+  useEffect(() => {
+    if (!catalogCompleteRef.current || coveredStoresRef.current === null ||
+        openRestaurants.every(store => coveredStoresRef.current!.has(store.uid))) return;
+    // A newly opened shop was outside the API's previous open-store scope.
+    catalogCompleteRef.current = false;
+    fullCatalogRequestRef.current = null;
+    setHasMore(true);
+    void loadNextFourProducts();
+  }, [openRestaurants, loadNextFourProducts]);
 
   // Only server-confirmed profiles may publish restaurant availability.
   useEffect(() => {
@@ -245,44 +267,12 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     };
   }, [listenerAttempt]);
 
-  // Product loading is independent of availability and never queries profiles again.
-  useEffect(() => {
-    let active = true;
-    const update = (event: any) => {
-      const detail = event.detail;
-      if (active) appendProducts(detail?.products || detail?.catalog?.products || []);
-    };
-    window.addEventListener('linnk:catalog_updated', update);
-    if (!isInitializedRef.current) {
-      isInitializedRef.current = true;
-      // StrictMode can resubscribe while this shared request is still pending.
-      productRequestRef.current = (async () => {
-        try {
-          const initial = (window as any).__INITIAL_CATALOG_DATA__ ||
-            await (window as any).__CATALOG_PREFETCH__;
-          if (Array.isArray(initial?.catalog?.products) &&
-              (initial.catalog.products.length > 0 || initial.isPartial === false)) {
-            catalogCompleteRef.current = initial.isPartial === false;
-            return orderProductBatch(initial.catalog.products as ProductItem[]);
-          }
-        } catch {}
-        return getFullCatalog();
-      })();
-    }
-    productRequestRef.current?.then(products => {
-      if (active) { appendProducts(products); setHasMore(!catalogCompleteRef.current); }
-    }).catch(error => console.warn('Initial products:', error)).finally(() => {
-      if (active) setStage('idle');
-    });
-    return () => { active = false; window.removeEventListener('linnk:catalog_updated', update); };
-  }, [appendProducts, getFullCatalog]);
-
   const isLoadingRestaurants = !restaurantsReady && !restaurantsError;
   const isLoadingProducts = stage !== 'idle' && loadedProducts.length === 0;
   return {
     openRestaurants, loadedLogos, loadedProducts, profilesMap, stage, firstStore,
     isLoadingMore, hasMore, totalOpenCount: openRestaurants.length,
     loadNextFourProducts, statusMessage, isLoadingRestaurants, isLoadingProducts,
-    restaurantsError, retryRestaurants
+    restaurantsError, retryRestaurants, productsError, retryProducts: loadNextFourProducts
   };
 }

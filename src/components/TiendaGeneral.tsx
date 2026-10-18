@@ -1,3 +1,4 @@
+import { balanceCatalog, resolveProductStore } from '../lib/catalogProducts';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -211,7 +212,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     isLoadingRestaurants,
     isLoadingProducts,
     restaurantsError,
-    retryRestaurants
+    retryRestaurants, productsError, retryProducts
   } = useProgressiveStoreLoader();
 
   const [products, setProducts] = useState<ProductItem[]>([]);
@@ -220,21 +221,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [loadingStoreProducts, setLoadingStoreProducts] = useState(false);
   const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
 
-  // Sync progressive products and store profiles as they arrive sequentially
+  // The hook owns the confirmed catalog. A refresh can also remove stale records.
   useEffect(() => {
-    if (loadedProducts.length > 0) {
-      const seen = new Set<string>();
-      const deduped = loadedProducts.filter(p => {
-        if (!p || !p.id || seen.has(p.id)) return false;
-        seen.add(p.id);
-        return true;
-      });
-      setProducts(previous => {
-        const ids = new Set(previous.map(p => p.id));
-        return [...previous, ...deduped.filter(p => !ids.has(p.id))];
-      });
-      registerProductImages(deduped);
-    }
+    setProducts(loadedProducts);
+    registerProductImages(loadedProducts);
   }, [loadedProducts]);
 
   useEffect(() => {
@@ -243,26 +233,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Direct listener for background full catalog completion
   useEffect(() => {
-    const handleCatalogUpdate = (e: any) => {
-      const detail = e.detail;
-      const incomingProducts: ProductItem[] = 
-        (Array.isArray(detail?.products) ? detail.products : detail?.catalog?.products) || [];
-      if (incomingProducts.length > 0) {
-        setProducts(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          const newOnes = incomingProducts.filter(p => p && p.id && !existingIds.has(p.id));
-          if (newOnes.length === 0) return prev;
-          const merged = [...prev, ...newOnes];
-          registerProductImages(merged);
-          return merged;
-        });
-      }
-      const incomingProfiles = detail?.profiles;
-      if (incomingProfiles && Object.keys(incomingProfiles).length > 0) {
-        setProfiles(prev => ({ ...prev, ...incomingProfiles }));
-      }
-    };
-
     const handleStoreStatusChange = (e: any) => {
       const { uid, isClosed } = e.detail || {};
       if (uid) {
@@ -289,11 +259,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
     };
 
-    window.addEventListener('linnk:catalog_updated', handleCatalogUpdate);
     window.addEventListener('linnk:store_status_changed', handleStoreStatusChange);
     window.addEventListener('ryyco_profile_updated', handleProfileUpdate);
     return () => {
-      window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
       window.removeEventListener('linnk:store_status_changed', handleStoreStatusChange);
       window.removeEventListener('ryyco_profile_updated', handleProfileUpdate);
     };
@@ -333,6 +301,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ...(store.displayName ? { [store.displayName.toLowerCase()]: store } : {})
     }));
 
+    if (!hasMoreProgressive && !productsError) return; // Complete buffer already includes this store.
+
     // Verificar si ya tenemos productos de esta tienda en memoria para renderizado instantáneo
     const existingStoreProducts = products.filter(p => 
       p.userId === store.uid || 
@@ -366,7 +336,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       setLoadingStoreProducts(false);
       setLoadingStoreId(null);
     }
-  }, [selectedStore, products]);
+  }, [selectedStore, products, hasMoreProgressive, productsError]);
   
   // Quick View Modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
@@ -736,43 +706,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
   // Validación estricta: Únicamente productos pertenecientes a restaurantes que se encuentren ABIERTOS.
   const availableBaseProducts = useMemo(() => {
-    // Si los perfiles ya se cargaron y ningún restaurante está abierto, no mostrar ningún producto
-    if (Object.keys(profiles).length > 0 && uniqueStores.length === 0) {
-      return [];
-    }
-
-    const openStoreUids = new Set(uniqueStores.map(s => s.uid));
-    const openStoreUsernames = new Set(uniqueStores.map(s => s.username?.toLowerCase()).filter(Boolean));
-
+    // Availability comes exclusively from the confirmed profiles listener.
+    if (isLoadingRestaurants || restaurantsError) return [];
     return products.filter(product => {
-      // Si estamos en la página de inicio (sin tienda específica seleccionada), ocultar bebidas
-      if (selectedStore === 'all' && isDrinkProduct(product)) {
-        return false;
-      }
-
-      const profile = findStoreForProduct(product, profiles);
-      if (!profile || checkIsStoreClosed(profile) || profile.suspended || profile.isClosed === true) return false;
-      // Check if trial has expired and store subscription is not active
-      if (profile.subscriptionTrialExpires && new Date(profile.subscriptionTrialExpires).getTime() < Date.now() && profile.subscriptionStatus !== 'active') {
-        return false;
-      }
-
-      // El producto debe pertenecer a un restaurante estrictamente presente en la lista de abiertos
-      if (uniqueStores.length > 0) {
-        const isFromOpenStore = 
-          (product.userId && openStoreUids.has(product.userId)) ||
-          (profile.uid && openStoreUids.has(profile.uid)) ||
-          (product.storeUsername && openStoreUsernames.has(product.storeUsername.toLowerCase())) ||
-          (profile.username && openStoreUsernames.has(profile.username.toLowerCase()));
-        if (!isFromOpenStore) return false;
-      }
-
-      if (selectedStore !== 'all' && product.userId !== selectedStore && profile.uid !== selectedStore) {
-        return false;
-      }
-      return true;
+      if (product.active === false || (selectedStore === 'all' && isDrinkProduct(product))) return false;
+      const owner = resolveProductStore<UserProfile>(product, Object.values(profiles) as UserProfile[]);
+      if (!owner || !openRestaurants.some(store => store.uid === owner.uid)) return false;
+      return selectedStore === 'all' || owner.uid === selectedStore;
     });
-  }, [products, profiles, selectedStore, uniqueStores]);
+  }, [products, profiles, selectedStore, openRestaurants, isLoadingRestaurants, restaurantsError]);
 
   // Get list of unique categories ONLY from products that actually exist and are available (food categories first)
   // If a category has no available products, it will NOT be displayed!
@@ -916,6 +858,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     };
   }, [uniqueStores]);
 
+  const committedProductsRef = useRef<{ filter: string; ids: string[] }>({ filter: '', ids: [] });
+  const catalogFilter = `${searchTerm}|${selectedCategory}|${selectedStore}|${sortBy}`;
   // Filter & sort logic (food products prioritized first)
   const filteredProducts = useMemo(() => {
     const matched = availableBaseProducts.filter(product => {
@@ -940,11 +884,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return [...matched].sort((a, b) => b.price - a.price);
     }
 
-    // Default 'latest': Preserve the exact sequential arrival order of the 4-by-4 batches!
-    // Each batch was already ordered when retrieved. Preserving this sequence ensures products
-    // already rendered on screen NEVER jump, shift, or get desorganized when new products load.
-    return matched;
-  }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy]);
+    const prefix = committedProductsRef.current.filter === catalogFilter ? committedProductsRef.current.ids : [];
+    return balanceCatalog(matched, openRestaurants, prefix);
+  }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy, catalogFilter, openRestaurants]);
 
   // Smart progressive loading visibleLimit (Carga inicial de 6 productos de establecimientos abiertos y paginación real de 6 en 6)
   const [visibleLimit, setVisibleLimit] = useState(6);
@@ -969,12 +911,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (visibleLimit < filteredProducts.length) {
       setVisibleLimit(prev => Math.min(prev + 6, filteredProducts.length));
       // Hold the guard through the next render so two scroll signals cannot reveal twice.
-      requestAnimationFrame(() => { isFetchingNextBatchRef.current = false; });
+      // Released after React commits this six-product reveal.
       return;
     }
 
     // 2. Otherwise, fetch the next 6 products (from memory cache, API or Firebase)
-    if (hasMoreProgressive && !isProgressiveLoadingMore) {
+    if (hasMoreProgressive && !isProgressiveLoadingMore && !productsError) {
       const requestedFilter = currentFilterRef.current;
       setIsLoadingMore(true);
       try {
@@ -991,7 +933,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     } else {
       isFetchingNextBatchRef.current = false;
     }
-  }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
+  }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -999,11 +941,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // metadata buffer once if filtering leaves fewer than six usable records.
   useEffect(() => {
     if (!isLoadingRestaurants && !restaurantsError && !isLoadingProducts &&
-        filteredProducts.length < 6 && hasMoreProgressive && !isProgressiveLoadingMore) {
+        hasMoreProgressive && !isProgressiveLoadingMore && !productsError) {
       void loadNextFourProducts();
     }
   }, [isLoadingRestaurants, restaurantsError, isLoadingProducts, filteredProducts.length,
-      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
+      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError]);
+
+  useEffect(() => { isFetchingNextBatchRef.current = false; }, [visibleLimit, currentFilter]);
 
   // High-performance IntersectionObserver for loading next 6 products
   useEffect(() => {
@@ -1023,7 +967,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     );
 
     observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
+    const frame = requestAnimationFrame(() => {
+      const rect = sentinelRef.current?.getBoundingClientRect();
+      if (rect && rect.top <= window.innerHeight + prefetchMargin && rect.bottom >= -prefetchMargin) {
+        void loadNextBatchOfFour();
+      }
+    });
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [loadNextBatchOfFour, isProgressiveLoadingMore, prefetchMargin]);
 
   // Fallback passive scroll listener for older webviews
@@ -1071,6 +1021,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return true;
     });
   }, [filteredProducts, visibleLimit]);
+
+  useEffect(() => {
+    committedProductsRef.current = { filter: catalogFilter, ids: displayedProducts.map(product => product.id) };
+  }, [displayedProducts, catalogFilter]);
 
   const handleAddToCart = () => {
     if (!selectedProduct) return;
@@ -1207,6 +1161,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Cargar catálogo completo del restaurante en segundo plano para que todas sus bebidas reales estén disponibles
   useEffect(() => {
+    if (!hasMoreProgressive && !productsError) return; // Drinks are already in the complete buffer.
     const storesToFetch = new Set<string>();
 
     if (selectedProduct) {
@@ -1241,7 +1196,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         }).catch(() => {});
       }
     });
-  }, [selectedProduct, cart, profiles]);
+  }, [selectedProduct, cart, profiles, hasMoreProgressive, productsError]);
 
   const handleSetItemQuantity = (cartItemId: string, change: number) => {
     const item = cart.find(i => i.id === cartItemId || i.product.id === cartItemId);
@@ -2414,6 +2369,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         </div>
 
         {/* 4. Products Display */}
+        {isProgressiveLoadingMore && filteredProducts.length === 0 && !isProductsLoading && (
+          <div role="status" className="py-3 text-center text-xs text-gray-400">Cargando productos…</div>
+        )}
+        {productsError && (
+          <div role="alert" className="py-3 text-center text-xs text-gray-400">
+            <p>{productsError}</p>
+            <button type="button" onClick={() => void retryProducts()} disabled={isProgressiveLoadingMore}
+              className="mt-2 underline disabled:opacity-50">Reintentar productos</button>
+          </div>
+        )}
         {loadingStoreProducts && filteredProducts.length === 0 ? (
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
@@ -2435,7 +2400,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          searchTerm.trim().length > 0 ? (
+          productsError || hasMoreProgressive ? null : searchTerm.trim().length > 0 ? (
             <div className="bg-[#111827] border border-[#232B3A] rounded-3xl py-16 px-4 text-center max-w-md mx-auto space-y-4">
               <ShoppingBag className="w-12 h-12 text-[#A9B2C3] mx-auto opacity-40" />
               <div className="space-y-1">
@@ -2496,7 +2461,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               return (
                 <motion.div
-                  key={product.id || `prod-${productIndex}`}
+                  key={product.id || `prod-${productIndex}`} data-product-id={product.id}
                   layout
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -2662,7 +2627,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
 
               <button
-                onClick={handleLoadMoreFour}
+                onClick={productsError ? () => void retryProducts() : handleLoadMoreFour}
                 disabled={(isLoadingMore || isProgressiveLoadingMore) && visibleLimit >= filteredProducts.length}
                 className="px-6 py-2.5 bg-[#1F2937] hover:bg-[#374151] border border-white/10 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
@@ -2675,7 +2640,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* IntersectionObserver sentinel target */}
               <div ref={sentinelRef} className="w-full h-2 pointer-events-none opacity-0" aria-hidden="true" />
             </div>
-          ) : filteredProducts.length > 6 ? (
+          ) : !productsError && !isLoadingRestaurants && !restaurantsError && filteredProducts.length > 6 ? (
             <div className="w-full text-center py-8 text-xs font-medium text-gray-500 border-t border-dashed border-[#232B3A] mt-6">
               ✨ Has llegado al final — Mostrando todos los {filteredProducts.length} productos
             </div>

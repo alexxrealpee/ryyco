@@ -1,3 +1,4 @@
+import { resolveProductStore } from '../src/lib/catalogProducts';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -10,7 +11,6 @@ import { externalizeCatalogImages, writeCatalogCaches } from './catalogAssets.mj
 import { 
   getFirestore, 
   collection, 
-  getDocs, 
   doc, 
   getDoc,
   onSnapshot
@@ -63,6 +63,7 @@ export interface AvailableCatalog {
   products: CatalogProduct[];
   catalogUpdatedAt: string;
   version: number;
+  complete: boolean;
 }
 
 const firebaseConfig = {
@@ -91,6 +92,7 @@ let currentAvailableCatalog: AvailableCatalog = {
   stores: [],
   products: [],
   catalogUpdatedAt: new Date().toISOString(),
+  complete: false,
   version: 1
 };
 
@@ -98,7 +100,13 @@ let currentAvailableCatalog: AvailableCatalog = {
 let rawStoresMap: Map<string, CatalogStore> = new Map();
 let rawProductsMap: Map<string, CatalogProduct> = new Map();
 let isInitialized = false;
-let refreshInterval: NodeJS.Timeout | null = null;
+let profilesConfirmed = false;
+let productsConfirmed = false;
+let listenerFailed = false;
+let stopProfiles: (() => void) | undefined;
+let stopProducts: (() => void) | undefined;
+let pendingConfirmation: Promise<AvailableCatalog> | null = null;
+const confirmationWaiters = new Set<() => void>();
 
 function getColombiaCurrentDayAndMinutes(): { dayId: string; dayIndex: number; currentMinutes: number } {
   const DAY_IDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -255,7 +263,6 @@ export function isStoreCurrentlyClosed(profile: any): boolean {
 export function buildAvailableCatalog(): AvailableCatalog {
   const openStores: CatalogStore[] = [];
   const openStoreUids = new Set<string>();
-  const openStoreUsernames = new Set<string>();
 
   rawStoresMap.forEach((store) => {
     // Re-evaluate live store closed/open status (operating hours schedule, manual toggle, subscription)
@@ -266,34 +273,20 @@ export function buildAvailableCatalog(): AvailableCatalog {
         isClosed: false
       });
       if (store.uid) openStoreUids.add(store.uid);
-      if (store.username) openStoreUsernames.add(store.username.toLowerCase());
     }
   });
 
   const availableProducts: CatalogProduct[] = [];
-  rawProductsMap.forEach((prod) => {
-    if (prod.active !== false) {
-      const belongsToOpenStore = 
-        (prod.userId && openStoreUids.has(prod.userId)) ||
-        (prod.storeUsername && openStoreUsernames.has(prod.storeUsername.toLowerCase()));
-
-      if (belongsToOpenStore) {
-        // Find matching store info to enrich product
-        const matchedStore = openStores.find(s => 
-          s.uid === prod.userId || 
-          (s.username && prod.storeUsername && s.username.toLowerCase() === prod.storeUsername.toLowerCase())
-        );
-
-        availableProducts.push({
-          ...prod,
-          storeName: matchedStore?.displayName || prod.storeName || 'Restaurante Asociado',
-          storeUsername: matchedStore?.username || prod.storeUsername || 'tienda'
-        });
-      }
+  rawProductsMap.forEach(prod => {
+    const owner = resolveProductStore(prod, Array.from(rawStoresMap.values()));
+    if (prod.active !== false && owner && openStoreUids.has(owner.uid)) {
+      availableProducts.push({ ...prod, userId: owner.uid,
+        storeName: owner.displayName, storeUsername: owner.username });
     }
   });
 
   currentAvailableCatalog = {
+    complete: profilesConfirmed && productsConfirmed,
     stores: openStores,
     products: availableProducts,
     catalogUpdatedAt: new Date().toISOString(),
@@ -306,7 +299,7 @@ export function buildAvailableCatalog(): AvailableCatalog {
       directories.push(path.join(process.cwd(), 'dist'));
     }
     currentAvailableCatalog = externalizeCatalogImages(currentAvailableCatalog, directories);
-    writeCatalogCaches(currentAvailableCatalog, directories);
+    if (currentAvailableCatalog.complete) writeCatalogCaches(currentAvailableCatalog, directories);
   } catch (e) {}
 
   return currentAvailableCatalog;
@@ -316,166 +309,81 @@ export function buildAvailableCatalog(): AvailableCatalog {
  * Loads and refreshes catalog from Firestore
  */
 export async function refreshCatalogFromFirestore(): Promise<AvailableCatalog> {
-  try {
-    const db = getBackendDb();
-
-    // 1. Fetch all profiles
-    const profilesSnap = await getDocs(collection(db, 'profiles')).catch(() => null);
-    if (profilesSnap && !profilesSnap.empty) {
-      rawStoresMap.clear();
-      profilesSnap.forEach(docSnap => {
-        const data = docSnap.data() as any;
-        const uid = data.uid || docSnap.id;
-        const isClosed = isStoreCurrentlyClosed(data);
-        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-        const { coverURL, bannerURL, ...cleanData } = data;
-        rawStoresMap.set(uid, {
-          ...cleanData,
-          uid,
-          username: data.username || uid,
-          displayName: data.displayName || data.storeName || data.username || 'Restaurante',
-          bio: data.bio || '',
-          address: data.address || '',
-          phone: data.phone || '',
-          whatsapp: data.whatsapp || '',
-          photoURL: data.photoURL || '',
-          deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 7000,
-          schedule: data.schedule || null,
-          isClosed,
-          suspended: isSuspended
-        });
-      });
-    }
-
-    // 2. Fetch all products
-    const productsSnap = await getDocs(collection(db, 'products')).catch(() => null);
-    if (productsSnap && !productsSnap.empty) {
-      rawProductsMap.clear();
-      productsSnap.forEach(docSnap => {
-        const data = docSnap.data() as any;
-        rawProductsMap.set(docSnap.id, {
-          id: docSnap.id,
-          userId: data.userId || '',
-          name: data.name || 'Producto',
-          description: data.description || '',
-          price: typeof data.price === 'number' ? data.price : parseFloat(data.price) || 0,
-          stock: typeof data.stock === 'number' ? data.stock : parseInt(data.stock) || 0,
-          category: data.category || 'General',
-          imageURL: data.imageURL || '',
-          storeName: data.storeName || '',
-          active: data.active !== false,
-          variants: data.variants || [],
-          options: data.options || [],
-          addons: data.addons || [],
-          packagingCost: data.packagingCost,
-          variantsText: data.variantsText,
-          variantPrices: data.variantPrices,
-          allowsHalfAndHalf: data.allowsHalfAndHalf,
-          flavorsText: data.flavorsText,
-          flavorsList: data.flavorsList,
-          allowSingleFlavor: data.allowSingleFlavor
-        });
-      });
-    }
-
-    return buildAvailableCatalog();
-  } catch (err) {
-    console.warn("Backend Firestore catalog refresh notice:", err);
-    return buildAvailableCatalog();
+  initBackendCatalogManager();
+  if (profilesConfirmed && productsConfirmed) return getAvailableCatalog();
+  // All callers await the existing listeners, without repeating collection reads.
+  if (!pendingConfirmation) {
+    pendingConfirmation = new Promise<AvailableCatalog>((resolve, reject) => {
+      const done = () => {
+        if (!profilesConfirmed || !productsConfirmed) return;
+        clearTimeout(deadline);
+        confirmationWaiters.delete(done);
+        resolve(getAvailableCatalog());
+      };
+      const deadline = setTimeout(() => {
+        confirmationWaiters.delete(done);
+        reject(Error('Firestore did not confirm both catalog collections'));
+      }, 8000);
+      confirmationWaiters.add(done);
+      done();
+    }).finally(() => { pendingConfirmation = null; });
   }
+  return pendingConfirmation;
 }
 
-/**
- * Initializes the backend catalog manager with 5-minute auto-refresh and real-time Firestore listeners
- */
+/** One listener per collection. Metadata, errors and empty snapshots are significant. */
 export function initBackendCatalogManager() {
-  if (isInitialized) return;
+  if (isInitialized && !listenerFailed) return;
+  stopProfiles?.();
+  stopProducts?.();
   isInitialized = true;
-
-  // Initial load
-  refreshCatalogFromFirestore().catch(() => {});
-
-  // 5-Minute fallback sync interval
-  refreshInterval = setInterval(() => {
-    refreshCatalogFromFirestore().catch(() => {});
-  }, 5 * 60 * 1000); // exactly 5 minutes
-
-  // Attach Real-Time Firestore listeners for instantaneous store state & product changes
-  try {
-    const db = getBackendDb();
-
-    // Listen to profiles collection
-    onSnapshot(collection(db, 'profiles'), (snapshot) => {
-      snapshot.docChanges().forEach(change => {
-        const data = change.doc.data() as any;
-        const uid = data.uid || change.doc.id;
-
-        if (change.type === 'removed') {
-          rawStoresMap.delete(uid);
-        } else {
-          const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-          const isClosed = isStoreCurrentlyClosed(data);
-          const { coverURL, bannerURL, ...cleanData } = data;
-          rawStoresMap.set(uid, {
-            ...cleanData,
-            uid,
-            username: data.username || uid,
-            displayName: data.displayName || data.storeName || data.username || 'Restaurante',
-            bio: data.bio || '',
-            address: data.address || '',
-            phone: data.phone || '',
-            whatsapp: data.whatsapp || '',
-            photoURL: data.photoURL || '',
-            deliveryFee: typeof data.deliveryFee === 'number' ? data.deliveryFee : 7000,
-            schedule: data.schedule || null,
-            isClosed,
-            suspended: isSuspended
-          });
-        }
+  listenerFailed = false;
+  profilesConfirmed = productsConfirmed = false;
+  const db = getBackendDb();
+  const fail = (collectionName: string, error: any) => {
+    if (collectionName === 'profiles') profilesConfirmed = false;
+    else productsConfirmed = false;
+    listenerFailed = true;
+    currentAvailableCatalog.complete = false;
+    console.warn('Firestore backend catalog listener:', collectionName, error.code || 'unavailable');
+  };
+  const publish = () => {
+    if (!profilesConfirmed || !productsConfirmed) {
+      currentAvailableCatalog.complete = false;
+      return;
+    }
+    buildAvailableCatalog();
+    confirmationWaiters.forEach(done => done());
+  };
+  stopProfiles = onSnapshot(collection(db, 'profiles'), { includeMetadataChanges: true }, snapshot => {
+    profilesConfirmed = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites;
+    if (profilesConfirmed) {
+      rawStoresMap.clear();
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const uid = data.uid || doc.id;
+        rawStoresMap.set(uid, { ...data, uid, username: data.username || uid,
+          displayName: data.displayName || data.storeName || data.username || 'Restaurante',
+          // Persist only the manual flag; schedules are evaluated at build time.
+          isClosed: data.isClosed === true });
       });
-      // Immediately rebuild catalog upon any store status change (e.g. isClosed: false -> true)
-      buildAvailableCatalog();
-    }, (err) => {
-      console.warn("Firestore backend profiles listener notice:", err);
-    });
-
-    // Listen to products collection
-    onSnapshot(collection(db, 'products'), (snapshot) => {
-      snapshot.docChanges().forEach(change => {
-        const data = change.doc.data() as any;
-        if (change.type === 'removed') {
-          rawProductsMap.delete(change.doc.id);
-        } else {
-          rawProductsMap.set(change.doc.id, {
-            id: change.doc.id,
-            userId: data.userId || '',
-            name: data.name || 'Producto',
-            description: data.description || '',
-            price: typeof data.price === 'number' ? data.price : parseFloat(data.price) || 0,
-            stock: typeof data.stock === 'number' ? data.stock : parseInt(data.stock) || 0,
-            category: data.category || 'General',
-            imageURL: data.imageURL || '',
-            active: data.active !== false,
-            variants: data.variants || [],
-            options: data.options || [],
-            addons: data.addons || [],
-            packagingCost: data.packagingCost,
-            variantsText: data.variantsText,
-            variantPrices: data.variantPrices,
-            allowsHalfAndHalf: data.allowsHalfAndHalf,
-            flavorsText: data.flavorsText,
-            flavorsList: data.flavorsList,
-            allowSingleFlavor: data.allowSingleFlavor
-          });
-        }
+    }
+    publish();
+  }, error => fail('profiles', error));
+  stopProducts = onSnapshot(collection(db, 'products'), { includeMetadataChanges: true }, snapshot => {
+    productsConfirmed = !snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites;
+    if (productsConfirmed) {
+      rawProductsMap.clear();
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        // Preserve owner aliases, creation order and all product options.
+        rawProductsMap.set(doc.id, { ...data, id: doc.id, userId: data.userId || '',
+          storeUsername: data.storeUsername || '', name: data.name || 'Producto',
+          price: Number(data.price) || 0, active: data.active !== false });
       });
-      buildAvailableCatalog();
-    }, (err) => {
-      console.warn("Firestore backend products listener notice:", err);
-    });
-  } catch (err) {
-    console.warn("Could not attach backend Firestore listeners, relying on 5-minute interval:", err);
-  }
+    }
+    publish();
+  }, error => fail('products', error));
 }
 
 let lastCatalogBuildTime = 0;
@@ -497,24 +405,8 @@ export function getAvailableCatalog(): AvailableCatalog {
  * Allows client-side synchronization updates
  */
 export function syncCatalogFromClient(stores: CatalogStore[], products: CatalogProduct[]): AvailableCatalog {
-  if (Array.isArray(stores) && stores.length > 0) {
-    stores.forEach(s => {
-      if (s.uid) {
-        rawStoresMap.set(s.uid, {
-          ...s,
-          isClosed: s.isClosed === true
-        });
-      }
-    });
-  }
-  if (Array.isArray(products) && products.length > 0) {
-    products.forEach(p => {
-      if (p.id) {
-        rawProductsMap.set(p.id, p);
-      }
-    });
-  }
-  return buildAvailableCatalog();
+  // Client submissions are not proof of server completeness; listeners own this cache.
+  return getAvailableCatalog();
 }
 
 /**

@@ -29,10 +29,10 @@ async function main() {
       listenerError = error;
       return () => activeListeners--;
     },
-    getDocs: async name => {
+    getDocsFromServer: async name => {
       assert.equal(name, 'products', 'No duplicate profile query');
       productReads++;
-      return { docs: [] };
+      return { metadata: { fromCache: false, hasPendingWrites: false }, docs: [] };
     }
   };
   globalThis.fetch = async () => ({ ok: false });
@@ -44,7 +44,7 @@ async function main() {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, args => ({ path: args.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, args => ({ contents:
         args.path === 'firebase/firestore'
-          ? 'export const {collection,onSnapshot,getDocs} = globalThis.__storeTest;'
+          ? 'export const {collection,onSnapshot,getDocsFromServer} = globalThis.__storeTest;'
           : `export const db = {}; export const checkIsStoreClosed = s => s.isClosed || s.suspended || ['expired','suspended'].includes(s.subscriptionStatus);
              export const fetchProductsForStoreFromFirebase = async () => ({products:[],hasMore:false});
              export const fetchOpenRestaurantsFromFirebase = () => {throw Error('Duplicate query')};

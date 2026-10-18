@@ -88,6 +88,10 @@ export const isFoodProduct = (product: { name?: string; description?: string; ca
 };
 
 /**
+ * Beverage visibility is a separate business rule, not pagination:
+ * TiendaGeneral excludes matches only when selectedStore === 'all'.
+ * Restaurant views and the API retain these products. Keep the existing keyword
+ * rules unchanged; compare homepage totals AFTER this exclusion.
  * Checks if a product or category is a drink/beverage
  */
 export const isDrinkProduct = (product: { name?: string; description?: string; category?: string }): boolean => {

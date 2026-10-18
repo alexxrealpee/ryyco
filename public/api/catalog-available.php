@@ -6,6 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: no-store');
 
 $cachePaths = [
     __DIR__ . '/../catalog-cache.json',
@@ -35,6 +36,11 @@ foreach ($cachePaths as $path) {
             }));
         }
         $data['success'] = true;
+        // This endpoint reads a static file, not a confirmed Firestore snapshot.
+        $data['source'] = 'static-cache';
+        $data['complete'] = false;
+        $data['catalog']['complete'] = false;
+        $data['totalProducts'] = count($products);
         $data['isPartial'] = $limit > 0 && count($products) > $limit;
         $data['catalog']['products'] = $limit > 0 ? array_slice($products, 0, $limit) : $products;
         $data['catalog']['stores'] = $stores;
@@ -44,7 +50,9 @@ foreach ($cachePaths as $path) {
 }
 
 echo json_encode([
-    'success' => true,
+    'success' => false,
+    'source' => 'static-cache',
+    'complete' => false,
     'catalog' => ['products' => [], 'stores' => []],
     'timestamp' => date('c')
 ]);

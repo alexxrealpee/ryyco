@@ -51,8 +51,8 @@
     <script>
       try {
         var catalogController = new AbortController();
-        var catalogTimeout = setTimeout(function() { catalogController.abort(); }, 2500);
-        window.__CATALOG_PREFETCH__ = fetch('/api/catalog/available?initial=true', { signal: catalogController.signal })
+        var catalogTimeout = setTimeout(function() { catalogController.abort(); }, 10000);
+        window.__CATALOG_PREFETCH__ = fetch('/api/catalog/available', { signal: catalogController.signal })
           .then(function(r) { 
             if (r.ok) {
               var ct = r.headers.get('content-type') || '';

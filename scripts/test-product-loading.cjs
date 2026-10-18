@@ -10,7 +10,7 @@ async function bundle(file, mock = false) {
     define: { 'import.meta.env.DEV': 'false' }, plugins: mock ? [{ name: 'firebase-mock', setup(b) {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, a => ({ path: a.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, a => ({ contents: a.path === 'firebase/firestore'
-        ? 'export const {collection,onSnapshot,getDocs}=globalThis.__productTest;'
+        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const getDocsFromServer=(...a)=>globalThis.__productTest.getDocsFromServer(...a);'
         : 'export const db={}; export const checkIsStoreClosed=s=>s.isClosed;' }));
     }}] : [] });
   const m = { exports: {} };
@@ -24,7 +24,7 @@ async function main() {
     CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true });
   let reads = 0, fetches = 0, resolveFull;
   globalThis.__productTest = { collection: (_, name) => name, onSnapshot: () => () => {},
-    getDocs: async () => { reads++; throw Error('Unexpected Firestore query'); } };
+    getDocsFromServer: async () => { reads++; throw Error('Simulated Firestore connection failure'); } };
   const products = Array.from({ length: 18 }, (_, i) => ({ id: String(i), name: 'Product ' + i,
     price: 10000 + i, userId: 'store', active: true, category: 'Hamburguesas',
     imageURL: '/image-' + i + '.webp', createdAt: new Date(2026, 9, 18, 0, 0, 18 - i).toISOString() }));
@@ -35,22 +35,84 @@ async function main() {
   function Probe() { state = useProgressiveStoreLoader(); return null; }
   let root = createRoot(document.getElementById('root'));
   await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Probe))));
-  assert.equal(state.loadedProducts.length, 6);
+  assert.equal(state.loadedProducts.length, 0, "Stale initial JSON is not confirmed product data");
   const prefix = state.loadedProducts.map(p => p.id);
   let request;
   await act(async () => { request = state.loadNextFourProducts(); await state.loadNextFourProducts(); });
   assert.equal(fetches, 1, 'Concurrent pagination shares one full catalog request');
   await act(async () => { resolveFull({ ok: true, headers: { get: () => 'application/json' },
-    json: async () => ({ isPartial: false, catalog: { products: [...products, products[8]] } }) }); await request; });
+    json: async () => ({ source: "firestore-server", complete: true, isPartial: false, totalProducts: 19, catalog: { stores: [{uid:"store"}], products: [...products, products[8]] } }) }); await request; await new Promise(resolve => setImmediate(resolve)); });
   assert.equal(state.loadedProducts.length, 18);
-  assert.deepEqual(state.loadedProducts.slice(0, 6).map(p => p.id), prefix, 'Existing order never changes');
+  assert.deepEqual(state.loadedProducts.slice(0, 6).map(p => p.id), products.slice(0,6).map(p=>p.id));
   assert.equal(new Set(state.loadedProducts.map(p => p.id)).size, 18);
   await act(async () => { await state.loadNextFourProducts(); await state.loadNextFourProducts(); });
   assert.equal(fetches, 1);
   assert.equal(reads, 0);
   assert.equal(state.hasMore, false);
   await act(async () => root.unmount());
-  console.log('PASS catalog: initial six, concurrent requests, retained buffer, stable order, no duplicates or extra reads');
+  // A failed API plus failed server read leaves retry available, never a false end.
+  delete window.__INITIAL_CATALOG_DATA__;
+  globalThis.fetch = async () => ({ok:false});
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  assert.equal(state.hasMore, true);
+  assert(state.productsError);
+  globalThis.__productTest.getDocsFromServer = async () => ({metadata:{fromCache:false,hasPendingWrites:false},docs:products.map(p=>({id:p.id,data:()=>p}))});
+  await act(async () => { await state.retryProducts(); });
+  assert.equal(state.hasMore, false);
+  assert.equal(state.productsError, null);
+  assert.equal(state.loadedProducts.length, 18);
+  await act(async () => root.unmount());
+  // A stalled SDK read times out visibly; retry reuses it instead of duplicating reads.
+  const nativeTimeout = globalThis.setTimeout;
+  const nativeClear = globalThis.clearTimeout;
+  const productDeadlines = new Map();
+  let timerId = 100000, resolveStalled, stalledReads = 0;
+  globalThis.setTimeout = (fn, ms, ...args) => ms === 20000
+    ? (productDeadlines.set(++timerId, fn), timerId) : nativeTimeout(fn, ms, ...args);
+  globalThis.clearTimeout = id => productDeadlines.delete(id) || nativeClear(id);
+  globalThis.__productTest.getDocsFromServer = () => { stalledReads++; return new Promise(resolve => { resolveStalled = resolve; }); };
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  await act(async () => { for (const fn of [...productDeadlines.values()]) fn(); });
+  assert.equal(state.isLoadingMore, false);
+  assert.equal(state.hasMore, true);
+  assert(state.productsError);
+  await act(async () => {
+    resolveStalled({metadata:{fromCache:false,hasPendingWrites:false},docs:[]});
+    await state.retryProducts();
+  });
+  assert.equal(stalledReads, 1, 'Timed out SDK read is still shared on retry');
+  assert.equal(state.hasMore, false, 'Only a confirmed empty collection is a real end');
+  assert.equal(state.productsError, null);
+  await act(async () => root.unmount());
+  assert.equal(productDeadlines.size, 0);
+  globalThis.setTimeout = nativeTimeout;
+  globalThis.clearTimeout = nativeClear;
+
+  // HTML prefetch and React must not request the same full buffer twice.
+  const beforePrefetch = fetches;
+  window.__CATALOG_PREFETCH__ = Promise.resolve({source:'firestore-server',complete:true,
+    isPartial:false,totalProducts:products.length,catalog:{stores:[{uid:'store'}],products}});
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  assert.equal(state.loadedProducts.length, 18);
+  assert.equal(fetches, beforePrefetch);
+  await act(async () => root.unmount());
+
+  const {balanceCatalog, resolveProductStore} = await bundle('src/lib/catalogProducts.ts');
+  const shops = [{uid:'a',username:'Alpha'},{uid:'b',username:'Beta'},{uid:'c',username:'Gamma'}];
+  const uneven = products.map((p,i)=>({...p,userId:i<12?'a':i<15?'b':'c'}));
+  const fair = balanceCatalog(uneven,shops);
+  assert.deepEqual(fair.slice(0,3).map(p=>p.userId),['a','b','c']);
+  const extended = balanceCatalog([...uneven,{...products[0],id:'new',userId:'d'}],[...shops,{uid:'d'}],fair.slice(0,6).map(p=>p.id));
+  assert.deepEqual(extended.slice(0,6).map(p=>p.id),fair.slice(0,6).map(p=>p.id));
+  assert.equal(extended[6].id,'new');
+  assert.equal(resolveProductStore({storeUsername:' BETA '},shops).uid,'b');
+  assert.equal(resolveProductStore({userId:'a',storeUsername:'Beta'},shops).uid,'a');
+  assert.equal(new Set(extended.map(p=>p.id)).size,19);
+  console.log('PASS retry, strict completeness, canonical owner, balanced shops and stable prefix');
+  console.log('PASS catalog: confirmed full buffer, shared prefetch, timeout, retry, empty result, no duplicate reads');
 
   const Image = (await bundle('src/components/ProductCardImage.tsx')).default;
   root = createRoot(document.getElementById('root'));
