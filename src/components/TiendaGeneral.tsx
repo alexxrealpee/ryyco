@@ -2141,10 +2141,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   <span className="text-xs font-black uppercase text-red-200 tracking-wider flex items-center gap-1.5">
                     Restaurantes Abiertos Ahora ({uniqueStores.length})
                   </span>
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>En servicio</span>
-                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {selectedStore !== 'all' && (
@@ -2348,13 +2344,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             {(store.displayName || store.username || 'T').substring(0, 2)}
                           </div>
                         )}
-
-                        {/* Pulsating green dot confirming live open status */}
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-slate-950 p-0.5 rounded-full z-10">
-                          <span className="flex items-center justify-center w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-slate-900" title="Restaurante abierto ahora">
-                            <span className="w-1 h-1 rounded-full bg-white animate-pulse" />
-                          </span>
-                        </div>
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
                         isSelected ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
