@@ -39,6 +39,24 @@ if (!process.env.OPENAI_API_KEY) {
   dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 }
 
+// Process-level crash prevention
+process.on('uncaughtException', (err) => {
+  console.error('[Process Uncaught Exception]:', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process Unhandled Rejection]:', reason);
+});
+
+// Clean up invalid GOOGLE_APPLICATION_CREDENTIALS (e.g. if set to an API key or non-existent path)
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  if (
+    process.env.GOOGLE_APPLICATION_CREDENTIALS.startsWith('AIza') ||
+    !fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)
+  ) {
+    delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  }
+}
+
 // Clean up any known invalid Google Maps keys from process.env immediately
 if (process.env.VITE_GOOGLE_MAPS_API_KEY === 'AIzaSyDi7lHGpuLxlimIma1NkJbWWexlqKuMFmA' || process.env.VITE_GOOGLE_MAPS_API_KEY?.includes('tu-clave') || (process.env.VITE_GOOGLE_MAPS_API_KEY?.length || 0) < 20) {
   delete process.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -129,7 +147,8 @@ function getOpenAIClient(): OpenAI | null {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  // Port 3000 is required: Nginx listens on 8080 and proxies traffic to localhost:3000
+  const PORT = (process.env.PORT && process.env.PORT !== '8080') ? Number(process.env.PORT) : 3000;
   void startOrderPush();
   app.get('/api/push/status', (_req, res) => res.json(getOrderPushStatus()));
 
@@ -1699,9 +1718,23 @@ let nominatimDisabledUntil = 0;
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Linnk.Pro Express full-stack server running on http://localhost:${PORT}`);
+  });
+
+  server.on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.warn(`[Server] Port ${PORT} already in use, retrying in 1s...`);
+      setTimeout(() => {
+        server.close();
+        server.listen(PORT, '0.0.0.0');
+      }, 1000);
+    } else {
+      console.error('[Server] Server listen error:', err);
+    }
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("Critical error starting server:", err);
+});

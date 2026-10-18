@@ -38,87 +38,53 @@ export interface UseProgressiveStoreLoaderResult {
   isLoadingProducts: boolean;
 }
 
-// Fast First-Paint Store Data: uses head prefetch or short-lived session cache for instant load
-function getCachedStoreData(): {
-  openRestaurants: UserProfile[];
-  products: ProductItem[];
-  profiles: Record<string, UserProfile>;
-  hasCache: boolean;
-} {
-  try {
-    if (typeof window !== 'undefined') {
-      // 1. Check window.__INITIAL_CATALOG_DATA__ from <head> prefetch
-      const init = (window as any).__INITIAL_CATALOG_DATA__;
-      if (init && init.catalog) {
-        const cat = init.catalog;
-        const pMap: Record<string, UserProfile> = {};
-        const openStores: UserProfile[] = [];
-        (cat.stores || []).forEach((s: any) => {
-          if (!s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-            pMap[s.uid] = s;
-            if (s.username) pMap[s.username.toLowerCase()] = s;
-            openStores.push(s);
-          }
-        });
-        const openStoreUids = new Set(openStores.map(st => st.uid));
-        const openStoreUsernames = new Set(openStores.map(st => st.username?.toLowerCase()).filter(Boolean));
-        const initialProducts = (cat.products || []).filter((p: any) => {
-          if (!p || p.active === false) return false;
-          return (p.userId && openStoreUids.has(p.userId)) || 
-                 (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase()));
-        }).slice(0, 6);
+// Browser / in-memory logo image cache to prevent re-downloads and flickering
+const preloadedLogosCache = new Set<string>();
 
-        if (openStores.length > 0 || initialProducts.length > 0) {
-          return {
-            openRestaurants: openStores,
-            products: initialProducts,
-            profiles: pMap,
-            hasCache: true
-          };
-        }
-      }
-
-      // 2. Check sessionStorage for instant navigation restoration
-      const rawSession = sessionStorage.getItem('linnk_fast_open_cache');
-      if (rawSession) {
-        const parsed = JSON.parse(rawSession);
-        if (parsed && Array.isArray(parsed.stores) && Array.isArray(parsed.products) && Date.now() - (parsed.timestamp || 0) < 180000) {
-          return {
-            openRestaurants: parsed.stores,
-            products: parsed.products.slice(0, 6),
-            profiles: parsed.profiles || {},
-            hasCache: true
-          };
-        }
-      }
+export function preloadStoreLogos(stores?: UserProfile[]) {
+  if (typeof window === 'undefined' || !Array.isArray(stores)) return;
+  for (const s of stores) {
+    const url = s?.photoURL;
+    if (url && typeof url === 'string' && !preloadedLogosCache.has(url)) {
+      preloadedLogosCache.add(url);
+      const img = new Image();
+      img.decoding = 'async';
+      img.src = url;
     }
+  }
+}
+
+export function isLogoCached(url?: string): boolean {
+  if (!url) return false;
+  return preloadedLogosCache.has(url);
+}
+
+// Purge legacy persistent session cache on module load to guarantee live freshness from Firebase
+if (typeof window !== 'undefined') {
+  try {
+    sessionStorage.removeItem('linnk_fast_open_cache');
   } catch (e) {}
-  return { openRestaurants: [], products: [], profiles: {}, hasCache: false };
 }
 
 export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
-  const [initial] = useState(getCachedStoreData);
-
-  const [openRestaurants, setOpenRestaurants] = useState<UserProfile[]>(() => initial.openRestaurants);
-  const [loadedLogos, setLoadedLogos] = useState<UserProfile[]>(() => initial.openRestaurants);
-  const [loadedProducts, setLoadedProducts] = useState<ProductItem[]>(() => initial.products);
-  const [profilesMap, setProfilesMap] = useState<Record<string, UserProfile>>(() => initial.profiles);
+  const [openRestaurants, setOpenRestaurants] = useState<UserProfile[]>([]);
+  const [loadedLogos, setLoadedLogos] = useState<UserProfile[]>([]);
+  const [loadedProducts, setLoadedProducts] = useState<ProductItem[]>([]);
+  const [profilesMap, setProfilesMap] = useState<Record<string, UserProfile>>({});
   
-  const [stage, setStage] = useState<ProgressiveLoadingStage>(() => initial.hasCache ? 'idle' : 'fetching_open_restaurants');
-  const [firstStore, setFirstStore] = useState<UserProfile | null>(() => initial.openRestaurants[0] || null);
+  const [stage, setStage] = useState<ProgressiveLoadingStage>('fetching_open_restaurants');
+  const [firstStore, setFirstStore] = useState<UserProfile | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(!initial.hasCache);
+  const [hasMore, setHasMore] = useState(true);
   const [statusMessage, setStatusMessage] = useState('');
 
   // State refs to prevent stale closures and avoid race conditions
   const currentStoreIdxRef = useRef(0);
   const storeLastDocsRef = useRef<Record<string, any>>({});
-  const loadedProductIdsRef = useRef<Set<string>>(
-    new Set(initial.products.map(p => p.id).filter(Boolean))
-  );
+  const loadedProductIdsRef = useRef<Set<string>>(new Set());
   const isFetchingMoreRef = useRef(false);
   const isInitializedRef = useRef(false);
-  const openRestaurantsRef = useRef<UserProfile[]>(initial.openRestaurants);
+  const openRestaurantsRef = useRef<UserProfile[]>([]);
 
   /**
    * Helper function: fetches a sequential batch of products across open restaurants.
@@ -333,6 +299,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       openRestaurantsRef.current = currentOpen;
       setOpenRestaurants(currentOpen);
       setLoadedLogos(currentOpen);
+      preloadStoreLogos(currentOpen);
     }
   }, [profilesMap]);
 
@@ -373,10 +340,14 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         openRestaurantsRef.current = freshOpen;
         setOpenRestaurants(freshOpen);
         setLoadedLogos(freshOpen);
+        preloadStoreLogos(freshOpen);
+        setFirstStore(freshOpen[0] || null);
         return merged;
       });
+      setStage('idle');
     }, (err) => {
       console.warn("Real-time profiles listener notice in store loader:", err);
+      setStage('idle');
     });
 
     // 15-second schedule timer to auto-refresh stores when their opening/closing time arrives
@@ -397,6 +368,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         openRestaurantsRef.current = freshOpen;
         setOpenRestaurants(freshOpen);
         setLoadedLogos(freshOpen);
+        preloadStoreLogos(freshOpen);
         return prev;
       });
     }, 15000);
@@ -414,16 +386,14 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
 
     async function runProgressivePipeline() {
       try {
-        if (!initial.hasCache) {
-          setStage('fetching_open_restaurants');
-        }
+        setStage('fetching_open_restaurants');
 
-        // Parallel fetch for active data (profiles + products in one single fast pass)
+        // Parallel fetch for active products and stores
         const activeData = await fetchAllActiveProductsAndStores(false);
         const pMap = activeData.profiles || {};
 
         const seenUids = new Set<string>();
-        let openStores: UserProfile[] = [];
+        const openStores: UserProfile[] = [];
         Object.values(pMap).forEach(s => {
           if (s && s.uid && !seenUids.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
             if (s.displayName || s.username) {
@@ -433,22 +403,21 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           }
         });
 
-        // Fallback if pMap did not yield open stores
-        if (openStores.length === 0) {
-          openStores = await fetchOpenRestaurantsFromFirebase();
+        if (openStores.length > 0) {
+          openStores.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
+          openRestaurantsRef.current = openStores;
+          setOpenRestaurants(openStores);
+          setLoadedLogos(openStores);
+          preloadStoreLogos(openStores);
+          setFirstStore(openStores[0] || null);
         }
 
-        openStores.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-        openRestaurantsRef.current = openStores;
-        setOpenRestaurants(openStores);
-        setLoadedLogos(openStores);
-        setFirstStore(openStores[0] || null);
-
-        setProfilesMap(pMap);
+        setProfilesMap(prev => ({ ...prev, ...pMap }));
 
         if (activeData.products && activeData.products.length > 0) {
-          const openStoreUids = new Set(openStores.map(s => s.uid));
-          const openStoreUsernames = new Set(openStores.map(s => s.username?.toLowerCase()).filter(Boolean));
+          const currentStores = openRestaurantsRef.current.length > 0 ? openRestaurantsRef.current : openStores;
+          const openStoreUids = new Set(currentStores.map(s => s.uid));
+          const openStoreUsernames = new Set(currentStores.map(s => s.username?.toLowerCase()).filter(Boolean));
 
           const openStoreProducts = activeData.products.filter(p => {
             const matchedUid = p.userId && openStoreUids.has(p.userId);
@@ -472,18 +441,8 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
           });
 
           setLoadedProducts(initialSlice);
-          setProfilesMap(prev => ({ ...prev, ...activeData.profiles }));
-          try {
-            sessionStorage.setItem('linnk_fast_open_cache', JSON.stringify({
-              stores: openStores,
-              products: initialSlice,
-              profiles: pMap,
-              timestamp: Date.now()
-            }));
-          } catch (e) {}
-          // Ensure hasMore remains true so user can scroll to load the remaining products
-          setHasMore(uniqueInitial.length > 6 || openStores.length > 0);
-        } else if (openStores.length > 0) {
+          setHasMore(uniqueInitial.length > 6 || currentStores.length > 0);
+        } else if (openRestaurantsRef.current.length > 0) {
           const initialBatch = await fetchBatch(6);
           if (initialBatch.length > 0) {
             initialBatch.forEach(p => {
@@ -491,18 +450,6 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
             });
             setLoadedProducts(initialBatch);
           }
-        }
-
-        // Fast background revalidation: If loaded from cache, immediately fetch live server catalog in background
-        if (initial.hasCache) {
-          setTimeout(async () => {
-            try {
-              const freshData = await fetchAllActiveProductsAndStores(true);
-              if (freshData && freshData.profiles && Object.keys(freshData.profiles).length > 0) {
-                setProfilesMap(prev => ({ ...prev, ...freshData.profiles }));
-              }
-            } catch (e) {}
-          }, 40);
         }
 
         setStage('idle');
@@ -513,7 +460,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     }
 
     runProgressivePipeline();
-  }, [fetchBatch, initial.hasCache]);
+  }, [fetchBatch]);
 
   const isLoadingRestaurants = stage === 'fetching_open_restaurants' && openRestaurants.length === 0;
   const isLoadingProducts = (stage === 'fetching_open_restaurants' || stage === 'showing_first_logo' || stage === 'fetching_first_products') && loadedProducts.length === 0;

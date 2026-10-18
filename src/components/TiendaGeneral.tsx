@@ -69,7 +69,7 @@ import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
-import { useProgressiveStoreLoader } from '../hooks/useProgressiveStoreLoader';
+import { useProgressiveStoreLoader, preloadStoreLogos } from '../hooks/useProgressiveStoreLoader';
 import { 
   getStoredCart, 
   saveStoredCart, 
@@ -191,43 +191,12 @@ interface TiendaGeneralProps {
 }
 
 // Fast initial data for instant first paint strictly limited to open restaurants
+// STRICT: No persistent cache for store states so customers only see truly open restaurants from Firebase
 const getInitialGeneralData = () => {
   try {
     if (typeof window !== 'undefined') {
-      const init = (window as any).__INITIAL_CATALOG_DATA__;
-      if (init && init.catalog && Array.isArray(init.catalog.products)) {
-        const pMap: Record<string, UserProfile> = {};
-        const openStores: UserProfile[] = [];
-        (init.catalog.stores || []).forEach((s: any) => {
-          if (s && s.uid && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-            pMap[s.uid] = s;
-            if (s.username) pMap[s.username.toLowerCase()] = s;
-            openStores.push(s);
-          }
-        });
-
-        const openStoreUids = new Set(openStores.map(st => st.uid));
-        const openStoreUsernames = new Set(openStores.map(st => st.username?.toLowerCase()).filter(Boolean));
-
-        const openProducts = (init.catalog.products as ProductItem[]).filter(p => {
-          if (!p || p.active === false) return false;
-          return (p.userId && openStoreUids.has(p.userId)) || 
-                 (p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase()));
-        });
-
-        return {
-          products: openProducts.slice(0, 6),
-          profiles: pMap,
-          hasCache: true
-        };
-      }
-      const rawSession = sessionStorage.getItem('linnk_fast_open_cache');
-      if (rawSession) {
-        const parsed = JSON.parse(rawSession);
-        if (parsed && Array.isArray(parsed.products) && parsed.products.length > 0 && Date.now() - (parsed.timestamp || 0) < 180000) {
-          return { products: parsed.products.slice(0, 6) as ProductItem[], profiles: (parsed.profiles || {}) as Record<string, UserProfile>, hasCache: true };
-        }
-      }
+      // Clear legacy persistent session cache if present
+      sessionStorage.removeItem('linnk_fast_open_cache');
     }
   } catch (e) {}
   return { products: [] as ProductItem[], profiles: {} as Record<string, UserProfile>, hasCache: false };
@@ -769,6 +738,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
   // When a store closes in Firestore, it is removed immediately; when it opens, it appears immediately.
   const uniqueStores = useMemo(() => {
+    // Prioritize live open restaurants from useProgressiveStoreLoader Firestore onSnapshot listener
+    if (openRestaurants && openRestaurants.length > 0) {
+      return openRestaurants;
+    }
     const storeMap = new Map<string, UserProfile>();
 
     (Object.values(profiles) as UserProfile[]).forEach(profile => {
@@ -787,7 +760,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     });
 
     return Array.from(storeMap.values()).sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-  }, [profiles]);
+  }, [openRestaurants, profiles]);
 
   // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
   // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
@@ -885,18 +858,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const isProductsLoading = products.length === 0 && (isLoadingProducts || progressiveStage !== 'idle');
   const isCategoriesLoading = isProductsLoading && categories.length <= 1;
 
-  // Pre-load top restaurant logos and the first 6 products into browser cache for instant rendering
+  // Pre-load all restaurant logos and the first 6 products into browser cache for instant rendering
   useEffect(() => {
     if (uniqueStores.length === 0 && products.length === 0) return;
 
-    // Preload top store logos
-    uniqueStores.slice(0, 10).forEach(s => {
-      if (s.photoURL) {
-        const img = new Image();
-        img.decoding = "async";
-        img.src = s.photoURL;
-      }
-    });
+    // Preload ALL open restaurant logos into browser cache to avoid re-downloads or flicker
+    preloadStoreLogos(uniqueStores);
 
     // Preload the first 6 products
     products.slice(0, 6).forEach(p => {
@@ -2369,7 +2336,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             src={store.photoURL}
                             alt={store.displayName || store.username}
                             draggable={false}
-                            loading={storeIdx < 4 ? "eager" : "lazy"}
+                            loading="eager"
                             fetchPriority="auto"
                             decoding="async"
                             width="64"

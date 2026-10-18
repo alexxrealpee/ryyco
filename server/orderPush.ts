@@ -1,20 +1,31 @@
-import { applicationDefault, cert, initializeApp } from 'firebase-admin/app';
+import { applicationDefault, cert, initializeApp, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { createHash } from 'node:crypto';
+import fs from 'node:fs';
 
 const DATABASE = 'ai-studio-be9196c8-7041-4ba9-b337-ca71c1485d15';
 const status = { configured: false, listening: false, error: '' };
 export const getOrderPushStatus = () => ({ ...status });
 
 export async function startOrderPush() {
+  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    if (
+      process.env.GOOGLE_APPLICATION_CREDENTIALS.startsWith('AIza') ||
+      !fs.existsSync(process.env.GOOGLE_APPLICATION_CREDENTIALS)
+    ) {
+      delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    }
+  }
+
   if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.FIREBASE_SERVICE_ACCOUNT_JSON && !process.env.K_SERVICE) {
     status.error = 'Faltan credenciales de servicio de Firebase en el servidor.';
     console.warn('[Order push]', status.error);
     return;
   }
   try {
-    const app = initializeApp({
+    const existingApp = getApps().find(a => a.name === 'order-push');
+    const app = existingApp || initializeApp({
       credential: process.env.FIREBASE_SERVICE_ACCOUNT_JSON
         ? cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) : applicationDefault(),
       projectId: process.env.FIREBASE_PROJECT_ID || 'studio-9002217802-13e05'

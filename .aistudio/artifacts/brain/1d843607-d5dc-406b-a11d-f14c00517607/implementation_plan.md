@@ -1,64 +1,102 @@
-# Plan de Implementación: Ordenamiento Superior y Carga Inteligente de Pedidos en Administración
+# Optimización de la Sección de Logotipos de Restaurantes RYYCO
 
-Este plan describe las modificaciones técnicas para garantizar que en el panel de **Administración General**, el último pedido que llegue se posicione siempre en la parte superior y se implemente una carga inteligente de 6 pedidos iniciales con carga progresiva automática mediante scroll infinito.
-
----
-
-## 1. Contexto y Objetivos
-
-- **Posicionamiento Superior del Pedido Más Reciente**:
-  - Asegurar que la lista de pedidos se ordene estrictamente de forma descendente por fecha de creación (`createdAt` más reciente primero) y número de orden (`orderNumber` descendente como respaldo).
-  - Cuando ingrese un nuevo pedido en tiempo real a través del listener de Firebase, este aparecerá inmediatamente en la primera posición de la lista.
-
-- **Carga Inteligente de 6 en 6 (Infinite Scroll)**:
-  - Inicializar la vista mostrando exclusivamente los **6 primeros pedidos**.
-  - Al hacer scroll hacia abajo y llegar al final del listado visible, cargar de forma automática los siguientes 6 pedidos mediante un centinela con `IntersectionObserver`.
-  - Restablecer la cantidad visible a 6 cuando el usuario aplique o cambie filtros de búsqueda (por tienda, estado o texto).
-
-- **Conservación de Métricas Globales**:
-  - Mantener los contadores superiores de la plataforma (Pendientes, Entregados, Total acumulado) reflejando el total global en tiempo real de Firebase sin verse truncados por la paginación visual de 6 elementos.
+Optimización integral del carrusel de logotipos de restaurantes en la página principal para mostrar única y exclusivamente los restaurantes abiertos en tiempo real mediante un listener de Firestore eficiente, eliminando el almacenamiento en caché persistente para el estado operativo y preservando la caché de imágenes de logotipos y el diseño visual actual.
 
 ---
 
-## 2. Cambios a Realizar
+## User Review & Critical Decisions
 
-### Archivo: `src/components/AdminPanel.tsx`
+> [!IMPORTANT]
+> A continuación se resumen las decisiones acordadas a partir de las preguntas de clarificación:
 
-1. **Ordenamiento Estricto de Pedidos**:
-   - En el `useMemo` de `filteredOrders`, aplicar una ordenación explícita `createdAt` descendente:
-     ```typescript
-     .sort((a, b) => {
-       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-       if (timeB !== timeA) return timeB - timeA;
-       return (b.orderNumber || 0) - (a.orderNumber || 0);
-     });
-     ```
-   - Esto garantiza que sin importar el orden en que Firebase entregue los documentos o actualizaciones, el último pedido creado siempre esté en la parte superior absoluta.
-
-2. **Ajuste del Lote Inicial y Crecimiento Progresivo**:
-   - Modificar el estado inicial de `visibleOrdersCount` de 20 a **6**.
-   - Al cambiar los filtros de tienda, estado o término de búsqueda, resetear `setVisibleOrdersCount(6)`.
-   - Modificar el `IntersectionObserver` para que incremente la visualización en lotes de **6 pedidos**:
-     ```typescript
-     setVisibleOrdersCount(prev => Math.min(prev + 6, filteredOrders.length));
-     ```
-
-3. **Indicador de Carga y Centinela de Scroll**:
-   - Asegurar que el centinela `<div ref={ordersSentinelRef} />` cuente con un margen de detección adecuado (`rootMargin: '160px'`).
-   - Mostrar un indicador visual sutil de carga ("Cargando más pedidos...") mientras haya pedidos adicionales pendientes por desplegar en la vista.
+- **Detección en tiempo real (Confirmado)**: Se utilizará un listener instantáneo con `onSnapshot` de Firebase Firestore en la colección de perfiles de restaurantes, asegurando que cualquier cambio de apertura/cierre o suspensión se refleje de inmediato en la interfaz sin necesidad de recargar la página.
+- **Sin caché persistente de estado (Confirmado)**: Se elimina cualquier lectura o escritura del estado abierto/cerrado en `localStorage` o `sessionStorage`, garantizando que ningún restaurante que haya cerrado recientemente aparezca abierto por error al ingresar a la plataforma.
+- **Caché de imágenes de logotipos activa (Confirmado)**: Se mantiene la precarga en memoria y el aprovechamiento de la caché HTTP del navegador para las URLs de los logotipos, evitando parpadeos visuales y descargas innecesarias al actualizar el listado.
+- **Consumo mínimo de Firebase (Confirmado)**: Se centraliza la consulta en una única suscripción reactiva optimizada, eliminando solicitudes duplicadas o periódicas redundantes.
+- **Preservación total del diseño (Confirmado)**: El diseño, botones de navegación (< y >), auto-scroll suave, botón "Todos", botón "Recomendados (Reels)", punto verde pulsante y animaciones permanecen 100% idénticos al estado actual.
 
 ---
 
-## 3. Plan de Verificación
+## 1. Overview & Core Concept
 
-1. **Prueba de Ordenamiento**:
-   - Verificar que los pedidos con fecha/hora más reciente se ubiquen en el primer lugar de la tabla/lista.
-2. **Prueba de Lote Inicial**:
-   - Confirmar que al abrir la pestaña de "Pedidos" en Administración se muestren únicamente los primeros 6 pedidos.
-3. **Prueba de Scroll Infinito**:
-   - Desplazar la vista hacia abajo y comprobar que se revelen de 6 en 6 de forma fluida sin parpadeos ni bloqueos.
-4. **Prueba de Filtros y Métricas**:
-   - Cambiar los filtros de tienda y estado, comprobando que se reseteen a 6 pedidos y que los contadores globales (Pendientes, Entregados) continúen reflejando las cifras exactas.
-5. **Compilación y Linteo**:
-   - Ejecutar `compile_applet` y `lint_applet` para garantizar cero errores de tipos o compilación.
+- **Qué hace**: Asegura que la barra de logotipos de restaurantes de RYYCO muestre en todo momento de manera fidedigna los comercios gastronómicos en servicio activo. Cuando un restaurante abre, aparece al instante; si un restaurante cierra o suspende su servicio, desaparece de inmediato del carrusel.
+- **Audiencia objetivo**: Clientes y comensales que acceden a la tienda general de RYYCO y desean explorar únicamente locales disponibles para realizar pedidos al instante.
+- **Valor clave**: Evita pedidos fallidos en locales cerrados, elimina inconsistencias derivadas de datos en caché obsoletos y maximiza la velocidad de carga inicial manteniendo un consumo eficiente y controlado de lecturas en Firebase.
+
+---
+
+## 2. User Experience & Visual Design
+
+- **Flujo de Usuario al Ingresar**:
+  1. El cliente ingresa a la tienda general de RYYCO.
+  2. La aplicación establece de forma inmediata la consulta/escucha reactiva a Firebase para obtener los perfiles activos.
+  3. Los restaurantes abiertos se calculan al instante evaluando: `isClosed !== true`, `suspended !== true`, estado de suscripción vigente y validación de horarios configurados (`checkIsStoreClosed`).
+  4. Los logotipos se renderizan con sus imágenes cacheadas en el navegador; si no tienen imagen, se muestran las iniciales con el estilo de marca RYYCO.
+  5. En caso de que un restaurante cambie su estado en Firebase (abrir/cerrar), la lista se reajusta dinámicamente y con fluidez en pantalla.
+  6. Si todos los restaurantes estuviesen cerrados temporalmente, se muestra el banner informativo sutil ya existente sin romper la estructura de la página.
+
+- **Diseño Visual e Interactividad**:
+  - **Identidad visual**: Fondo oscuro característico de la plataforma (`slate-900`/`slate-950`), bordes sutiles, acentos de color rojo RYYCO (`#D62839`) y punto verde esmeralda pulsante (`emerald-500`) indicando servicio activo.
+  - **Controles de desplazamiento**: Carrusel con soporte táctil, arrastre con ratón (mouse drag) y botones de navegación izquierda/derecha.
+  - **Interacción por clic**: Al pulsar sobre el logotipo de un restaurante, se filtran sus productos específicos o se deselecciona para volver a "Todos".
+
+---
+
+## 3. Key Product Decisions & Trade-Offs
+
+- **Decisión 1: Escucha reactiva con `onSnapshot` vs. Consultas manuales recurrentes**
+  - *Enfoque elegido*: Conexión directa mediante `onSnapshot` sobre los perfiles de comercios.
+  - *Por qué*: Ofrece actualización en tiempo real instantánea (< 200 ms) sin generar tráfico constante por sondeo (polling), consumiendo lecturas únicamente cuando hay cambios reales en los documentos.
+  - *Alternativas descartadas*: `setInterval` con llamadas a `getDocs` cada pocos segundos, lo cual dispara exponencialmente la cuota y costo de Firebase.
+
+- **Decisión 2: Supresión estricta de caché persistente de estado**
+  - *Enfoque elegido*: No persistir `openRestaurants` ni `profiles` en `sessionStorage` o `localStorage`.
+  - *Por qué*: Si un usuario visitó la página a las 11:00 AM y regresa a las 11:30 AM cuando un restaurante cerró, una caché persistente mostraría falsamente el restaurante como abierto hasta que la sincronización termine. La consulta directa a Firebase garantiza verosimilitud inmediata desde el primer render.
+  - *Alternativas descartadas*: Caché con tiempo de vida (TTL), ya que cualquier ventana de tiempo puede mostrar un comercio cerrado como abierto.
+
+- **Decisión 3: Separación entre caché de estado operativo y caché de activos gráficos (imágenes)**
+  - *Enfoque elegido*: Desvincular la información de apertura (que siempre viene en vivo de Firebase) del recurso visual de la imagen (que se mantiene en memoria y en la caché HTTP nativa del navegador mediante precarga `new Image()`).
+  - *Por qué*: Al abrirse un restaurante o reordenarse la lista, la imagen del logotipo aparece al instante sin parpadeos blancos ni re-descargas de red.
+
+---
+
+## 4. Technical Architecture & Data Strategy
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   Firebase Firestore                   │
+│                  Colección 'profiles'                  │
+└───────────────────────────┬────────────────────────────┘
+                            │ onSnapshot (Live Stream)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│              useProgressiveStoreLoader                 │
+│  - Sin caché persistente de estado (no sessionStorage) │
+│  - Filtro estricto: !isClosed && !suspended && horario │
+│  - Actualización reactiva instantánea                  │
+└───────────────────────────┬────────────────────────────┘
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+┌───────────────────────────┐ ┌──────────────────────────┐
+│   Caché de Imágenes en    │ │     TiendaGeneral UI     │
+│  Memoria / HTTP Browser   │ │  - Carrusel de logotipos │
+│  - Preload sin parpadeo   │ │  - Botón "Todos"         │
+│  - Reutilización instant  │ │  - Botón "Recomendados"  │
+└───────────────────────────┘ └──────────────────────────┘
+```
+
+- **Modelo de Filtrado de Abiertos**:
+  ```ts
+  const isOpen = 
+    !profile.isClosed && 
+    !profile.suspended && 
+    profile.subscriptionStatus !== 'suspended' && 
+    profile.subscriptionStatus !== 'expired' && 
+    !checkIsStoreClosed(profile) && 
+    (profile.displayName || profile.username);
+  ```
+
+- **Componentes involucrados**:
+  1. `src/hooks/useProgressiveStoreLoader.ts`: Limpieza de inicialización basada en almacenamiento local/sesión para estados de tienda; conexión única y optimizada a `onSnapshot` con actualización atómica de `openRestaurants`.
+  2. `src/components/TiendaGeneral.tsx`: Retiro de residuos de caché de sesión para el estado de perfiles; integración con la lista en vivo; mantenimiento de la caché y precarga de logotipos en el navegador; preservación estricta de la estructura visual del carrusel.
