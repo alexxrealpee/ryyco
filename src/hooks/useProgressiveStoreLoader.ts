@@ -4,13 +4,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, getDocs } from 'firebase/firestore';
 import { UserProfile, ProductItem } from '../types';
 import { 
   db,
-  fetchOpenRestaurantsFromFirebase, 
-  fetchProductsForStoreFromFirebase,
-  fetchAllActiveProductsAndStores,
   checkIsStoreClosed
 } from '../lib/firebase';
 import { orderProductBatch } from '../lib/productUtils';
@@ -36,27 +33,8 @@ export interface UseProgressiveStoreLoaderResult {
   statusMessage: string;
   isLoadingRestaurants: boolean;
   isLoadingProducts: boolean;
-}
-
-// Browser / in-memory logo image cache to prevent re-downloads and flickering
-const preloadedLogosCache = new Set<string>();
-
-export function preloadStoreLogos(stores?: UserProfile[]) {
-  if (typeof window === 'undefined' || !Array.isArray(stores)) return;
-  for (const s of stores) {
-    const url = s?.photoURL;
-    if (url && typeof url === 'string' && !preloadedLogosCache.has(url)) {
-      preloadedLogosCache.add(url);
-      const img = new Image();
-      img.decoding = 'async';
-      img.src = url;
-    }
-  }
-}
-
-export function isLogoCached(url?: string): boolean {
-  if (!url) return false;
-  return preloadedLogosCache.has(url);
+  restaurantsError: { code: string; message: string } | null;
+  retryRestaurants: () => void;
 }
 
 // Purge legacy persistent session cache on module load to guarantee live freshness from Firebase
@@ -77,407 +55,234 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [statusMessage, setStatusMessage] = useState('');
+  const [restaurantsReady, setRestaurantsReady] = useState(false);
+  const [restaurantsError, setRestaurantsError] = useState<{ code: string; message: string } | null>(null);
+  const [listenerAttempt, setListenerAttempt] = useState(0);
+  const retryRestaurants = useCallback(() => setListenerAttempt(attempt => attempt + 1), []);
 
   // State refs to prevent stale closures and avoid race conditions
-  const currentStoreIdxRef = useRef(0);
-  const storeLastDocsRef = useRef<Record<string, any>>({});
-  const loadedProductIdsRef = useRef<Set<string>>(new Set());
   const isFetchingMoreRef = useRef(false);
   const isInitializedRef = useRef(false);
+  const productRequestRef = useRef<Promise<ProductItem[]> | null>(null);
+  const fullCatalogRequestRef = useRef<Promise<ProductItem[]> | null>(null);
+  const catalogCompleteRef = useRef(false);
   const openRestaurantsRef = useRef<UserProfile[]>([]);
 
-  /**
-   * Helper function: fetches a sequential batch of products across open restaurants.
-   * Gathers up to batchSize products in order, advancing from store to store as needed.
-   */
-  const fetchBatch = useCallback(async (batchSize: number = 6): Promise<ProductItem[]> => {
-    const stores = openRestaurantsRef.current;
-    if (stores.length === 0) return [];
-
-    const batch: ProductItem[] = [];
-
-    while (batch.length < batchSize && currentStoreIdxRef.current < stores.length) {
-      const currentStore = stores[currentStoreIdxRef.current];
-      const needed = batchSize - batch.length;
-      const lastDoc = storeLastDocsRef.current[currentStore.uid];
-
-      try {
-        const result = await fetchProductsForStoreFromFirebase(currentStore, needed, lastDoc);
-        
-        // Filter out any product already loaded or without valid id
-        const fresh = result.products.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
-        
-        fresh.forEach(p => {
-          loadedProductIdsRef.current.add(p.id);
-          batch.push(p);
-        });
-
-        storeLastDocsRef.current[currentStore.uid] = result.lastDoc;
-
-        // If the current store ran out of items or returned fewer than needed, advance to the next open restaurant
-        if (!result.hasMore || result.products.length < needed) {
-          currentStoreIdxRef.current += 1;
+  // Shared by initial loading and pagination: at most one full catalog download.
+  const getFullCatalog = useCallback((): Promise<ProductItem[]> => {
+    if (!fullCatalogRequestRef.current) {
+      fullCatalogRequestRef.current = (async () => {
+        for (const url of ['/api/catalog/available', '/catalog-cache.json']) {
+          try {
+            const response = await fetch(url);
+            if (!response.ok || !response.headers.get('content-type')?.includes('json')) continue;
+            const data = await response.json();
+            if (data?.isPartial !== true && Array.isArray(data?.catalog?.products)) {
+              catalogCompleteRef.current = true;
+              return orderProductBatch(data.catalog.products as ProductItem[]);
+            }
+          } catch {}
         }
-      } catch (err) {
-        console.warn(`Error fetching batch for store ${currentStore.displayName || currentStore.uid}:`, err);
-        currentStoreIdxRef.current += 1;
-      }
+        const snapshot = await getDocs(collection(db, 'products'));
+        catalogCompleteRef.current = true;
+        return orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
+          .filter(p => p.active !== false));
+      })();
     }
-
-    if (currentStoreIdxRef.current >= stores.length && batch.length === 0) {
-      setHasMore(false);
-    }
-
-    // Order this specific batch internally (food first, then newest first)
-    return orderProductBatch(batch);
+    return fullCatalogRequestRef.current;
   }, []);
 
-  /**
-   * Loads the next 6 products in order and strictly appends them.
-   * Products already rendered on screen are never displaced.
-   */
-  const loadNextFourProducts = useCallback(async (): Promise<ProductItem[]> => {
-    if (isFetchingMoreRef.current || !hasMore) return [];
+  // Keep every downloaded record in memory; TiendaGeneral reveals six at a time.
+  const appendProducts = useCallback((incoming: ProductItem[]) => {
+    setLoadedProducts(previous => {
+      const ids = new Set(previous.map(p => p.id));
+      const fresh = incoming.filter(p => {
+        if (!p?.id || ids.has(p.id)) return false;
+        ids.add(p.id);
+        return true;
+      });
+      return fresh.length ? [...previous, ...fresh] : previous;
+    });
+  }, []);
 
+  const loadNextFourProducts = useCallback(async (): Promise<ProductItem[]> => {
+    if (isFetchingMoreRef.current || catalogCompleteRef.current) return [];
     isFetchingMoreRef.current = true;
     setIsLoadingMore(true);
-
     try {
-      // 1. Unrendered products pool from memory/server (never read from persistent cache)
-      let availablePool: ProductItem[] = [];
-
-      if ((window as any).__INITIAL_CATALOG_DATA__?.catalog?.products) {
-        availablePool = (window as any).__INITIAL_CATALOG_DATA__.catalog.products;
-      }
-
-      const unrendered = availablePool.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
-      if (unrendered.length > 0) {
-        const nextBatch = unrendered.slice(0, 6);
-        nextBatch.forEach(p => {
-          if (p.id) loadedProductIdsRef.current.add(p.id);
-        });
-        setLoadedProducts(prev => [...prev, ...nextBatch]);
-        setHasMore(unrendered.length > 6 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
-        return nextBatch;
-      }
-
-      // 2. If no buffered products in local storage, fetch full catalog from server API
-      try {
-        const res = await fetch('/api/catalog/available');
-        if (res.ok) {
-          const fullData = await res.json();
-          const catalogProducts: ProductItem[] = fullData?.catalog?.products || [];
-          if (catalogProducts.length > 0) {
-            const freshFromApi = catalogProducts.filter(p => p && p.id && !loadedProductIdsRef.current.has(p.id));
-            if (freshFromApi.length > 0) {
-              const nextBatch = freshFromApi.slice(0, 6);
-              nextBatch.forEach(p => {
-                if (p.id) loadedProductIdsRef.current.add(p.id);
-              });
-              setLoadedProducts(prev => [...prev, ...nextBatch]);
-              setHasMore(freshFromApi.length > 6 || currentStoreIdxRef.current < openRestaurantsRef.current.length);
-              return nextBatch;
-            }
-          }
-        }
-      } catch (e) {}
-
-      // 3. Fallback: Fetch sequentially from Firestore across open restaurants
-      const newBatch = await fetchBatch(6);
-
-      if (newBatch.length > 0) {
-        setLoadedProducts(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          const uniqueNew = newBatch.filter(p => p && p.id && !existingIds.has(p.id));
-          return uniqueNew.length > 0 ? [...prev, ...uniqueNew] : prev;
-        });
-      } else {
-        setHasMore(false);
-      }
-
-      return newBatch;
-    } catch (err) {
-      console.warn('Error in loadNextBatch:', err);
+      // Reuse the first request if it is still running instead of racing it.
+      await productRequestRef.current;
+      if (catalogCompleteRef.current) return [];
+      const products = await getFullCatalog();
+      appendProducts(products);
+      setHasMore(false);
+      return products;
+    } catch (error) {
+      // Stop automatic scroll retries; a remount can retry a failed catalog request.
+      setHasMore(false);
+      console.warn('Could not load the remaining catalog:', error);
       return [];
     } finally {
-      setIsLoadingMore(false);
       isFetchingMoreRef.current = false;
+      setIsLoadingMore(false);
     }
-  }, [fetchBatch, hasMore]);
+  }, [getFullCatalog, appendProducts]);
 
-  // Listen for background full catalog completion and store status changes
+  // Only server-confirmed profiles may publish restaurant availability.
   useEffect(() => {
-    const handleCatalogUpdate = (e: any) => {
-      const detail = e.detail;
-      const incomingProducts: ProductItem[] = 
-        (Array.isArray(detail?.products) ? detail.products : detail?.catalog?.products) || [];
-      const incomingProfiles: Record<string, UserProfile> = detail?.profiles || {};
-
-      if (Object.keys(incomingProfiles).length > 0) {
-        setProfilesMap(prev => {
-          const merged = { ...prev, ...incomingProfiles };
-          const seen = new Set<string>();
-          const freshOpen: UserProfile[] = [];
-          (Object.values(merged) as UserProfile[]).forEach(s => {
-            if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-              if (s.displayName || s.username) {
-                seen.add(s.uid);
-                freshOpen.push(s);
-              }
-            }
-          });
-          freshOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-          openRestaurantsRef.current = freshOpen;
-          setOpenRestaurants(freshOpen);
-          setLoadedLogos(freshOpen);
-          return merged;
-        });
-      }
-
-      if (incomingProducts.length > 0) {
-        setLoadedProducts(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          const newProducts = incomingProducts.filter(p => p && p.id && !existingIds.has(p.id));
-          if (newProducts.length === 0) return prev;
-          newProducts.forEach(p => {
-            if (p.id) loadedProductIdsRef.current.add(p.id);
-          });
-          return [...prev, ...newProducts];
-        });
-
-        setHasMore(true);
-      }
+    let active = true;
+    let confirmed = false;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    const startedAt = Date.now();
+    let liveProfiles: Record<string, UserProfile> = {};
+    const clearAvailability = () => {
+      confirmed = false;
+      liveProfiles = {};
+      openRestaurantsRef.current = [];
+      setOpenRestaurants([]);
+      setLoadedLogos([]);
+      setProfilesMap({});
+      setFirstStore(null);
+      setRestaurantsReady(false);
     };
-
-    const handleStoreStatusChange = (e: any) => {
-      const { uid, isClosed } = e.detail || {};
-      if (uid) {
-        setProfilesMap(prev => {
-          const s = prev[uid];
-          if (!s) return prev;
-          const updated = { ...s, isClosed };
-          if (isClosed) {
-            setOpenRestaurants(old => old.filter(st => st.uid !== uid));
-            setLoadedLogos(old => old.filter(st => st.uid !== uid));
-          } else {
-            setOpenRestaurants(old => {
-              if (old.some(st => st.uid === uid)) return old;
-              return [updated, ...old];
-            });
-            setLoadedLogos(old => {
-              if (old.some(st => st.uid === uid)) return old;
-              return [updated, ...old];
-            });
-          }
-          return { ...prev, [uid]: updated };
-        });
-      }
+    const fail = (code: string) => {
+      if (!active) return;
+      clearTimeout(deadline);
+      deadline = undefined;
+      clearAvailability();
+      const message = code === 'permission-denied'
+        ? 'No se pudo consultar la disponibilidad por un problema de permisos.'
+        : code === 'offline'
+          ? 'Sin conexión. No podemos confirmar qué restaurantes están abiertos.'
+          : 'No se pudo confirmar la disponibilidad. Comprueba tu conexión e intenta de nuevo.';
+      setRestaurantsError({ code, message });
+      setStatusMessage(message);
+      console.warn('[restaurants] availability unavailable', JSON.stringify({ code }));
     };
-
-    window.addEventListener('linnk:catalog_updated', handleCatalogUpdate);
-    window.addEventListener('linnk:store_status_changed', handleStoreStatusChange);
-    return () => {
-      window.removeEventListener('linnk:catalog_updated', handleCatalogUpdate);
-      window.removeEventListener('linnk:store_status_changed', handleStoreStatusChange);
+    const waitForServer = () => {
+      if (!active || deadline) return;
+      clearAvailability();
+      setRestaurantsError(null);
+      setStatusMessage('');
+      // A stalled Listen transport need not invoke onSnapshot's error callback.
+      // Keep that listener alive so SDK reconnection can recover without a new query.
+      deadline = setTimeout(() => fail('deadline-exceeded'), 15000);
     };
-  }, []);
-
-  // Ensure loaded logos and open restaurants stay strictly synchronized with profilesMap
-  useEffect(() => {
-    if (Object.keys(profilesMap).length > 0) {
-      const seen = new Set<string>();
-      const currentOpen: UserProfile[] = [];
-      (Object.values(profilesMap) as UserProfile[]).forEach(s => {
-        if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-          if (s.displayName || s.username) {
-            seen.add(s.uid);
-            currentOpen.push(s);
-          }
+    waitForServer();
+    if (navigator.onLine === false) fail('offline');
+    const publish = () => {
+      if (!confirmed) return;
+      const stores = Object.values(liveProfiles).filter(s =>
+        (s.displayName || s.username) && !checkIsStoreClosed(s)
+      ).sort((a, b) => Number(Boolean(b.photoURL)) - Number(Boolean(a.photoURL)));
+      // Preserve existing positions across updates. New validated restaurants append;
+      // adding/changing a photo must not move a restaurant to another position.
+      const positions = new Map<string, number>(openRestaurantsRef.current.map((store, index): [string, number] => [store.uid, index]));
+      stores.sort((a, b) => (positions.get(a.uid) ?? positions.size) - (positions.get(b.uid) ?? positions.size));
+      const aliases: Record<string, UserProfile> = { ...liveProfiles };
+      Object.values(liveProfiles).forEach(s => {
+        if (s.username) aliases[s.username.toLowerCase()] = s;
+      });
+      openRestaurantsRef.current = stores;
+      setProfilesMap(aliases);
+      const unchanged = (previous: UserProfile[]) => previous.length === stores.length &&
+        previous.every((store, index) => store === stores[index]) ? previous : stores;
+      setOpenRestaurants(unchanged);
+      setLoadedLogos(unchanged);
+      setFirstStore(stores[0] || null);
+      setRestaurantsReady(true);
+      setRestaurantsError(null);
+      setStatusMessage('');
+    };
+    const unsubscribe = onSnapshot(collection(db, 'profiles'),
+      { includeMetadataChanges: true }, snapshot => {
+        if (!active) return;
+        if (import.meta.env?.DEV) console.debug('[restaurants] snapshot', JSON.stringify({
+          fromCache: snapshot.metadata.fromCache,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          documents: snapshot.size,
+          elapsedMs: Date.now() - startedAt
+        }));
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+          // Losing server confirmation must not leave old availability on screen.
+          if (confirmed) waitForServer();
+          return;
         }
-      });
-      currentOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-      openRestaurantsRef.current = currentOpen;
-      setOpenRestaurants(currentOpen);
-      setLoadedLogos(currentOpen);
-      preloadStoreLogos(currentOpen);
-    }
-  }, [profilesMap]);
-
-  // Real-time Firestore listener: instantly removes closed stores and instantly displays newly opened stores
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'profiles'), (snapshot) => {
-      const incomingProfiles: Record<string, UserProfile> = {};
-      snapshot.forEach(docSnap => {
-        const data = docSnap.data() as UserProfile;
-        const uid = data.uid || docSnap.id;
-        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-        const isClosedNow = isSuspended || data.isClosed === true || checkIsStoreClosed({ ...data, isClosed: data.isClosed, suspended: isSuspended });
-        const prof: UserProfile = {
-          ...data,
-          uid,
-          suspended: isSuspended,
-          isClosed: isClosedNow
-        };
-        incomingProfiles[uid] = prof;
-        if (prof.username) {
-          incomingProfiles[prof.username.toLowerCase()] = prof;
-        }
-      });
-
-      setProfilesMap(prev => {
-        const merged = { ...prev, ...incomingProfiles };
-        const seen = new Set<string>();
-        const freshOpen: UserProfile[] = [];
-        (Object.values(merged) as UserProfile[]).forEach(s => {
-          if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-            if (s.displayName || s.username) {
-              seen.add(s.uid);
-              freshOpen.push(s);
-            }
-          }
+        clearTimeout(deadline);
+        deadline = undefined;
+        confirmed = true;
+        // Replace, rather than merge: deleted profiles and old aliases must disappear.
+        liveProfiles = {};
+        snapshot.forEach(doc => {
+          const data = doc.data() as UserProfile;
+          const uid = data.uid || doc.id;
+          liveProfiles[uid] = { ...data, uid };
         });
-        freshOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-        openRestaurantsRef.current = freshOpen;
-        setOpenRestaurants(freshOpen);
-        setLoadedLogos(freshOpen);
-        preloadStoreLogos(freshOpen);
-        setFirstStore(freshOpen[0] || null);
-        return merged;
+        publish();
+        if (import.meta.env?.DEV) console.debug('[restaurants] confirmed', JSON.stringify({
+          documents: snapshot.size, open: openRestaurantsRef.current.length,
+          elapsedMs: Date.now() - startedAt
+        }));
+      }, error => {
+        if (!active) return;
+        fail(error.code || 'unknown');
       });
-      setStage('idle');
-    }, (err) => {
-      console.warn("Real-time profiles listener notice in store loader:", err);
-      setStage('idle');
-    });
-
-    // 15-second schedule timer to auto-refresh stores when their opening/closing time arrives
-    const scheduleTimer = setInterval(() => {
-      setProfilesMap(prev => {
-        if (!prev || Object.keys(prev).length === 0) return prev;
-        const seen = new Set<string>();
-        const freshOpen: UserProfile[] = [];
-        (Object.values(prev) as UserProfile[]).forEach(s => {
-          if (s && s.uid && !seen.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-            if (s.displayName || s.username) {
-              seen.add(s.uid);
-              freshOpen.push(s);
-            }
-          }
-        });
-        freshOpen.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-        openRestaurantsRef.current = freshOpen;
-        setOpenRestaurants(freshOpen);
-        setLoadedLogos(freshOpen);
-        preloadStoreLogos(freshOpen);
-        return prev;
-      });
+    const offline = () => fail('offline');
+    const online = () => waitForServer();
+    window.addEventListener('offline', offline);
+    window.addEventListener('online', online);
+    // Re-evaluate schedules from raw flags; never freeze a computed closure in isClosed.
+    const timer = setInterval(() => {
+      if (active && confirmed) publish();
     }, 15000);
-
     return () => {
+      active = false;
       unsubscribe();
-      clearInterval(scheduleTimer);
+      clearTimeout(deadline);
+      clearInterval(timer);
+      window.removeEventListener('offline', offline);
+      window.removeEventListener('online', online);
     };
-  }, []);
+  }, [listenerAttempt]);
 
-  // Main Progressive Loading Orchestrator with Stale-While-Revalidate speed
+  // Product loading is independent of availability and never queries profiles again.
   useEffect(() => {
-    if (isInitializedRef.current) return;
-    isInitializedRef.current = true;
-
-    async function runProgressivePipeline() {
-      try {
-        setStage('fetching_open_restaurants');
-
-        // Parallel fetch for active products and stores
-        const activeData = await fetchAllActiveProductsAndStores(false);
-        const pMap = activeData.profiles || {};
-
-        const seenUids = new Set<string>();
-        const openStores: UserProfile[] = [];
-        Object.values(pMap).forEach(s => {
-          if (s && s.uid && !seenUids.has(s.uid) && !s.suspended && !checkIsStoreClosed(s) && s.isClosed !== true) {
-            if (s.displayName || s.username) {
-              seenUids.add(s.uid);
-              openStores.push(s);
-            }
+    let active = true;
+    const update = (event: any) => {
+      const detail = event.detail;
+      if (active) appendProducts(detail?.products || detail?.catalog?.products || []);
+    };
+    window.addEventListener('linnk:catalog_updated', update);
+    if (!isInitializedRef.current) {
+      isInitializedRef.current = true;
+      // StrictMode can resubscribe while this shared request is still pending.
+      productRequestRef.current = (async () => {
+        try {
+          const initial = (window as any).__INITIAL_CATALOG_DATA__ ||
+            await (window as any).__CATALOG_PREFETCH__;
+          if (Array.isArray(initial?.catalog?.products) &&
+              (initial.catalog.products.length > 0 || initial.isPartial === false)) {
+            catalogCompleteRef.current = initial.isPartial === false;
+            return orderProductBatch(initial.catalog.products as ProductItem[]);
           }
-        });
-
-        if (openStores.length > 0) {
-          openStores.sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-          openRestaurantsRef.current = openStores;
-          setOpenRestaurants(openStores);
-          setLoadedLogos(openStores);
-          preloadStoreLogos(openStores);
-          setFirstStore(openStores[0] || null);
-        }
-
-        setProfilesMap(prev => ({ ...prev, ...pMap }));
-
-        if (activeData.products && activeData.products.length > 0) {
-          const currentStores = openRestaurantsRef.current.length > 0 ? openRestaurantsRef.current : openStores;
-          const openStoreUids = new Set(currentStores.map(s => s.uid));
-          const openStoreUsernames = new Set(currentStores.map(s => s.username?.toLowerCase()).filter(Boolean));
-
-          const openStoreProducts = activeData.products.filter(p => {
-            const matchedUid = p.userId && openStoreUids.has(p.userId);
-            const matchedUsername = p.storeUsername && openStoreUsernames.has(p.storeUsername.toLowerCase());
-            return matchedUid || matchedUsername;
-          });
-
-          const candidateProducts = openStoreProducts.length > 0 ? openStoreProducts : activeData.products;
-
-          const seen = new Set<string>();
-          const uniqueInitial = candidateProducts.filter(p => {
-            if (!p || !p.id || seen.has(p.id)) return false;
-            seen.add(p.id);
-            return true;
-          });
-
-          const finalInitialProducts = orderProductBatch(uniqueInitial);
-          const initialSlice = finalInitialProducts.slice(0, 6);
-          initialSlice.forEach(p => {
-            if (p.id) loadedProductIdsRef.current.add(p.id);
-          });
-
-          setLoadedProducts(initialSlice);
-          setHasMore(uniqueInitial.length > 6 || currentStores.length > 0);
-        } else if (openRestaurantsRef.current.length > 0) {
-          const initialBatch = await fetchBatch(6);
-          if (initialBatch.length > 0) {
-            initialBatch.forEach(p => {
-              if (p.id) loadedProductIdsRef.current.add(p.id);
-            });
-            setLoadedProducts(initialBatch);
-          }
-        }
-
-        setStage('idle');
-      } catch (error) {
-        console.error('Error in progressive loading pipeline:', error);
-        setStage('idle');
-      }
+        } catch {}
+        return getFullCatalog();
+      })();
     }
+    productRequestRef.current?.then(products => {
+      if (active) { appendProducts(products); setHasMore(!catalogCompleteRef.current); }
+    }).catch(error => console.warn('Initial products:', error)).finally(() => {
+      if (active) setStage('idle');
+    });
+    return () => { active = false; window.removeEventListener('linnk:catalog_updated', update); };
+  }, [appendProducts, getFullCatalog]);
 
-    runProgressivePipeline();
-  }, [fetchBatch]);
-
-  const isLoadingRestaurants = stage === 'fetching_open_restaurants' && openRestaurants.length === 0;
-  const isLoadingProducts = (stage === 'fetching_open_restaurants' || stage === 'showing_first_logo' || stage === 'fetching_first_products') && loadedProducts.length === 0;
-
+  const isLoadingRestaurants = !restaurantsReady && !restaurantsError;
+  const isLoadingProducts = stage !== 'idle' && loadedProducts.length === 0;
   return {
-    openRestaurants,
-    loadedLogos,
-    loadedProducts,
-    profilesMap,
-    stage,
-    firstStore,
-    isLoadingMore,
-    hasMore,
-    totalOpenCount: openRestaurants.length,
-    loadNextFourProducts,
-    statusMessage,
-    isLoadingRestaurants,
-    isLoadingProducts
+    openRestaurants, loadedLogos, loadedProducts, profilesMap, stage, firstStore,
+    isLoadingMore, hasMore, totalOpenCount: openRestaurants.length,
+    loadNextFourProducts, statusMessage, isLoadingRestaurants, isLoadingProducts,
+    restaurantsError, retryRestaurants
   };
 }

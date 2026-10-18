@@ -66,8 +66,8 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 auth.languageCode = 'es';
 
-// Configure Firestore logging level to prevent noise from internal transport retries
-setLogLevel('silent');
+// Surface transport warnings during local validation; keep production logging quiet.
+setLogLevel(import.meta.env?.DEV ? 'warn' : 'silent');
 
 // Configure Firestore with in-memory cache and forced long polling.
 // Using memoryLocalCache eliminates corrupted IndexedDbTargetCache assertion failures (ID: b815 / isCorePipeline),
@@ -109,18 +109,8 @@ if (typeof window !== 'undefined') {
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const googleProvider = new GoogleAuthProvider();
 
-// Validate Connection to Firestore on startup
-if (typeof window !== 'undefined') {
-  (async () => {
-    try {
-      await getDocFromServer(doc(db, 'test', 'connection'));
-    } catch (error) {
-      if (error instanceof Error && error.message.includes('the client is offline')) {
-        console.warn("Firestore running in resilient offline cache mode.");
-      }
-    }
-  })();
-}
+// Availability is validated by the existing profiles listener. A separate read of
+// test/connection neither checks that query's permissions nor confirms its data.
 
 // Available Predefined Themes
 export const PREDEFINED_THEMES: CustomTheme[] = [

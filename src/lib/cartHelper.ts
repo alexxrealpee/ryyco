@@ -35,17 +35,22 @@ function getStoredImageCache(): Record<string, string> {
 }
 
 export function persistImageToCache(productId: string, imageUrl: string): void {
-  if (!productId || !imageUrl) return;
-  cartImageMemoryCache.set(productId, imageUrl);
+  registerImageEntries([[productId, imageUrl]]);
+}
+
+function registerImageEntries(entries: [string, string][]): void {
+  const changed = entries.filter(([id, url]) => id && url && cartImageMemoryCache.get(id) !== url);
+  if (!changed.length) return;
+  changed.forEach(([id, url]) => cartImageMemoryCache.set(id, url));
   try {
     const current = getStoredImageCache();
-    if (current[productId] !== imageUrl) {
-      current[productId] = imageUrl;
-      const serialized = JSON.stringify(current);
-      safeSetItem(CART_IMAGES_STORAGE_KEY, serialized);
-      if (typeof sessionStorage !== 'undefined') {
-        sessionStorage.setItem(CART_IMAGES_STORAGE_KEY, serialized);
-      }
+    let needsWrite = false;
+    changed.forEach(([id, url]) => {
+      if (current[id] !== url) { current[id] = url; needsWrite = true; }
+    });
+    if (needsWrite) {
+      // safeSetItem already mirrors to sessionStorage. Persist once per batch.
+      safeSetItem(CART_IMAGES_STORAGE_KEY, JSON.stringify(current));
     }
   } catch {}
 }
@@ -65,11 +70,7 @@ export function getProductImage(productId: string): string | undefined {
 
 export function registerProductImages(products: ProductItem[]): void {
   if (!Array.isArray(products)) return;
-  products.forEach(p => {
-    if (p && p.id && p.imageURL) {
-      persistImageToCache(p.id, p.imageURL);
-    }
-  });
+  registerImageEntries(products.filter(p => p?.id && p.imageURL).map(p => [p.id, p.imageURL]));
 }
 
 export function rehydrateCartItem(item: GeneralCartItem): GeneralCartItem {
@@ -405,7 +406,7 @@ export function clearAllCart(): GeneralCartItem[] {
 export function calculateCartSummary(cart: GeneralCartItem[], deliveryFeePerStore: number = 7000) {
   const totalItems = cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const subtotal = cart.reduce((sum, item) => {
-    const p = getVariantPrice(item.product, item.selectedVariant);
+    const p = getCartItemUnitPrice(item);
     const q = Number(item.quantity) || 1;
     return sum + (p * q);
   }, 0);

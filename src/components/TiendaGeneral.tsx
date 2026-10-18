@@ -69,7 +69,9 @@ import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
-import { useProgressiveStoreLoader, preloadStoreLogos } from '../hooks/useProgressiveStoreLoader';
+import ProductCardImage from './ProductCardImage';
+import RestaurantLogo from './RestaurantLogo';
+import { useProgressiveStoreLoader } from '../hooks/useProgressiveStoreLoader';
 import { 
   getStoredCart, 
   saveStoredCart, 
@@ -192,16 +194,6 @@ interface TiendaGeneralProps {
 
 // Fast initial data for instant first paint strictly limited to open restaurants
 // STRICT: No persistent cache for store states so customers only see truly open restaurants from Firebase
-const getInitialGeneralData = () => {
-  try {
-    if (typeof window !== 'undefined') {
-      // Clear legacy persistent session cache if present
-      sessionStorage.removeItem('linnk_fast_open_cache');
-    }
-  } catch (e) {}
-  return { products: [] as ProductItem[], profiles: {} as Record<string, UserProfile>, hasCache: false };
-};
-
 export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: TiendaGeneralProps) {
   // Sistema de Carga Progresiva en React (Firebase)
   const {
@@ -217,13 +209,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     loadNextFourProducts,
     statusMessage: progressiveStatusMessage,
     isLoadingRestaurants,
-    isLoadingProducts
+    isLoadingProducts,
+    restaurantsError,
+    retryRestaurants
   } = useProgressiveStoreLoader();
 
-  const [cachedInitial] = useState(() => getInitialGeneralData());
-  // Inicializar inmediatamente con productos cacheados si existen para renderizado instantáneo
-  const [products, setProducts] = useState<ProductItem[]>(() => cachedInitial.products);
-  const [profiles, setProfiles] = useState<Record<string, UserProfile>>(() => cachedInitial.profiles);
+  const [products, setProducts] = useState<ProductItem[]>([]);
+  const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(false);
   const [loadingStoreProducts, setLoadingStoreProducts] = useState(false);
   const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
@@ -237,15 +229,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         seen.add(p.id);
         return true;
       });
-      setProducts(deduped);
+      setProducts(previous => {
+        const ids = new Set(previous.map(p => p.id));
+        return [...previous, ...deduped.filter(p => !ids.has(p.id))];
+      });
       registerProductImages(deduped);
     }
   }, [loadedProducts]);
 
   useEffect(() => {
-    if (Object.keys(profilesMap).length > 0) {
-      setProfiles(prev => ({ ...prev, ...profilesMap }));
-    }
+    setProfiles(profilesMap);
   }, [profilesMap]);
 
   // Direct listener for background full catalog completion
@@ -737,30 +730,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Get list of unique store profiles with active products (memoized)
   // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
   // When a store closes in Firestore, it is removed immediately; when it opens, it appears immediately.
-  const uniqueStores = useMemo(() => {
-    // Prioritize live open restaurants from useProgressiveStoreLoader Firestore onSnapshot listener
-    if (openRestaurants && openRestaurants.length > 0) {
-      return openRestaurants;
-    }
-    const storeMap = new Map<string, UserProfile>();
-
-    (Object.values(profiles) as UserProfile[]).forEach(profile => {
-      if (!profile) return;
-      const uid = profile.uid;
-      const uname = profile.username?.toLowerCase();
-      const key = uid || uname;
-      if (!key) return;
-
-      const isSuspended = profile.suspended === true || profile.subscriptionStatus === 'suspended' || profile.subscriptionStatus === 'expired';
-      const isClosed = isSuspended || profile.isClosed === true || checkIsStoreClosed(profile);
-
-      if (!isClosed && (profile.displayName || profile.username)) {
-        storeMap.set(key, { ...profile, isClosed: false });
-      }
-    });
-
-    return Array.from(storeMap.values()).sort((a, b) => (b.photoURL ? 1 : 0) - (a.photoURL ? 1 : 0));
-  }, [openRestaurants, profiles]);
+  const uniqueStores = openRestaurants;
 
   // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
   // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
@@ -854,27 +824,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, [uniqueStores, selectedStore]);
 
   // Real-time loading states tied strictly to actual Firebase data presence (no fake delays)
-  const isRestaurantsLoading = uniqueStores.length === 0 && (isLoadingRestaurants || progressiveStage === 'fetching_open_restaurants');
+  const isRestaurantsLoading = isLoadingRestaurants;
   const isProductsLoading = products.length === 0 && (isLoadingProducts || progressiveStage !== 'idle');
   const isCategoriesLoading = isProductsLoading && categories.length <= 1;
-
-  // Pre-load all restaurant logos and the first 6 products into browser cache for instant rendering
-  useEffect(() => {
-    if (uniqueStores.length === 0 && products.length === 0) return;
-
-    // Preload ALL open restaurant logos into browser cache to avoid re-downloads or flicker
-    preloadStoreLogos(uniqueStores);
-
-    // Preload the first 6 products
-    products.slice(0, 6).forEach(p => {
-      if (p.imageURL) {
-        const img = new Image();
-        img.referrerPolicy = "no-referrer";
-        img.decoding = "async";
-        img.src = p.imageURL;
-      }
-    });
-  }, [uniqueStores, products]);
 
   // Auto-scroll store carousel smoothly across both PC and mobile (oscillates automatically right and left)
   const storesScrollRef = useRef<HTMLDivElement>(null);
@@ -998,6 +950,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [visibleLimit, setVisibleLimit] = useState(6);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
+  const currentFilter = `${searchTerm}|${selectedCategory}|${selectedStore}|${sortBy}`;
+  const currentFilterRef = useRef(currentFilter);
+  currentFilterRef.current = currentFilter;
+  const prefetchMargin = Math.min(1200, Math.max(600, typeof window === 'undefined' ? 800 : window.innerHeight));
 
   // Reset limit when filter/search/sort changes (show initial 6 products whether on home or viewing a restaurant)
   useEffect(() => {
@@ -1006,26 +962,25 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Unified function to load the next batch of 6 products in order
   const loadNextBatchOfFour = useCallback(async () => {
-    if (isFetchingNextBatchRef.current || isProgressiveLoadingMore) return;
+    if (isFetchingNextBatchRef.current) return;
+    isFetchingNextBatchRef.current = true;
 
     // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 6
     if (visibleLimit < filteredProducts.length) {
       setVisibleLimit(prev => Math.min(prev + 6, filteredProducts.length));
-      // If reaching near the end of buffered products, prefetch the next batch
-      if (hasMoreProgressive && visibleLimit + 6 >= filteredProducts.length) {
-        loadNextFourProducts();
-      }
+      // Hold the guard through the next render so two scroll signals cannot reveal twice.
+      requestAnimationFrame(() => { isFetchingNextBatchRef.current = false; });
       return;
     }
 
     // 2. Otherwise, fetch the next 6 products (from memory cache, API or Firebase)
-    if (hasMoreProgressive) {
-      isFetchingNextBatchRef.current = true;
+    if (hasMoreProgressive && !isProgressiveLoadingMore) {
+      const requestedFilter = currentFilterRef.current;
       setIsLoadingMore(true);
       try {
         const fresh = await loadNextFourProducts();
-        if (fresh && fresh.length > 0) {
-          setVisibleLimit(prev => prev + fresh.length);
+        if (fresh && fresh.length > 0 && currentFilterRef.current === requestedFilter) {
+          setVisibleLimit(prev => prev + 6);
         }
       } catch (err) {
         console.warn("Error loading next batch of 6:", err);
@@ -1033,10 +988,22 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         setIsLoadingMore(false);
         isFetchingNextBatchRef.current = false;
       }
+    } else {
+      isFetchingNextBatchRef.current = false;
     }
   }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  // A partial first catalog can contain only closed stores or drinks. Fill the
+  // metadata buffer once if filtering leaves fewer than six usable records.
+  useEffect(() => {
+    if (!isLoadingRestaurants && !restaurantsError && !isLoadingProducts &&
+        filteredProducts.length < 6 && hasMoreProgressive && !isProgressiveLoadingMore) {
+      void loadNextFourProducts();
+    }
+  }, [isLoadingRestaurants, restaurantsError, isLoadingProducts, filteredProducts.length,
+      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts]);
 
   // High-performance IntersectionObserver for loading next 6 products
   useEffect(() => {
@@ -1047,20 +1014,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       (entries) => {
         const [entry] = entries;
         if (entry && entry.isIntersecting) {
-          if (!isFetchingNextBatchRef.current && !isProgressiveLoadingMore) {
+          if (!isFetchingNextBatchRef.current) {
             loadNextBatchOfFour();
           }
         }
       },
-      { rootMargin: '350px 0px' }
+      { rootMargin: `${prefetchMargin}px 0px` }
     );
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
-  }, [loadNextBatchOfFour, isProgressiveLoadingMore]);
+  }, [loadNextBatchOfFour, isProgressiveLoadingMore, prefetchMargin]);
 
   // Fallback passive scroll listener for older webviews
   useEffect(() => {
+    if (typeof IntersectionObserver !== 'undefined') return;
     let ticking = false;
 
     const handleScroll = () => {
@@ -1077,9 +1045,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           document.documentElement.offsetHeight
         );
 
-        // Trigger when within 400px of page bottom
-        if (scrollTop + windowHeight >= docHeight - 400) {
-          if (!isFetchingNextBatchRef.current && !isProgressiveLoadingMore) {
+        if (scrollTop + windowHeight >= docHeight - prefetchMargin) {
+          if (!isFetchingNextBatchRef.current) {
             loadNextBatchOfFour();
           }
         }
@@ -1089,7 +1056,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [loadNextBatchOfFour, isProgressiveLoadingMore]);
+  }, [loadNextBatchOfFour, prefetchMargin]);
 
   const handleLoadMoreFour = () => {
     loadNextBatchOfFour();
@@ -1307,7 +1274,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     try {
       for (const [sellerId, sellerCart] of Object.entries(itemsBySeller)) {
-        const subtotal = sellerCart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+        const subtotal = sellerCart.reduce((sum, item) => sum + (getCartItemUnitPrice(item) * item.quantity), 0);
         const sellerPackagingCost = sellerCart.reduce((sum, item) => {
           const prod = item?.product || (item as any) || {};
           const prodId = prod.id || (item as any)?.productId;
@@ -2131,8 +2098,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Horizontal Store Logos Carousel / Progressive Loading */}
-          {isRestaurantsLoading ? (
-            <StoresSkeleton />
+          {restaurantsError ? (
+            <div role="alert" className="border-t border-slate-800 pt-4 py-3 text-xs text-gray-400 flex items-center gap-3">
+              <span>{restaurantsError.message}</span>
+              <button type="button" onClick={retryRestaurants} className="text-[#D62839] font-bold hover:underline cursor-pointer">Reintentar</button>
+            </div>
+          ) : isRestaurantsLoading ? (
+            <div role="status" aria-live="polite" className="border-t border-slate-800 pt-4 py-3 text-xs text-gray-400">{progressiveStatusMessage || 'Consultando restaurantes abiertos…'}</div>
           ) : uniqueStores.length > 0 ? (
             <div className="space-y-2 border-t border-slate-800 pt-4 transition-opacity duration-200">
               <div className="flex items-center justify-between px-1 flex-wrap gap-2">
@@ -2327,23 +2299,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           ? 'bg-[#D62839] ring-4 ring-[#D62839]/50 shadow-lg shadow-[#D62839]/30 scale-105'
                           : 'bg-slate-900 hover:bg-[#D62839]/20 ring-2 ring-slate-700/80 hover:ring-[#D62839] group-hover:scale-105'
                       }`}>
-                        {store.photoURL ? (
-                          <img
-                            src={store.photoURL}
-                            alt={store.displayName || store.username}
-                            draggable={false}
-                            loading="eager"
-                            fetchPriority="auto"
-                            decoding="async"
-                            width="64"
-                            height="64"
-                            className="w-full h-full rounded-full object-cover bg-slate-950 pointer-events-none select-none"
-                          />
-                        ) : (
-                          <div className="w-full h-full rounded-full bg-[#D62839]/20 text-[#D62839] flex items-center justify-center font-black text-xs sm:text-sm uppercase pointer-events-none select-none">
-                            {(store.displayName || store.username || 'T').substring(0, 2)}
-                          </div>
-                        )}
+                        <RestaurantLogo src={store.photoURL} name={store.displayName || store.username || "T"} priority={storeIdx < 4} />
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
                         isSelected ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
@@ -2458,7 +2414,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         </div>
 
         {/* 4. Products Display */}
-        {loadingStoreProducts ? (
+        {loadingStoreProducts && filteredProducts.length === 0 ? (
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
@@ -2590,17 +2546,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     )}
 
                     {product.imageURL ? (
-                      <img 
-                        src={product.imageURL} 
-                        alt={product.name}
-                        referrerPolicy="no-referrer"
-                        loading={productIndex < 2 ? "eager" : "lazy"}
-                        fetchPriority="auto"
-                        decoding="async"
-                        width="300"
-                        height="300"
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                      />
+                      <ProductCardImage src={product.imageURL} name={product.name} priority={productIndex < 2} />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-1.5">
                         <ShoppingBag className="w-8 h-8 opacity-45 text-orange-400" />
@@ -2691,17 +2637,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
           </div>
 
-          {/* In-place 4-card skeleton placeholder when progressive loading next batch */}
+          {/* Known cards stay visible; only unknown metadata needs a loading indicator. */}
           {isProgressiveLoadingMore && (
-            <div 
-              className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 mt-3 sm:mt-6"
-              aria-busy="true"
-              aria-label="Cargando siguientes productos"
-            >
-              {[0, 1, 2, 3, 4, 5].map((idx) => (
-                <ProductCardSkeleton key={`loading-more-${idx}`} index={idx} />
-              ))}
-            </div>
+            <div role="status" className="py-3 text-center text-xs text-gray-400">Cargando más productos…</div>
           )}
 
           {/* Smart 6-by-6 Progressive Loading indicator & control */}
@@ -2725,7 +2663,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
               <button
                 onClick={handleLoadMoreFour}
-                disabled={isLoadingMore || isProgressiveLoadingMore}
+                disabled={(isLoadingMore || isProgressiveLoadingMore) && visibleLimit >= filteredProducts.length}
                 className="px-6 py-2.5 bg-[#1F2937] hover:bg-[#374151] border border-white/10 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <span>Cargar 6 productos más</span>
@@ -3415,11 +3353,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* Cart Footer */}
               <div className="p-5 border-t border-[#232B3A] bg-[#111827]">
                 {cart.length > 0 && (() => {
-                  const subtotal = cart.reduce((sum, item) => {
-                    const p = item?.product || (item as any) || {};
-                    const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
-                    return sum + (price * (item.quantity || 1));
-                  }, 0);
+                  const subtotal = cart.reduce((sum, item) => sum + getCartItemUnitPrice(item) * (item.quantity || 1), 0);
                   const cartPackagingFee = cart.reduce((sum, item) => {
                     const p = item?.product || (item as any) || {};
                     const prodId = p.id || (item as any)?.productId;
@@ -3770,11 +3704,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
                 {/* Total Summary */}
                 {cart.length > 0 && (() => {
-                  const subtotal = cart.reduce((sum, item) => {
-                    const p = item?.product || (item as any) || {};
-                    const price = typeof p.price === 'number' ? p.price : (parseFloat((p as any).price) || 0);
-                    return sum + (price * (item.quantity || 1));
-                  }, 0);
+                  const subtotal = cart.reduce((sum, item) => sum + getCartItemUnitPrice(item) * (item.quantity || 1), 0);
                   const totalPackagingFee = cart.reduce((sum, item) => {
                     const p = item?.product || (item as any) || {};
                     const prodId = p.id || (item as any)?.productId;
@@ -3963,7 +3893,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             cartSummary={{
               itemsCount: cart.reduce((sum, item) => sum + item.quantity, 0),
               totalFormatted: (() => {
-                const sub = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+                const sub = cart.reduce((sum, item) => sum + (getCartItemUnitPrice(item) * item.quantity), 0);
                 const fee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
                 return `$${(sub + fee).toLocaleString('es-CO')}`;
               })()
