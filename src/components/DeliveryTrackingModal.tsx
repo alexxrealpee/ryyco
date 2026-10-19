@@ -14,6 +14,10 @@ import {
 import { APIProvider, Map, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { AnimatedCourierMarker } from './AnimatedCourierMarker';
+import { useDeliveryTracking } from '../hooks/useDeliveryTracking';
+import { useCourierAnimation } from '../hooks/useCourierAnimation';
+import { validCoordinates, GPS_FRESH_MS, type GpsPoint } from '../lib/deliveryTracking';
 import { OrderItem, DeliveryTrackingData } from '../types';
 import { listenToDeliveryTracking, db, getOrderDeliveryCode } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -105,7 +109,7 @@ interface DeliveryTrackingModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: OrderItem | null;
-  driverLiveCoords?: { latitude: number; longitude: number } | null;
+  driverLiveCoords?: { latitude: number; longitude: number; timestamp?: number; accuracy?: number; heading?: number } | null;
   storeLocationCoords?: { lat?: number; lng?: number; address?: string } | null;
 }
 
@@ -119,7 +123,7 @@ function GoogleMapRouteLayer({
   storeLng,
   destLat,
   destLng,
-  isPickedUp
+  isPickedUp, hasDriverFix, hasStore, hasDestination
 }: {
   driverLat: number;
   driverLng: number;
@@ -128,6 +132,7 @@ function GoogleMapRouteLayer({
   destLat: number;
   destLng: number;
   isPickedUp: boolean;
+  hasDriverFix: boolean; hasStore: boolean; hasDestination: boolean;
 }) {
   const map = useMap();
   const polyline1Ref = useRef<google.maps.Polyline | null>(null);
@@ -137,10 +142,10 @@ function GoogleMapRouteLayer({
     if (!map) return;
 
     // Etapa 1: Domiciliario -> Tienda
-    const stage1Path = [
+    const stage1Path = hasDriverFix && hasStore ? [
       { lat: driverLat, lng: driverLng },
       { lat: storeLat, lng: storeLng }
-    ];
+    ] : [];
 
     if (!polyline1Ref.current) {
       polyline1Ref.current = new google.maps.Polyline({
@@ -160,9 +165,9 @@ function GoogleMapRouteLayer({
     }
 
     // Etapa 2: Tienda -> Cliente (o Domiciliario directo si ya recogió)
-    const stage2Path = isPickedUp
-      ? [{ lat: driverLat, lng: driverLng }, { lat: destLat, lng: destLng }]
-      : [{ lat: storeLat, lng: storeLng }, { lat: destLat, lng: destLng }];
+    const stage2Path = !hasDestination ? [] : isPickedUp
+      ? (hasDriverFix ? [{ lat: driverLat, lng: driverLng }, { lat: destLat, lng: destLng }] : [])
+      : (hasStore ? [{ lat: storeLat, lng: storeLng }, { lat: destLat, lng: destLng }] : []);
 
     if (!polyline2Ref.current) {
       polyline2Ref.current = new google.maps.Polyline({
@@ -181,6 +186,9 @@ function GoogleMapRouteLayer({
       });
     }
 
+  }, [map, driverLat, driverLng, storeLat, storeLng, destLat, destLng, isPickedUp, hasDriverFix, hasStore, hasDestination]);
+
+  useEffect(() => {
     return () => {
       if (polyline1Ref.current) {
         polyline1Ref.current.setMap(null);
@@ -191,7 +199,7 @@ function GoogleMapRouteLayer({
         polyline2Ref.current = null;
       }
     };
-  }, [map, driverLat, driverLng, storeLat, storeLng, destLat, destLng, isPickedUp]);
+  }, [map]);
 
   return null;
 }
@@ -260,8 +268,9 @@ export default function DeliveryTrackingModal({
   driverLiveCoords,
   storeLocationCoords
 }: DeliveryTrackingModalProps) {
+  const [centerRequest, setCenterRequest] = useState(0);
   const [liveOrder, setLiveOrder] = useState<OrderItem | null>(order);
-  const [tracking, setTracking] = useState<DeliveryTrackingData | null>(null);
+  const { tracking, connection, error: trackingError, retry: retryTracking, now } = useDeliveryTracking(order?.id, isOpen && !['delivered', 'cancelled'].includes((liveOrder || order)?.status || '') && (liveOrder || order)?.deliveryStep !== 'delivered');
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(() => {
     return getGoogleMapsApiKey();
   });
@@ -270,7 +279,6 @@ export default function DeliveryTrackingModal({
     return isValidGoogleMapsKey(key) ? 'google' : 'leaflet';
   });
   const [mapType, setMapType] = useState<'roadmap' | 'hybrid'>('roadmap');
-  const [secondsAgo, setSecondsAgo] = useState<number>(0);
   const [copiedPin, setCopiedPin] = useState<boolean>(false);
   const [centerTrigger, setCenterTrigger] = useState<{ mode: 'all' | 'driver'; id: number }>({
     mode: 'all',
@@ -355,39 +363,12 @@ export default function DeliveryTrackingModal({
     return () => { isMounted = false; };
   }, [googleMapsApiKey]);
 
-  // Real-time tracking subscription
-  useEffect(() => {
-    if (!isOpen || !order?.id) {
-      setTracking(null);
-      return;
-    }
-
-    const unsubscribe = listenToDeliveryTracking(order.id, (data) => {
-      if (data) {
-        setTracking(data);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, [isOpen, order?.id]);
-
-  // Seconds ago timer for fresh GPS indicator
-  useEffect(() => {
-    if (!tracking?.updatedAt) return;
-    const interval = setInterval(() => {
-      const diffSec = Math.max(0, Math.floor((Date.now() - new Date(tracking.updatedAt).getTime()) / 1000));
-      setSecondsAgo(diffSec);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [tracking?.updatedAt]);
-
   // Current order authoritative instance
   const activeOrder = liveOrder || order;
 
   // Delivery status step resolution
-  const currentStep = tracking?.status || activeOrder?.deliveryStep || (
+  const finished = activeOrder?.status === 'cancelled' || activeOrder?.status === 'delivered' || activeOrder?.deliveryStep === 'delivered';
+  const currentStep = (activeOrder?.status === 'cancelled' ? 'cancelled' : finished ? 'delivered' : null) || activeOrder?.deliveryStep || tracking?.status || (
     activeOrder?.status === 'delivered' ? 'delivered' :
     activeOrder?.status === 'delivering' ? 'to_client' :
     activeOrder?.status === 'picked_up' ? 'picked_up' :
@@ -399,19 +380,36 @@ export default function DeliveryTrackingModal({
   );
   const isPickedUp = currentStep === 'to_client' || currentStep === 'at_destination' || currentStep === 'delivered';
 
-  // Determine positions
-  // Destination: customer coordinates or fallback (Ipiales defaults)
-  const destLat = activeOrder?.customerLat || tracking?.customerLat || 0.83028;
-  const destLng = activeOrder?.customerLng || tracking?.customerLng || -77.64444;
-
-  // Store coordinates
-  const storeLat = storeLocationCoords?.lat || activeOrder?.storeLat || tracking?.storeLat || (destLat - 0.004);
-  const storeLng = storeLocationCoords?.lng || activeOrder?.storeLng || tracking?.storeLng || (destLng + 0.003);
-
-  // Courier live position (prefer instant device live coords from portal, then tracking telemetry, then default offset)
-  const driverLat = driverLiveCoords?.latitude || tracking?.lat || (storeLat - 0.002);
-  const driverLng = driverLiveCoords?.longitude || tracking?.lng || (storeLng - 0.002);
-  const hasLiveGps = (!!driverLiveCoords?.latitude && !!driverLiveCoords?.longitude) || (!!tracking?.lat && !!tracking?.lng);
+  // Fallback is a map camera center only; never invent a driver/store/customer marker.
+  const destLat = activeOrder?.customerLat ?? tracking?.customerLat ?? 0.83028;
+  const destLng = activeOrder?.customerLng ?? tracking?.customerLng ?? -77.64444;
+  const storeLat = storeLocationCoords?.lat ?? activeOrder?.storeLat ?? tracking?.storeLat ?? destLat;
+  const storeLng = storeLocationCoords?.lng ?? activeOrder?.storeLng ?? tracking?.storeLng ?? destLng;
+  const hasDestination = validCoordinates(activeOrder?.customerLat ?? tracking?.customerLat, activeOrder?.customerLng ?? tracking?.customerLng);
+  const hasStore = validCoordinates(storeLocationCoords?.lat ?? activeOrder?.storeLat ?? tracking?.storeLat, storeLocationCoords?.lng ?? activeOrder?.storeLng ?? tracking?.storeLng);
+  const expectedDriver = activeOrder?.deliveryDriverId || activeOrder?.driverId;
+  const matchingDriver = !expectedDriver || tracking?.driverId === expectedDriver;
+  const trackingIdentity = `${order?.id}:${expectedDriver || tracking?.driverId || ''}`;
+  const deviceFix = driverLiveCoords && validCoordinates(driverLiveCoords.latitude, driverLiveCoords.longitude) && !!driverLiveCoords.timestamp;
+  const courierPoint: GpsPoint | null = finished ? null : deviceFix ? {
+    lat: driverLiveCoords!.latitude, lng: driverLiveCoords!.longitude, timestamp: driverLiveCoords!.timestamp!,
+    accuracy: driverLiveCoords!.accuracy ?? 0, heading: driverLiveCoords!.heading,
+  } : matchingDriver && validCoordinates(tracking?.lat, tracking?.lng) ? {
+    lat: tracking!.lat, lng: tracking!.lng, timestamp: tracking!.gpsTimestamp ?? Date.parse(tracking!.updatedAt),
+    accuracy: tracking!.accuracy ?? 0, heading: tracking!.heading, speed: tracking!.speed,
+  } : null;
+  const secondsAgo = courierPoint && Number.isFinite(courierPoint.timestamp)
+    ? Math.max(0, Math.floor((now - courierPoint.timestamp) / 1000)) : null;
+  const hasDriverFix = !!courierPoint;
+  const hasLiveGps = !!courierPoint && secondsAgo !== null && secondsAgo <= 15 &&
+    (deviceFix || (connection === 'live' && tracking?.fromCache !== true && tracking?.isTrackingActive !== false));
+  const gpsLabel = finished ? 'Seguimiento finalizado' : !courierPoint ? (tracking?.isTrackingActive === false ? 'Sin señal' : 'Esperando ubicación')
+    : hasLiveGps ? 'En vivo' : connection !== 'live' || tracking?.isTrackingActive === false || secondsAgo === null || secondsAgo > GPS_FRESH_MS / 1000
+    ? 'Sin señal' : 'Con retraso';
+  const gpsDescription = finished ? 'Seguimiento finalizado' : trackingError || (secondsAgo === null ? 'Esperando ubicación del domiciliario'
+    : `Última ubicación recibida hace ${secondsAgo} segundos`);
+  const driverLat = courierPoint?.lat ?? (hasStore ? storeLat : destLat);
+  const driverLng = courierPoint?.lng ?? (hasStore ? storeLng : destLng);
 
   // Courier vehicle type
   const vehicleType = tracking?.vehicleType || activeOrder?.deliveryVehicle || 'moto';
@@ -426,25 +424,13 @@ export default function DeliveryTrackingModal({
     const timer = setTimeout(() => {
       if (!leafletContainerRef.current) return;
 
-      if (!leafletMapRef.current) {
-        const map = L.map(leafletContainerRef.current, {
-          center: [driverLat, driverLng],
-          zoom: 15,
-          zoomControl: false
-        });
-
-        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '© OpenStreetMap'
-        }).addTo(map);
-
         // Driver Marker (Moving Courier)
         const driverIcon = L.divIcon({
           className: 'courier-live-pin',
           html: `
             <div style="position: relative; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center;">
               <div style="position: absolute; width: 46px; height: 46px; background: rgba(230, 57, 70, 0.4); border-radius: 50%; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-              <div style="width: 40px; height: 40px; background: #E63946; border: 3px solid #FFFFFF; border-radius: 50%; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; transform: rotate(${tracking?.heading || 0}deg); transition: transform 0.4s ease;">
+              <div data-courier-heading style="width: 40px; height: 40px; background: #E63946; border: 3px solid #FFFFFF; border-radius: 50%; box-shadow: 0 4px 16px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; transform: rotate(${courierPoint?.heading ?? 0}deg); transition: transform 0.4s ease;">
                 <span style="font-size: 20px; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));">${isBike ? '🚲' : '🛵'}</span>
               </div>
             </div>
@@ -477,12 +463,24 @@ export default function DeliveryTrackingModal({
           iconAnchor: [18, 36]
         });
 
-        const dMarker = L.marker([driverLat, driverLng], { icon: driverIcon, zIndexOffset: 1000 }).addTo(map);
-        const cMarker = L.marker([destLat, destLng], { icon: destIcon }).addTo(map);
-        const sMarker = L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(map);
+      if (!leafletMapRef.current) {
+        const map = L.map(leafletContainerRef.current, {
+          center: [driverLat, driverLng],
+          zoom: 15,
+          zoomControl: false
+        });
+
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        const dMarker = hasDriverFix ? L.marker([driverLat, driverLng], { icon: driverIcon, zIndexOffset: 1000 }).addTo(map) : null;
+        const cMarker = hasDestination ? L.marker([destLat, destLng], { icon: destIcon }).addTo(map) : null;
+        const sMarker = hasStore ? L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(map) : null;
 
         const poly1 = L.polyline(
-          [[driverLat, driverLng], [storeLat, storeLng]],
+          (hasDriverFix && hasStore ? [[driverLat, driverLng], [storeLat, storeLng]] : []),
           {
             color: isPickedUp ? '#059669' : '#F59E0B',
             weight: isPickedUp ? 3 : 5,
@@ -492,7 +490,7 @@ export default function DeliveryTrackingModal({
         ).addTo(map);
 
         const poly2 = L.polyline(
-          isPickedUp ? [[driverLat, driverLng], [destLat, destLng]] : [[storeLat, storeLng], [destLat, destLng]],
+          (isPickedUp ? (hasDriverFix && hasDestination ? [[driverLat, driverLng], [destLat, destLng]] : []) : (hasStore && hasDestination ? [[storeLat, storeLng], [destLat, destLng]] : [])),
           {
             color: isPickedUp ? '#E63946' : '#10B981',
             weight: isPickedUp ? 5 : 4,
@@ -513,35 +511,49 @@ export default function DeliveryTrackingModal({
           : L.latLngBounds([[driverLat, driverLng], [storeLat, storeLng], [destLat, destLng]]);
         map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
       } else {
-        if (driverMarkerRef.current) driverMarkerRef.current.setLatLng([driverLat, driverLng]);
+        if (hasDriverFix && !driverMarkerRef.current) {
+          driverMarkerRef.current = L.marker([driverLat, driverLng], { icon: driverIcon, zIndexOffset: 1000 }).addTo(leafletMapRef.current);
+        }
+        if (!hasDriverFix && driverMarkerRef.current) { driverMarkerRef.current.remove(); driverMarkerRef.current = null; }
+        if (hasDestination && !destMarkerRef.current) destMarkerRef.current = L.marker([destLat, destLng], { icon: destIcon }).addTo(leafletMapRef.current);
+        if (hasStore && !storeMarkerRef.current) storeMarkerRef.current = L.marker([storeLat, storeLng], { icon: storeIcon }).addTo(leafletMapRef.current);
+        if (!hasDestination) { destMarkerRef.current?.remove(); destMarkerRef.current = null; }
+        if (!hasStore) { storeMarkerRef.current?.remove(); storeMarkerRef.current = null; }
+
         if (destMarkerRef.current) destMarkerRef.current.setLatLng([destLat, destLng]);
         if (storeMarkerRef.current) storeMarkerRef.current.setLatLng([storeLat, storeLng]);
         if (stage1PolylineRef.current) {
-          stage1PolylineRef.current.setLatLngs([[driverLat, driverLng], [storeLat, storeLng]]);
+          stage1PolylineRef.current.setLatLngs((hasDriverFix && hasStore ? [[driverLat, driverLng], [storeLat, storeLng]] : []));
         }
         if (stage2PolylineRef.current) {
           stage2PolylineRef.current.setLatLngs(
-            isPickedUp ? [[driverLat, driverLng], [destLat, destLng]] : [[storeLat, storeLng], [destLat, destLng]]
+            (isPickedUp ? (hasDriverFix && hasDestination ? [[driverLat, driverLng], [destLat, destLng]] : []) : (hasStore && hasDestination ? [[storeLat, storeLng], [destLat, destLng]] : []))
           );
         }
       }
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isUsingLeaflet, driverLat, driverLng, destLat, destLng, storeLat, storeLng, tracking?.heading, isBike, isPickedUp]);
+  }, [isOpen, isUsingLeaflet, driverLat, driverLng, destLat, destLng, storeLat, storeLng, tracking?.heading, isBike, isPickedUp, hasDriverFix, hasStore, hasDestination]);
 
-  // Clean up leaflet when closing modal
   useEffect(() => {
-    if (!isOpen && leafletMapRef.current) {
-      leafletMapRef.current.remove();
+    return () => {
+      leafletMapRef.current?.remove();
       leafletMapRef.current = null;
-      driverMarkerRef.current = null;
-      destMarkerRef.current = null;
-      storeMarkerRef.current = null;
-      stage1PolylineRef.current = null;
-      stage2PolylineRef.current = null;
-    }
-  }, [isOpen]);
+      driverMarkerRef.current = destMarkerRef.current = storeMarkerRef.current = null;
+      stage1PolylineRef.current = stage2PolylineRef.current = null;
+    };
+  }, [isOpen, isUsingLeaflet, order?.id]);
+
+  useCourierAnimation(isUsingLeaflet ? courierPoint : null, !!hasLiveGps && isOpen, trackingIdentity, point => {
+    driverMarkerRef.current?.setLatLng([point.lat, point.lng]);
+    const icon = driverMarkerRef.current?.getElement()?.querySelector<HTMLElement>('[data-courier-heading]');
+    if (icon) icon.style.transform = `rotate(${point.heading ?? 0}deg)`;
+  }, isUsingLeaflet);
+
+  useEffect(() => {
+    if (centerRequest && courierPoint) leafletMapRef.current?.panTo([courierPoint.lat, courierPoint.lng]);
+  }, [centerRequest]);
 
   if (!isOpen || !activeOrder) return null;
 
@@ -670,7 +682,7 @@ export default function DeliveryTrackingModal({
               styles={mapType === 'roadmap' ? DARK_MAP_STYLES : undefined}
             >
               {/* Route Path Polylines */}
-              <GoogleMapRouteLayer
+              <GoogleMapRouteLayer hasDriverFix={hasDriverFix} hasStore={hasStore} hasDestination={hasDestination}
                 driverLat={driverLat}
                 driverLng={driverLng}
                 storeLat={storeLat}
@@ -693,8 +705,8 @@ export default function DeliveryTrackingModal({
               />
 
               {/* COURIER ADVANCED MARKER */}
-              <AdvancedMarker
-                position={{ lat: driverLat, lng: driverLng }}
+              {courierPoint && <AnimatedCourierMarker
+                point={courierPoint} enabled={!!hasLiveGps} identity={trackingIdentity}
                 title={`Domiciliario: ${driverName}`}
                 zIndex={100}
               >
@@ -712,19 +724,19 @@ export default function DeliveryTrackingModal({
                   <div className="relative w-12 h-12 flex items-center justify-center">
                     <div className="absolute inset-0 bg-[#E63946]/40 rounded-full animate-ping opacity-75" />
                     <div 
-                      className="w-11 h-11 bg-gradient-to-tr from-[#E63946] to-[#b71c1c] border-2 border-white rounded-full shadow-2xl flex items-center justify-center text-xl transition-transform duration-300"
+                      data-courier-heading className="w-11 h-11 bg-gradient-to-tr from-[#E63946] to-[#b71c1c] border-2 border-white rounded-full shadow-2xl flex items-center justify-center text-xl transition-transform duration-300"
                       style={{
-                        transform: `rotate(${tracking?.heading || 0}deg)`
+                        transform: 'rotate(0deg)'
                       }}
                     >
                       <span className="drop-shadow-md">{isBike ? '🚲' : '🛵'}</span>
                     </div>
                   </div>
                 </div>
-              </AdvancedMarker>
+              </AnimatedCourierMarker>}
 
               {/* CUSTOMER DESTINATION MARKER */}
-              <AdvancedMarker
+              {hasDestination && <AdvancedMarker
                 position={{ lat: destLat, lng: destLng }}
                 title={`Punto de entrega: ${activeOrder.customerAddress}`}
                 zIndex={60}
@@ -737,10 +749,10 @@ export default function DeliveryTrackingModal({
                     <span className="-rotate-45">🏠</span>
                   </div>
                 </div>
-              </AdvancedMarker>
+              </AdvancedMarker>}
 
               {/* STORE / RESTAURANT MARKER */}
-              <AdvancedMarker
+              {hasStore && <AdvancedMarker
                 position={{ lat: storeLat, lng: storeLng }}
                 title={`Tienda: ${activeOrder.storeName || 'Restaurante'}`}
                 zIndex={50}
@@ -753,7 +765,7 @@ export default function DeliveryTrackingModal({
                     <span className="-rotate-45">{isPickedUp ? '✓' : '🍽️'}</span>
                   </div>
                 </div>
-              </AdvancedMarker>
+              </AdvancedMarker>}
             </Map>
           </APIProvider>
         ) : (
@@ -785,10 +797,12 @@ export default function DeliveryTrackingModal({
             <div className="px-3 py-1 rounded-full bg-black/75 border border-white/15 backdrop-blur-md text-[10px] sm:text-xs font-bold text-gray-200 flex items-center gap-1.5 shadow-2xl">
               <span className={`w-2 h-2 rounded-full shrink-0 ${hasLiveGps ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
               <span className="truncate">
-                {hasLiveGps ? `GPS en vivo (${secondsAgo}s)` : 'Esperando GPS del repartidor...'}
+                {gpsLabel}
               </span>
             </div>
           </div>
+
+          <button type="button" disabled={!courierPoint} onClick={() => { setCenterRequest(value => value + 1); setCenterTrigger(value => ({ mode: 'driver', id: value.id + 1 })); }} title="Centrar en domiciliario" className="pointer-events-auto h-11 px-3 rounded-2xl bg-black/75 border border-white/15 text-white text-xs disabled:opacity-40">Centrar</button>
 
           {/* Top Right Tool Buttons */}
           <div className="pointer-events-auto flex items-center gap-1.5">
@@ -813,12 +827,19 @@ export default function DeliveryTrackingModal({
         </div>
 
 
+          <div className="pointer-events-auto self-center max-w-[90%] px-3 py-1 rounded-xl bg-black/75 text-[10px] text-gray-200 backdrop-blur-md" role="status">
+            {gpsDescription} · Líneas orientativas, no rutas por calles.
+            {(connection === 'error' || connection === 'offline') && <button type="button" onClick={retryTracking} className="ml-2 underline pointer-events-auto">Reintentar GPS</button>}
+          </div>
         {/* BOTTOM HUD CARD: DRIVER INFO, PIN & CONTACT BUTTONS */}
         <div className="pointer-events-auto w-full max-w-xl mx-auto">
           <div className="bg-[#090D16]/95 border border-gray-800/90 rounded-3xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl text-white space-y-3.5 transition-all">
 
+            <p className="text-[11px] text-gray-400 truncate" title={activeOrder.customerAddress}>
+              {activeOrder.storeName || 'Restaurante'} ➔ {activeOrder.customerAddress || 'Dirección registrada en el pedido'}
+            </p>
             {/* SECURITY PIN BANNER (CRITICAL FOR CUSTOMER) */}
-            {currentStep !== 'delivered' ? (
+            {!finished ? (
               <div className="p-3 sm:p-3.5 bg-gradient-to-r from-emerald-950/70 via-[#0A161E] to-emerald-950/50 border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
@@ -852,7 +873,7 @@ export default function DeliveryTrackingModal({
               <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs text-emerald-300 font-bold">
                 <span className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  Pedido entregado con éxito
+                  {currentStep === 'cancelled' ? 'Pedido cancelado' : 'Pedido entregado con éxito'}
                 </span>
                 <span className="font-mono bg-emerald-500/20 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
                   PIN: {deliveryCode}

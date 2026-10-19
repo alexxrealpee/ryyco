@@ -352,6 +352,12 @@ export interface OrderChatMessage {
 }
 
 export interface DeliveryTrackingData {
+  driverAuthUid?: string;
+  customerEmail?: string;
+  gpsTimestamp?: number; // Device GPS fix time, milliseconds since epoch.
+  serverUpdatedAtMs?: number; // Normalized server timestamp (listener only).
+  fromCache?: boolean; // Snapshot metadata, never persisted.
+
   orderId: string;
   orderNumber: number;
   driverId: string;

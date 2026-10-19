@@ -114,13 +114,59 @@ service cloud.firestore {
     // Delivery Real-Time Tracking rules (Live Courier Geolocation)
     // Cada domiciliario edita solo su propia ubicación para el pedido asignado
     // Cada cliente consulta el seguimiento de su pedido directamente por su orderId
+    // GPS is private to authenticated participants, and inaccessible after the order ends.
+    // Legacy non-Auth driver IDs require a trusted migration; public profile fields
+    // are not sufficient proof to take ownership of an existing tracking document.
     match /delivery_tracking/{orderId} {
-      allow read: if true;
-      allow create: if request.resource.data.driverId is string &&
-                      request.resource.data.orderId == orderId;
-      allow update: if request.resource.data.driverId is string &&
-                      (resource == null || resource.data.driverId == request.resource.data.driverId) &&
-                      request.resource.data.orderId == orderId;
+      function trackingOrder() {
+        return get(/databases/$(database)/documents/orders/$(orderId)).data;
+      }
+      function orderOpen() {
+        return !(trackingOrder().get('status', '') in ['delivered', 'cancelled']) &&
+               trackingOrder().get('deliveryStep', '') != 'delivered';
+      }
+      function verifiedCustomer(data) {
+        return isAuth() && (
+          (request.auth.token.get('email_verified', false) == true &&
+           request.auth.token.get('email', '').lower() != '' &&
+           request.auth.token.get('email', '').lower() == data.get('customerEmail', '').lower()) ||
+          (request.auth.token.get('phone_number', '') != '' &&
+           request.auth.token.get('phone_number', '').replace('[^0-9]', '') == data.get('customerPhone', '').replace('[^0-9]', ''))
+        );
+      }
+      function assignedDriver(data) {
+        let driver = data.get('driverId', data.get('deliveryDriverId', ''));
+        return isAuth() && driver != '' && driver == trackingOrder().get('deliveryDriverId', trackingOrder().get('driverId', '')) &&
+          (driver == request.auth.uid ||
+           get(/databases/$(database)/documents/drivers/$(driver)).data.get('uid', '') == request.auth.uid);
+      }
+      function validPosition(data) {
+        return data.isTrackingActive == false ||
+          (data.lat is number && data.lng is number && data.lat >= -90 && data.lat <= 90 &&
+           data.lng >= -180 && data.lng <= 180 && data.gpsTimestamp is number);
+      }
+      allow get: if isAuth() && orderOpen() && (
+        (resource == null && (verifiedCustomer(trackingOrder()) || assignedDriver(trackingOrder()))) ||
+        (resource != null &&
+          (resource.data.get('driverAuthUid', '') == request.auth.uid || verifiedCustomer(resource.data)))
+      );
+      allow list: if false;
+      allow create: if isAuth() && orderOpen() && assignedDriver(request.resource.data) &&
+        request.resource.data.driverAuthUid == request.auth.uid && request.resource.data.orderId == orderId &&
+        request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data);
+      allow update: if isAuth() &&
+        (resource.data.get('driverAuthUid', '') == request.auth.uid ||
+         (!('driverAuthUid' in resource.data) && resource.data.driverId == request.auth.uid)) &&
+        request.resource.data.driverAuthUid == request.auth.uid &&
+        request.resource.data.driverId == resource.data.driverId && request.resource.data.orderId == orderId &&
+        (!('driverAuthUid' in resource.data) ||
+          (request.resource.data.get('customerEmail', '') == resource.data.get('customerEmail', '') &&
+           request.resource.data.get('customerPhone', '') == resource.data.get('customerPhone', ''))) &&
+        request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data) &&
+        (!(resource.data.get('status', '') in ['cancelled', 'delivered']) || request.resource.data.status == resource.data.status) &&
+        (request.resource.data.isTrackingActive == false ||
+          (orderOpen() && !(resource.data.get('status', '') in ['cancelled', 'delivered']) &&
+           request.resource.data.gpsTimestamp >= resource.data.get('gpsTimestamp', 0)));
       allow delete: if isAdmin();
     }
 

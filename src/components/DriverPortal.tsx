@@ -2203,7 +2203,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           <div>
                             <span className="text-xs font-bold text-[#A9B2C3] block">Estado GPS & Radar</span>
                             <span className="text-xs font-bold text-[#E63946] flex items-center gap-1.5">
-                              {isAvailable ? 'Buscando pedidos en tiempo real...' : 'Modo no disponible'}
+                              {gpsError || (isGpsTracking ? 'GPS activo' : isAvailable ? 'Buscando pedidos en tiempo real...' : 'Modo no disponible')}
                             </span>
                           </div>
                         </div>
@@ -2655,6 +2655,10 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       {driver.status === 'approved' && activeDelivery && activeTab === 'deliveries' && (
         <div className="fixed bottom-[58px] left-0 right-0 z-30 bg-[#0B0F19]/95 backdrop-blur-xl border-t border-[#232B3A] px-3.5 sm:px-4 py-2.5 shadow-[0_-12px_30px_rgba(0,0,0,0.85)]">
           <div className="max-w-xl mx-auto w-full space-y-2">
+            <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400" role="status">
+              <span>{gpsError || (lastGpsUpdate ? `GPS confirmado a las ${lastGpsUpdate.toLocaleTimeString('es-CO')}` : 'Esperando GPS preciso para transmitir')}</span>
+              {gpsError && <button type="button" onClick={manualForceSync} className="shrink-0 text-[#E63946] underline">Reintentar GPS</button>}
+            </div>
             {(activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store') && (
               <>
                 <button
@@ -3153,7 +3157,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           isOpen={trackingPreviewOpen}
           onClose={() => setTrackingPreviewOpen(false)}
           order={activeDelivery}
-          driverLiveCoords={currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude } : null}
+          driverLiveCoords={currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude, timestamp: currentCoords.timestamp, accuracy: currentCoords.accuracy, heading: currentCoords.heading } : null}
           storeLocationCoords={activeStoreLocation}
         />
       )}
