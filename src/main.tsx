@@ -2,7 +2,11 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { installMobileInputViewport } from './lib/mobileInputViewport';
 import { initCapacitorNative } from './lib/capacitor';
+
+// Install before React mounts autofocus fields, including lazy-loaded modals.
+installMobileInputViewport();
 
 // Inicializar puente nativo Capacitor (Android / iOS)
 initCapacitorNative().catch(console.error);

@@ -20,6 +20,8 @@ import {
   playChatChime 
 } from '../lib/orderChatService';
 
+import { useOrderChatViewport } from '../hooks/useOrderChatViewport';
+
 interface OrderChatModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -40,7 +42,7 @@ export default function OrderChatModal({
   const [messages, setMessages] = useState<OrderChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isSending, setIsSending] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const { shellRef, streamRef } = useOrderChatViewport(isOpen, order.id, messages);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const isDriver = currentRole === 'driver';
@@ -75,18 +77,11 @@ export default function OrderChatModal({
     };
   }, [isOpen, order?.id, currentRole]);
 
-  // Auto-scroll to bottom on messages change
+  // Prevent the browser from panning the entire page when opening the keyboard.
   useEffect(() => {
-    if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, isOpen]);
-
-  // Focus input when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 250);
-    }
+    if (!isOpen) return;
+    const timer = window.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 250);
+    return () => window.clearTimeout(timer);
   }, [isOpen]);
 
   const handleSend = async (e?: React.FormEvent) => {
@@ -111,7 +106,7 @@ export default function OrderChatModal({
     }
 
     setIsSending(false);
-    setTimeout(() => inputRef.current?.focus(), 50);
+    inputRef.current?.focus({ preventScroll: true });
   };
 
   // Quick suggestion chips depending on whether user is driver or customer
@@ -134,9 +129,10 @@ export default function OrderChatModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120] bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
+    <div ref={shellRef} data-ryyco-managed-viewport="chat" className="fixed inset-0 overflow-hidden overscroll-none z-[120] bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fadeIn">
       <div 
         className="w-full max-w-lg bg-[#0F172A] border-t sm:border border-[#232F48] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col h-[90vh] sm:h-[650px] max-h-[92vh] overflow-hidden"
+        style={{ maxHeight: 'min(92vh, 100%)', minHeight: 0 }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -189,7 +185,7 @@ export default function OrderChatModal({
         </div>
 
         {/* Security badge info */}
-        <div className="px-4 py-2 bg-gradient-to-r from-emerald-950/40 to-slate-900 border-b border-[#232F48] flex items-center justify-between text-[11px] text-gray-300">
+        <div className="px-4 py-2 bg-gradient-to-r from-emerald-950/40 to-slate-900 border-b border-[#232F48] flex items-center justify-between text-[11px] text-gray-300 shrink-0">
           <div className="flex items-center gap-1.5 font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>Chat directo y seguro de la entrega</span>
@@ -200,7 +196,7 @@ export default function OrderChatModal({
         </div>
 
         {/* Chat message stream */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-[#090E17]/60">
+        <div ref={streamRef} style={{ overflowAnchor: 'none' }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-3.5 bg-[#090E17]/60">
           {messages.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6 text-gray-400 gap-2.5">
               <div className="w-14 h-14 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-[#E63946]">
@@ -245,7 +241,6 @@ export default function OrderChatModal({
               );
             })
           )}
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Quick Suggestion Chips */}
@@ -257,7 +252,7 @@ export default function OrderChatModal({
               type="button"
               onClick={() => {
                 setInputText(sug);
-                inputRef.current?.focus();
+                inputRef.current?.focus({ preventScroll: true });
               }}
               className="text-[11px] whitespace-nowrap bg-slate-800/90 hover:bg-slate-700 text-gray-300 hover:text-white px-2.5 py-1 rounded-full border border-slate-700/80 transition cursor-pointer shrink-0"
             >
@@ -277,7 +272,7 @@ export default function OrderChatModal({
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             placeholder={`Escribe un mensaje para ${otherPartyName}...`}
-            className="flex-1 bg-[#1E293B] border border-[#2E3C54] focus:border-[#E63946] focus:ring-1 focus:ring-[#E63946] text-white text-xs sm:text-sm rounded-xl px-4 py-3 outline-none placeholder-gray-400 transition"
+            className="min-w-0 flex-1 bg-[#1E293B] border border-[#2E3C54] focus:border-[#E63946] focus:ring-1 focus:ring-[#E63946] text-white text-xs sm:text-sm rounded-xl px-4 py-3 outline-none placeholder-gray-400 transition"
           />
           <button
             type="submit"

@@ -1088,7 +1088,7 @@ export async function processOpenAIVoiceAssistantMessage(
     ? cart.map(c => `- ${c.quantity}x ${c.name} (${(c.price * c.quantity).toLocaleString('es-CO')} pesos)`).join('\n')
     : 'El carrito está actualmente vacío.';
 
-  const systemPrompt = `Eres "IAMesero" (iamesero), el mesero y asistente virtual inteligente con Inteligencia Artificial de LinnkPro.Store.
+  const systemPrompt = `Eres "IAMesero" (iamesero), el mesero y asistente virtual inteligente con Inteligencia Artificial de ryyco.
 Habla en español colombiano natural. Usa expresiones suaves y cotidianas de Colombia, sin exagerar el acento ni utilizar regionalismos innecesarios.
 Tu propósito es atender a los clientes en su mesa o domicilio, recomendar platos deliciosos de los restaurantes disponibles, responder dudas y tomar sus pedidos de manera fluida y conversacional.
 
@@ -1423,7 +1423,7 @@ export async function processVoiceAssistantMessage(
     ? cart.map(c => `- ${c.quantity}x ${c.name} (${(c.price * c.quantity).toLocaleString('es-CO')} pesos)`).join('\n')
     : 'El carrito está actualmente vacío.';
 
-  const systemInstruction = `Eres "IAMesero" (iamesero), el mesero y asistente virtual por voz de LinnkPro.Store. Hablas con una voz cálida, humana, amable y natural, con acento cordial colombiano.
+  const systemInstruction = `Eres "IAMesero" (iamesero), el mesero y asistente virtual por voz de ryyco. Hablas con una voz cálida, humana, amable y natural, con acento cordial colombiano.
 Tu propósito es atender a los clientes en su mesa o domicilio, recomendar platos deliciosos de los restaurantes disponibles, responder dudas y tomar sus pedidos de manera fluida y conversacional.
 
 ESTILO DE VOZ Y CONVERSACIÓN HUMANA:
