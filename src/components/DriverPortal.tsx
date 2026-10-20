@@ -3155,6 +3155,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       {activeDelivery && (
         <DeliveryTrackingModal
           isOpen={trackingPreviewOpen}
+          showDeliveryCode={false}
           onClose={() => setTrackingPreviewOpen(false)}
           order={activeDelivery}
           driverLiveCoords={currentCoords ? { latitude: currentCoords.latitude, longitude: currentCoords.longitude, timestamp: currentCoords.timestamp, accuracy: currentCoords.accuracy, heading: currentCoords.heading } : null}

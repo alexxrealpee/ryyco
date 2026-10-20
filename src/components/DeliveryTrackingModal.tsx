@@ -109,6 +109,7 @@ interface DeliveryTrackingModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: OrderItem | null;
+  showDeliveryCode?: boolean;
   driverLiveCoords?: { latitude: number; longitude: number; timestamp?: number; accuracy?: number; heading?: number } | null;
   storeLocationCoords?: { lat?: number; lng?: number; address?: string } | null;
 }
@@ -266,7 +267,8 @@ export default function DeliveryTrackingModal({
   onClose,
   order,
   driverLiveCoords,
-  storeLocationCoords
+  storeLocationCoords,
+  showDeliveryCode = true
 }: DeliveryTrackingModalProps) {
   const [centerRequest, setCenterRequest] = useState(0);
   const [liveOrder, setLiveOrder] = useState<OrderItem | null>(order);
@@ -839,7 +841,7 @@ export default function DeliveryTrackingModal({
               {activeOrder.storeName || 'Restaurante'} ➔ {activeOrder.customerAddress || 'Dirección registrada en el pedido'}
             </p>
             {/* SECURITY PIN BANNER (CRITICAL FOR CUSTOMER) */}
-            {!finished ? (
+            {!finished ? (showDeliveryCode && (
               <div className="p-3 sm:p-3.5 bg-gradient-to-r from-emerald-950/70 via-[#0A161E] to-emerald-950/50 border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
@@ -869,15 +871,15 @@ export default function DeliveryTrackingModal({
                   </button>
                 </div>
               </div>
-            ) : (
+            )) : (
               <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-2xl flex items-center justify-between text-xs text-emerald-300 font-bold">
                 <span className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   {currentStep === 'cancelled' ? 'Pedido cancelado' : 'Pedido entregado con éxito'}
                 </span>
-                <span className="font-mono bg-emerald-500/20 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
+                {showDeliveryCode && <span className="font-mono bg-emerald-500/20 px-2.5 py-0.5 rounded-lg border border-emerald-500/30">
                   PIN: {deliveryCode}
-                </span>
+                </span>}
               </div>
             )}
 
