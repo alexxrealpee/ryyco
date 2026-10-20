@@ -208,6 +208,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [tableNumber, setTableNumber] = useState('');
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('whatsapp');
+  useEffect(() => {
+    if (deliveryType === 'delivery' && payMethod === 'cod') setPayMethod('whatsapp');
+  }, [deliveryType, payMethod]);
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
   const [acceptedBuyerTermsInCheckout, setAcceptedBuyerTermsInCheckout] = useState(true);
@@ -977,7 +980,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       orderType: isTable ? 'table' : isPickup ? 'pickup' : 'delivery',
       isTableOrder: isTable,
       tableNumber: isTable ? tableNumber.trim() : undefined,
-      paymentMethod: payMethod,
+      paymentMethod: deliveryType === 'delivery' && payMethod === 'cod' ? 'whatsapp' : payMethod,
       notes: finalNotes || undefined,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -3634,8 +3637,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             <div>
               <label className="text-[10px] font-black uppercase text-gray-500 block mb-2">Método de Coordinación de Pago</label>
               <div className="grid grid-cols-1 gap-2">
-                {/* 1. Pago contra entrega */}
-                <label className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition ${
+                {/* Pago presencial para recoger o consumir en mesa */}
+                {deliveryType !== 'delivery' && <label className={`p-3 border rounded-xl flex items-center justify-between cursor-pointer transition ${
                   payMethod === 'cod' ? 'border-amber-400 bg-amber-500/5' : 'border-gray-900 hover:border-gray-800'
                 }`}>
                   <div className="flex items-center gap-2.5">
@@ -3646,15 +3649,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     )}
                     <div className="text-left">
                       <h4 className="text-xs font-extrabold text-white">
-                        {deliveryType === 'table' ? 'Efectivo / En Mesa / Datáfono' : 'Pago contra Entrega'}
+                        {deliveryType === 'table' ? 'Efectivo / En Mesa / Datáfono' : 'Pago en Restaurante'}
                       </h4>
                       <p className="text-[9px] text-gray-500">
-                        {deliveryType === 'table' ? 'Pagas en tu mesa al recibir los platos' : 'Paga en efectivo al recibir'}
+                        {deliveryType === 'table' ? 'Pagas en tu mesa al recibir los platos' : 'Paga en efectivo o tarjeta al recoger'}
                       </p>
                     </div>
                   </div>
                   <input type="radio" checked={payMethod === 'cod'} onChange={() => setPayMethod('cod')} className="w-4 h-4 accent-amber-500 pointer-events-auto" />
-                </label>
+                </label>}
 
                 {/* 2. Transferencia bancaria */}
                 {(!profile?.bankAccounts || profile.bankAccounts.length === 0) ? (

@@ -438,6 +438,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [custNotes, setCustNotes] = useState('');
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
+  useEffect(() => {
+    if (deliveryType === 'delivery' && payMethod === 'delivery_cash') setPayMethod('whatsapp');
+  }, [deliveryType, payMethod]);
 
   // Customer Loyalty & Account Modal
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
@@ -1291,7 +1294,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           deliveryFee: deliveryFee,
           packagingCost: sellerPackagingCost > 0 ? sellerPackagingCost : undefined,
           orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
-          paymentMethod: payMethod === 'whatsapp' ? 'whatsapp' : payMethod === 'transfer' ? 'transfer' : 'delivery_cash',
+          paymentMethod: payMethod === 'transfer' ? 'transfer' : payMethod === 'delivery_cash' && deliveryType === 'pickup' ? 'delivery_cash' : 'whatsapp',
           notes: custNotes.trim() || undefined,
           status: 'pending',
           createdAt: new Date().toISOString()
@@ -3640,7 +3643,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   
                   <div className="space-y-2">
                     {[
-                      { id: 'delivery_cash', title: deliveryType === 'pickup' ? 'Pago en Restaurante' : 'Pago contra Entrega', desc: deliveryType === 'pickup' ? 'Paga en efectivo o tarjeta al recoger' : 'Paga en efectivo al recibir' },
+                      ...(deliveryType === 'pickup' ? [{ id: 'delivery_cash', title: 'Pago en Restaurante', desc: 'Paga en efectivo o tarjeta al recoger' }] : []),
                       { id: 'transfer', title: 'Transferencia Bancaria', desc: 'Soporte de transferencia bancaria' },
                       { id: 'whatsapp', title: 'Pedido por WhatsApp', desc: 'Coordinar pago por chat' }
                     ].map((opt) => (
