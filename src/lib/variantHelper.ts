@@ -46,39 +46,49 @@ export function parseSingleVariant(raw: string, defaultPrice: number = 0): Parse
 /**
  * Splits a variantsText string into individual variant strings cleanly,
  * supporting newlines (\n), pipes ( | ), semicolons (;), or legacy commas (,).
+ * If variantsList is provided, it is returned as the primary source of truth.
  * If variantPrices has explicit keys with commas, those keys are prioritized.
  */
 export function splitVariantsText(
   variantsText?: string,
-  variantPrices?: Record<string, number>
+  variantPrices?: Record<string, number>,
+  variantsList?: string[]
 ): string[] {
-  if (variantPrices && typeof variantPrices === 'object') {
-    const keys = Object.keys(variantPrices).map(k => k.trim()).filter(Boolean);
-    if (keys.length > 0 && keys.some(k => k.includes(','))) {
-      return keys;
-    }
+  // 1. Explicit array of variants takes absolute precedence
+  if (Array.isArray(variantsList) && variantsList.length > 0) {
+    return variantsList.map(s => s.trim()).filter(Boolean);
   }
 
-  if (!variantsText || !variantsText.trim()) {
+  // 2. If variantsText is present
+  if (variantsText && variantsText.trim()) {
+    if (variantsText.includes('\n')) {
+      return variantsText.split('\n').map(s => s.trim()).filter(Boolean);
+    }
+
+    if (variantsText.includes(' | ')) {
+      return variantsText.split(' | ').map(s => s.trim()).filter(Boolean);
+    }
+
+    if (variantsText.includes(';')) {
+      return variantsText.split(';').map(s => s.trim()).filter(Boolean);
+    }
+
     if (variantPrices && typeof variantPrices === 'object') {
-      return Object.keys(variantPrices).map(k => k.trim()).filter(Boolean);
+      const keys = Object.keys(variantPrices).map(k => k.trim()).filter(Boolean);
+      if (keys.length > 0 && keys.some(k => k.includes(','))) {
+        return keys;
+      }
     }
-    return [];
+
+    return variantsText.split(',').map(s => s.trim()).filter(Boolean);
   }
 
-  if (variantsText.includes('\n')) {
-    return variantsText.split('\n').map(s => s.trim()).filter(Boolean);
+  // 3. Fallback to variantPrices keys
+  if (variantPrices && typeof variantPrices === 'object') {
+    return Object.keys(variantPrices).map(k => k.trim()).filter(Boolean);
   }
 
-  if (variantsText.includes(' | ')) {
-    return variantsText.split(' | ').map(s => s.trim()).filter(Boolean);
-  }
-
-  if (variantsText.includes(';')) {
-    return variantsText.split(';').map(s => s.trim()).filter(Boolean);
-  }
-
-  return variantsText.split(',').map(s => s.trim()).filter(Boolean);
+  return [];
 }
 
 /**
@@ -87,9 +97,10 @@ export function splitVariantsText(
 export function getProductParsedVariants(
   variantsText?: string,
   variantPrices?: Record<string, number>,
-  basePrice: number = 0
+  basePrice: number = 0,
+  variantsList?: string[]
 ): ParsedVariant[] {
-  const rawList = splitVariantsText(variantsText, variantPrices);
+  const rawList = splitVariantsText(variantsText, variantPrices, variantsList);
   if (rawList.length === 0) return [];
 
   return rawList.map(raw => {
@@ -166,7 +177,7 @@ export function getProductPriceRange(product: ProductItem, currency: string = '$
   displayPrice: string;
 } {
   const base = Number(product.price) || 0;
-  const variants = getProductParsedVariants(product.variantsText, product.variantPrices, base);
+  const variants = getProductParsedVariants(product.variantsText, product.variantPrices, base, product.variantsList);
 
   if (variants.length === 0) {
     return {
@@ -228,7 +239,7 @@ export function extractProductVariants(
   if (typeof productOrText === 'string') {
     return splitVariantsText(productOrText, variantPrices);
   }
-  return splitVariantsText(productOrText.variantsText, productOrText.variantPrices || variantPrices);
+  return splitVariantsText(productOrText.variantsText, productOrText.variantPrices || variantPrices, productOrText.variantsList);
 }
 
 /**
@@ -236,7 +247,8 @@ export function extractProductVariants(
  */
 export function splitProductVariants(
   variantsText?: string,
-  variantPrices?: Record<string, number>
+  variantPrices?: Record<string, number>,
+  variantsList?: string[]
 ): string[] {
-  return splitVariantsText(variantsText, variantPrices);
+  return splitVariantsText(variantsText, variantPrices, variantsList);
 }

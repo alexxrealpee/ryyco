@@ -1176,9 +1176,18 @@ export async function saveProduct(product: ProductItem): Promise<ProductItem> {
       result.createdAt = cleanedResult.createdAt;
       await setDoc(docRef, cleanedResult);
     } else {
-      await setDoc(doc(db, 'products', product.id), cleanedResult, { merge: true });
+      const docRef = doc(db, 'products', product.id);
+      const finalDocData: any = {
+        ...cleanedResult,
+        createdAt: product.createdAt || new Date().toISOString()
+      };
+      // Overwrite document directly without { merge: true }
+      // This ensures removed variant options / prices are purged from Firestore rather than merged/resurrected,
+      // and avoids fatal field-path syntax errors when variant names contain trailing periods or dots
+      await setDoc(docRef, finalDocData);
     }
   } catch(e) {
+    console.error("Error en saveProduct Firestore:", e);
     throw new Error('No se pudo guardar el producto en el servidor. Revisa la conexión antes de cerrar esta pantalla.');
   }
   

@@ -834,12 +834,16 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   const detectedVariants = useMemo(() => {
     if (prodVariantsList.length === 0) return [];
-    return prodVariantsList.map(name => ({
-      name,
-      price: prodVariantPrices[name] !== undefined && prodVariantPrices[name] > 0
+    return prodVariantsList.map(name => {
+      const trimmed = name.trim();
+      const explicit = prodVariantPrices[name] !== undefined && prodVariantPrices[name] > 0
         ? prodVariantPrices[name]
-        : (Number(prodPrice) || 0)
-    }));
+        : (prodVariantPrices[trimmed] !== undefined && prodVariantPrices[trimmed] > 0 ? prodVariantPrices[trimmed] : undefined);
+      return {
+        name,
+        price: explicit !== undefined ? explicit : (Number(prodPrice) || 0)
+      };
+    });
   }, [prodVariantsList, prodVariantPrices, prodPrice]);
 
   const hasVariantsEntered = prodVariantsList.length > 0;
@@ -877,11 +881,23 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setNewVariantInput('');
   };
 
-  const handleRemoveVariant = (nameToRemove: string) => {
-    setProdVariantsList(prev => prev.filter(v => v !== nameToRemove));
+  const handleRemoveVariant = (nameToRemove: string, indexToRemove?: number) => {
+    const cleanTarget = nameToRemove.trim();
+    setProdVariantsList(prev => {
+      if (typeof indexToRemove === 'number' && indexToRemove >= 0 && indexToRemove < prev.length) {
+        return prev.filter((_, idx) => idx !== indexToRemove);
+      }
+      return prev.filter(v => v !== nameToRemove && v.trim() !== cleanTarget);
+    });
     setProdVariantPrices(prev => {
       const next = { ...prev };
       delete next[nameToRemove];
+      delete next[cleanTarget];
+      Object.keys(next).forEach(k => {
+        if (k.trim().toLowerCase() === cleanTarget.toLowerCase()) {
+          delete next[k];
+        }
+      });
       return next;
     });
   };
@@ -1436,13 +1452,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }) : ''));
     setProdCategory(prod.category || 'General');
     setProdStock(prod.stock !== undefined && prod.stock !== null ? prod.stock.toString() : '10');
-    const parsedVariants = splitVariantsText(prod.variantsText, prod.variantPrices);
+    const parsedVariants = (prod.variantsList && Array.isArray(prod.variantsList) && prod.variantsList.length > 0)
+      ? [...prod.variantsList]
+      : splitVariantsText(prod.variantsText, prod.variantPrices, prod.variantsList);
     setProdVariantsList(parsedVariants);
     setNewVariantInput('');
 
-    const initialPrices: Record<string, number> = prod.variantPrices ? { ...prod.variantPrices } : {};
+    const initialPrices: Record<string, number> = {};
+    if (prod.variantPrices && typeof prod.variantPrices === 'object') {
+      Object.entries(prod.variantPrices).forEach(([k, v]) => {
+        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.]/g, ''));
+        if (!isNaN(num) && num > 0) {
+          initialPrices[k] = num;
+        }
+      });
+    }
     parsedVariants.forEach(name => {
-      if (initialPrices[name] === undefined && prod.price) {
+      const trimmed = name.trim();
+      if (initialPrices[name] === undefined && initialPrices[trimmed] === undefined && prod.price) {
         initialPrices[name] = prod.price;
       }
     });
@@ -1596,10 +1623,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
     const cleanVariantPrices: Record<string, number> = {};
     if (prodVariantPrices && typeof prodVariantPrices === 'object') {
-      Object.entries(prodVariantPrices).forEach(([k, v]) => {
-        const num = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.]/g, ''));
-        if (!isNaN(num) && num > 0) {
-          cleanVariantPrices[k.trim()] = num;
+      prodVariantsList.forEach(vName => {
+        const rawKey = vName;
+        const trimmedKey = vName.trim();
+        const priceVal = prodVariantPrices[rawKey] ?? prodVariantPrices[trimmedKey];
+        if (priceVal !== undefined && priceVal !== null) {
+          const num = typeof priceVal === 'number' ? priceVal : parseFloat(String(priceVal).replace(/[^0-9.]/g, ''));
+          if (!isNaN(num) && num > 0) {
+            cleanVariantPrices[trimmedKey] = num;
+          }
         }
       });
     }
@@ -1647,6 +1679,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       category: prodCategory ? prodCategory.trim() : 'General',
       stock: isNaN(parseInt(prodStock)) ? 10 : parseInt(prodStock),
       variantsText: serializedVariants,
+      variantsList: prodVariantsList,
       variantPrices: Object.keys(cleanVariantPrices).length > 0 ? cleanVariantPrices : undefined,
       allowsHalfAndHalf: prodAllowsHalfAndHalf,
       flavorsList: prodAllowsHalfAndHalf ? prodFlavorsList : [],
@@ -3251,11 +3284,15 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                               <div className="flex flex-col gap-2">
                                 {detectedVariants.map((item, idx) => {
-                                  const currentPriceVal = prodVariantPrices[item.name] !== undefined ? String(prodVariantPrices[item.name]) : (item.price > 0 ? String(item.price) : '');
+                                  const currentPriceVal = prodVariantPrices[item.name] !== undefined
+                                    ? (prodVariantPrices[item.name] > 0 ? String(prodVariantPrices[item.name]) : '')
+                                    : (prodVariantPrices[item.name.trim()] !== undefined
+                                        ? (prodVariantPrices[item.name.trim()] > 0 ? String(prodVariantPrices[item.name.trim()]) : '')
+                                        : (item.price > 0 ? String(item.price) : ''));
                                   const isFilled = Boolean(currentPriceVal && Number(currentPriceVal) > 0);
                                   return (
                                     <div 
-                                      key={item.name} 
+                                      key={`variant-${item.name}-${idx}`} 
                                       className={`bg-gray-900/90 border rounded-xl p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition shadow-sm hover:border-gray-700 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 ${
                                         isFilled ? 'border-indigo-500/40 bg-gradient-to-r from-gray-900 via-gray-900 to-indigo-950/20' : 'border-gray-800'
                                       }`}
@@ -3285,10 +3322,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                             placeholder={prodPrice || '0'}
                                             onChange={(e) => {
                                               const rawVal = e.target.value;
+                                              if (!rawVal.trim()) {
+                                                setProdVariantPrices(prev => {
+                                                  const next = { ...prev };
+                                                  delete next[item.name];
+                                                  delete next[item.name.trim()];
+                                                  return next;
+                                                });
+                                                return;
+                                              }
                                               const parsed = parsePriceInput(rawVal);
                                               setProdVariantPrices(prev => ({
                                                 ...prev,
-                                                [item.name]: !isNaN(parsed) ? parsed : 0
+                                                [item.name]: !isNaN(parsed) ? parsed : 0,
+                                                [item.name.trim()]: !isNaN(parsed) ? parsed : 0
                                               }));
                                             }}
                                             className="w-full bg-transparent text-right text-sm font-black text-emerald-400 outline-none placeholder:text-gray-600"
@@ -3297,7 +3344,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                                         <button
                                           type="button"
-                                          onClick={() => handleRemoveVariant(item.name)}
+                                          onClick={() => handleRemoveVariant(item.name, idx)}
                                           className="w-9 h-9 rounded-xl bg-gray-950 border border-gray-800 text-gray-400 hover:text-red-400 hover:border-red-500/40 hover:bg-red-500/10 flex items-center justify-center transition cursor-pointer shrink-0"
                                           title={`Eliminar variante ${item.name}`}
                                         >

@@ -799,7 +799,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   // Cart operations
   const handleOpenProductSelection = (prod: ProductItem) => {
-    const variants = splitVariantsText(prod.variantsText, prod.variantPrices);
+    const variants = splitVariantsText(prod.variantsText, prod.variantPrices, prod.variantsList);
     const firstVar = variants.length > 0 ? variants[0] : '';
     setSelectedProduct(prod);
     setChosenVariant(firstVar);
@@ -853,7 +853,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   const handleAddToCartDirect = (p: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const variants = splitVariantsText(p.variantsText, p.variantPrices);
+    const variants = splitVariantsText(p.variantsText, p.variantPrices, p.variantsList);
     if (variants.length > 1 || (p.allowsHalfAndHalf && p.flavorsText) || (p.addons && p.addons.length > 0)) {
       // Multiple variants, Pizza flavors or optional Add-ons require selection modal
       handleOpenProductSelection(p);
@@ -2922,7 +2922,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       </div>
 
                       <div className="space-y-2">
-                        {splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices).map((vName, vIdx) => {
+                        {splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices, selectedProduct.variantsList).map((vName, vIdx) => {
                           const isSelected = chosenVariant === vName;
                           const vPrice = getVariantPrice(selectedProduct, vName);
                           const displayPrice = vPrice > 0 ? vPrice : (Number(selectedProduct.price) || 0);

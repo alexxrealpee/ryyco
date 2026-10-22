@@ -358,7 +358,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
               onClick={() => onNavigate('signup')}
               className="bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold text-xs sm:text-sm px-4 py-2 rounded-lg transition-colors cursor-pointer"
             >
-              Ingresar mi restaurante
+              Registrar mi restaurante
             </button>
           </div>
         </div>
@@ -405,7 +405,7 @@ export default function LandingPage({ onNavigate }: LandingPageProps) {
                 disabled={checking}
                 className="bg-[#D62839] hover:bg-[#b81d2d] text-white font-bold px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shrink-0 text-xs sm:text-sm cursor-pointer disabled:opacity-50"
               >
-                {checking ? 'Ingresando...' : 'Ingresar mi restaurante'}
+                {checking ? 'Registrando...' : 'Registrar mi restaurante'}
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>

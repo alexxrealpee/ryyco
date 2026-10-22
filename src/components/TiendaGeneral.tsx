@@ -651,7 +651,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       setBuyQuantity(1);
       setIsVariantValid(true);
       setSelectedAddons([]);
-      const parsedVars = splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices);
+      const parsedVars = splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices, selectedProduct.variantsList);
       if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) {
         const firstVar = parsedVars.length > 0 ? parsedVars[0] : '';
         setChosenVariant(firstVar);
@@ -1674,7 +1674,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                     </button>
 
-                    {/* Ingresar Mi Restaurante */}
+                    {/* Registrar Mi Restaurante */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1689,7 +1689,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       </div>
                       <div className="flex-1 min-w-0">
                         <span className="font-bold text-xs text-white block group-hover:text-emerald-300 transition">
-                          Ingresar Mi Restaurante
+                          Registrar mi restaurante
                         </span>
                         <p className="text-[10px] text-gray-400 leading-tight">
                           Publica tus productos y vende online
@@ -1856,7 +1856,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               )}
             </button>
 
-            {/* Ingresar Mi Restaurante Button */}
+            {/* Registrar Mi Restaurante Button */}
             <button 
               onClick={() => {
                 window.history.pushState({}, '', '/landing');
@@ -1864,7 +1864,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               }}
               className="hidden xl:inline-flex items-center bg-[#E63946] hover:bg-[#D62839] text-white font-extrabold text-xs px-3.5 py-2 rounded-xl transition duration-150 uppercase tracking-wider cursor-pointer shadow-md shadow-red-950/30 whitespace-nowrap shrink-0"
             >
-              Ingresar Mi Restaurante
+              Registrar Mi Restaurante
             </button>
           </div>
         </div>
@@ -2874,7 +2874,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           </div>
 
                           <div className="space-y-2">
-                            {splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices).map((vName, vIdx) => {
+                            {splitVariantsText(selectedProduct.variantsText, selectedProduct.variantPrices, selectedProduct.variantsList).map((vName, vIdx) => {
                               const isSelected = chosenVariant === vName;
                               const vPrice = getVariantPrice(selectedProduct, vName);
                               const displayPrice = vPrice > 0 ? vPrice : (Number(selectedProduct.price) || 0);

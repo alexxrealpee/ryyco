@@ -1224,7 +1224,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       </span>
                     </div>
                     <div className="space-y-1.5">
-                      {splitVariantsText(variantSheetProduct.variantsText, variantSheetProduct.variantPrices).map((variantName, vIdx) => {
+                      {splitVariantsText(variantSheetProduct.variantsText, variantSheetProduct.variantPrices, variantSheetProduct.variantsList).map((variantName, vIdx) => {
                         const isSelected = selectedVariant === variantName;
                         const vPrice = getVariantPrice(variantSheetProduct, variantName);
                         const displayPrice = vPrice > 0 ? vPrice : (Number(variantSheetProduct.price) || 0);
