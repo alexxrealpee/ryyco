@@ -39,7 +39,7 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
     }).filter(Boolean);
   }, [product]);
 
-  const allowsHalfAndHalf = product.allowsHalfAndHalf !== false;
+  const allowsHalfAndHalf = product.allowsHalfAndHalf === true;
   const allowSingle = product.allowSingleFlavor !== false;
 
   // Selected mode
@@ -83,13 +83,21 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
       setSelectedHalf2(flavors[1] || flavors[0] || '');
       setSelectedSingleFlavor(flavors[0] || '');
       setActiveHalfTab(1);
+      setMode(allowsHalfAndHalf ? 'half_half' : 'single');
     }
-  }, [product.id, initialSizeVariant, sizes, flavors]);
+  }, [product.id, initialSizeVariant, sizes, flavors, allowsHalfAndHalf]);
+
+  useEffect(() => {
+    if (!allowsHalfAndHalf && mode !== 'single') {
+      setMode('single');
+    }
+  }, [allowsHalfAndHalf, mode]);
 
   const isPizza = (product.name || '').toLowerCase().includes('pizza') || (product.name || '').toLowerCase().includes('piza') || (product.category || '').toLowerCase().includes('pizza');
   const isHelado = (product.name || '').toLowerCase().includes('helad') || (product.category || '').toLowerCase().includes('helad');
-  const productEmoji = isPizza ? '🍕' : isHelado ? '🍨' : '✨';
-  const headerTitle = 'Personaliza los Sabores';
+  const isJugo = (product.name || '').toLowerCase().includes('jugo') || (product.name || '').toLowerCase().includes('bebida') || (product.category || '').toLowerCase().includes('bebida') || (product.category || '').toLowerCase().includes('malteada');
+  const productEmoji = isPizza ? '🍕' : isHelado ? '🍨' : isJugo ? '🥤' : '✨';
+  const headerTitle = allowsHalfAndHalf ? 'Personaliza los Sabores' : (isJugo ? 'Elige el Sabor de tu Bebida' : 'Elige tu Sabor');
   const portion1Label = isPizza ? 'Mitad 1' : 'Sabor 1';
   const portion2Label = isPizza ? 'Mitad 2' : 'Sabor 2';
 
@@ -155,12 +163,12 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
           </div>
           <div className="min-w-0">
             <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5 truncate">
-              Personaliza los Sabores <Sparkles className="w-3 h-3 text-amber-400 shrink-0 hidden sm:inline" />
+              {headerTitle} <Sparkles className="w-3 h-3 text-amber-400 shrink-0 hidden sm:inline" />
             </h4>
             <p className="text-[10px] text-gray-400 truncate sm:whitespace-normal">
               {allowsHalfAndHalf
                 ? 'Combina 2 sabores o elige 1 solo sabor'
-                : 'Selecciona tu sabor favorito'}
+                : 'Selecciona 1 sabor para tu pedido'}
             </p>
           </div>
         </div>
@@ -427,12 +435,19 @@ export const PizzaFlavorSelector: React.FC<PizzaFlavorSelectorProps> = ({
             </div>
           )
         ) : (
-          selectedSingleFlavor && (
+          selectedSingleFlavor ? (
             <div className="bg-emerald-950/30 border border-emerald-500/30 p-2 sm:p-2.5 rounded-xl flex items-center gap-2 text-emerald-400 text-xs font-bold min-w-0">
               <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               <span className="truncate">
-                Sabor: <span className="text-white">{selectedSingleFlavor}</span>
+                Sabor seleccionado: <span className="text-white">{selectedSingleFlavor}</span>
                 {selectedSize ? ` (${selectedSize})` : ''}
+              </span>
+            </div>
+          ) : (
+            <div className="bg-amber-500/10 border border-amber-500/30 p-2 sm:p-2.5 rounded-xl flex items-center gap-2 text-amber-300 text-xs font-bold min-w-0">
+              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 text-amber-400" />
+              <span className="truncate">
+                Por favor selecciona 1 sabor para continuar
               </span>
             </div>
           )

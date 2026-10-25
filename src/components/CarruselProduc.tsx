@@ -480,12 +480,18 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
 
   const handleBuyClick = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    // If product has multiple variants or allows half-and-half flavors, open bottom sheet selector
-    if ((product.variantsText && product.variantsText.includes(',')) || (product.allowsHalfAndHalf && product.flavorsText)) {
+    const productHasFlavors = Boolean(
+      product.hasFlavors ||
+      (product.flavorsText && product.flavorsText.trim().length > 0) ||
+      (product.flavorsList && product.flavorsList.length > 0) ||
+      product.allowsHalfAndHalf
+    );
+    // If product has multiple variants or has flavors, open bottom sheet selector
+    if ((product.variantsText && product.variantsText.includes(',')) || productHasFlavors) {
       const firstVariant = product.variantsText ? product.variantsText.split(',')[0].trim() : '';
       setSelectedVariant(firstVariant);
       setSheetVariantPrice(firstVariant ? getVariantPrice(product, firstVariant) : (Number(product.price) || 0));
-      setIsSheetVariantValid(true);
+      setIsSheetVariantValid(!productHasFlavors);
       setSheetQuantity(1);
       setVariantSheetProduct(product);
       return;
@@ -1195,7 +1201,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
               {/* Scrollable Container for Customization / Flavor options */}
               <div className="flex-1 overflow-y-auto custom-scrollbar overflow-x-hidden space-y-3.5 pr-0.5 w-full min-w-0">
                 {/* Variant / Pizza Flavor Selector */}
-                {variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText ? (
+                {Boolean(variantSheetProduct.hasFlavors || (variantSheetProduct.flavorsText && variantSheetProduct.flavorsText.trim().length > 0) || (variantSheetProduct.flavorsList && variantSheetProduct.flavorsList.length > 0) || variantSheetProduct.allowsHalfAndHalf) ? (
                   <div className="w-full min-w-0">
                     <PizzaFlavorSelector
                       key={variantSheetProduct.id}
@@ -1296,21 +1302,31 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                     ${((currentSheetUnitPrice || variantSheetProduct.price || 0) * sheetQuantity).toLocaleString('es-CO')} COP
                   </span>
                 </div>
-                <button
-                  disabled={variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText && !isSheetVariantValid}
-                  onClick={() => {
-                    if (variantSheetProduct.allowsHalfAndHalf && variantSheetProduct.flavorsText && !isSheetVariantValid) {
-                      alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
-                      return;
-                    }
-                    handleAddToCart(variantSheetProduct, sheetQuantity, selectedVariant);
-                    setVariantSheetProduct(null);
-                  }}
-                  className="py-2.5 sm:py-3 px-4 sm:px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-1.5 sm:gap-2 active:scale-95 transition cursor-pointer shrink-0"
-                >
-                  <ShoppingCart className="w-4 h-4 shrink-0" />
-                  <span className="whitespace-nowrap">Agregar al Carrito</span>
-                </button>
+                {(() => {
+                  const sheetHasFlavors = Boolean(
+                    variantSheetProduct.hasFlavors ||
+                    (variantSheetProduct.flavorsText && variantSheetProduct.flavorsText.trim().length > 0) ||
+                    (variantSheetProduct.flavorsList && variantSheetProduct.flavorsList.length > 0) ||
+                    variantSheetProduct.allowsHalfAndHalf
+                  );
+                  return (
+                    <button
+                      disabled={sheetHasFlavors && !isSheetVariantValid}
+                      onClick={() => {
+                        if (sheetHasFlavors && !isSheetVariantValid) {
+                          alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
+                          return;
+                        }
+                        handleAddToCart(variantSheetProduct, sheetQuantity, selectedVariant);
+                        setVariantSheetProduct(null);
+                      }}
+                      className="py-2.5 sm:py-3 px-4 sm:px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-1.5 sm:gap-2 active:scale-95 transition cursor-pointer shrink-0"
+                    >
+                      <ShoppingCart className="w-4 h-4 shrink-0" />
+                      <span className="whitespace-nowrap">Agregar al Carrito</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>

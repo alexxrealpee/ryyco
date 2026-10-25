@@ -934,6 +934,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
   }, [prodName, prodCategory, isAddingProd, profile.restaurantCity, profile.location, profile.displayName]);
 
+  const [prodHasFlavors, setProdHasFlavors] = useState(false);
   const [prodAllowsHalfAndHalf, setProdAllowsHalfAndHalf] = useState(false);
   const [prodFlavorsText, setProdFlavorsText] = useState('');
   const [prodFlavorsList, setProdFlavorsList] = useState<string[]>([]);
@@ -1371,6 +1372,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdVariantsList([]);
     setNewVariantInput('');
     setProdVariantPrices({});
+    setProdHasFlavors(false);
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
     setProdFlavorsList([]);
@@ -1426,6 +1428,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setProdVariantsList(preset?.variantsText ? splitVariantsText(preset.variantsText) : []);
     setNewVariantInput('');
     setProdVariantPrices({});
+    setProdHasFlavors(false);
     setProdAllowsHalfAndHalf(false);
     setProdFlavorsText('');
     setProdFlavorsList([]);
@@ -1491,6 +1494,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     });
     setProdVariantPrices(initialPrices);
 
+    const hasFlavorsData = Boolean(
+      (prod.flavorsList && Array.isArray(prod.flavorsList) && prod.flavorsList.length > 0) ||
+      (prod.flavorsText && prod.flavorsText.trim().length > 0) ||
+      prod.allowsHalfAndHalf ||
+      prod.hasFlavors
+    );
+    setProdHasFlavors(hasFlavorsData);
     setProdAllowsHalfAndHalf(Boolean(prod.allowsHalfAndHalf));
     const initialFlavors = (prod.flavorsList && Array.isArray(prod.flavorsList) && prod.flavorsList.length > 0)
       ? [...prod.flavorsList]
@@ -1697,10 +1707,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       variantsText: serializedVariants,
       variantsList: prodVariantsList,
       variantPrices: Object.keys(cleanVariantPrices).length > 0 ? cleanVariantPrices : undefined,
-      allowsHalfAndHalf: prodAllowsHalfAndHalf,
-      flavorsList: prodAllowsHalfAndHalf ? prodFlavorsList : [],
-      flavorsText: prodAllowsHalfAndHalf ? (prodFlavorsList.length > 0 ? prodFlavorsList.join(', ') : prodFlavorsText.trim()) : '',
-      allowSingleFlavor: prodAllowSingleFlavor,
+      hasFlavors: prodHasFlavors,
+      allowsHalfAndHalf: prodHasFlavors ? prodAllowsHalfAndHalf : false,
+      flavorsList: prodHasFlavors ? prodFlavorsList : [],
+      flavorsText: prodHasFlavors ? (prodFlavorsList.length > 0 ? prodFlavorsList.join(', ') : prodFlavorsText.trim()) : '',
+      allowSingleFlavor: prodHasFlavors ? (prodAllowsHalfAndHalf ? prodAllowSingleFlavor : true) : true,
       addons: prodAddons.length > 0 ? prodAddons : undefined,
       active: prodActive
     };
@@ -3006,12 +3017,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </label>
                                 <label className="inline-flex items-center cursor-pointer gap-1.5" title="Cambiar tipo de producto">
                                   <span className="text-[9px] uppercase tracking-wider font-bold text-gray-400">
-                                    {prodAllowsHalfAndHalf ? '✨ Sabores' : '📦 Normal'}
+                                    {prodHasFlavors ? '✨ Sabores' : '📦 Normal'}
                                   </span>
                                   <input
                                     type="checkbox"
-                                    checked={prodAllowsHalfAndHalf}
-                                    onChange={(e) => setProdAllowsHalfAndHalf(e.target.checked)}
+                                    checked={prodHasFlavors}
+                                    onChange={(e) => setProdHasFlavors(e.target.checked)}
                                     className="sr-only peer"
                                   />
                                   <div className="w-8 h-4 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[1px] after:left-[1px] after:bg-white after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-amber-500 relative"></div>
@@ -3022,9 +3033,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <div className="grid grid-cols-2 gap-1.5 h-11 p-1 bg-gray-900 border border-gray-800 rounded-xl">
                                 <button
                                   type="button"
-                                  onClick={() => setProdAllowsHalfAndHalf(false)}
+                                  onClick={() => setProdHasFlavors(false)}
                                   className={`flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    !prodAllowsHalfAndHalf
+                                    !prodHasFlavors
                                       ? 'bg-emerald-500 text-gray-950 font-black shadow-sm'
                                       : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
                                   }`}
@@ -3034,9 +3045,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setProdAllowsHalfAndHalf(true)}
+                                  onClick={() => setProdHasFlavors(true)}
                                   className={`flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    prodAllowsHalfAndHalf
+                                    prodHasFlavors
                                       ? 'bg-amber-500 text-gray-950 font-black shadow-sm'
                                       : 'text-gray-400 hover:text-white hover:bg-gray-800/60'
                                   }`}
@@ -3048,9 +3059,9 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
                           </div>
 
-                          {/* SECCIÓN ESPECIAL: PRODUCTO CON SABORES (HELADOS, PIZZAS, COMBINACIONES) */}
-                          {prodAllowsHalfAndHalf && (
-                            <div className="bg-gradient-to-r from-amber-500/10 via-red-500/10 to-amber-500/5 border border-amber-500/35 rounded-2xl p-4 sm:p-5 space-y-3 animate-fade-in shadow-inner">
+                          {/* SECCIÓN ESPECIAL: PRODUCTO CON SABORES */}
+                          {prodHasFlavors && (
+                            <div className="bg-gradient-to-r from-amber-500/10 via-red-500/10 to-amber-500/5 border border-amber-500/35 rounded-2xl p-4 sm:p-5 space-y-3.5 animate-fade-in shadow-inner">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2.5">
                                   <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 text-base shrink-0">
@@ -3061,22 +3072,97 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       Producto con Sabores
                                     </h4>
                                     <p className="text-[11px] text-gray-300">
-                                      Permite a los clientes elegir entre varios sabores o combinar sabores (helados, pizzas, etc.).
+                                      Configura los sabores disponibles (jugos, malteadas, helados, pizzas, etc.)
                                     </p>
                                   </div>
                                 </div>
                                 <button
                                   type="button"
-                                  onClick={() => setProdAllowsHalfAndHalf(false)}
+                                  onClick={() => setProdHasFlavors(false)}
                                   className="text-[10px] text-gray-400 hover:text-amber-400 underline font-semibold cursor-pointer shrink-0"
                                 >
                                   Volver a normal
                                 </button>
                               </div>
 
+                              {/* 1. SELECTOR DE MODO DE ELECCIÓN DE SABOR */}
+                              <div className="space-y-2 bg-black/45 p-3 sm:p-3.5 rounded-xl border border-amber-500/30">
+                                <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block">
+                                  ¿Cómo deben elegir los sabores tus clientes?
+                                </label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                  {/* Opción 1: Solo 1 sabor */}
+                                  <div
+                                    onClick={() => setProdAllowsHalfAndHalf(false)}
+                                    className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-2.5 ${
+                                      !prodAllowsHalfAndHalf
+                                        ? 'bg-amber-500/20 border-amber-400 shadow-md ring-1 ring-amber-400/40'
+                                        : 'bg-gray-900/80 border-gray-800 hover:border-gray-700'
+                                    }`}
+                                  >
+                                    <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                                      !prodAllowsHalfAndHalf ? 'border-amber-400 bg-amber-500' : 'border-gray-600 bg-gray-900'
+                                    }`}>
+                                      {!prodAllowsHalfAndHalf && <div className="w-1.5 h-1.5 rounded-full bg-black font-black" />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                                        <span>🥤</span>
+                                        <span>Solo 1 sabor por producto</span>
+                                      </span>
+                                      <span className="text-[10px] text-gray-400 block mt-1 leading-snug">
+                                        El cliente elige <strong>un único sabor obligatoriamente</strong>. No aparece opción de combinar ni mitad y mitad (ideal para jugos, malteadas, postres, etc.).
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Opción 2: Permitir combinar 2 sabores (Mitad y Mitad) */}
+                                  <div
+                                    onClick={() => setProdAllowsHalfAndHalf(true)}
+                                    className={`p-3 rounded-xl border transition cursor-pointer flex items-start gap-2.5 ${
+                                      prodAllowsHalfAndHalf
+                                        ? 'bg-amber-500/20 border-amber-400 shadow-md ring-1 ring-amber-400/40'
+                                        : 'bg-gray-900/80 border-gray-800 hover:border-gray-700'
+                                    }`}
+                                  >
+                                    <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                                      prodAllowsHalfAndHalf ? 'border-amber-400 bg-amber-500' : 'border-gray-600 bg-gray-900'
+                                    }`}>
+                                      {prodAllowsHalfAndHalf && <div className="w-1.5 h-1.5 rounded-full bg-black font-black" />}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                                        <span>🍕</span>
+                                        <span>Combinar 2 sabores (Mitad y Mitad)</span>
+                                      </span>
+                                      <span className="text-[10px] text-gray-400 block mt-1 leading-snug">
+                                        El cliente puede <strong>combinar 2 sabores</strong> en su pedido (ideal para pizzas mitad y mitad, helados de 2 bolas, etc.).
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Casilla para permitir también pedir de 1 solo sabor cuando se permite combinar */}
+                                {prodAllowsHalfAndHalf && (
+                                  <div className="pt-2 border-t border-amber-500/20 flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      id="allow-single-flavor-check"
+                                      checked={prodAllowSingleFlavor}
+                                      onChange={(e) => setProdAllowSingleFlavor(e.target.checked)}
+                                      className="w-4 h-4 rounded bg-gray-900 border-gray-800 text-amber-500 cursor-pointer"
+                                    />
+                                    <label htmlFor="allow-single-flavor-check" className="text-xs font-semibold text-gray-300 cursor-pointer select-none">
+                                      Permitir también pedir de 1 solo sabor (además de poder combinar 2)
+                                    </label>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 2. AGREGAR SABOR */}
                               <div>
                                 <label className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1">
-                                  Agregar sabor
+                                  Agregar sabor a la lista
                                 </label>
                                 <div className="flex items-center gap-2">
                                   <input
@@ -3089,7 +3175,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         handleAddFlavor();
                                       }
                                     }}
-                                    placeholder="Escribe el sabor (ej: Vainilla)..."
+                                    placeholder="Escribe el sabor (ej: Mora, Mango, Fresa, Guanábana)..."
                                     className="w-full h-11 bg-gray-900 border border-amber-500/40 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder:text-gray-500"
                                   />
                                   <button
@@ -3097,7 +3183,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     onClick={() => handleAddFlavor()}
                                     disabled={!newFlavorInput.trim()}
                                     className="h-11 px-4 bg-amber-500 hover:bg-amber-400 disabled:bg-gray-800 disabled:text-gray-600 disabled:cursor-not-allowed text-gray-950 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 cursor-pointer shrink-0 shadow-md whitespace-nowrap"
-                                    title="Agregar"
+                                    title="Agregar sabor"
                                   >
                                     <span>Agregar</span>
                                   </button>
@@ -3156,19 +3242,6 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   No has añadido sabores todavía. Escribe el nombre de un sabor arriba y haz clic en «Agregar».
                                 </p>
                               )}
-
-                              <div className="flex items-center gap-2 pt-1">
-                                <input
-                                  type="checkbox"
-                                  id="allow-single-flavor-check"
-                                  checked={prodAllowSingleFlavor}
-                                  onChange={(e) => setProdAllowSingleFlavor(e.target.checked)}
-                                  className="w-4 h-4 rounded bg-gray-900 border-gray-800 text-amber-500 cursor-pointer"
-                                />
-                                <label htmlFor="allow-single-flavor-check" className="text-xs font-semibold text-gray-300 cursor-pointer select-none">
-                                  Permitir también pedir de 1 solo sabor (además de combinar 2 sabores)
-                                </label>
-                              </div>
                             </div>
                           )}
 

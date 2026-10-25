@@ -1031,8 +1031,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const handleAddToCart = () => {
     if (!selectedProduct) return;
-    if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText && !isVariantValid) {
-      alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
+    const hasFlavors = Boolean(
+      (selectedProduct.flavorsList && selectedProduct.flavorsList.length > 0) ||
+      (selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) ||
+      selectedProduct.hasFlavors ||
+      selectedProduct.allowsHalfAndHalf
+    );
+    if (hasFlavors && !isVariantValid) {
+      alert("Por favor completa la selección de sabor para tu pedido antes de continuar.");
       return;
     }
 
@@ -1071,9 +1077,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   const handleAddToCartDirect = (product: ProductItem, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    // If the product allows half-and-half, has multiple variants, or has optional add-ons, open detail modal to customize!
+    // If the product has flavors, multiple variants, or optional add-ons, open detail modal to customize!
     const parsedVariants = splitVariantsText(product.variantsText, product.variantPrices);
-    if ((product.allowsHalfAndHalf && product.flavorsText) || parsedVariants.length > 1 || (product.addons && product.addons.length > 0)) {
+    const hasFlavors = Boolean(
+      (product.flavorsList && product.flavorsList.length > 0) ||
+      (product.flavorsText && product.flavorsText.trim().length > 0) ||
+      product.hasFlavors ||
+      product.allowsHalfAndHalf
+    );
+    if (hasFlavors || parsedVariants.length > 1 || (product.addons && product.addons.length > 0)) {
       setSelectedProduct(product);
       return;
     }
@@ -2497,10 +2509,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     }}
                     className="relative aspect-square w-full bg-[#0B0F19] overflow-hidden shrink-0 cursor-pointer"
                   >
-                    {product.allowsHalfAndHalf && product.flavorsText && (
+                    {((product.flavorsText && product.flavorsText.trim().length > 0) || (product.flavorsList && product.flavorsList.length > 0) || product.hasFlavors || product.allowsHalfAndHalf) && (
                       <div className="absolute top-3 right-3 z-10">
                         <span className="bg-[#D62839] text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-red-600 flex items-center gap-1">
-                          <span>{product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
+                          <span>
+                            {product.allowsHalfAndHalf
+                              ? (product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Combina Sabores')
+                              : (product.name?.toLowerCase().includes('jugo') || product.category?.toLowerCase().includes('bebida') ? '🥤 Elige Sabor' : '✨ Con Sabores')}
+                          </span>
                         </span>
                       </div>
                     )}
@@ -2839,7 +2855,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       )}
 
                       {/* Variant / Pizza Flavor choice */}
-                      {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
+                      {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.flavorsList && selectedProduct.flavorsList.length > 0) || selectedProduct.hasFlavors || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
                         <div className="pt-1 w-full min-w-0">
                           <PizzaFlavorSelector
                             key={selectedProduct.id}

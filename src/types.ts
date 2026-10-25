@@ -209,10 +209,11 @@ export interface ProductItem {
   variantsText?: string; // Comma or ;; separated variants
   variantsList?: string[]; // Array of variants preserving full text with commas
   variantPrices?: Record<string, number>; // Specific price for each variant/size { "Pequeña": 25000, "Mediana": 40000, "Grande": 60000 }
-  allowsHalfAndHalf?: boolean; // Permite pedir combinando 2 sabores (Mitad y Mitad para pizzas)
+  hasFlavors?: boolean; // Indica si el producto tiene selección de sabores
+  allowsHalfAndHalf?: boolean; // Permite pedir combinando 2 sabores (Mitad y Mitad para pizzas). Si es false, el cliente solo puede elegir 1 sabor único.
   flavorsText?: string; // Lista de sabores separados por coma para pizzas o productos multi-sabor
   flavorsList?: string[]; // Array de sabores preservando el texto completo de cada uno
-  allowSingleFlavor?: boolean; // Permite pedir la pizza completa de 1 solo sabor (por defecto true)
+  allowSingleFlavor?: boolean; // Permite pedir de 1 solo sabor (cuando allowsHalfAndHalf es true)
   addons?: ProductAddon[]; // Adicionales opcionales para este producto
   active: boolean;
   storeName?: string;

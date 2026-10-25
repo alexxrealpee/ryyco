@@ -812,8 +812,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   const handleAddProductToCart = () => {
     if (!selectedProduct) return;
-    if (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText && !isVariantValid) {
-      alert("Por favor completa la selección de sabores para tu pedido antes de continuar.");
+    const hasFlavors = Boolean(
+      (selectedProduct.flavorsList && selectedProduct.flavorsList.length > 0) ||
+      (selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) ||
+      selectedProduct.hasFlavors ||
+      selectedProduct.allowsHalfAndHalf
+    );
+    if (hasFlavors && !isVariantValid) {
+      alert("Por favor completa la selección de sabor para tu pedido antes de continuar.");
       return;
     }
     
@@ -2279,9 +2285,13 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                             OFERTA MENÚ
                           </span>
                         )}
-                        {p.allowsHalfAndHalf && p.flavorsText && (
+                        {((p.flavorsText && p.flavorsText.trim().length > 0) || (p.flavorsList && p.flavorsList.length > 0) || p.hasFlavors || p.allowsHalfAndHalf) && (
                           <span className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-wider z-10 shadow-md border border-white/20 flex items-center gap-1">
-                            <span>{p.name?.toLowerCase().includes('pizza') || p.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Con Sabores'}</span>
+                            <span>
+                              {p.allowsHalfAndHalf
+                                ? (p.name?.toLowerCase().includes('pizza') || p.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Combina Sabores')
+                                : (p.name?.toLowerCase().includes('jugo') || p.category?.toLowerCase().includes('bebida') ? '🥤 Elige Sabor' : '✨ Con Sabores')}
+                            </span>
                           </span>
                         )}
 
@@ -2886,8 +2896,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     </p>
                   )}
 
-                  {/* If Pizza flavors or variants available, present choice */}
-                  {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.allowsHalfAndHalf && selectedProduct.flavorsText) ? (
+                  {/* If product has flavors or half-and-half, present flavor picker */}
+                  {(selectedProduct.flavorsText && selectedProduct.flavorsText.trim().length > 0) || (selectedProduct.flavorsList && selectedProduct.flavorsList.length > 0) || selectedProduct.hasFlavors || selectedProduct.allowsHalfAndHalf ? (
                     <div className="pt-1 w-full min-w-0">
                       <PizzaFlavorSelector
                         key={selectedProduct.id}
