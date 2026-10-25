@@ -4918,35 +4918,54 @@ export async function submitDriverRating(ratingData: Omit<DriverRating, 'id' | '
     createdAt: now
   });
 
-  // Mark order as rated
+  // Mark order as rated with star details
   try {
     const orderRef = doc(db, 'orders', ratingData.orderId);
-    await updateDoc(orderRef, { driverRatingGiven: true });
+    await updateDoc(orderRef, {
+      driverRatingGiven: true,
+      driverRatingStars: ratingData.stars,
+      driverRatingComment: ratingData.comment || '',
+      driverRatedAt: now
+    });
   } catch (e) {
     console.error("Error marking order as rated:", e);
   }
 
   // Recalculate average rating for driver
   try {
-    const q = query(collection(db, 'driver_ratings'), where('driverId', '==', ratingData.driverId));
-    const snap = await getDocs(q);
-    let totalStars = 0;
-    let count = 0;
-    snap.forEach(docSnap => {
-      const r = docSnap.data() as DriverRating;
-      if (typeof r.stars === 'number') {
-        totalStars += r.stars;
-        count++;
-      }
-    });
-
-    if (count > 0) {
-      const avg = Number((totalStars / count).toFixed(1));
-      const driverRef = doc(db, 'drivers', ratingData.driverId);
-      await updateDoc(driverRef, {
-        rating: avg,
-        ratingCount: count
+    if (ratingData.driverId) {
+      const q = query(collection(db, 'driver_ratings'), where('driverId', '==', ratingData.driverId));
+      const snap = await getDocs(q);
+      let totalStars = 0;
+      let count = 0;
+      snap.forEach(docSnap => {
+        const r = docSnap.data() as DriverRating;
+        if (typeof r.stars === 'number') {
+          totalStars += r.stars;
+          count++;
+        }
       });
+
+      if (count > 0) {
+        const avg = Number((totalStars / count).toFixed(1));
+        const driverRef = doc(db, 'drivers', ratingData.driverId);
+        const dSnap = await getDoc(driverRef);
+        if (dSnap.exists()) {
+          await updateDoc(driverRef, {
+            rating: avg,
+            ratingCount: count
+          });
+        } else {
+          const dQuery = query(collection(db, 'drivers'), where('uid', '==', ratingData.driverId));
+          const dQSnap = await getDocs(dQuery);
+          if (!dQSnap.empty) {
+            await updateDoc(doc(db, 'drivers', dQSnap.docs[0].id), {
+              rating: avg,
+              ratingCount: count
+            });
+          }
+        }
+      }
     }
   } catch (e) {
     console.error("Error recalculating driver rating:", e);

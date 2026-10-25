@@ -102,6 +102,8 @@
         "id": { "type": "string" },
         "driverId": { "type": "string" },
         "orderId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "storeName": { "type": "string" },
         "stars": { "type": "number" },
         "comment": { "type": "string" },
         "createdAt": { "type": "string" }

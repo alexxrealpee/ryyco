@@ -20,6 +20,7 @@ import BuyerTermsModal from './BuyerTermsModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
+import RateDriverModal from './RateDriverModal';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
   CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory, RyycoMovement 
@@ -139,6 +140,7 @@ export default function CustomerPortalModal({
   const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
   const [showForgotPasswordInfo, setShowForgotPasswordInfo] = useState(false);
   const [chatOrder, setChatOrder] = useState<OrderItem | null>(null);
+  const [ratingDriverOrder, setRatingDriverOrder] = useState<OrderItem | null>(null);
 
   // Wheel animation state
   const [isSpinning, setIsSpinning] = useState(false);
@@ -1952,6 +1954,76 @@ export default function CustomerPortalModal({
                               </div>
                             )}
 
+                            {/* Calificar al Domiciliario (Si el pedido ya fue entregado y no ha sido calificado) */}
+                            {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven && (
+                              <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-[#151D2A] to-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                                    <Star className="w-5 h-5 fill-amber-400" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] uppercase font-black tracking-wider text-amber-400">
+                                        Califica a tu Domiciliario
+                                      </span>
+                                      <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold px-1.5 py-0.2 rounded-full border border-amber-500/30">
+                                        Nuevo
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-white font-bold truncate">
+                                      ¿Cómo te atendió {order.deliveryDriverName || 'tu domiciliario'}?
+                                    </p>
+                                    <p className="text-[10px] text-gray-400">
+                                      Califica con estrellitas para apoyar su trabajo y reconocer su servicio.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setRatingDriverOrder(order)}
+                                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer shrink-0"
+                                >
+                                  <Star className="w-4 h-4 fill-gray-950" />
+                                  <span>Calificar con Estrellas</span>
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Domiciliario ya calificado */}
+                            {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && order.driverRatingGiven && (
+                              <div className="p-3 bg-gray-900/80 border border-gray-800 rounded-xl flex items-center justify-between gap-2 text-xs">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                                    <Star className="w-4 h-4 fill-amber-400" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-[10px] font-black uppercase text-gray-400 block tracking-wider">
+                                      Domiciliario Calificado
+                                    </span>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-white truncate">{order.deliveryDriverName || 'Domiciliario'}</span>
+                                      <div className="flex items-center gap-0.5">
+                                        {[1, 2, 3, 4, 5].map((s) => (
+                                          <Star
+                                            key={s}
+                                            className={`w-3 h-3 ${
+                                              s <= (order.driverRatingStars || 5)
+                                                ? 'fill-[#F4B400] text-[#F4B400]'
+                                                : 'text-gray-700'
+                                            }`}
+                                          />
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shrink-0">
+                                  ✓ Calificado
+                                </span>
+                              </div>
+                            )}
+
                             {/* Real-time status history timeline */}
                             {order.statusHistory && order.statusHistory.length > 0 && (
                               <div className="bg-[#090D16] p-3 rounded-xl border border-gray-800/80 text-xs space-y-1.5">
@@ -2049,7 +2121,7 @@ export default function CustomerPortalModal({
                               </div>
                             </div>
 
-                            {/* Actions - driver tracking & Soporte Ryyco */}
+                            {/* Actions - driver tracking, rating & Soporte Ryyco */}
                             <div className="flex flex-col sm:flex-row gap-2">
                               {!isDelivered && (
                                 <button
@@ -2062,11 +2134,22 @@ export default function CustomerPortalModal({
                                 </button>
                               )}
 
+                              {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRatingDriverOrder(order)}
+                                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
+                                >
+                                  <Star className="w-3.5 h-3.5 fill-gray-950" />
+                                  <span>Calificar Domiciliario</span>
+                                </button>
+                              )}
+
                               <a
                                 href={`https://wa.me/573106502043?text=${encodeURIComponent(`Hola Soporte Ryyco, necesito ayuda con mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
                                 target="_blank"
                                 rel="noreferrer"
-                                className={`${!isDelivered ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
+                                className={`${(!isDelivered || ((order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven)) ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
                               >
                                 <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                                 Soporte Ryyco
@@ -3149,6 +3232,19 @@ export default function CustomerPortalModal({
         isOpen={!!trackingOrder}
         onClose={() => setTrackingOrder(null)}
         order={trackingOrder}
+      />
+
+      {/* MODAL PARA CALIFICAR AL DOMICILIARIO */}
+      <RateDriverModal
+        isOpen={!!ratingDriverOrder}
+        onClose={() => setRatingDriverOrder(null)}
+        order={ratingDriverOrder}
+        onRatingSubmitted={(orderId, stars) => {
+          setOrders(prev => prev.map(o => o.id === orderId ? { ...o, driverRatingGiven: true, driverRatingStars: stars } : o));
+          if (ratingDriverOrder && ratingDriverOrder.id === orderId) {
+            setRatingDriverOrder(prev => prev ? { ...prev, driverRatingGiven: true, driverRatingStars: stars } : null);
+          }
+        }}
       />
 
       {/* MODAL DE CONFIRMACIÓN DE TRANSFERENCIA DE RYYCOS */}

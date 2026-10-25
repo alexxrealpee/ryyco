@@ -309,6 +309,9 @@ export interface OrderItem {
   deliveryStep?: 'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered';
   deliveryStepUpdatedAt?: string;
   driverRatingGiven?: boolean;
+  driverRatingStars?: number;
+  driverRatingComment?: string;
+  driverRatedAt?: string;
 
   // Customer Delivery Verification Code (PIN de entrega entregado por el cliente al domiciliario)
   deliveryCode?: string;

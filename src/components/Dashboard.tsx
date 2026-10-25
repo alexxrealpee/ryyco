@@ -73,7 +73,8 @@ import {
   Store,
   Laptop,
   Key,
-  GripVertical
+  GripVertical,
+  Pencil
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -848,6 +849,73 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     });
   };
 
+  // In-place variant name / text editing
+  const [editingVariantIdx, setEditingVariantIdx] = useState<number | null>(null);
+  const [editingVariantName, setEditingVariantName] = useState('');
+
+  const handleStartEditVariant = (idx: number, currentName: string) => {
+    setEditingVariantIdx(idx);
+    setEditingVariantName(currentName);
+  };
+
+  const handleSaveVariantName = (idx: number) => {
+    const trimmed = editingVariantName.trim();
+    if (!trimmed) {
+      setEditingVariantIdx(null);
+      setEditingVariantName('');
+      return;
+    }
+    setProdVariantsList(prev => {
+      if (idx < 0 || idx >= prev.length) return prev;
+      const oldName = prev[idx];
+      if (oldName === trimmed) {
+        return prev;
+      }
+
+      // Check if another variant already has this name
+      const alreadyExists = prev.some((v, i) => i !== idx && v.toLowerCase() === trimmed.toLowerCase());
+      if (alreadyExists) {
+        alert(`Ya existe otra opción llamada "${trimmed}". Por favor usa un nombre diferente.`);
+        return prev;
+      }
+
+      const updated = [...prev];
+      updated[idx] = trimmed;
+
+      // Migrate price mapping from oldName to trimmed
+      setProdVariantPrices(pricesPrev => {
+        const next = { ...pricesPrev };
+        const price = next[oldName] !== undefined
+          ? next[oldName]
+          : (next[oldName.trim()] !== undefined ? next[oldName.trim()] : 0);
+
+        delete next[oldName];
+        delete next[oldName.trim()];
+        Object.keys(next).forEach(k => {
+          if (k.trim().toLowerCase() === oldName.trim().toLowerCase()) {
+            delete next[k];
+          }
+        });
+
+        if (price > 0) {
+          next[trimmed] = price;
+          next[trimmed.trim()] = price;
+        }
+        return next;
+      });
+
+      return updated;
+    });
+
+    setEditingVariantIdx(null);
+    setEditingVariantName('');
+  };
+
+  const handleCancelEditVariant = () => {
+    setEditingVariantIdx(null);
+    setEditingVariantName('');
+  };
+
   const detectedVariants = useMemo(() => {
     if (prodVariantsList.length === 0) return [];
     return prodVariantsList.map(name => {
@@ -916,6 +984,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       });
       return next;
     });
+    setEditingVariantIdx(null);
+    setEditingVariantName('');
   };
 
   // Automatically synchronize SEO image filename when product name, category or city updates
@@ -957,10 +1027,41 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     setNewFlavorInput('');
   };
 
+  const [editingFlavorIdx, setEditingFlavorIdx] = useState<number | null>(null);
+  const [editingFlavorName, setEditingFlavorName] = useState('');
+
+  const handleStartEditFlavor = (idx: number, currentName: string) => {
+    setEditingFlavorIdx(idx);
+    setEditingFlavorName(currentName);
+  };
+
+  const handleSaveFlavorName = (idx: number) => {
+    const trimmed = editingFlavorName.trim();
+    if (!trimmed) {
+      setEditingFlavorIdx(null);
+      setEditingFlavorName('');
+      return;
+    }
+    setProdFlavorsList(prev => {
+      if (idx < 0 || idx >= prev.length) return prev;
+      if (prev[idx] === trimmed) return prev;
+      const updated = [...prev];
+      updated[idx] = trimmed;
+      setProdFlavorsText(updated.join(', '));
+      return updated;
+    });
+    setEditingFlavorIdx(null);
+    setEditingFlavorName('');
+  };
+
   const handleRemoveFlavor = (indexToRemove: number) => {
     const updated = prodFlavorsList.filter((_, idx) => idx !== indexToRemove);
     setProdFlavorsList(updated);
     setProdFlavorsText(updated.join(', '));
+    if (editingFlavorIdx === indexToRemove) {
+      setEditingFlavorIdx(null);
+      setEditingFlavorName('');
+    }
   };
 
   // Adicionales opcionales (Extras / Toppings) configurados por el vendedor
@@ -3484,10 +3585,67 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                           </select>
                                         </div>
 
+                                        {/* Variant Name Display & In-Place Editing */}
                                         <div className="min-w-0 flex-1">
-                                          <span className="text-xs sm:text-sm font-bold text-white break-words">
-                                            {item.name}
-                                          </span>
+                                          {editingVariantIdx === idx ? (
+                                            <div className="flex items-center gap-1.5 w-full py-0.5">
+                                              <input
+                                                type="text"
+                                                autoFocus
+                                                value={editingVariantName}
+                                                onChange={(e) => setEditingVariantName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                  if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    handleSaveVariantName(idx);
+                                                  } else if (e.key === 'Escape') {
+                                                    handleCancelEditVariant();
+                                                  }
+                                                }}
+                                                placeholder="Nombre de la opción..."
+                                                className="w-full h-8 px-2.5 bg-gray-950 border border-indigo-400 focus:border-emerald-400 rounded-lg text-xs font-bold text-white outline-none ring-1 ring-indigo-500/30 focus:ring-emerald-400/40 shadow-inner"
+                                              />
+                                              <button
+                                                type="button"
+                                                onClick={() => handleSaveVariantName(idx)}
+                                                className="h-8 px-2.5 bg-emerald-500 hover:bg-emerald-400 text-gray-950 text-xs font-black rounded-lg flex items-center gap-1 transition active:scale-95 cursor-pointer shrink-0 shadow-sm"
+                                                title="Guardar nombre"
+                                              >
+                                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                                <span className="hidden sm:inline">Listo</span>
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={handleCancelEditVariant}
+                                                className="h-8 px-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-lg flex items-center justify-center transition cursor-pointer shrink-0"
+                                                title="Cancelar edición"
+                                              >
+                                                <X className="w-3.5 h-3.5" />
+                                              </button>
+                                            </div>
+                                          ) : (
+                                            <div className="flex items-center gap-2 group/edit min-w-0">
+                                              <span 
+                                                onClick={() => handleStartEditVariant(idx, item.name)}
+                                                className="text-xs sm:text-sm font-bold text-white break-words cursor-pointer hover:text-indigo-300 transition"
+                                                title="Haz clic para editar el texto o nombre de la variante"
+                                              >
+                                                {item.name}
+                                              </span>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleStartEditVariant(idx, item.name);
+                                                }}
+                                                className="px-2 py-1 rounded-lg bg-gray-800/80 hover:bg-indigo-600/30 text-gray-400 hover:text-indigo-300 border border-gray-700/60 hover:border-indigo-500/50 flex items-center gap-1 text-[10px] font-bold transition active:scale-95 cursor-pointer shrink-0 shadow-sm"
+                                                title="Editar texto / nombre de la variante"
+                                              >
+                                                <Pencil className="w-3 h-3 text-indigo-400" />
+                                                <span className="text-[10px]">Editar</span>
+                                              </button>
+                                            </div>
+                                          )}
                                         </div>
                                       </div>
 
@@ -3541,7 +3699,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <div className="flex items-center gap-2 text-[11px] text-indigo-300/90 bg-indigo-500/10 p-2.5 sm:px-3.5 rounded-xl border border-indigo-500/20">
                                 <span className="text-sm">💡</span>
                                 <span>
-                                  <strong>Orden de opciones:</strong> Arrastra cualquier fila para cambiar su posición (ej: de la 1 a la 3), usa las flechas o selecciona el número de orden deseado. Este orden es exactamente el que verán tus clientes al abrir el producto.
+                                  <strong>Edición y orden de opciones:</strong> Haz clic en <strong>"Editar"</strong> o sobre el texto de cualquier variante para corregir o cambiar su nombre. Arrastra las filas o usa las flechas (▲/▼) y el selector (#) para cambiar su posición en el menú.
                                 </span>
                               </div>
                             </div>

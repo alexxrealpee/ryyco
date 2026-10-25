@@ -9,8 +9,10 @@ import {
   Copy,
   Check,
   MessageSquare,
-  Share2
+  Share2,
+  Star
 } from 'lucide-react';
+import RateDriverModal from './RateDriverModal';
 import { APIProvider, Map, AdvancedMarker, Pin, useMap } from '@vis.gl/react-google-maps';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -286,6 +288,7 @@ export default function DeliveryTrackingModal({
     mode: 'all',
     id: 1
   });
+  const [isRatingModalOpen, setIsRatingModalOpen] = useState<boolean>(false);
 
   // Listen for Google Maps auth failure (e.g. InvalidKeyMapError) and fall back smoothly
   useEffect(() => {
@@ -883,6 +886,45 @@ export default function DeliveryTrackingModal({
               </div>
             )}
 
+            {/* Calificación del domiciliario al completarse la entrega */}
+            {finished && currentStep === 'delivered' && (activeOrder.deliveryDriverId || activeOrder.driverId || driverName) && !activeOrder.driverRatingGiven && (
+              <div className="p-3 bg-gradient-to-r from-amber-500/15 via-[#131C2E] to-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                    <Star className="w-4 h-4 fill-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[10px] font-black uppercase text-amber-400 block tracking-wider">
+                      Califica a tu Domiciliario
+                    </span>
+                    <p className="text-xs text-white font-bold truncate">
+                      ¿Cómo te atendió {driverName}?
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsRatingModalOpen(true)}
+                  className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-95 text-gray-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                >
+                  <Star className="w-3.5 h-3.5 fill-gray-950" />
+                  <span>Calificar</span>
+                </button>
+              </div>
+            )}
+
+            {finished && currentStep === 'delivered' && (activeOrder.deliveryDriverId || activeOrder.driverId || driverName) && activeOrder.driverRatingGiven && (
+              <div className="p-2.5 bg-gray-900/80 border border-gray-800 rounded-2xl flex items-center justify-between text-xs text-gray-300">
+                <span className="flex items-center gap-1.5 font-bold text-amber-400">
+                  <Star className="w-3.5 h-3.5 fill-amber-400" />
+                  <span>Calificaste a {driverName} con {activeOrder.driverRatingStars || 5} estrellas</span>
+                </span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  ✓ Calificado
+                </span>
+              </div>
+            )}
+
             {/* COURIER PROFILE & DIRECT ACTION BUTTONS */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-0.5">
               
@@ -953,6 +995,16 @@ export default function DeliveryTrackingModal({
         </div>
 
       </div>
+
+      {/* Rate Driver Modal */}
+      <RateDriverModal
+        isOpen={isRatingModalOpen}
+        onClose={() => setIsRatingModalOpen(false)}
+        order={activeOrder}
+        onRatingSubmitted={(_orderId, stars) => {
+          setLiveOrder(prev => prev ? { ...prev, driverRatingGiven: true, driverRatingStars: stars } : null);
+        }}
+      />
 
     </div>
   );
