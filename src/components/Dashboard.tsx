@@ -72,7 +72,8 @@ import {
   CheckCircle2,
   Store,
   Laptop,
-  Key
+  Key,
+  GripVertical
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
@@ -831,6 +832,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [prodVariantsList, setProdVariantsList] = useState<string[]>([]);
   const [prodVariantPrices, setProdVariantPrices] = useState<Record<string, number>>({});
   const [newVariantInput, setNewVariantInput] = useState('');
+  const [draggedVariantIdx, setDraggedVariantIdx] = useState<number | null>(null);
+  const [dragOverVariantIdx, setDragOverVariantIdx] = useState<number | null>(null);
+
+  const handleMoveVariant = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setProdVariantsList(prev => {
+      if (fromIndex < 0 || fromIndex >= prev.length || toIndex < 0 || toIndex >= prev.length) {
+        return prev;
+      }
+      const updated = [...prev];
+      const [moved] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, moved);
+      return updated;
+    });
+  };
 
   const detectedVariants = useMemo(() => {
     if (prodVariantsList.length === 0) return [];
@@ -3269,7 +3285,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       </span>
                                     </div>
                                     <span className="text-[11px] text-gray-400 block mt-0.5">
-                                      Define el valor individual de cada presentación para que tus clientes elijan con un toque
+                                      Arrastra las filas para reordenar, o usa las flechas (▲/▼) y el número de posición
                                     </span>
                                   </div>
                                 </div>
@@ -3290,18 +3306,111 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         ? (prodVariantPrices[item.name.trim()] > 0 ? String(prodVariantPrices[item.name.trim()]) : '')
                                         : (item.price > 0 ? String(item.price) : ''));
                                   const isFilled = Boolean(currentPriceVal && Number(currentPriceVal) > 0);
+                                  const isDragged = draggedVariantIdx === idx;
+                                  const isDragOver = dragOverVariantIdx === idx;
+
                                   return (
                                     <div 
                                       key={`variant-${item.name}-${idx}`} 
-                                      className={`bg-gray-900/90 border rounded-xl p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition shadow-sm hover:border-gray-700 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 ${
-                                        isFilled ? 'border-indigo-500/40 bg-gradient-to-r from-gray-900 via-gray-900 to-indigo-950/20' : 'border-gray-800'
+                                      draggable={true}
+                                      onDragStart={(e) => {
+                                        setDraggedVariantIdx(idx);
+                                        e.dataTransfer.effectAllowed = 'move';
+                                        e.dataTransfer.setData('text/plain', String(idx));
+                                      }}
+                                      onDragOver={(e) => {
+                                        e.preventDefault();
+                                        e.dataTransfer.dropEffect = 'move';
+                                        if (dragOverVariantIdx !== idx) {
+                                          setDragOverVariantIdx(idx);
+                                        }
+                                      }}
+                                      onDragLeave={() => {
+                                        if (dragOverVariantIdx === idx) {
+                                          setDragOverVariantIdx(null);
+                                        }
+                                      }}
+                                      onDrop={(e) => {
+                                        e.preventDefault();
+                                        if (draggedVariantIdx !== null && draggedVariantIdx !== idx) {
+                                          handleMoveVariant(draggedVariantIdx, idx);
+                                        }
+                                        setDraggedVariantIdx(null);
+                                        setDragOverVariantIdx(null);
+                                      }}
+                                      onDragEnd={() => {
+                                        setDraggedVariantIdx(null);
+                                        setDragOverVariantIdx(null);
+                                      }}
+                                      className={`rounded-xl p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all duration-150 shadow-sm border ${
+                                        isDragged
+                                          ? 'opacity-40 border-dashed border-indigo-400 bg-indigo-950/20 scale-[0.99]'
+                                          : isDragOver
+                                            ? 'ring-2 ring-indigo-500 border-indigo-400 bg-indigo-950/40 shadow-lg scale-[1.01]'
+                                            : isFilled
+                                              ? 'border-indigo-500/40 bg-gradient-to-r from-gray-900 via-gray-900 to-indigo-950/20 hover:border-gray-700'
+                                              : 'bg-gray-900/90 border-gray-800 hover:border-gray-700'
                                       }`}
                                     >
-                                      {/* Left: Number badge + full variant name */}
-                                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                                        <span className="w-6 h-6 rounded-lg bg-gray-800 text-indigo-300 text-xs font-black flex items-center justify-center shrink-0 border border-gray-700">
-                                          {idx + 1}
-                                        </span>
+                                      {/* Left: Drag handle + Up/Down arrows + Position badge + variant name */}
+                                      <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+                                        {/* Grip handle */}
+                                        <div 
+                                          className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-indigo-400 p-1 -ml-1 rounded transition shrink-0"
+                                          title="Haz clic y arrastra para cambiar de posición"
+                                        >
+                                          <GripVertical className="w-4 h-4" />
+                                        </div>
+
+                                        {/* Up / Down arrows */}
+                                        <div className="flex flex-col gap-0.5 shrink-0">
+                                          <button
+                                            type="button"
+                                            disabled={idx === 0}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleMoveVariant(idx, idx - 1);
+                                            }}
+                                            className="w-5 h-4 rounded flex items-center justify-center text-gray-400 hover:text-indigo-300 hover:bg-gray-800 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition cursor-pointer disabled:cursor-not-allowed"
+                                            title="Mover hacia arriba"
+                                          >
+                                            <ChevronUp className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            disabled={idx === detectedVariants.length - 1}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleMoveVariant(idx, idx + 1);
+                                            }}
+                                            className="w-5 h-4 rounded flex items-center justify-center text-gray-400 hover:text-indigo-300 hover:bg-gray-800 disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-gray-400 transition cursor-pointer disabled:cursor-not-allowed"
+                                            title="Mover hacia abajo"
+                                          >
+                                            <ChevronDown className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+
+                                        {/* Position selector / badge */}
+                                        <div className="relative shrink-0" title="Posición en el menú: haz clic para cambiar de número directamente">
+                                          <select
+                                            value={idx}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              const targetPos = parseInt(e.target.value, 10);
+                                              if (!isNaN(targetPos)) {
+                                                handleMoveVariant(idx, targetPos);
+                                              }
+                                            }}
+                                            className="w-8 h-7 rounded-lg bg-gray-800 text-indigo-300 text-xs font-black flex items-center justify-center border border-gray-700 hover:border-indigo-500/60 cursor-pointer appearance-none text-center outline-none focus:ring-2 focus:ring-indigo-500/30 px-1"
+                                          >
+                                            {detectedVariants.map((_, pIdx) => (
+                                              <option key={`opt-pos-${pIdx}`} value={pIdx} className="bg-gray-900 text-white font-bold">
+                                                #{pIdx + 1}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        </div>
+
                                         <div className="min-w-0 flex-1">
                                           <span className="text-xs sm:text-sm font-bold text-white break-words">
                                             {item.name}
@@ -3359,9 +3468,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                               <div className="flex items-center gap-2 text-[11px] text-indigo-300/90 bg-indigo-500/10 p-2.5 sm:px-3.5 rounded-xl border border-indigo-500/20">
                                 <span className="text-sm">💡</span>
                                 <span>
-                                  {hasAnyVariantPrice && (!prodPrice || prodPrice.trim() === '' || prodPrice === '0')
-                                    ? `Al dejar el Precio de Venta vacío, se usará automáticamente el menor precio de variante (${profile.currency || '$'}${lowestVariantPrice.toLocaleString('es-CO')}) como precio base de vitrina.`
-                                    : `Si dejas un precio vacío o en 0, se usará el Precio de Venta general (${profile.currency || '$'}${prodPrice || '0'}).`}
+                                  <strong>Orden de opciones:</strong> Arrastra cualquier fila para cambiar su posición (ej: de la 1 a la 3), usa las flechas o selecciona el número de orden deseado. Este orden es exactamente el que verán tus clientes al abrir el producto.
                                 </span>
                               </div>
                             </div>
