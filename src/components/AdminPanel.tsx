@@ -2475,13 +2475,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         <div className="flex flex-col lg:flex-row gap-6 items-start">
           
           {/* Left Vertical Navigation Sidebar Column (Desktop) */}
-          <aside className="hidden lg:flex lg:w-60 shrink-0 lg:sticky lg:top-6 flex-col justify-between min-h-[580px] py-2">
+          <aside className="hidden lg:flex lg:w-[215px] shrink-0 lg:sticky lg:top-6 flex-col justify-between min-h-[580px] py-2">
             
             <div className="space-y-5">
               {/* Top Back Action Button */}
               <button 
                 onClick={onBack}
-                className="w-full flex items-center gap-2.5 text-xs font-bold text-gray-300 hover:text-white transition bg-gray-900/60 hover:bg-gray-850 px-3.5 py-2.5 rounded-2xl border border-gray-800/60 cursor-pointer shadow-sm"
+                className="w-full flex items-center gap-2 text-xs font-bold text-gray-300 hover:text-white transition bg-gray-900/60 hover:bg-gray-850 px-3 py-2.5 rounded-2xl border border-gray-800/60 cursor-pointer shadow-sm"
               >
                 <ArrowLeft className="w-4 h-4 text-emerald-400" />
                 <span>Volver a la Tienda</span>
@@ -2538,13 +2538,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 <nav className="flex flex-col gap-2">
                   <button
                     onClick={() => handleSwitchTab('subscriptions')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'subscriptions' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
                       <span className="truncate">Suscripciones Activas & Registro</span>
                     </div>
@@ -2553,13 +2553,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   {/* Datos de las Tiendas (New tab placed where requested by user) */}
                   <button
                     onClick={() => handleSwitchTab('stores')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'stores' 
                         ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-lg shadow-pink-600/30 font-extrabold' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Store className="w-4 h-4 text-pink-400 shrink-0" />
                       <span className="truncate">Datos de las Tiendas</span>
                     </div>
@@ -2572,13 +2572,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('payments')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'payments' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <CreditCard className="w-4 h-4 shrink-0" />
                       <span className="truncate">Validar Transferencias</span>
                     </div>
@@ -2591,13 +2591,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('orders')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'orders' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <ShoppingBag className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="truncate">Pedidos de Tiendas</span>
                     </div>
@@ -2614,13 +2614,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('order_times')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'order_times' 
                         ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Timer className="w-4 h-4 text-amber-400 shrink-0" />
                       <span className="truncate">Tiempos de Pedidos</span>
                     </div>
@@ -2631,13 +2631,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('drivers')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'drivers' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Bike className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="truncate">Domiciliarios</span>
                     </div>
@@ -2645,13 +2645,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('sales_stats')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'sales_stats' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <BarChart3 className="w-4 h-4 text-cyan-400 shrink-0" />
                       <span className="truncate">Estadísticas de Ventas</span>
                     </div>
@@ -2662,13 +2662,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('top_customers')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'top_customers' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="truncate">Clientes & WhatsApp</span>
                     </div>
@@ -2679,13 +2679,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('referrals')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'referrals' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Share2 className="w-4 h-4 text-indigo-400 shrink-0" />
                       <span className="truncate">Referidos & Creadores</span>
                     </div>
@@ -2693,13 +2693,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('users')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'users' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Users className="w-4 h-4 shrink-0" />
                       <span className="truncate">Cuentas de Usuarios</span>
                     </div>
@@ -2710,13 +2710,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('product_images')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'product_images' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <ImageIcon className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span className="truncate">Imágenes de Productos</span>
                     </div>
@@ -2727,13 +2727,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                   <button
                     onClick={() => handleSwitchTab('general')}
-                    className={`w-full py-2.5 px-3.5 rounded-xl text-xs font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'general' 
                         ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
                       <Settings className="w-4 h-4 text-amber-400 shrink-0" />
                       <span className="truncate">Administración General</span>
                     </div>
@@ -3682,25 +3682,47 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 </div>
                               </td>
                               <td className="py-3.5 px-4 text-center">
-                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black font-mono ${
-                                  effectiveStatus === 'suspended'
-                                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                    : effectiveStatus === 'expired'
-                                    ? 'bg-red-500/15 text-red-400 border border-red-500/30'
-                                    : effectiveStatus === 'trial'
-                                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                                    : daysRemaining <= 3
-                                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 animate-pulse'
-                                    : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                }`}>
-                                  {effectiveStatus === 'suspended'
-                                    ? '0 días (Suspendida)'
-                                    : effectiveStatus === 'expired'
-                                    ? '0 días (Expirada)'
-                                    : effectiveStatus === 'trial'
-                                    ? `${trialDaysRemaining} días (Gratis)`
-                                    : `${daysRemaining} días`}
-                                </span>
+                                <div className="flex flex-col items-center gap-1.5">
+                                  <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-black font-mono ${
+                                    effectiveStatus === 'suspended'
+                                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                      : effectiveStatus === 'expired'
+                                      ? 'bg-red-500/15 text-red-400 border border-red-500/30'
+                                      : effectiveStatus === 'trial'
+                                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                      : daysRemaining <= 3
+                                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30 animate-pulse'
+                                      : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  }`}>
+                                    {effectiveStatus === 'suspended'
+                                      ? '0 días (Suspendida)'
+                                      : effectiveStatus === 'expired'
+                                      ? '0 días (Expirada)'
+                                      : effectiveStatus === 'trial'
+                                      ? `${trialDaysRemaining} días (Gratis)`
+                                      : `${daysRemaining} días`}
+                                  </span>
+
+                                  {/* Botón Cobrar colocado directamente debajo de Días Restantes */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCobroModal(user)}
+                                    title={`Cobrar plan por WhatsApp a ${user.storeName || user.username} ($${planPrice.toLocaleString('es-CO')} COP)`}
+                                    className={`px-3 py-1 font-black text-[10px] tracking-wider uppercase rounded-lg border transition cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
+                                      effectiveStatus === 'expired' || effectiveStatus === 'suspended'
+                                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-950/40 animate-pulse hover:animate-none'
+                                        : effectiveStatus === 'trial'
+                                        ? 'bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border-cyan-500/30'
+                                        : 'bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-400 border-emerald-500/25'
+                                    }`}
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5 fill-current" />
+                                    <span>Cobrar</span>
+                                    {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
+                                    )}
+                                  </button>
+                                </div>
                               </td>
                               <td className="py-3.5 px-4 text-center">
                                 <div className="flex flex-col items-center gap-1">
@@ -3757,61 +3779,45 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               </td>
                               <td className="py-3.5 px-4 text-right">
                                 <div className="flex items-center justify-end gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedNewPlan((user.subscriptionPlan as any) || 'basico');
-                                      setPlanModalUser(user);
-                                    }}
-                                    title="Ajustar y configurar el plan de esta tienda"
-                                    className="px-2.5 py-1.5 bg-amber-500/15 hover:bg-amber-500 hover:text-gray-950 text-amber-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-amber-500/30 transition cursor-pointer flex items-center gap-1 shadow-sm active:scale-95"
-                                  >
-                                    <Zap className="w-3 h-3 text-amber-400" />
-                                    <span>Ajustar Plan</span>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenCobroModal(user)}
-                                    title={`Cobrar plan por WhatsApp a ${user.storeName || user.username} ($${planPrice.toLocaleString('es-CO')} COP)`}
-                                    className={`px-2.5 py-1.5 font-black text-[10px] tracking-wider uppercase rounded-lg border transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                                      effectiveStatus === 'expired' || effectiveStatus === 'suspended'
-                                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/50 shadow-emerald-950/40 animate-pulse hover:animate-none'
-                                        : effectiveStatus === 'trial'
-                                        ? 'bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border-cyan-500/30'
-                                        : 'bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-400 border-emerald-500/25'
-                                    }`}
-                                  >
-                                    <MessageCircle className="w-3.5 h-3.5 fill-current" />
-                                    <span>Cobrar</span>
-                                    {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
-                                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
-                                    )}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setExtendModalMonths(1);
-                                      setConfirmExtendModalUser(user);
-                                    }}
-                                    title={`Ajustar mes (+1 / -1) conservando el día de corte ${anchorDay}`}
-                                    className="px-2.5 py-1.5 bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-indigo-500/25 transition cursor-pointer flex items-center gap-1.5 shadow-sm"
-                                  >
-                                    <Calendar className="w-3.5 h-3.5" />
-                                    <span>Ajustar Mes</span>
-                                  </button>
+                                  <div className="flex flex-col gap-1 w-28">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedNewPlan((user.subscriptionPlan as any) || 'basico');
+                                        setPlanModalUser(user);
+                                      }}
+                                      title="Ajustar y configurar el plan de esta tienda"
+                                      className="w-full px-2 py-1 bg-amber-500/15 hover:bg-amber-500 hover:text-gray-950 text-amber-400 font-black text-[9.5px] tracking-wider uppercase rounded-lg border border-amber-500/30 transition cursor-pointer flex items-center justify-center gap-1 shadow-sm active:scale-95 whitespace-nowrap"
+                                    >
+                                      <Zap className="w-3 h-3 text-amber-400 shrink-0" />
+                                      <span>Ajustar Plan</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setExtendModalMonths(1);
+                                        setConfirmExtendModalUser(user);
+                                      }}
+                                      title={`Ajustar mes (+1 / -1) conservando el día de corte ${anchorDay}`}
+                                      className="w-full px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500 hover:text-white text-indigo-400 font-black text-[9.5px] tracking-wider uppercase rounded-lg border border-indigo-500/25 transition cursor-pointer flex items-center justify-center gap-1 shadow-sm active:scale-95 whitespace-nowrap"
+                                    >
+                                      <Calendar className="w-3 h-3 shrink-0" />
+                                      <span>Ajustar Mes</span>
+                                    </button>
+                                  </div>
                                   <button
                                     type="button"
                                     onClick={() => handleDeletePage(user)}
                                     disabled={deletingUserId === user.uid}
                                     title="Eliminar permanentemente esta página"
-                                    className="px-2.5 py-1.5 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 font-black text-[10px] tracking-wider uppercase rounded-lg border border-red-500/25 transition cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                    className="h-[52px] px-2 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 font-black text-[9.5px] tracking-wider uppercase rounded-lg border border-red-500/25 transition cursor-pointer flex flex-col items-center justify-center gap-0.5 disabled:opacity-50"
                                   >
                                     {deletingUserId === user.uid ? (
                                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
                                     ) : (
                                       <Trash2 className="w-3.5 h-3.5" />
                                     )}
-                                    <span>Eliminar</span>
+                                    <span className="text-[8.5px]">Eliminar</span>
                                   </button>
                                 </div>
                               </td>

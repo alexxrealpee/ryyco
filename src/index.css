@@ -55,6 +55,28 @@ body {
   scrollbar-width: none;
 }
 
+/* Custom visible scrollbar utility for tables */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.7);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.45);
+  border-radius: 9999px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.75);
+}
+.custom-scrollbar {
+  scrollbar-color: rgba(99, 102, 241, 0.45) rgba(15, 23, 42, 0.7);
+  scrollbar-width: thin;
+}
+
 .font-display {
   font-family: 'Space Grotesk', system-ui, sans-serif;
 }
