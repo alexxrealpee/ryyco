@@ -437,9 +437,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
-  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
+  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('transfer');
   useEffect(() => {
-    if (deliveryType === 'delivery' && payMethod === 'delivery_cash') setPayMethod('whatsapp');
+    if (deliveryType === 'delivery' && payMethod === 'delivery_cash') setPayMethod('transfer');
   }, [deliveryType, payMethod]);
 
   // Customer Loyalty & Account Modal

@@ -207,9 +207,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup' | 'table'>('delivery');
   const [tableNumber, setTableNumber] = useState('');
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('whatsapp');
+  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('transfer');
   useEffect(() => {
-    if (deliveryType === 'delivery' && payMethod === 'cod') setPayMethod('whatsapp');
+    if (deliveryType === 'delivery' && payMethod === 'cod') setPayMethod('transfer');
   }, [deliveryType, payMethod]);
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
