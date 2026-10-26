@@ -47,8 +47,10 @@ import {
   RyycoTransferReceipt,
   auth,
   googleProvider,
+  signInWithGoogleUniversal,
   getOrderDeliveryCode
 } from '../lib/firebase';
+import { isAndroidApp } from '../lib/capacitor';
 import OrderChatModal from './OrderChatModal';
 
 const GoogleIcon = () => (
@@ -121,7 +123,25 @@ export default function CustomerPortalModal({
   const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>(initialTab);
+  const isAndroid = isAndroidApp();
+  const effectiveInitialTab = (isAndroid && (initialTab === 'wheel' || initialTab === 'rewards')) ? 'orders' : initialTab;
+  const [activeTab, setActiveTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>(effectiveInitialTab);
+
+  useEffect(() => {
+    if (isAndroid && (activeTab === 'wheel' || activeTab === 'rewards')) {
+      setActiveTab('orders');
+    }
+  }, [isAndroid, activeTab]);
+
+  useEffect(() => {
+    if (initialTab) {
+      if (isAndroid && (initialTab === 'wheel' || initialTab === 'rewards')) {
+        setActiveTab('orders');
+      } else {
+        setActiveTab(initialTab);
+      }
+    }
+  }, [initialTab, isAndroid]);
 
   // Login / Register form state
   const [phoneInput, setPhoneInput] = useState(initialPhone);
@@ -370,7 +390,7 @@ export default function CustomerPortalModal({
         setCustomer(prev => {
           if (!prev) return null; // Prevent resurrecting customer if already logged out
           // If we received new RYYCOS in real-time
-          if (prev && prev.phone === updatedProfile.phone && (updatedProfile.points || 0) > (prev.points || 0)) {
+          if (!isAndroid && prev && prev.phone === updatedProfile.phone && (updatedProfile.points || 0) > (prev.points || 0)) {
             const diff = (updatedProfile.points || 0) - (prev.points || 0);
             const latestMov = updatedProfile.movements?.[0];
             const senderInfo = latestMov?.senderName ? ` de ${latestMov.senderName}` : '';
@@ -408,7 +428,7 @@ export default function CustomerPortalModal({
     setIsGoogleLoading(true);
     try {
       localStorage.setItem('ryyco_auth_mode', 'customer');
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithGoogleUniversal();
       const user = result.user;
       if (!user) {
         throw new Error("No se pudo obtener la información de Google.");
@@ -536,7 +556,7 @@ export default function CustomerPortalModal({
       onCustomerUpdate?.(created);
       setShowGoogleCompleteModal(false);
       loadCustomerOrders(cleanPhone);
-      setActionSuccessMsg(`¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 500 RYYCOS ($500 COP) y 1 Giro gratis 🎁`);
+      setActionSuccessMsg(isAndroid ? `¡Bienvenido a Ryyco, ${created.name}! Tu cuenta está lista para hacer pedidos.` : `¡Bienvenido al Club Ryyco, ${created.name}! Perfil activado con 500 RYYCOS ($500 COP) y 1 Giro gratis 🎁`);
       setTimeout(() => setActionSuccessMsg(null), 5000);
     } catch (err: any) {
       setAuthError(err.message || "Error al guardar tus datos de entrega.");
@@ -592,7 +612,7 @@ export default function CustomerPortalModal({
       } else {
         // Automatically switch to registration with a friendly message
         setIsRegisterMode(true);
-        setAuthError("Este número celular aún no está registrado. Completa tu registro para ganar 500 RYYCOS ($500 COP) de bienvenida y 1 giro en la ruleta.");
+        setAuthError(isAndroid ? "Este número celular aún no está registrado. Completa tu registro para hacer y rastrear tus pedidos." : "Este número celular aún no está registrado. Completa tu registro para ganar 500 RYYCOS ($500 COP) de bienvenida y 1 giro en la ruleta.");
       }
     } catch (err: any) {
       setAuthError(err.message || "Error al buscar tu cuenta");
@@ -646,7 +666,7 @@ export default function CustomerPortalModal({
       setCustomer(newCust);
       setActiveCustomerSession(newCust);
       onCustomerUpdate?.(newCust);
-      setActionSuccessMsg("¡Cuenta creada con éxito! Ganaste 500 RYYCOS ($500 COP) y 1 Giro Gratis en la Ruleta 🎁");
+      setActionSuccessMsg(isAndroid ? "¡Cuenta creada con éxito! Ya puedes hacer y rastrear tus pedidos." : "¡Cuenta creada con éxito! Ganaste 500 RYYCOS ($500 COP) y 1 Giro Gratis en la Ruleta 🎁");
       setTimeout(() => setActionSuccessMsg(null), 5000);
       loadCustomerOrders(cleaned);
     } catch (err: any) {
@@ -1146,10 +1166,12 @@ export default function CustomerPortalModal({
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-              <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-[11px] sm:text-xs font-mono shadow-sm whitespace-nowrap">
-                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
-                <span>{(customer.points || 0).toLocaleString('es-CO')} <span className="text-[9.5px] text-amber-400/90 font-bold">Puntos Ryycos</span></span>
-              </div>
+              {!isAndroid && (
+                <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 font-black text-[11px] sm:text-xs font-mono shadow-sm whitespace-nowrap">
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 shrink-0" />
+                  <span>{(customer.points || 0).toLocaleString('es-CO')} <span className="text-[9.5px] text-amber-400/90 font-bold">Puntos Ryycos</span></span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleLogout}
@@ -1177,7 +1199,9 @@ export default function CustomerPortalModal({
               </div>
               <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">Bienvenido a RYYCO</h3>
               <p className="text-xs sm:text-sm text-gray-400 mt-1 font-medium leading-relaxed">
-                Inicia sesión o regístrate como <strong className="text-white">cliente comprador</strong> para hacer pedidos, calificar y recomendar con ❤️, y ganar RYYCOS.
+                {isAndroid
+                  ? 'Inicia sesión para ver tus pedidos y gestionar tu perfil de entrega.'
+                  : 'Inicia sesión para ver tus pedidos, ganar premios y acumular RYYCOS.'}
               </p>
             </div>
             <button
@@ -1218,7 +1242,7 @@ export default function CustomerPortalModal({
                   isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Crear Cuenta Nueva (¡+500 RYYCOS!)
+                {isAndroid ? 'Crear Cuenta Nueva' : 'Crear Cuenta Nueva (¡+500 RYYCOS!)'}
               </button>
             </div>
 
@@ -1243,7 +1267,7 @@ export default function CustomerPortalModal({
                         {isRegisterMode ? 'Registrarme como Cliente Comprador con Google' : 'Ingresar como Cliente Comprador con Google'}
                       </div>
                       <div className="text-[10px] text-slate-500 font-semibold">
-                        Acceso a RYYCOS, ruleta de premios y pedidos
+                        {isAndroid ? 'Acceso rápido y seguro a tus pedidos y perfil' : 'Acceso a RYYCOS, ruleta de premios y pedidos'}
                       </div>
                     </div>
                   </>
@@ -1410,7 +1434,7 @@ export default function CustomerPortalModal({
                         className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                       />
                     </div>
-                    <span className="text-[9.5px] text-gray-500 mt-1 block">Recibe confirmaciones de despacho y respalda tus RYYCOS de comida.</span>
+                    <span className="text-[9.5px] text-gray-500 mt-1 block">{isAndroid ? 'Recibe confirmaciones de despacho y novedades de tus pedidos.' : 'Recibe confirmaciones de despacho y respalda tus RYYCOS de comida.'}</span>
                   </div>
 
                   <div>
@@ -1501,7 +1525,7 @@ export default function CustomerPortalModal({
                 ) : isRegisterMode ? (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Registrarme como Cliente Comprador (+500 RYYCOS) 🎁
+                    {isAndroid ? 'Crear Cuenta y Continuar' : 'Crear Cuenta y Ganar 500 RYYCOS ($500 COP) 🎁'}
                   </>
                 ) : (
                   <>
@@ -1529,7 +1553,7 @@ export default function CustomerPortalModal({
           <div className="flex flex-col flex-1 overflow-hidden">
             
             {/* Top Navigation Tabs */}
-            <div className="grid grid-cols-4 bg-[#090D16] border-b border-gray-800 p-1 sm:p-1.5 gap-1 shrink-0 text-center">
+            <div className={`grid ${isAndroid ? 'grid-cols-2' : 'grid-cols-4'} bg-[#090D16] border-b border-gray-800 p-1 sm:p-1.5 gap-1 shrink-0 text-center`}>
               <button
                 type="button"
                 onClick={() => setActiveTab('orders')}
@@ -1548,36 +1572,40 @@ export default function CustomerPortalModal({
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('wheel')}
-                className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition relative cursor-pointer ${
-                  activeTab === 'wheel'
-                    ? 'bg-gradient-to-r from-amber-500 to-[#E63946] text-white shadow-md shadow-amber-500/20'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
-                }`}
-              >
-                <Trophy className="w-4 h-4 shrink-0 text-amber-300 animate-pulse" />
-                <span className="truncate">Platos Gratis</span>
-                {(customer.spinsAvailable || 0) > 0 && (
-                  <span className="absolute -top-1 right-1 sm:static px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-400 text-black shadow-sm animate-bounce">
-                    {customer.spinsAvailable} Giro
-                  </span>
-                )}
-              </button>
+              {!isAndroid && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('wheel')}
+                  className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition relative cursor-pointer ${
+                    activeTab === 'wheel'
+                      ? 'bg-gradient-to-r from-amber-500 to-[#E63946] text-white shadow-md shadow-amber-500/20'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
+                  }`}
+                >
+                  <Trophy className="w-4 h-4 shrink-0 text-amber-300 animate-pulse" />
+                  <span className="truncate">Platos Gratis</span>
+                  {(customer.spinsAvailable || 0) > 0 && (
+                    <span className="absolute -top-1 right-1 sm:static px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-400 text-black shadow-sm animate-bounce">
+                      {customer.spinsAvailable} Giro
+                    </span>
+                  )}
+                </button>
+              )}
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('rewards')}
-                className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
-                  activeTab === 'rewards'
-                    ? 'bg-amber-500 text-black shadow font-black'
-                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
-                }`}
-              >
-                <Coins className="w-4 h-4 shrink-0" />
-                <span className="truncate">Mis ryycos</span>
-              </button>
+              {!isAndroid && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('rewards')}
+                  className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition cursor-pointer ${
+                    activeTab === 'rewards'
+                      ? 'bg-amber-500 text-black shadow font-black'
+                      : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
+                  }`}
+                >
+                  <Coins className="w-4 h-4 shrink-0" />
+                  <span className="truncate">Mis ryycos</span>
+                </button>
+              )}
 
               <button
                 type="button"
@@ -2164,7 +2192,7 @@ export default function CustomerPortalModal({
               )}
 
               {/* TAB 2: RULETA DE PLATOS GRATIS */}
-              {activeTab === 'wheel' && (
+              {!isAndroid && activeTab === 'wheel' && (
                 <div className="space-y-5">
                   <div className="text-center space-y-1">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/10 to-pink-500/10 border border-amber-500/20 text-amber-400 text-xs font-black uppercase tracking-wider">
@@ -2344,7 +2372,7 @@ export default function CustomerPortalModal({
               )}
 
               {/* TAB 3: BILLETERA Y SISTEMA DE RYYCOS */}
-              {activeTab === 'rewards' && (
+              {!isAndroid && activeTab === 'rewards' && (
                 <div className="space-y-5">
                   {/* VIP RYYCOS WALLET CARD */}
                   <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 p-5 rounded-2xl text-black shadow-xl shadow-amber-500/10 flex flex-col justify-between relative overflow-hidden">
@@ -2961,7 +2989,11 @@ export default function CustomerPortalModal({
                 </div>
                 <h3 className="text-lg font-black text-white leading-tight">Completa tus datos de entrega</h3>
                 <p className="text-[11.5px] text-gray-400 mt-0.5">
-                  Ingresa tu WhatsApp y dirección para rastrear tus pedidos y activar tus <strong className="text-amber-400 font-black">500 RYYCOS de Bienvenida ($500 COP)</strong>.
+                  {isAndroid ? (
+                    'Ingresa tu WhatsApp y dirección para rastrear tus pedidos y gestionar tus entregas.'
+                  ) : (
+                    <>Ingresa tu WhatsApp y dirección para rastrear tus pedidos y activar tus <strong className="text-amber-400 font-black">500 RYYCOS de Bienvenida ($500 COP)</strong>.</>
+                  )}
                 </p>
               </div>
             </div>
@@ -3118,7 +3150,7 @@ export default function CustomerPortalModal({
       )}
 
       {/* TRY AGAIN MODAL (CUANDO CAE EN SIGUE INTENTANDO) */}
-      {tryAgainModal && (
+      {!isAndroid && tryAgainModal && (
         <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
           <div className="bg-[#0e1322] border border-blue-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
             <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 p-1 mx-auto flex items-center justify-center shadow-lg shadow-blue-500/20">
@@ -3248,7 +3280,7 @@ export default function CustomerPortalModal({
       />
 
       {/* MODAL DE CONFIRMACIÓN DE TRANSFERENCIA DE RYYCOS */}
-      {showTransferConfirmModal && recipientResult?.found && (
+      {!isAndroid && showTransferConfirmModal && recipientResult?.found && (
         <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
           <div className="bg-[#0e1322] border border-amber-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
             <div className="w-14 h-14 rounded-2xl bg-amber-500/15 border border-amber-500/30 mx-auto flex items-center justify-center text-amber-400 shadow-lg shadow-amber-500/20">
@@ -3323,7 +3355,7 @@ export default function CustomerPortalModal({
       )}
 
       {/* DIGITAL RECEIPT / COMPROBANTE DE TRANSFERENCIA RYYCOS */}
-      {transferReceipt && (
+      {!isAndroid && transferReceipt && (
         <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
           <div className="bg-[#0e1322] border border-emerald-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
             {/* Success Icon */}

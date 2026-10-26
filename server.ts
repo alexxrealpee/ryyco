@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import { driverTrackingAuth } from './server/driverTrackingAuth';
 import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
@@ -135,7 +136,7 @@ function getGeminiClient() {
 }
 
 function getOpenAIClient(): OpenAI | null {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY || '';
   if (!apiKey) {
     return null;
   }
@@ -170,6 +171,7 @@ async function startServer() {
 
   // Body parsing middleware with expanded limit for catalog, audio and voice requests
   app.use(express.json({ limit: '50mb' }));
+  app.post('/api/drivers/tracking-auth', driverTrackingAuth);
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // API Route: AI Link Extractor
@@ -511,7 +513,7 @@ Formatos válidos para:
     }
     const isInitial = req.query.initial === 'true' || req.query.initial === '1';
     const limitQuery = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : 0;
-    const limit = isInitial ? 6 : limitQuery;
+    const limit = isInitial ? 4 : limitQuery;
 
     const storeId = typeof req.query.storeId === 'string' ? req.query.storeId.trim() : '';
     const storeUsername = typeof req.query.storeUsername === 'string' ? req.query.storeUsername.trim().toLowerCase() : '';
@@ -1436,7 +1438,7 @@ let nominatimDisabledUntil = 0;
       ? (rawAddress.toLowerCase().includes('ipiales') ? rawAddress : `${rawAddress}, Ipiales, Nariño, Colombia`) 
       : undefined;
 
-    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+    const mapsKey = process.env.VITE_GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API_KEY || 'AIzaSyDi7lHGpuLxliMImA1NkJbWWexIqKuMFmA';
 
     try {
       // 1. Try Google Maps API if key is present (with 2s timeout)
@@ -1704,6 +1706,11 @@ let nominatimDisabledUntil = 0;
         source: 'coords'
       });
     }
+  });
+
+  // The retired /tienda address must remain unavailable without redirecting.
+  app.get(['/tienda', '/tienda/'], (_req, res) => {
+    res.status(404).sendFile(path.join(process.cwd(), 'public', '404.html'));
   });
 
   // Serve static files from public directory

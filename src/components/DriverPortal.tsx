@@ -54,6 +54,9 @@ import {
   MessageCircle
 } from 'lucide-react';
 import OrderChatModal from './OrderChatModal';
+import { signInWithCustomToken } from 'firebase/auth';
+import { getApiUrl } from '../lib/apiConfig';
+import { auth, signInWithGoogleUniversal } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { 
   db,
@@ -283,6 +286,28 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     activeDelivery,
     driver
   });
+
+  const [verifyingGps, setVerifyingGps] = useState(false);
+  const [gpsAuthError, setGpsAuthError] = useState<string | null>(null);
+  const verifyGpsSession = async () => {
+    if (!driver || verifyingGps) return;
+    setVerifyingGps(true);
+    setGpsAuthError(null);
+    try {
+      const credential = await signInWithGoogleUniversal();
+      const idToken = await credential.user.getIdToken();
+      const response = await fetch(getApiUrl('/api/drivers/tracking-auth'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ driverId: driver.id })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.token) throw new Error(data.error || 'El servidor aún no tiene habilitada la verificación GPS.');
+      await signInWithCustomToken(auth, data.token);
+      manualForceSync();
+    } catch (error) {
+      setGpsAuthError((error as Error).message || 'No se pudo verificar la cuenta del domiciliario.');
+    } finally { setVerifyingGps(false); }
+  };
 
   // Incoming Order Modal Alert Popup
   const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<OrderItem | null>(null);
@@ -2656,7 +2681,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         <div className="fixed bottom-[58px] left-0 right-0 z-30 bg-[#0B0F19]/95 backdrop-blur-xl border-t border-[#232B3A] px-3.5 sm:px-4 py-2.5 shadow-[0_-12px_30px_rgba(0,0,0,0.85)]">
           <div className="max-w-xl mx-auto w-full space-y-2">
             <div className="flex items-center justify-between gap-2 text-[10px] text-gray-400" role="status">
-              <span>{gpsError || (lastGpsUpdate ? `GPS confirmado a las ${lastGpsUpdate.toLocaleTimeString('es-CO')}` : 'Esperando GPS preciso para transmitir')}</span>
+              <span>{gpsAuthError || gpsError || (lastGpsUpdate ? `GPS confirmado a las ${lastGpsUpdate.toLocaleTimeString('es-CO')}` : 'Esperando GPS preciso para transmitir')}</span>
+              {gpsError?.includes('sesión válida') && <button type="button" disabled={verifyingGps} onClick={verifyGpsSession} className="shrink-0 text-[#E63946] underline">{verifyingGps ? 'Verificando…' : 'Verificar mi cuenta con Google'}</button>}
               {gpsError && <button type="button" onClick={manualForceSync} className="shrink-0 text-[#E63946] underline">Reintentar GPS</button>}
             </div>
             {(activeDelivery.deliveryStep === 'accepted' || activeDelivery.deliveryStep === 'to_store' || activeDelivery.deliveryStep === 'at_store') && (

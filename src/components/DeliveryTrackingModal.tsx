@@ -21,7 +21,7 @@ import { useDeliveryTracking } from '../hooks/useDeliveryTracking';
 import { useCourierAnimation } from '../hooks/useCourierAnimation';
 import { validCoordinates, GPS_FRESH_MS, type GpsPoint } from '../lib/deliveryTracking';
 import { OrderItem, DeliveryTrackingData } from '../types';
-import { listenToDeliveryTracking, db, getOrderDeliveryCode } from '../lib/firebase';
+import { listenToDeliveryTracking, db, getOrderDeliveryCode, signInWithGoogleUniversal } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { isValidGoogleMapsKey, getGoogleMapsApiKey, clearGoogleMapsApiKey } from '../lib/mapsConfig';
 
@@ -272,6 +272,15 @@ export default function DeliveryTrackingModal({
   storeLocationCoords,
   showDeliveryCode = true
 }: DeliveryTrackingModalProps) {
+  const [verifyingAccount, setVerifyingAccount] = useState(false);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const verifyTrackingAccount = async () => {
+    setVerifyingAccount(true);
+    setAccountError(null);
+    try { await signInWithGoogleUniversal(); retryTracking(); }
+    catch { setAccountError('No se pudo verificar la cuenta. Usa el correo con el que hiciste el pedido.'); }
+    finally { setVerifyingAccount(false); }
+  };
   const [centerRequest, setCenterRequest] = useState(0);
   const [liveOrder, setLiveOrder] = useState<OrderItem | null>(order);
   const { tracking, connection, error: trackingError, retry: retryTracking, now } = useDeliveryTracking(order?.id, isOpen && !['delivered', 'cancelled'].includes((liveOrder || order)?.status || '') && (liveOrder || order)?.deliveryStep !== 'delivered');
@@ -833,7 +842,8 @@ export default function DeliveryTrackingModal({
 
 
           <div className="pointer-events-auto self-center max-w-[90%] px-3 py-1 rounded-xl bg-black/75 text-[10px] text-gray-200 backdrop-blur-md" role="status">
-            {gpsDescription} · Líneas orientativas, no rutas por calles.
+            {accountError || gpsDescription} · Líneas orientativas, no rutas por calles.
+            {connection === 'error' && <button type="button" disabled={verifyingAccount} onClick={verifyTrackingAccount} className="ml-2 underline pointer-events-auto">{verifyingAccount ? 'Verificando cuenta…' : 'Verificar cuenta con Google'}</button>}
             {(connection === 'error' || connection === 'offline') && <button type="button" onClick={retryTracking} className="ml-2 underline pointer-events-auto">Reintentar GPS</button>}
           </div>
         {/* BOTTOM HUD CARD: DRIVER INFO, PIN & CONTACT BUTTONS */}

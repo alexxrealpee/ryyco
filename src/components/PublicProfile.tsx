@@ -60,6 +60,7 @@ import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
 import { ProductShareButton } from './ProductShareButton';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
+import { isAndroidApp } from '../lib/capacitor';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import { 
   Share2, 
@@ -248,6 +249,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   }, []);
 
   // Customer Portal & Rewards State
+  const isAndroid = isAndroidApp();
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
   const [isCustomerRegisterMode, setIsCustomerRegisterMode] = useState(false);
@@ -643,8 +645,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               if (isRegisterReq) {
                 setIsCustomerRegisterMode(true);
               }
-              if (searchParams.get('tab') === 'rewards' || searchParams.get('tab') === 'club') {
+              if (!isAndroid && (searchParams.get('tab') === 'rewards' || searchParams.get('tab') === 'club')) {
                 setCustomerPortalTab('rewards');
+              } else {
+                setCustomerPortalTab('orders');
               }
               setIsCustomerPortalOpen(true);
             }
@@ -1635,7 +1639,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     setIsCustomerPortalOpen(true);
                   }}
                   className="flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition cursor-pointer text-inherit"
-                  title="Mi cuenta de cliente y saldo de RYYCOS"
+                  title={isAndroid ? "Mi cuenta de cliente y pedidos" : "Mi cuenta de cliente y saldo de RYYCOS"}
                 >
                   <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-black shrink-0 overflow-hidden">
                     {activeCustomer.avatarUrl ? (
@@ -3975,30 +3979,32 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             )}
             
             {/* Loyalty Bonus Banner */}
-            <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-amber-500/15 border border-amber-500/40 p-3 rounded-2xl text-left space-y-1.5 shadow-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-xs">
-                  <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
-                  <span>¡Ganaste +500 Puntos Ryycos ($500 COP)!</span>
+            {!isAndroid && (
+              <div className="bg-gradient-to-r from-amber-500/15 via-purple-500/15 to-amber-500/15 border border-amber-500/40 p-3 rounded-2xl text-left space-y-1.5 shadow-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-extrabold text-xs">
+                    <Crown className="w-4 h-4 text-amber-400 animate-bounce" />
+                    <span>¡Ganaste +500 Puntos Ryycos ($500 COP)!</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">+1 Giro Gratis</span>
                 </div>
-                <span className="text-[10px] font-mono font-bold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-full">+1 Giro Gratis</span>
+                <p className="text-[10px] text-gray-300 font-semibold leading-relaxed">
+                  Por tu compra sumaste <strong>500 Puntos Ryycos ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubmittedOrder(null);
+                    setCustomerPortalTab('wheel');
+                    setIsCustomerPortalOpen(true);
+                  }}
+                  className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-black" />
+                  ¡Girar Ruleta y Ver Mis Puntos Ryycos Ahora!
+                </button>
               </div>
-              <p className="text-[10px] text-gray-300 font-semibold leading-relaxed">
-                Por tu compra sumaste <strong>500 Puntos Ryycos ($500 COP)</strong> acumulables para comprar en la tienda y desbloqueaste una tirada en la ruleta de platos gratis.
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSubmittedOrder(null);
-                  setCustomerPortalTab('wheel');
-                  setIsCustomerPortalOpen(true);
-                }}
-                className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-black" />
-                ¡Girar Ruleta y Ver Mis Puntos Ryycos Ahora!
-              </button>
-            </div>
+            )}
 
             <p className="text-xs text-gray-400 leading-relaxed font-semibold bg-gray-900 border border-gray-900 p-3 rounded-lg text-left">
               Para validar el despacho, te facilitamos un botón que redactará los artículos de tu carrito directamente hacia nuestro canal oficial de WhatsApp. Así podremos coordinar el envío de inmediato.

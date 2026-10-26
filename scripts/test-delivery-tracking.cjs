@@ -171,7 +171,7 @@ async function main() {
   const store = { operations: [], callbacks: [], auth: { uid: 'auth-driver' } };
   globalThis.__trackingStore = store;
   const { createDeliveryTrackingService } = await bundle('src/lib/deliveryTrackingService.ts', {
-    'firebase/auth': `export const getAuth=()=>({currentUser:globalThis.__trackingStore.auth});`,
+    'firebase/auth': `export const getAuth=()=>({currentUser:globalThis.__trackingStore.auth}); export const onAuthStateChanged=(_,cb)=>{globalThis.__trackingStore.authChanged=cb; cb(globalThis.__trackingStore.auth); return()=>{globalThis.__trackingStore.authChanged=null}};`,
     'firebase/firestore': `
       export const doc=(_,collection,id)=>({collection,id});
       export const serverTimestamp=()=>({server:true});
@@ -193,17 +193,23 @@ async function main() {
   assert(store.operations[1].data.lat.delete);
   store.operations[1].resolve(); await stopped;
   const received = [], states = [];
-  api.listenToDeliveryTracking('o', data => received.push(data), state => states.push(state));
+  const unsubscribeTracking = api.listenToDeliveryTracking('o', data => received.push(data), state => states.push(state));
   const snapshot = (gps, cached = false, server = gps) => ({ id: 'o', exists: () => true,
     metadata: { fromCache: cached, hasPendingWrites: false }, data: () => ({ lat: 0, lng: 0, gpsTimestamp: gps, serverUpdatedAt: { toMillis: () => server }, isTrackingActive: true }) });
   const listener = store.callbacks[0];
   listener.next(snapshot(clock, true));
   listener.next(snapshot(clock, false));
   listener.next(snapshot(clock - 1000, false, clock + 1));
-  assert.equal(received.length, 2, 'Older fixes cannot rewind the marker');
-  assert.deepEqual(states.slice(0, 2), ['cached', 'live']);
+  assert.equal(received.filter(Boolean).length, 2, 'Older fixes cannot rewind the marker');
+  assert.deepEqual(states.slice(1, 3), ['cached', 'live']);
   listener.error({ code: 'permission-denied' });
   assert.equal(states.at(-1), 'error');
+  store.authChanged(null);
+  assert.equal(received.at(-1), null, 'Logout clears private GPS');
+  store.authChanged({uid: 'customer'});
+  assert.equal(store.callbacks.length, 2, 'Login reconnects a failed listener');
+  unsubscribeTracking();
+  assert.equal(store.authChanged, null);
   store.auth = null;
   await assert.rejects(api.updateDeliveryLiveLocation({ orderId: 'o', driverId: 'd' }), error => error.code === 'permission-denied');
   Date.now = realNow;

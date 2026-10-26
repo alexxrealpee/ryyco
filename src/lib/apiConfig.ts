@@ -10,6 +10,8 @@
  * on Google Cloud Run, or deployed on custom domains (e.g. Hostinger, ryyco.com).
  */
 
+import { Capacitor } from '@capacitor/core';
+
 // Configurable remote backend URL if user runs a dedicated Node.js service
 export function getCustomBackendUrl(): string | null {
   if (typeof window !== 'undefined') {
@@ -22,6 +24,9 @@ export function getCustomBackendUrl(): string | null {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
     return envUrl.trim().replace(/\/$/, '');
   }
+  if (Capacitor.isNativePlatform()) {
+    return 'https://ryyco.com';
+  }
   return null;
 }
 
@@ -32,7 +37,12 @@ export function getApiBaseUrl(): string {
     return customUrl;
   }
 
-  // 2. Client-side hostname detection
+  // 2. Native Capacitor mobile environment (Android / iOS)
+  if (Capacitor.isNativePlatform()) {
+    return 'https://ryyco.com';
+  }
+
+  // 3. Client-side hostname detection (browser web)
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     // On localhost, Cloud Run, or custom domains with native/PHP API bridge (like ryyco.com on Hostinger),

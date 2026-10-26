@@ -5,21 +5,29 @@ const config: CapacitorConfig = {
   appName: 'Ryyco',
   webDir: 'dist',
   server: {
-    // Si necesitas que la app apunte a tu servidor de producción o dev en vivo, puedes descomentar la URL:
-    // url: 'https://ryyco.com',
-    // cleartext: true,
-    androidScheme: 'https'
+    androidScheme: 'https',
+    cleartext: true
   },
   plugins: {
     StatusBar: {
       backgroundColor: '#090B12',
-      style: 'DARK'
+      style: 'DARK',
+      overlaysWebView: false
+    },
+    FirebaseAuthentication: {
+      skipNativeAuth: true,
+      providers: ['google.com']
     },
     App: {}
   },
   android: {
     allowMixedContent: true,
     backgroundColor: '#090B12'
+  },
+  ios: {
+    backgroundColor: '#090B12',
+    contentInset: 'automatic',
+    preferredContentMode: 'mobile'
   }
 };
 

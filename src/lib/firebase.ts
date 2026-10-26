@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { isAndroidApp } from './capacitor';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -11,11 +12,14 @@ import {
   signOut, 
   updateProfile as fbUpdateProfile,
   signInWithPopup, 
+  signInWithCredential,
   GoogleAuthProvider,
   sendPasswordResetEmail,
   onAuthStateChanged,
   User as FirebaseUser
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { 
   getFirestore, 
   initializeFirestore,
@@ -110,8 +114,95 @@ if (typeof window !== 'undefined') {
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
 export const googleProvider = new GoogleAuthProvider();
 
-// Availability is validated by the existing profiles listener. A separate read of
-// test/connection neither checks that query's permissions nor confirms its data.
+/**
+ * Verifica si un error de autenticación corresponde a una cancelación voluntaria del usuario
+ */
+function isGoogleAuthCancellation(err: any): boolean {
+  if (!err) return false;
+  const msg = (err.message || err.errorMessage || String(err)).toLowerCase();
+  const code = String(err.code || '');
+  return (
+    msg.includes('canceled') ||
+    msg.includes('cancelled') ||
+    msg.includes('cancellation') ||
+    msg.includes('16:') ||
+    msg.includes('12501') ||
+    code === '16' ||
+    code === '12501' ||
+    code === 'auth/cancelled-popup-request' ||
+    code === 'auth/popup-closed-by-user'
+  );
+}
+
+/**
+ * Inicia sesión con Google de manera universal:
+ * - En app móvil nativa (Android / Capacitor): utiliza el selector nativo de Google Play Services / Credential Manager sin abrir ventanas del navegador externo.
+ * - En navegador Web de escritorio o móvil: utiliza signInWithPopup estándar.
+ */
+export async function signInWithGoogleUniversal() {
+  if (Capacitor.isNativePlatform()) {
+    let result: any = null;
+    let lastError: any = null;
+
+    // 1. Intentar primero con Credential Manager moderno de Android (Android 14+ / Google Play Services)
+    try {
+      result = await FirebaseAuthentication.signInWithGoogle({
+        skipNativeAuth: true,
+        useCredentialManager: true
+      });
+    } catch (err: any) {
+      lastError = err;
+      if (isGoogleAuthCancellation(err)) {
+        const cancelErr: any = new Error("Inicio de sesión cancelado por el usuario.");
+        cancelErr.code = 'auth/cancelled-popup-request';
+        throw cancelErr;
+      }
+      console.warn("[GoogleAuth] Credential Manager no disponible o falló, reintentando con selector clásico:", err);
+    }
+
+    // 2. Si falló Credential Manager (ej: dispositivo antiguo o error de servicio), reintentar con selector clásico de Google
+    if (!result) {
+      try {
+        result = await FirebaseAuthentication.signInWithGoogle({
+          skipNativeAuth: true,
+          useCredentialManager: false
+        });
+      } catch (fallbackErr: any) {
+        lastError = fallbackErr;
+        console.error("[GoogleAuth] Falló selector clásico de Google:", fallbackErr);
+      }
+    }
+
+    if (!result) {
+      if (isGoogleAuthCancellation(lastError)) {
+        const cancelErr: any = new Error("Inicio de sesión cancelado por el usuario.");
+        cancelErr.code = 'auth/cancelled-popup-request';
+        throw cancelErr;
+      }
+
+      const errMsg = (lastError?.message || String(lastError || '')).toLowerCase();
+      if (errMsg.includes('10:') || errMsg.includes('developer_error')) {
+        const configErr: any = new Error(
+          "Error de configuración en Google Sign-In (Código 10): La huella digital SHA-1 del certificado de esta app no está registrada en Firebase Console."
+        );
+        configErr.code = 'auth/configuration-not-found';
+        throw configErr;
+      }
+
+      throw new Error(lastError?.message || "No se pudo completar el inicio de sesión con Google en el dispositivo.");
+    }
+
+    const idToken = result.credential?.idToken || result.idToken;
+    if (!idToken) {
+      throw new Error("No se recibió el token de autenticación de Google desde el servicio nativo.");
+    }
+
+    const credential = GoogleAuthProvider.credential(idToken);
+    return await signInWithCredential(auth, credential);
+  } else {
+    return await signInWithPopup(auth, googleProvider);
+  }
+}
 
 // Available Predefined Themes
 export const PREDEFINED_THEMES: CustomTheme[] = [
@@ -6074,10 +6165,10 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
   const existingPoints = existing?.points !== undefined 
     ? Number(existing.points) 
     : (existing?.ryycos !== undefined ? Number(existing.ryycos) : 500);
-  const currentPoints = cust.points !== undefined 
+  const currentPoints = isAndroidApp() ? (existing?.points ?? existing?.ryycos ?? 0) : cust.points !== undefined
     ? Number(cust.points) 
     : (cust.ryycos !== undefined ? Number(cust.ryycos) : existingPoints);
-  const movements = cust.movements !== undefined 
+  const movements = isAndroidApp() ? (existing?.movements || []) : cust.movements !== undefined
     ? cust.movements 
     : (existing?.movements && existing.movements.length > 0 ? existing.movements : [defaultWelcomeMovement]);
 
@@ -6100,7 +6191,7 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     movements,
     totalOrdersCount: cust.totalOrdersCount !== undefined ? cust.totalOrdersCount : (existing?.totalOrdersCount || 0),
     totalSpent: cust.totalSpent !== undefined ? cust.totalSpent : (existing?.totalSpent || 0),
-    spinsAvailable: cust.spinsAvailable !== undefined ? cust.spinsAvailable : (existing?.spinsAvailable !== undefined ? existing.spinsAvailable : 1), // 1 free welcome spin!
+    spinsAvailable: isAndroidApp() ? (existing?.spinsAvailable ?? 0) : cust.spinsAvailable !== undefined ? cust.spinsAvailable : (existing?.spinsAvailable !== undefined ? existing.spinsAvailable : 1), // 1 free welcome spin!
     wonPrizes: cust.wonPrizes !== undefined ? cust.wonPrizes : (existing?.wonPrizes || []),
     welcomeMessageSentAt: cust.welcomeMessageSentAt !== undefined ? cust.welcomeMessageSentAt : (existing?.welcomeMessageSentAt || undefined),
     createdAt: existing?.createdAt || now,
@@ -6206,8 +6297,8 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
   if (!phone || phone.length < 7) return null;
 
   // Regla: Por cada compra que realice un cliente se gana 500 RYYCOS ($500 COP) que se van acumulando para comprar en la tienda
-  const earnedPoints = 500;
-  const spinsAwarded = 1; // 1 spin per order for the Free Dish Wheel!
+  const earnedPoints = isAndroidApp() ? 0 : 500;
+  const spinsAwarded = isAndroidApp() ? 0 : 1; // 1 spin per order for the Free Dish Wheel!
 
   let existing = await fetchCustomerProfileByPhone(phone);
   const isInvalidAddr = (addr?: string) => {
@@ -6250,7 +6341,7 @@ export async function awardCustomerPointsAndSpin(order: OrderItem): Promise<{ ea
     ...existing,
     points: updatedPoints,
     ryycos: updatedPoints,
-    movements: [purchaseMovement, ...(existing.movements || [])],
+    movements: earnedPoints > 0 ? [purchaseMovement, ...(existing.movements || [])] : (existing.movements || []),
     spinsAvailable: updatedSpins,
     totalOrdersCount: updatedOrders,
     totalSpent: updatedSpent,

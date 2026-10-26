@@ -15,6 +15,15 @@ dist/keys.php
 dist/api/keys.php
 keys.local.php
 api/keys.php
+public/api/keys.php
+
+# Android / iOS
+android/
+addroid/
+ios/
+.gradle/
+
+
 apis
 apis.php
 api/apis

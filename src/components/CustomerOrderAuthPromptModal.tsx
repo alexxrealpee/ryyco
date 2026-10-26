@@ -28,6 +28,7 @@ import { signInWithPopup } from 'firebase/auth';
 import {
   auth,
   googleProvider,
+  signInWithGoogleUniversal,
   saveCustomerProfile,
   fetchCustomerProfileByPhone,
   fetchCustomerProfileByEmail,
@@ -37,6 +38,7 @@ import {
 } from '../lib/firebase';
 import { CustomerProfile } from '../types';
 import BuyerTermsModal from './BuyerTermsModal';
+import { isAndroidApp } from '../lib/capacitor';
 
 export interface CustomerOrderAuthPromptModalProps {
   isOpen: boolean;
@@ -89,6 +91,7 @@ export default function CustomerOrderAuthPromptModal({
   onAuthenticated,
   onChangePhoneRequest
 }: CustomerOrderAuthPromptModalProps) {
+  const isAndroid = isAndroidApp();
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -164,7 +167,7 @@ export default function CustomerOrderAuthPromptModal({
     setAuthError('');
     try {
       localStorage.setItem('ryyco_auth_mode', 'customer');
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithGoogleUniversal();
       const user = result.user;
       const gEmail = user.email || '';
       const gName = user.displayName || customerName;
@@ -192,9 +195,9 @@ export default function CustomerOrderAuthPromptModal({
       }
 
       setLoadingProfileStatusText(
-        profile
-          ? 'Cargando saldo de RYYCOS y datos guardados...'
-          : 'Creando tu perfil de cliente y activando bono de 500 RYYCOS...'
+        isAndroid
+          ? (profile ? 'Cargando datos guardados de tu cuenta...' : 'Creando tu cuenta de cliente...')
+          : (profile ? 'Cargando saldo de RYYCOS y datos guardados...' : 'Creando tu perfil de cliente y activando bono de 500 RYYCOS...')
       );
 
       const saved = await saveCustomerProfile({
@@ -366,7 +369,7 @@ export default function CustomerOrderAuthPromptModal({
                 )}
                 <span className="font-semibold text-gray-300">
                   {googleAuthStage === 'profile_ready'
-                    ? 'Perfil sincronizado y puntos RYYCOS listos'
+                    ? (isAndroid ? 'Perfil sincronizado correctamente' : 'Perfil sincronizado y puntos RYYCOS listos')
                     : loadingProfileStatusText}
                 </span>
               </div>
@@ -400,14 +403,34 @@ export default function CustomerOrderAuthPromptModal({
           /* Normal Authentication Form */
           <div className="p-4 sm:p-5 space-y-4 max-h-[80vh] overflow-y-auto">
             {/* Account status note */}
-            {isExistingCustomer && (
+            {isExistingCustomer ? (
               <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-3 text-emerald-300 space-y-1">
                 <div className="flex items-center gap-1.5 font-black text-[11px]">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   <span>¡Hola {displayName}! Tu cuenta ya está registrada</span>
                 </div>
                 <p className="text-[10px] text-emerald-200/90 font-medium leading-relaxed">
-                  Confirma tu pedido para continuar y tener acceso a su rastreo en tiempo real.
+                  Ingresa tu contraseña para confirmar tu pedido automáticamente y tener acceso a su rastreo en tiempo real.
+                </p>
+              </div>
+            ) : isAndroid ? (
+              <div className="bg-gradient-to-r from-emerald-500/15 via-blue-500/15 to-emerald-500/15 border border-emerald-500/40 rounded-2xl p-3 text-emerald-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-black text-[11px]">
+                  <Sparkles className="w-4 h-4 text-emerald-400" />
+                  <span>¡Crea tu cuenta para rastrear tu pedido en vivo! 📦</span>
+                </div>
+                <p className="text-[10px] text-emerald-200/90 font-medium leading-relaxed">
+                  Crea tu clave en 1 segundo. Tu pedido continuará automáticamente y podrás rastrear su estado en vivo.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/40 rounded-2xl p-3 text-amber-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-black text-[11px]">
+                  <Sparkles className="w-4 h-4 text-amber-400 animate-bounce" />
+                  <span>¡Gana 500 Puntos Ryycos ($500 COP) y 1 Giro Gratis! 🎁</span>
+                </div>
+                <p className="text-[10px] text-amber-200/90 font-medium leading-relaxed">
+                  Crea tu clave en 1 segundo. Tu pedido continuará automáticamente y podrás rastrear su estado en vivo.
                 </p>
               </div>
             )}

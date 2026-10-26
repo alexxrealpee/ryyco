@@ -9,6 +9,7 @@ import {
   subscribeStoreRecommendations,
   auth, 
   googleProvider, 
+  signInWithGoogleUniversal,
   fetchCustomerProfileByEmail, 
   fetchCustomerProfileByPhone, 
   fetchCustomerProfileByUid,
@@ -17,6 +18,7 @@ import {
   setActiveCustomerSession 
 } from '../lib/firebase';
 import { signInWithPopup } from 'firebase/auth';
+import { isAndroidApp } from '../lib/capacitor';
 
 interface RecommendationHeartButtonProps {
   storeId: string;
@@ -39,6 +41,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
   variant = 'hero',
   className = ''
 }) => {
+  const isAndroid = isAndroidApp();
   const [stats, setStats] = useState<StoreRecommendationStats>({
     storeId,
     count: 0,
@@ -244,10 +247,7 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     try {
-      // 1. Explicitly designate authentication mode as customer (buyer)
-      localStorage.setItem('ryyco_auth_mode', 'customer');
-
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithGoogleUniversal();
       const user = result.user;
       const gEmail = (user.email || '').toLowerCase().trim();
       const gName = user.displayName || 'Cliente Comprador';
@@ -677,7 +677,11 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
                   </div>
                   <div className="flex items-center gap-2 text-xs font-medium text-stone-700 dark:text-stone-300">
                     <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-                    <span>¡Gana 500 RYYCOS ($500 COP) y 1 tiro en la ruleta al registrarte!</span>
+                    <span>
+                      {isAndroid
+                        ? 'Guarda tus restaurantes favoritos y rastrea tus pedidos'
+                        : '¡Gana 500 RYYCOS ($500 COP) y 1 tiro en la ruleta al registrarte!'}
+                    </span>
                   </div>
                 </div>
 

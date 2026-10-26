@@ -73,6 +73,7 @@ import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import ProductCardImage from './ProductCardImage';
 import RestaurantLogo from './RestaurantLogo';
 import { useProgressiveStoreLoader } from '../hooks/useProgressiveStoreLoader';
+import { isAndroidApp } from '../lib/capacitor';
 import { 
   getStoredCart, 
   saveStoredCart, 
@@ -284,14 +285,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (selectedStore === store.uid) {
       setSelectedStore('all');
       setSelectedCategory('all');
-      setVisibleLimit(6);
+      setVisibleLimit(4);
       return;
     }
 
     setSelectedStore(store.uid);
     setSelectedCategory('all');
     setSearchTerm('');
-    setVisibleLimit(6); // Cargar inmediatamente los 6 primeros productos del restaurante
+    setVisibleLimit(4);
 
     // Asegurar que el perfil del restaurante esté registrado
     setProfiles(prev => ({
@@ -317,7 +318,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     try {
       // Leer a Firebase directamente al hacer clic en el logo del restaurante
-      const freshProducts = await fetchProductsForStoreOnDemand(store, 40);
+      const freshProducts = (await fetchProductsForStoreOnDemand(store, 40)).map(product => ({
+        ...product,
+        userId: store.uid,
+        storeName: store.displayName || store.storeName || store.username || product.storeName,
+        storeUsername: store.username || product.storeUsername
+      }));
 
       if (freshProducts && freshProducts.length > 0) {
         setProducts(prev => {
@@ -443,6 +449,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, [deliveryType, payMethod]);
 
   // Customer Loyalty & Account Modal
+  const isAndroid = isAndroidApp();
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
   const [isCustomerRegisterMode, setIsCustomerRegisterMode] = useState(false);
@@ -580,7 +587,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         if (isRegisterDirect) {
           setIsCustomerRegisterMode(true);
         }
-        if (searchParams.get('tab') === 'rewards' || path.includes('club')) {
+        if (!isAndroid && (searchParams.get('tab') === 'rewards' || path.includes('club'))) {
           setCustomerPortalTab('rewards');
         } else {
           setCustomerPortalTab('orders');
@@ -779,12 +786,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const storesResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isDraggingStoresRef = useRef<boolean>(false);
   const hasMovedStoresRef = useRef<boolean>(false);
+  const lastStoresDragAtRef = useRef<number>(0);
   const startXStoresRef = useRef<number>(0);
   const startScrollLeftStoresRef = useRef<number>(0);
   const isHoveringStoresRef = useRef<boolean>(false);
   const scrollDirectionRef = useRef<1 | -1>(1); // 1 = moving to the right, -1 = moving to the left
   const nextDirectionSwitchTimeRef = useRef<number>(0);
   const turnPauseUntilRef = useRef<number>(0);
+
+  const shouldIgnoreStoreCarouselClick = () => {
+    const wasRecentDrag = hasMovedStoresRef.current && performance.now() - lastStoresDragAtRef.current < 350;
+    hasMovedStoresRef.current = false;
+    return wasRecentDrag;
+  };
 
   // Manual scroll handler for PC navigation buttons (< and >)
   const scrollStores = (direction: 'left' | 'right') => {
@@ -891,8 +905,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return balanceCatalog(matched, openRestaurants, prefix);
   }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy, catalogFilter, openRestaurants]);
 
-  // Smart progressive loading visibleLimit (Carga inicial de 6 productos de establecimientos abiertos y paginación real de 6 en 6)
-  const [visibleLimit, setVisibleLimit] = useState(6);
+  // Progressive loading: show 4 products initially and reveal 4 more per batch
+  const [visibleLimit, setVisibleLimit] = useState(4);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
   const currentFilter = `${searchTerm}|${selectedCategory}|${selectedStore}|${sortBy}`;
@@ -900,19 +914,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   currentFilterRef.current = currentFilter;
   const prefetchMargin = Math.min(1200, Math.max(600, typeof window === 'undefined' ? 800 : window.innerHeight));
 
-  // Reset limit when filter/search/sort changes (show initial 6 products whether on home or viewing a restaurant)
+  // Reset to the first 4 products whenever the active filters or restaurant change
   useEffect(() => {
-    setVisibleLimit(6);
+    setVisibleLimit(4);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
-  // Unified function to load the next batch of 6 products in order
+  // Unified function to load the next batch of 4 products in order
   const loadNextBatchOfFour = useCallback(async () => {
     if (isFetchingNextBatchRef.current) return;
     isFetchingNextBatchRef.current = true;
 
-    // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 6
+    // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
     if (visibleLimit < filteredProducts.length) {
-      setVisibleLimit(prev => Math.min(prev + 6, filteredProducts.length));
+      setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length));
       // Hold the guard through the next render so two scroll signals cannot reveal twice.
       // Released after React commits this six-product reveal.
       return;
@@ -925,7 +939,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       try {
         const fresh = await loadNextFourProducts();
         if (fresh && fresh.length > 0 && currentFilterRef.current === requestedFilter) {
-          setVisibleLimit(prev => prev + 6);
+          setVisibleLimit(prev => prev + 4);
         }
       } catch (err) {
         console.warn("Error loading next batch of 6:", err);
@@ -1577,7 +1591,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                               Ingresar como Cliente
                             </span>
                             <span className="text-[10px] text-emerald-400 font-bold block">
-                              +500 RYYCOS ($500 COP) Gratis
+                              {isAndroid ? 'Rastreo y estado de tus compras' : '+500 RYYCOS ($500 COP) Gratis'}
                             </span>
                           </div>
                         </div>
@@ -1612,56 +1626,60 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     </button>
 
                     {/* Item 2: Mis Puntos Ryycos & Ruleta */}
-                    <button
-                      id="drawer-my-points-btn"
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        setCustomerPortalTab('rewards');
-                        setIsCustomerPortalOpen(true);
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-amber-300 text-xs block">
-                            Puntos Ryycos
-                          </span>
-                          <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md">
-                            Billetera
-                          </span>
+                    {!isAndroid && (
+                      <button
+                        id="drawer-my-points-btn"
+                        type="button"
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setCustomerPortalTab('rewards');
+                          setIsCustomerPortalOpen(true);
+                        }}
+                        className="w-full text-left p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/20 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                          <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
                         </div>
-                        <p className="text-[10px] text-gray-300 font-medium leading-tight">
-                          Billetera $ COP, transferencias y canjes
-                        </p>
-                      </div>
-                    </button>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-amber-300 text-xs block">
+                              Puntos Ryycos
+                            </span>
+                            <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md">
+                              Billetera
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-gray-300 font-medium leading-tight">
+                            Billetera $ COP, transferencias y canjes
+                          </p>
+                        </div>
+                      </button>
+                    )}
 
                     {/* Ruleta de Premios */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        setCustomerPortalTab('wheel');
-                        setIsCustomerPortalOpen(true);
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <Gift className="w-4 h-4 text-[#E63946]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-[#E63946] transition">
-                          Ruleta de Premios
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Gira y gana platos gratis con tus compras
-                        </p>
-                      </div>
-                    </button>
+                    {!isAndroid && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setCustomerPortalTab('wheel');
+                          setIsCustomerPortalOpen(true);
+                        }}
+                        className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                          <Gift className="w-4 h-4 text-[#E63946]" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="font-bold text-xs text-white block group-hover:text-[#E63946] transition">
+                            Ruleta de Premios
+                          </span>
+                          <p className="text-[10px] text-gray-400 leading-tight">
+                            Gira y gana platos gratis con tus compras
+                          </p>
+                        </div>
+                      </button>
+                    )}
 
                     {/* Reels / Historias */}
                     <button
@@ -1844,15 +1862,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           {/* Right: Action Buttons (Halloween Theme) */}
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
             {/* Mis Puntos Ryycos Button (Desktop & Tablet) */}
-            <button 
-              id="navbar-my-points-btn"
-              onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
-              className="hidden sm:flex px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-[#D62839]/50 text-white font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-              title="Mis Puntos Ryycos acumulados, Billetera y Transferencias"
-            >
-              <Crown className="w-3.5 h-3.5 text-[#D62839] animate-pulse" />
-              <span>🎃 Puntos Ryycos</span>
-            </button>
+            {!isAndroid && (
+              <button 
+                id="navbar-my-points-btn"
+                onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
+                className="hidden sm:flex px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+                title="Mis Puntos Ryycos acumulados, Billetera y Transferencias"
+              >
+                <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>Puntos Ryycos</span>
+              </button>
+            )}
 
             {/* Dynamic Cart Button in Navbar */}
             <button
@@ -2150,8 +2170,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   e.preventDefault();
                   const x = e.pageX - container.offsetLeft;
                   const walk = (x - startXStoresRef.current);
-                  if (Math.abs(walk) > 4) {
+                  if (Math.abs(walk) > 8) {
                     hasMovedStoresRef.current = true;
+                    lastStoresDragAtRef.current = performance.now();
                   }
                   container.scrollLeft = startScrollLeftStoresRef.current - walk;
                 }}
@@ -2160,7 +2181,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   isDraggingStoresRef.current = false;
                   if (storesResumeTimeoutRef.current) clearTimeout(storesResumeTimeoutRef.current);
                   storesResumeTimeoutRef.current = setTimeout(() => {
-                    hasMovedStoresRef.current = false;
                     isStoresUserInteractingRef.current = false;
                   }, 1200);
                 }}
@@ -2193,8 +2213,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               >
                 {/* All Stores Pill Button */}
                 <button
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    hasMovedStoresRef.current = false;
+                  }}
                   onClick={(e) => {
-                    if (hasMovedStoresRef.current) {
+                    if (shouldIgnoreStoreCarouselClick()) {
                       e.preventDefault();
                       e.stopPropagation();
                       return;
@@ -2222,8 +2246,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <button
                   type="button"
                   id="store-carousel-recomendados-reels-btn"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    hasMovedStoresRef.current = false;
+                  }}
                   onClick={(e) => {
-                    if (hasMovedStoresRef.current) {
+                    if (shouldIgnoreStoreCarouselClick()) {
                       e.preventDefault();
                       e.stopPropagation();
                       return;
@@ -2253,8 +2281,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   return (
                     <button
                       key={store.uid}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        hasMovedStoresRef.current = false;
+                      }}
                       onClick={(e) => {
-                        if (hasMovedStoresRef.current) {
+                        if (shouldIgnoreStoreCarouselClick()) {
                           e.preventDefault();
                           e.stopPropagation();
                           return;
@@ -2398,9 +2430,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
-            aria-label="Cargando los 6 primeros productos del restaurante"
+            aria-label="Cargando los 4 primeros productos del restaurante"
           >
-            {[0, 1, 2, 3, 4, 5].map((idx) => (
+            {[0, 1, 2, 3].map((idx) => (
               <ProductCardSkeleton key={`store-skeleton-${idx}`} index={idx} />
             ))}
           </div>
@@ -2408,9 +2440,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
-            aria-label="Cargando 6 productos"
+            aria-label="Cargando 4 productos"
           >
-            {[0, 1, 2, 3, 4, 5].map((idx) => (
+            {[0, 1, 2, 3].map((idx) => (
               <ProductCardSkeleton key={`general-skeleton-${idx}`} index={idx} />
             ))}
           </div>
@@ -2566,7 +2598,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             activeCustomer={activeCustomer}
                             onCustomerUpdate={setActiveCustomer}
                             onOpenCustomerPortal={() => {
-                              setCustomerPortalTab('rewards');
+                              setCustomerPortalTab(isAndroid ? 'orders' : 'rewards');
                               setIsCustomerPortalOpen(true);
                             }}
                             variant="card-overlay"
@@ -2810,7 +2842,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                             activeCustomer={activeCustomer}
                             onCustomerUpdate={setActiveCustomer}
                             onOpenCustomerPortal={() => {
-                              setCustomerPortalTab('rewards');
+                              setCustomerPortalTab(isAndroid ? 'orders' : 'rewards');
                               setIsCustomerPortalOpen(true);
                             }}
                             variant="card-badge"
@@ -3835,19 +3867,32 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 })}
               </div>
 
-              {/* Close / Other actions */}
-              <div className="flex flex-col gap-2 pt-2 shrink-0">
+              {/* Close / Done action */}
+              <div className="flex flex-col gap-2 pt-2">
                 <button
                   onClick={() => {
                     setIsSuccessOpen(false);
-                    setCustomerPortalTab('wheel');
+                    setCustomerPortalTab('orders');
                     setIsCustomerPortalOpen(true);
                   }}
-                  className="w-full py-2.5 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-[#D62839]/25 cursor-pointer"
+                  className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-[#E63946]/20 cursor-pointer"
                 >
-                  <Crown className="w-4 h-4 text-white" />
-                  ¡Girar Ruleta de Platos Gratis & Ver Mis Puntos Ryycos! 🎁
+                  <ShoppingBag className="w-4 h-4 text-white" />
+                  Ver y Rastrear Mis Pedidos en Tiempo Real 📦
                 </button>
+                {!isAndroid && (
+                  <button
+                    onClick={() => {
+                      setIsSuccessOpen(false);
+                      setCustomerPortalTab('wheel');
+                      setIsCustomerPortalOpen(true);
+                    }}
+                    className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                  >
+                    <Crown className="w-4 h-4 text-black" />
+                    ¡Girar Ruleta de Platos Gratis & Ver Mis Puntos Ryycos! 🎁
+                  </button>
+                )}
                 <button
                   onClick={() => {
                     setIsSuccessOpen(false);

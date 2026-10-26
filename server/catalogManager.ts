@@ -285,6 +285,31 @@ export function buildAvailableCatalog(): AvailableCatalog {
     }
   });
 
+  // Prioritize food products so initial batches contain appetizing dishes first
+  const isFoodItem = (p: CatalogProduct) => {
+    const cat = (p.category || '').toLowerCase();
+    const text = `${p.name || ''} ${p.description || ''} ${cat}`.toLowerCase();
+    return (
+      cat.includes('comida') || cat.includes('plato') || cat.includes('restaurante') ||
+      cat.includes('hamburguesa') || cat.includes('pizza') || cat.includes('combo') ||
+      cat.includes('pollo') || cat.includes('asado') || cat.includes('postre') ||
+      cat.includes('caldo') || cat.includes('sopa') || cat.includes('almuerzo') ||
+      text.includes('comida') || text.includes('plato') || text.includes('hamburguesa') ||
+      text.includes('pizza') || text.includes('combo') || text.includes('pollo') ||
+      text.includes('asado') || text.includes('almuerzo') || text.includes('desayuno') ||
+      text.includes('caldo') || text.includes('sopa') || text.includes('picada') ||
+      text.includes('salchipapa')
+    );
+  };
+
+  availableProducts.sort((a, b) => {
+    const foodA = isFoodItem(a);
+    const foodB = isFoodItem(b);
+    if (foodA && !foodB) return -1;
+    if (!foodA && foodB) return 1;
+    return 0;
+  });
+
   currentAvailableCatalog = {
     complete: profilesConfirmed && productsConfirmed,
     stores: openStores,

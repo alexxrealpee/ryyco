@@ -40,7 +40,7 @@ import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
 const detectInitialRouteFromUrl = (): { 
-  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad'; 
+  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad' | 'not-found';
   username: string | null;
   reelId: string | null;
 } => {
@@ -97,6 +97,11 @@ const detectInitialRouteFromUrl = (): {
   const hashLower = hashUser.toLowerCase();
   const searchTab = searchParams.get('tab')?.toLowerCase();
   const searchView = searchParams.get('view')?.toLowerCase();
+
+  // Removed legacy address: keep the home content at / and render a real not-found view at /tienda.
+  if (pathLower === 'tienda') {
+    return { view: 'not-found', username: null, reelId: null };
+  }
 
   // 0. Privacy Policy routes (Google Play Store compliance)
   if (
@@ -254,7 +259,7 @@ export default function App() {
   const initialRoute = detectInitialRouteFromUrl();
   const initialDriverSession = getStoredDriverSession();
 
-  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad'>(() => {
+  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad' | 'not-found'>(() => {
     if (initialRoute.view === 'driver-portal') return 'driver-portal';
     if (initialDriverSession && (window.location.pathname.toLowerCase().includes('domiciliario') || localStorage.getItem('ryyco_auth_mode') === 'driver')) {
       return 'driver-portal';
@@ -547,7 +552,7 @@ export default function App() {
   };
 
   const handleNavigateHome = (claimUsername?: string) => {
-    // Return to root / as the primary landing address
+    // Return to the canonical home address.
     window.history.pushState({}, document.title, '/');
     setTargetUsername(null);
     if (claimUsername && typeof claimUsername === 'string') {

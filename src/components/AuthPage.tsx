@@ -9,6 +9,7 @@ import { Mail, Lock, User, Store, ArrowLeft, LockKeyhole, AlertCircle, Sparkles,
 import { 
   auth, 
   googleProvider, 
+  signInWithGoogleUniversal,
   db, 
   isUsernameAvailable, 
   saveProfile 
@@ -325,7 +326,7 @@ export default function AuthPage({ initialView, usernameClaimed = '', onNavigate
     setLoading(true);
     try {
       localStorage.setItem('ryyco_auth_mode', 'seller');
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithGoogleUniversal();
       const user = result.user;
       
       const { fetchProfileByUid } = await import('../lib/firebase');

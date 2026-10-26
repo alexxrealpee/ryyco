@@ -2,23 +2,40 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>Ryyco</title>
-  <script type="text/javascript">
-    // SPA 404 Redirect Fallback for Hostinger and static web servers
-    var pathSegmentsToKeep = 0;
-    var l = window.location;
-    var redirectedPath = l.pathname.slice(1);
-    if (redirectedPath) {
-      var newUrl = l.protocol + '//' + l.hostname + (l.port ? ':' + l.port : '') +
-        '/?/' + redirectedPath +
-        (l.search ? '&' + l.search.slice(1) : '') +
-        l.hash;
-      l.replace(newUrl);
-    } else {
-      l.replace('/');
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Página no encontrada | Ryyco</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #090b12; color: #fff; font-family: Arial, sans-serif; text-align: center; }
+    main { max-width: 440px; }
+    .code { color: #f4b400; font-size: 14px; font-weight: 900; letter-spacing: .25em; }
+    h1 { margin: 12px 0; font-size: 32px; }
+    p { color: #a9b2c3; line-height: 1.6; }
+    a { display: inline-block; margin-top: 12px; padding: 13px 20px; border-radius: 12px; background: #f4b400; color: #090b12; font-weight: 900; text-decoration: none; }
+  </style>
+  <script>
+    var locationPath = window.location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+    if (locationPath !== 'tienda') {
+      var locationObject = window.location;
+      var redirectedPath = locationObject.pathname.slice(1);
+      if (redirectedPath) {
+        var newUrl = locationObject.protocol + '//' + locationObject.hostname + (locationObject.port ? ':' + locationObject.port : '') +
+          '/?/' + redirectedPath +
+          (locationObject.search ? '&' + locationObject.search.slice(1) : '') +
+          locationObject.hash;
+        locationObject.replace(newUrl);
+      } else {
+        locationObject.replace('/');
+      }
     }
   </script>
 </head>
 <body>
+  <main>
+    <div class="code">ERROR 404</div>
+    <h1>Página no encontrada</h1>
+    <p>La dirección solicitada ya no existe.</p>
+    <a href="/">Ir a la página de inicio</a>
+  </main>
 </body>
 </html>
