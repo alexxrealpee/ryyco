@@ -37,3 +37,6 @@ dist/apis.php
 dist/api/apis.php
 !apis.example.php
 !keys.example.php
+
+# Private Hostinger Firebase service account (never package in dist)
+firebase-service-account*.json

@@ -171,7 +171,7 @@ async function startServer() {
 
   // Body parsing middleware with expanded limit for catalog, audio and voice requests
   app.use(express.json({ limit: '50mb' }));
-  app.post('/api/drivers/tracking-auth', driverTrackingAuth);
+  app.post(['/api/drivers/tracking-auth', '/api/driver-tracking-auth.php'], driverTrackingAuth);
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // API Route: AI Link Extractor

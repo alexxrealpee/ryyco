@@ -74,9 +74,9 @@ auth.languageCode = 'es';
 // Surface transport warnings during local validation; keep production logging quiet.
 setLogLevel(import.meta.env?.DEV ? 'warn' : 'silent');
 
-// Configure Firestore with in-memory cache and forced long polling.
+// Use memory cache and detect whether the network needs long polling.
 // Using memoryLocalCache eliminates corrupted IndexedDbTargetCache assertion failures (ID: b815 / isCorePipeline),
-// and experimentalForceLongPolling eliminates GrpcConnection RPC 'Listen' stream RST_STREAM
+// and automatic long-polling detection handles GrpcConnection RPC 'Listen' stream RST_STREAM
 // errors caused by container reverse proxies, iframes, and Cloud Run idle HTTP/2 stream resets.
 if (typeof window !== 'undefined') {
   try {
@@ -97,13 +97,13 @@ if (typeof window !== 'undefined') {
   try {
     initializeFirestore(app, {
       localCache: memoryLocalCache(),
-      experimentalForceLongPolling: true,
+      experimentalAutoDetectLongPolling: true,
       ignoreUndefinedProperties: true
     }, firebaseConfig.firestoreDatabaseId);
   } catch (e) {
     try {
       initializeFirestore(app, {
-        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true,
         ignoreUndefinedProperties: true
       }, firebaseConfig.firestoreDatabaseId);
     } catch (err) {

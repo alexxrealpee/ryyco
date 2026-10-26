@@ -16,7 +16,11 @@
   RewriteEngine On
   RewriteBase /
 
+  # Preserve Firebase bearer tokens under Apache/FastCGI.
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
   # 1. API Endpoints on Hostinger (PHP Backend Bridge)
+  RewriteRule ^api/drivers/tracking-auth/?$ api/driver-tracking-auth.php [QSA,L]
   RewriteRule ^api/maps/config/?$ api/maps-config.php [QSA,L]
   RewriteRule ^api/maps/key/?$ api/maps-config.php [QSA,L]
   RewriteRule ^api/maps-config\.php$ api/maps-config.php [QSA,L]

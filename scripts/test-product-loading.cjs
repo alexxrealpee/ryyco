@@ -47,7 +47,7 @@ async function main() {
   assert.equal(new Set(state.loadedProducts.map(p => p.id)).size, 18);
   await act(async () => { await state.loadNextFourProducts(); await state.loadNextFourProducts(); });
   assert.equal(fetches, 1);
-  assert.equal(reads, 0);
+  assert.equal(reads, 1, 'Live product read starts without waiting for the API');
   assert.equal(state.hasMore, false);
   await act(async () => root.unmount());
   // A failed API plus failed server read leaves retry available, never a false end.
@@ -99,6 +99,22 @@ async function main() {
   assert.equal(state.loadedProducts.length, 18);
   assert.equal(fetches, beforePrefetch);
   await act(async () => root.unmount());
+
+  // A stalled Hostinger request must never hold up a successful live Firebase read.
+  const beforeFastRead = reads;
+  globalThis.fetch = () => new Promise(() => {});
+  globalThis.__productTest.getDocsFromServer = async () => {
+    reads++;
+    return { metadata: { fromCache: false, hasPendingWrites: false },
+      docs: products.map(p => ({ id: p.id, data: () => p })) };
+  };
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  assert.equal(state.loadedProducts.length, 18, 'Live products display while the HTTP API is still pending');
+  assert.equal(reads, beforeFastRead + 1);
+  assert.equal(state.productsError, null);
+  await act(async () => root.unmount());
+  console.log('PASS startup: slow HTTP API cannot delay confirmed Firebase products');
 
   const {balanceCatalog, resolveProductStore} = await bundle('src/lib/catalogProducts.ts');
   const shops = [{uid:'a',username:'Alpha'},{uid:'b',username:'Beta'},{uid:'c',username:'Gamma'}];

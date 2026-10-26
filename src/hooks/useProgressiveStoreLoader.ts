@@ -76,31 +76,38 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     fullCatalogRequestRef.current = (async () => {
       const controller = new AbortController();
       const deadline = setTimeout(() => controller.abort(), 10000);
-      try {
-        // The HTML prefetch requests the same complete catalog; reuse it once.
+      const serverRead = getDocsFromServer(collection(db, 'products')).then(snapshot => {
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) throw Error('unconfirmed-catalog');
+        return {
+          covered: null as Set<string> | null,
+          products: orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
+            .filter(product => product.active !== false))
+        };
+      });
+      const apiRead = (async () => {
         const prefetched = (window as any).__CATALOG_PREFETCH__;
         (window as any).__CATALOG_PREFETCH__ = null;
         const response = prefetched ? await prefetched : await fetch('/api/catalog/available', {
           signal: controller.signal, cache: 'no-store'
         }).then(r => r.ok && r.headers.get('content-type')?.includes('json') ? r.json() : null);
-        if (response?.source === 'firestore-server' && response.complete === true &&
-            response.isPartial === false && !response.storeFiltered &&
-            Array.isArray(response.catalog?.products) && Array.isArray(response.catalog?.stores) &&
-            response.totalProducts === response.catalog.products.length) {
-          const covered = new Set<string>(response.catalog.stores.map((store: UserProfile) => store.uid));
-          if (openRestaurantsRef.current.every(store => covered.has(store.uid))) {
-            coveredStoresRef.current = covered;
-            return orderProductBatch(response.catalog.products);
-          }
-        }
-      } catch {} finally { clearTimeout(deadline); }
-      // A static JSON file is a preview, never evidence that Firestore is exhausted.
-      // Keep the pending SDK operation shared after a timeout to avoid duplicate reads.
-      const snapshot = await getDocsFromServer(collection(db, 'products'));
-      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) throw Error('unconfirmed-catalog');
-      coveredStoresRef.current = null;
-      return orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
-        .filter(product => product.active !== false));
+        if (response?.source !== 'firestore-server' || response.complete !== true ||
+            response.isPartial !== false || response.storeFiltered ||
+            !Array.isArray(response.catalog?.products) || !Array.isArray(response.catalog?.stores) ||
+            response.totalProducts !== response.catalog.products.length) throw Error('unconfirmed-api-catalog');
+        const covered = new Set<string>(response.catalog.stores.map((store: UserProfile) => store.uid));
+        if (!openRestaurantsRef.current.every(store => covered.has(store.uid))) throw Error('incomplete-store-coverage');
+        return { covered, products: orderProductBatch(response.catalog.products) };
+      })();
+      // Hostinger serves a static preview. Never wait for it before reading live products.
+      // Only the first confirmed source wins; late responses cannot overwrite its coverage.
+      try {
+        const result = await Promise.any([serverRead, apiRead]);
+        coveredStoresRef.current = result.covered;
+        return result.products;
+      } finally {
+        clearTimeout(deadline);
+        controller.abort();
+      }
     })().catch(error => {
       fullCatalogRequestRef.current = null;
       throw error;

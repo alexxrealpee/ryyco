@@ -296,10 +296,11 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     try {
       const credential = await signInWithGoogleUniversal();
       const idToken = await credential.user.getIdToken();
-      const response = await fetch(getApiUrl('/api/drivers/tracking-auth'), {
+      const response = await fetch(getApiUrl('/api/driver-tracking-auth.php'), {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
         body: JSON.stringify({ driverId: driver.id })
       });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Falta publicar api/driver-tracking-auth.php en el hosting.');
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.token) throw new Error(data.error || 'El servidor aún no tiene habilitada la verificación GPS.');
       await signInWithCustomToken(auth, data.token);

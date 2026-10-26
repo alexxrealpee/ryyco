@@ -23,7 +23,10 @@
     "start": "node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "postbuild": "node scripts/sanitize-public-build.mjs",
+    "postbuild:client": "node scripts/sanitize-public-build.mjs",
+    "postbuild:web": "node scripts/sanitize-public-build.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",

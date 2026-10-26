@@ -2301,7 +2301,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           ? 'bg-[#D62839] ring-4 ring-[#D62839]/50 shadow-lg shadow-[#D62839]/30 scale-105'
                           : 'bg-slate-900 hover:bg-[#D62839]/20 ring-2 ring-slate-700/80 hover:ring-[#D62839] group-hover:scale-105'
                       }`}>
-                        <RestaurantLogo src={store.photoURL} name={store.displayName || store.username || "T"} priority={storeIdx < 4} />
+                        <RestaurantLogo src={store.photoURL} name={store.displayName || store.username || "T"} priority={storeIdx < 6} />
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
                         isSelected ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
@@ -2562,7 +2562,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     )}
 
                     {product.imageURL ? (
-                      <ProductCardImage src={product.imageURL} name={product.name} priority={productIndex < 2} />
+                      <ProductCardImage src={product.imageURL} name={product.name} priority={productIndex < 4} />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-1.5">
                         <ShoppingBag className="w-8 h-8 opacity-45 text-orange-400" />
