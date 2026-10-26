@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, onSnapshot, getDocsFromServer } from 'firebase/firestore';
+import { collection, onSnapshot, getDocsFromServer, query, limit } from 'firebase/firestore';
 import { UserProfile, ProductItem } from '../types';
 import { 
   db,
@@ -67,6 +67,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
   const isFetchingMoreRef = useRef(false);
   const fullCatalogRequestRef = useRef<Promise<ProductItem[]> | null>(null);
   const catalogCompleteRef = useRef(false);
+  const firstProductsRequestRef = useRef<Promise<ProductItem[]> | null>(null);
   // null means the server-confirmed products collection covers even closed stores.
   const coveredStoresRef = useRef<Set<string> | null>(new Set());
   const openRestaurantsRef = useRef<UserProfile[]>([]);
@@ -144,6 +145,24 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       setStage('idle');
     }
   }, [getFullCatalog]);
+
+  // A small, server-confirmed first batch can paint while the full collection downloads.
+  // Share it across StrictMode's effect replay; a late batch must never replace the full catalog.
+  useEffect(() => {
+    let active = true;
+    if (!firstProductsRequestRef.current) {
+      firstProductsRequestRef.current = getDocsFromServer(query(collection(db, 'products'), limit(6)))
+        .then(snapshot => {
+          if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return [];
+          return orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
+            .filter(product => product.active !== false));
+        }).catch(() => []);
+    }
+    void firstProductsRequestRef.current.then(products => {
+      if (active && !catalogCompleteRef.current && products.length) setLoadedProducts(products);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => { void loadNextFourProducts(); }, [loadNextFourProducts]);
 

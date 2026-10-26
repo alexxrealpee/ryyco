@@ -44,7 +44,7 @@ async function main() {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, args => ({ path: args.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, args => ({ contents:
         args.path === 'firebase/firestore'
-          ? 'export const {collection,onSnapshot,getDocsFromServer} = globalThis.__storeTest;'
+          ? 'export const {collection,onSnapshot} = globalThis.__storeTest; export const query=(collection,count)=>({collection,count}); export const limit=n=>n; export const getDocsFromServer=q=>typeof q === "object" ? Promise.resolve({metadata:{fromCache:false,hasPendingWrites:false},docs:[]}) : globalThis.__storeTest.getDocsFromServer(q);'
           : `export const db = {}; export const checkIsStoreClosed = s => s.isClosed || s.suspended || ['expired','suspended'].includes(s.subscriptionStatus);
              export const fetchProductsForStoreFromFirebase = async () => ({products:[],hasMore:false});
              export const fetchOpenRestaurantsFromFirebase = () => {throw Error('Duplicate query')};

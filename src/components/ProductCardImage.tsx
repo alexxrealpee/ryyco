@@ -24,6 +24,6 @@ export default memo(function ProductCardImage({ src, name, priority = false }: {
       decoding="async" width="300" height="300" data-image-state={status}
       onLoad={() => setResult({ src, status: 'loaded' })}
       onError={() => setResult({ src, status: 'error' })}
-      className={`w-full h-full object-cover group-hover:scale-105 transition duration-500 ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`} />
+      className={`w-full h-full object-cover group-hover:scale-105 transition-transform duration-200 ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`} />
   </>;
 });

@@ -2510,7 +2510,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <motion.div
                   key={product.id || `prod-${productIndex}`} data-product-id={product.id}
                   layout
-                  initial={{ opacity: 0, scale: 0.95 }}
+                  initial={false}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.25 }}
                   onClick={() => setSelectedProduct(product)}

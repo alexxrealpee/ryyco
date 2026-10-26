@@ -21,6 +21,6 @@ export default memo(function RestaurantLogo({ src, name, priority = false }: {
       decoding="async" width="64" height="64" data-logo-state={status}
       onLoad={() => setResult({ src, status: 'loaded' })}
       onError={() => setResult({ src, status: 'error' })}
-      className={`absolute inset-0 w-full h-full rounded-full object-cover bg-slate-950 pointer-events-none select-none transition-opacity duration-200 ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`} />}
+      className={`absolute inset-0 w-full h-full rounded-full object-cover bg-slate-950 pointer-events-none select-none ${status === 'loaded' ? 'opacity-100' : 'opacity-0'}`} />}
   </div>;
 });

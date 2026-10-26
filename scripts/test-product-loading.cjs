@@ -10,7 +10,7 @@ async function bundle(file, mock = false) {
     define: { 'import.meta.env.DEV': 'false' }, plugins: mock ? [{ name: 'firebase-mock', setup(b) {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, a => ({ path: a.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, a => ({ contents: a.path === 'firebase/firestore'
-        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const getDocsFromServer=(...a)=>globalThis.__productTest.getDocsFromServer(...a);'
+        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const query=(collection, count)=>({collection,count}); export const limit=n=>n; export const getDocsFromServer=(...a)=>typeof a[0] === "object" ? (globalThis.__productTest.firstBatch?.(...a) ?? Promise.resolve({metadata:{fromCache:false,hasPendingWrites:false},docs:[]})) : globalThis.__productTest.getDocsFromServer(...a);'
         : 'export const db={}; export const checkIsStoreClosed=s=>s.isClosed;' }));
     }}] : [] });
   const m = { exports: {} };
@@ -115,6 +115,36 @@ async function main() {
   assert.equal(state.productsError, null);
   await act(async () => root.unmount());
   console.log('PASS startup: slow HTTP API cannot delay confirmed Firebase products');
+
+  // A small live batch paints before a slow full collection; completeness stays false.
+  let finishFull, finishFirst;
+  let smallReads = 0;
+  globalThis.__productTest.firstBatch = async q => {
+    smallReads++;
+    assert.equal(q.count, 6);
+    return {metadata:{fromCache:false,hasPendingWrites:false}, docs:products.slice(0,6).map(p=>({id:p.id,data:()=>p}))};
+  };
+  globalThis.__productTest.getDocsFromServer = () => new Promise(resolve => { finishFull = resolve; });
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Probe))));
+  assert.equal(state.loadedProducts.length, 6);
+  assert.equal(state.hasMore, true);
+  assert.equal(smallReads, 1, 'StrictMode shares the first batch');
+  await act(async () => finishFull({metadata:{fromCache:false,hasPendingWrites:false},docs:products.map(p=>({id:p.id,data:()=>p}))}));
+  assert.equal(state.loadedProducts.length, 18);
+  assert.equal(state.hasMore, false);
+  await act(async () => root.unmount());
+  // A late small batch cannot resurrect a product absent from the complete result.
+  globalThis.__productTest.firstBatch = () => new Promise(resolve => { finishFirst = resolve; });
+  globalThis.__productTest.getDocsFromServer = async () => ({metadata:{fromCache:false,hasPendingWrites:false},docs:[]});
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  await act(async () => finishFirst({metadata:{fromCache:false,hasPendingWrites:false},docs:products.slice(0,6).map(p=>({id:p.id,data:()=>p}))}));
+  assert.equal(state.loadedProducts.length, 0);
+  assert.equal(state.hasMore, false);
+  await act(async () => root.unmount());
+  delete globalThis.__productTest.firstBatch;
+  console.log('PASS first batch: early render, shared read, full replacement and late response protection');
 
   const {balanceCatalog, resolveProductStore} = await bundle('src/lib/catalogProducts.ts');
   const shops = [{uid:'a',username:'Alpha'},{uid:'b',username:'Beta'},{uid:'c',username:'Gamma'}];
