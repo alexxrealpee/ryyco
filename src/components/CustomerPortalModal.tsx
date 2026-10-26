@@ -101,11 +101,11 @@ const WHEEL_SLICES: WheelSlice[] = [
   { title: '¡Plato Fuerte Gratis!', category: 'dish', description: 'Vale para 1 Plato o Hamburguesa del Menú ($20.000 COP)', discountAmount: 20000, color: '#E63946', textColor: '#ffffff', icon: '🍔', isLose: false },
   { title: '¡Sigue Intentando!', category: 'dish', description: '¡Casi! Tienes otra oportunidad en tu próximo pedido', discountAmount: 0, color: '#3B82F6', textColor: '#ffffff', icon: '🍀', isLose: true },
   { title: '¡Bebida Gratis!', category: 'drink', description: 'Gaseosa o jugo refrescante gratis ($4.000 COP)', discountAmount: 4000, color: '#10B981', textColor: '#ffffff', icon: '🥤', isLose: false },
-  { title: '¡Casi! Intenta de Nuevo', category: 'dish', description: '¡Estuviste a milímetros! Sigue acumulando pedidos', discountAmount: 0, color: '#8B5CF6', textColor: '#ffffff', icon: '🎯', isLose: true },
-  { title: 'Bono $10.000 COP', category: 'discount', description: 'Bono de descuento para tu próximo pedido', discountAmount: 10000, color: '#F72585', textColor: '#ffffff', icon: '🎟️', isLose: false },
+  { title: '¡Sigue Intentando!', category: 'dish', description: '¡Estuviste a milímetros! Sigue acumulando pedidos', discountAmount: 0, color: '#8B5CF6', textColor: '#ffffff', icon: '🎯', isLose: true },
+  { title: '¡Boleta Halloween!', category: 'ticket', description: '¡Felicidades! Ganaste una boleta oficial para el evento de Halloween en Ryyco 🎃', discountAmount: 0, color: '#FF7518', textColor: '#ffffff', icon: '🎃', isLose: false },
   { title: '¡Sigue Intentando!', category: 'dish', description: '¡No te rindas! Acumula más giros con tus compras', discountAmount: 0, color: '#F59E0B', textColor: '#ffffff', icon: '💫', isLose: true },
   { title: '¡Postre de la Casa!', category: 'dessert', description: 'Postre artesanal delicioso gratis ($8.000 COP)', discountAmount: 8000, color: '#7209B7', textColor: '#ffffff', icon: '🍨', isLose: false },
-  { title: '¡Casi! Sigue Intentando', category: 'dish', description: '¡Estuvo a punto! Sigue ordenando en Ryyco', discountAmount: 0, color: '#06D6A0', textColor: '#ffffff', icon: '✨', isLose: true },
+  { title: '¡Sigue Intentando!', category: 'dish', description: '¡Estuvo a punto! Sigue ordenando en Ryyco', discountAmount: 0, color: '#06D6A0', textColor: '#ffffff', icon: '✨', isLose: true },
 ];
 
 export default function CustomerPortalModal({
@@ -740,37 +740,71 @@ export default function CustomerPortalModal({
 
     setIsSpinning(true);
 
-    // Pick random slice strictly from losing slices ("Sigue intentando") so nobody wins a prize
     const sliceCount = WHEEL_SLICES.length;
     const sliceAngle = 360 / sliceCount;
-    const loseIndices = WHEEL_SLICES.map((s, idx) => s.isLose ? idx : -1).filter(idx => idx !== -1);
-    const chosenIndex = loseIndices.length > 0
-      ? loseIndices[Math.floor(Math.random() * loseIndices.length)]
-      : 1;
+    const winIndices = WHEEL_SLICES.map((s, idx) => (!s.isLose ? idx : -1)).filter(idx => idx !== -1);
+    const loseIndices = WHEEL_SLICES.map((s, idx) => (s.isLose ? idx : -1)).filter(idx => idx !== -1);
+
+    // 25% chance of winning a prize, 75% chance of landing on "¡Sigue Intentando!"
+    const isWinner = Math.random() < 0.25;
+
+    let chosenIndex: number;
+    if (isWinner && winIndices.length > 0) {
+      chosenIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
+    } else {
+      chosenIndex = loseIndices.length > 0
+        ? loseIndices[Math.floor(Math.random() * loseIndices.length)]
+        : 1;
+    }
     const targetSlice = WHEEL_SLICES[chosenIndex];
 
-    // Extra spins (5 to 8 full rotations) + target slice angle so it stops precisely on Sigue intentando
-    const extraRotations = 360 * (5 + Math.floor(Math.random() * 3));
-    const targetAngle = extraRotations + (360 - (chosenIndex * sliceAngle));
+    // Precisely calculate the target rotation so the pointer at 0° (top) lands squarely on targetSlice
+    const desiredModulo = (360 - (chosenIndex * sliceAngle)) % 360;
+    const currentModulo = ((wheelRotation % 360) + 360) % 360;
+    let forwardDistance = desiredModulo - currentModulo;
+    if (forwardDistance <= 0) {
+      forwardDistance += 360;
+    }
+    const fullSpins = 360 * (5 + Math.floor(Math.random() * 3));
+    const nextRotation = wheelRotation + fullSpins + forwardDistance;
     
-    setWheelRotation(prev => prev + targetAngle);
+    setWheelRotation(nextRotation);
 
     // Wait for wheel animation (4.2 seconds)
     setTimeout(async () => {
       try {
-        await consumeCustomerSpin(customer.phone);
-        // Refresh customer profile
-        const fresh = await fetchCustomerProfileByPhone(customer.phone);
-        if (fresh) setCustomer(fresh);
+        if (!targetSlice.isLose) {
+          // Winning prize! Register prize in Firestore
+          const prizeTitle = targetSlice.title === "¡Boleta Halloween!" ? "¡Ganaste una Boleta para Halloween!" : targetSlice.title;
+          const newPrize = await addCustomerWonPrize(customer.phone, {
+            title: prizeTitle,
+            category: (targetSlice.category || "ticket") as any,
+            description: targetSlice.description,
+            discountAmount: targetSlice.discountAmount || 0
+          });
 
-        // Show Try Again modal
-        setTryAgainModal({
-          title: targetSlice.title,
-          description: "¡Estuviste muy cerca de ganar un plato gratis! Recuerda que con cada compra que realices acumulas nuevos giros y RYYCOS en RYYCO. ¡Sigue intentando!",
-          icon: targetSlice.icon
-        });
+          // Refresh customer profile
+          const fresh = await fetchCustomerProfileByPhone(customer.phone);
+          if (fresh) setCustomer(fresh);
+
+          // Show celebration modal
+          setWonPrizeModal(newPrize);
+        } else {
+          // Did not win -> Sigue Intentando
+          await consumeCustomerSpin(customer.phone);
+          // Refresh customer profile
+          const fresh = await fetchCustomerProfileByPhone(customer.phone);
+          if (fresh) setCustomer(fresh);
+
+          // Show Try Again modal
+          setTryAgainModal({
+            title: targetSlice.title,
+            description: "¡Estuviste muy cerca de ganar un premio! Recuerda que con cada compra que realices acumulas nuevos giros y RYYCOS en RYYCO. ¡Sigue intentando!",
+            icon: targetSlice.icon
+          });
+        }
       } catch (err) {
-        console.warn("Error consumiendo giro:", err);
+        console.warn("Error procesando giro de ruleta:", err);
       } finally {
         setIsSpinning(false);
       }
@@ -2201,7 +2235,7 @@ export default function CustomerPortalModal({
                     </div>
                     <h4 className="text-lg font-black text-white">¡Gira y Gana Platos Gratis!</h4>
                     <p className="text-xs text-gray-400 max-w-md mx-auto">
-                      Cada compra o registro te otorga giros para ganar platos fuertes, bebidas, postres y bonos de descuento.
+                      Cada compra o registro te otorga giros para ganar boletas para Halloween 🎃, platos fuertes, bebidas y postres gratis.
                     </p>
                   </div>
 
