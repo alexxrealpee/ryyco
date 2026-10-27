@@ -44,7 +44,7 @@ async function main() {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, args => ({ path: args.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, args => ({ contents:
         args.path === 'firebase/firestore'
-          ? 'export const {collection,onSnapshot} = globalThis.__storeTest; export const query=(collection,count)=>({collection,count}); export const limit=n=>n; export const getDocsFromServer=q=>typeof q === "object" ? Promise.resolve({metadata:{fromCache:false,hasPendingWrites:false},docs:[]}) : globalThis.__storeTest.getDocsFromServer(q);'
+          ? 'export const {collection,onSnapshot}=globalThis.__storeTest; export const query=(collection,...constraints)=>({collection,constraints}); export const limit=n=>n; export const orderBy=f=>f; export const documentId=()=>"__name__"; export const startAfter=id=>id; export const getDocsFromServer=q=>globalThis.__storeTest.getDocsFromServer(q.collection||q);'
           : `export const db = {}; export const checkIsStoreClosed = s => s.isClosed || s.suspended || ['expired','suspended'].includes(s.subscriptionStatus);
              export const fetchProductsForStoreFromFirebase = async () => ({products:[],hasMore:false});
              export const fetchOpenRestaurantsFromFirebase = () => {throw Error('Duplicate query')};
@@ -67,12 +67,14 @@ async function main() {
   const nativeSetTimeout = globalThis.setTimeout;
   const nativeClearTimeout = globalThis.clearTimeout;
   const deadlines = new Map();
+  const renewals = new Map();
   globalThis.setTimeout = (fn, ms, ...args) => {
     const timer = nativeSetTimeout(fn, ms, ...args);
     if (ms === 15000) deadlines.set(timer, () => fn(...args));
+    if (ms === 8000) renewals.set(timer, () => fn(...args));
     return timer;
   };
-  globalThis.clearTimeout = timer => { deadlines.delete(timer); nativeClearTimeout(timer); };
+  globalThis.clearTimeout = timer => { deadlines.delete(timer); renewals.delete(timer); nativeClearTimeout(timer); };
   const expireDeadline = () => act(async () => {
     for (const [id, fn] of [...deadlines]) { clearTimeout(id); fn(); }
   });
@@ -158,6 +160,41 @@ async function main() {
     console.log('PASS:', scenario, '— cache ignored, atomic list, live close/open, empty snapshot, cleanup');
   }
   assert.equal(subscriptions, 6, 'Two StrictMode setups plus one explicit retry per mount');
+  // Fresh PHP availability may paint before the SDK, but never override a newer live update.
+  let resolveBootstrap;
+  const fresh = {source:'firestore-server',kind:'stores',items:stores};
+  window.__RYYCO_STORES__ = new Promise(resolve => { resolveBootstrap = resolve; });
+  let root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  await act(async () => resolveBootstrap(fresh));
+  assert.equal(state.totalOpenCount, 10, 'Fresh PHP response bypasses slow SDK snapshot');
+  await emit([], true);
+  assert.equal(state.totalOpenCount, 10, 'Initial empty SDK cache cannot erase live HTTP data');
+  globalThis.fetch = async () => ({ok:true,json:async()=>({...fresh,items:stores.slice(0,3)})});
+  await act(async () => {
+    for (const [id, fn] of [...renewals]) { clearTimeout(id); await fn(); }
+  });
+  assert.equal(state.totalOpenCount, 3, 'A fresh projected query applies closures while SDK is connecting');
+  await emit(stores.slice(0,2));
+  assert.equal(state.totalOpenCount, 2, 'SDK remains authoritative after bootstrap');
+  assert.equal(renewals.size, 0, 'Stop HTTP renewal once live SDK confirms');
+  globalThis.fetch = async () => ({ok:false});
+  await act(async () => root.unmount());
+  window.__RYYCO_STORES__ = new Promise(resolve => { resolveBootstrap = resolve; });
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  await act(async () => new Promise(resolve => setTimeout(resolve, 2600)));
+  await emit(stores.slice(0,1));
+  await act(async () => resolveBootstrap(fresh));
+  assert.equal(state.totalOpenCount, 1, 'Late HTTP cannot reopen stores closed by SDK');
+  await act(async () => root.unmount());
+  window.__RYYCO_STORES__ = Promise.resolve({...fresh,source:'static-cache'});
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement(Probe)));
+  assert.equal(state.totalOpenCount, 0, 'Static cache still cannot confirm availability');
+  await act(async () => root.unmount());
+  console.log('PASS live HTTP startup, cache handoff, late response protection and static rejection');
+
   assert.equal(deadlines.size, 0, 'All timeout handles cleaned up');
   globalThis.setTimeout = nativeSetTimeout;
   globalThis.clearTimeout = nativeClearTimeout;

@@ -71,12 +71,6 @@ export const RecommendationHeartButton: React.FC<RecommendationHeartButtonProps>
   useEffect(() => {
     if (!storeId) return;
 
-    fetchStoreRecommendations(storeId, currentUserId).then(initialStats => {
-      setStats(initialStats);
-    }).catch(err => {
-      console.warn("Could not fetch recommendations:", err);
-    });
-
     const unsubscribe = subscribeStoreRecommendations(storeId, currentUserId, (updatedStats) => {
       setStats(prev => ({
         ...updatedStats,

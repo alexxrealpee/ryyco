@@ -3,10 +3,40 @@
  * RYYCO Available Catalog Endpoint for Hostinger
  * SPDX-License-Identifier: Apache-2.0
  */
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/catalog-live.php';
+header('Access-Control-Allow-Origin: *');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
+
+// Each request confirms current data with Firestore. Only image bytes are cached.
+// A failed live query falls back to an explicitly UNCONFIRMED static preview.
+try {
+    $initial = in_array($_GET['initial'] ?? '', ['true', '1'], true);
+    $catalog = catalogExternalize(catalogReadLive($initial ? 18 : 0), __DIR__ . '/../catalog-images');
+    $storeId = trim((string)($_GET['storeId'] ?? ''));
+    $username = strtolower(trim((string)($_GET['storeUsername'] ?? '')));
+    $filtered = $storeId !== '' || $username !== '';
+    if ($filtered) {
+        $catalog['products'] = array_values(array_filter($catalog['products'], fn($p) =>
+            ($storeId !== '' && ($p['userId'] ?? '') === $storeId) ||
+            ($username !== '' && strtolower($p['storeUsername'] ?? '') === $username)));
+        $catalog['stores'] = array_values(array_filter($catalog['stores'], fn($s) =>
+            ($storeId !== '' && ($s['uid'] ?? '') === $storeId) ||
+            ($username !== '' && strtolower($s['username'] ?? '') === $username)));
+    }
+    $total = count($catalog['products']);
+    $initial = in_array($_GET['initial'] ?? '', ['true', '1'], true);
+    $limit = $initial ? 18 : max(0, (int)($_GET['limit'] ?? 0));
+    $partial = $limit > 0 && $total > $limit;
+    if ($partial) $catalog['products'] = array_slice($catalog['products'], 0, $limit);
+    echo json_encode(['success' => true, 'source' => 'firestore-server', 'complete' => !$initial && !$partial && !$filtered, 'storesComplete' => !$filtered,
+        'isPartial' => $initial || $partial, 'storeFiltered' => $filtered, 'totalProducts' => $initial ? null : $total,
+        'confirmedAt' => gmdate('c'), 'catalog' => $catalog], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    exit;
+} catch (Throwable $error) {
+    // Never label stale files as current, or expose server diagnostics to visitors.
+}
 
 $cachePaths = [
     __DIR__ . '/../catalog-cache.json',

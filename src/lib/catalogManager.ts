@@ -309,8 +309,8 @@ export function initClientCatalogManager(): () => void {
  * The AI uses this as the sole source of truth during conversations.
  * NO repeated Firebase calls during chat.
  */
-export function getClientAvailableCatalog(): ClientAvailableCatalog {
-  if (!clientAvailableCatalog.isLoaded && !inFlightPromise) {
+export function getClientAvailableCatalog(loadIfMissing = true): ClientAvailableCatalog {
+  if (loadIfMissing && !clientAvailableCatalog.isLoaded && !inFlightPromise) {
     // Fire background load without blocking
     loadOpenStoresCatalogInBackground().catch(() => {});
   }

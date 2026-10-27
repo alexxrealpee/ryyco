@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, onSnapshot, getDocsFromServer, query, limit } from 'firebase/firestore';
+import { collection, onSnapshot, getDocsFromServer, query, limit, orderBy, startAfter, documentId } from 'firebase/firestore';
 import { UserProfile, ProductItem } from '../types';
 import { 
   db,
@@ -64,79 +64,67 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
   const retryRestaurants = useCallback(() => setListenerAttempt(attempt => attempt + 1), []);
 
   // State refs to prevent stale closures and avoid race conditions
+  const storeBootstrapRef = useRef((window as any).__RYYCO_STORES__ as Promise<any> | undefined);
+  const productBootstrapRef = useRef((window as any).__RYYCO_PRODUCTS__ as Promise<any> | undefined);
   const isFetchingMoreRef = useRef(false);
-  const fullCatalogRequestRef = useRef<Promise<ProductItem[]> | null>(null);
-  const catalogCompleteRef = useRef(false);
-  const firstProductsRequestRef = useRef<Promise<ProductItem[]> | null>(null);
-  // null means the server-confirmed products collection covers even closed stores.
-  const coveredStoresRef = useRef<Set<string> | null>(new Set());
+  const pageRequestRef = useRef<Promise<{ items: ProductItem[]; cursor: string | null; hasMore: boolean }> | null>(null);
+  const cursorRef = useRef<string | null>(null);
+  const completeRef = useRef(false);
+  const firstRequestRef = useRef(true);
   const openRestaurantsRef = useRef<UserProfile[]>([]);
 
-  const getFullCatalog = useCallback((): Promise<ProductItem[]> => {
-    if (fullCatalogRequestRef.current) return fullCatalogRequestRef.current;
-    fullCatalogRequestRef.current = (async () => {
-      const controller = new AbortController();
-      const deadline = setTimeout(() => controller.abort(), 10000);
-      const serverRead = getDocsFromServer(collection(db, 'products')).then(snapshot => {
-        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) throw Error('unconfirmed-catalog');
-        return {
-          covered: null as Set<string> | null,
-          products: orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
-            .filter(product => product.active !== false))
-        };
-      });
-      const apiRead = (async () => {
-        const prefetched = (window as any).__CATALOG_PREFETCH__;
-        (window as any).__CATALOG_PREFETCH__ = null;
-        const response = prefetched ? await prefetched : await fetch('/api/catalog/available', {
-          signal: controller.signal, cache: 'no-store'
-        }).then(r => r.ok && r.headers.get('content-type')?.includes('json') ? r.json() : null);
-        if (response?.source !== 'firestore-server' || response.complete !== true ||
-            response.isPartial !== false || response.storeFiltered ||
-            !Array.isArray(response.catalog?.products) || !Array.isArray(response.catalog?.stores) ||
-            response.totalProducts !== response.catalog.products.length) throw Error('unconfirmed-api-catalog');
-        const covered = new Set<string>(response.catalog.stores.map((store: UserProfile) => store.uid));
-        if (!openRestaurantsRef.current.every(store => covered.has(store.uid))) throw Error('incomplete-store-coverage');
-        return { covered, products: orderProductBatch(response.catalog.products) };
-      })();
-      // Hostinger serves a static preview. Never wait for it before reading live products.
-      // Only the first confirmed source wins; late responses cannot overwrite its coverage.
-      try {
-        const result = await Promise.any([serverRead, apiRead]);
-        coveredStoresRef.current = result.covered;
-        return result.products;
-      } finally {
-        clearTimeout(deadline);
-        controller.abort();
-      }
-    })().catch(error => {
-      fullCatalogRequestRef.current = null;
-      throw error;
-    });
-    return fullCatalogRequestRef.current;
-  }, []);
-
-  // Historical name retained for callers; metadata is buffered once, UI reveals six.
   const loadNextFourProducts = useCallback(async (): Promise<ProductItem[]> => {
-    if (isFetchingMoreRef.current || catalogCompleteRef.current) return [];
+    if (isFetchingMoreRef.current || completeRef.current) return [];
     isFetchingMoreRef.current = true;
     setIsLoadingMore(true);
     setProductsError(null);
+    if (!pageRequestRef.current) {
+      const cursor = cursorRef.current;
+      const prefetched = firstRequestRef.current ? productBootstrapRef.current : undefined;
+      firstRequestRef.current = false;
+      (window as any).__RYYCO_PRODUCTS__ = null;
+      pageRequestRef.current = (async () => {
+        try {
+          const requestPage = async () => {
+            const url = '/api/catalog-page.php?kind=products&limit=12' + (cursor ? '&after=' + encodeURIComponent(cursor) : '');
+            const options = { cache: 'no-store' as RequestCache, priority: 'high' as RequestPriority, signal: AbortSignal.timeout(12000) };
+            let result = await fetch(url, options);
+            // A transient gateway failure should not immediately trigger a larger SDK download.
+            if (result.status >= 500) result = await fetch(url, options);
+            return result.ok ? result.json() : null;
+          };
+          const response = prefetched ? await prefetched : await requestPage();
+          if (response?.source !== 'firestore-server' || response.kind !== 'products' || !Array.isArray(response.items) ||
+              typeof response.hasMore !== 'boolean' || (response.hasMore && (!response.cursor || response.cursor === cursor))) throw Error('unconfirmed-page');
+          return response;
+        } catch (error) {
+          performance.mark?.('ryyco:page-fallback', {detail: error instanceof Error ? error.message : 'unknown'});
+          // A native app or unavailable PHP uses the same bounded document-ID pagination.
+          const constraints = [orderBy(documentId()), ...(cursor ? [startAfter(cursor)] : []), limit(12)];
+          const snapshot = await getDocsFromServer(query(collection(db, 'products'), ...constraints));
+          if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) throw Error('unconfirmed-page');
+          return {items:snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem)),
+            cursor:snapshot.docs.at(-1)?.id || null, hasMore:snapshot.docs.length === 12};
+        }
+      })();
+    }
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const products = await Promise.race([getFullCatalog(), new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(Error('catalog-timeout')), 20000);
+      const page = await Promise.race([pageRequestRef.current, new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(Error('catalog-timeout')), 15000);
       })]);
-      const unique = Array.from(new Map<string, ProductItem>(products.filter(p => p?.id).map(p => [p.id, p])).values());
-      // Replace: deleted/inactive products must not survive an authoritative refresh.
-      setLoadedProducts(unique);
-      catalogCompleteRef.current = true;
-      setHasMore(false);
-      return unique;
+      performance.mark?.('ryyco:page-ready', {detail: {count:page.items.length, hasMore:page.hasMore}});
+      const items = orderProductBatch(page.items.filter(product => product?.id && product.active !== false));
+      setLoadedProducts(previous => Array.from(new Map([...previous, ...items].map(p => [p.id, p])).values()));
+      cursorRef.current = page.cursor;
+      completeRef.current = !page.hasMore;
+      setHasMore(page.hasMore);
+      pageRequestRef.current = null;
+      return items;
     } catch (error) {
-      setProductsError('No se pudo confirmar el catálogo. Comprueba tu conexión y vuelve a intentar.');
-      setHasMore(true);
-      console.warn('Could not confirm catalog:', error);
+      performance.mark?.('ryyco:page-error', {detail: error instanceof Error ? error.message : 'unknown'});
+      if (!(error instanceof Error) || error.message !== 'catalog-timeout') pageRequestRef.current = null;
+      setProductsError('No pudimos cargar más productos. Revisa tu conexión y reintenta.');
       return [];
     } finally {
       clearTimeout(timeout);
@@ -144,42 +132,16 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       setIsLoadingMore(false);
       setStage('idle');
     }
-  }, [getFullCatalog]);
-
-  // A small, server-confirmed first batch can paint while the full collection downloads.
-  // Share it across StrictMode's effect replay; a late batch must never replace the full catalog.
-  useEffect(() => {
-    let active = true;
-    if (!firstProductsRequestRef.current) {
-      firstProductsRequestRef.current = getDocsFromServer(query(collection(db, 'products'), limit(6)))
-        .then(snapshot => {
-          if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return [];
-          return orderProductBatch(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as ProductItem))
-            .filter(product => product.active !== false));
-        }).catch(() => []);
-    }
-    void firstProductsRequestRef.current.then(products => {
-      if (active && !catalogCompleteRef.current && products.length) setLoadedProducts(products);
-    });
-    return () => { active = false; };
   }, []);
 
   useEffect(() => { void loadNextFourProducts(); }, [loadNextFourProducts]);
-
-  useEffect(() => {
-    if (!catalogCompleteRef.current || coveredStoresRef.current === null ||
-        openRestaurants.every(store => coveredStoresRef.current!.has(store.uid))) return;
-    // A newly opened shop was outside the API's previous open-store scope.
-    catalogCompleteRef.current = false;
-    fullCatalogRequestRef.current = null;
-    setHasMore(true);
-    void loadNextFourProducts();
-  }, [openRestaurants, loadNextFourProducts]);
 
   // Only server-confirmed profiles may publish restaurant availability.
   useEffect(() => {
     let active = true;
     let confirmed = false;
+    let listenerConfirmed = false;
+    let allowBootstrap = listenerAttempt === 0;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const startedAt = Date.now();
     let liveProfiles: Record<string, UserProfile> = {};
@@ -195,6 +157,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     };
     const fail = (code: string) => {
       if (!active) return;
+      allowBootstrap = false;
       clearTimeout(deadline);
       deadline = undefined;
       clearAvailability();
@@ -242,7 +205,29 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       setRestaurantsError(null);
       setStatusMessage('');
     };
-    const unsubscribe = onSnapshot(collection(db, 'profiles'),
+    let unsubscribe = () => {};
+    let subscribed = false;
+    let subscribeTimer: ReturnType<typeof setTimeout> | undefined;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const refreshController = new AbortController();
+    const renewAvailability = async () => {
+      if (!active || listenerConfirmed || !allowBootstrap) return;
+      try {
+        const response = await fetch('/api/catalog-page.php?kind=stores', {
+          cache: 'no-store', priority: 'high', signal: refreshController.signal
+        });
+        if (response.ok) {
+          acceptBootstrap(await response.json());
+          return;
+        }
+      } catch { /* A failed renewal never extends freshness. */ }
+      if (active && allowBootstrap && !listenerConfirmed) refreshTimer = setTimeout(renewAvailability, 2000);
+    };
+    const subscribe = () => {
+      if (!active || subscribed) return;
+      subscribed = true;
+      clearTimeout(subscribeTimer);
+      unsubscribe = onSnapshot(collection(db, 'profiles'),
       { includeMetadataChanges: true }, snapshot => {
         if (!active) return;
         if (import.meta.env?.DEV) console.debug('[restaurants] snapshot', JSON.stringify({
@@ -253,12 +238,16 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         }));
         if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
           // Losing server confirmation must not leave old availability on screen.
-          if (confirmed) waitForServer();
+          if (confirmed && listenerConfirmed) waitForServer();
           return;
         }
         clearTimeout(deadline);
         deadline = undefined;
         confirmed = true;
+        listenerConfirmed = true;
+        clearTimeout(refreshTimer);
+        refreshController.abort();
+        allowBootstrap = false;
         // Replace, rather than merge: deleted profiles and old aliases must disappear.
         liveProfiles = {};
         snapshot.forEach(doc => {
@@ -275,6 +264,30 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
         if (!active) return;
         fail(error.code || 'unknown');
       });
+    };
+    // Give the in-flight lightweight response a head start on mobile connections.
+    // Live updates attach as soon as it settles, or after a bounded fallback delay.
+    if (storeBootstrapRef.current) subscribeTimer = setTimeout(subscribe, 2500);
+    else subscribe();
+    // The server response contains fresh availability, unlike the old static JSON.
+    // It can publish the whole restaurant list before the multi-megabyte SDK snapshot.
+    const acceptBootstrap = (response: any) => {
+      if (!active || !allowBootstrap || navigator.onLine === false ||
+          response?.source !== 'firestore-server' || response.kind !== 'stores' ||
+          !Array.isArray(response.items)) return;
+      (window as any).__RYYCO_STORES__ = null;
+      clearTimeout(deadline);
+      deadline = undefined;
+      liveProfiles = Object.fromEntries(response.items.map((store: UserProfile) => [store.uid, store]));
+      confirmed = true;
+      publish();
+      // Keep confirmation bounded if the live listener never connects.
+      deadline = setTimeout(() => fail('deadline-exceeded'), 15000);
+      // Until the large legacy realtime snapshot connects, renew with a fresh
+      // projected server query. A failed renewal never extends the 15s lease.
+      refreshTimer = setTimeout(renewAvailability, 8000);
+    };
+    void storeBootstrapRef.current?.then(acceptBootstrap).catch(() => {}).finally(subscribe);
     const offline = () => fail('offline');
     const online = () => waitForServer();
     window.addEventListener('offline', offline);
@@ -286,6 +299,9 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     return () => {
       active = false;
       unsubscribe();
+      clearTimeout(subscribeTimer);
+      clearTimeout(refreshTimer);
+      refreshController.abort();
       clearTimeout(deadline);
       clearInterval(timer);
       window.removeEventListener('offline', offline);

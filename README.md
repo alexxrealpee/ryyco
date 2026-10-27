@@ -45,3 +45,17 @@ El primer arranque no avisa de pedidos anteriores. Tras reiniciar recupera pedid
 7. Confirmar **GPS confirmado** en el domiciliario y el marcador en el cliente con el pedido abierto. En la app Capacitor se necesita instalar una compilación nueva; subir la web no actualiza un APK ya instalado. El cliente también necesita una sesión verificada que cumpla las reglas de lectura de ese pedido.
 
 Pruebas locales del puente PHP: `node scripts/test-hostinger-tracking-auth.cjs`, con `PHP_BINARY` apuntando a PHP 8.3 (y OpenSSL habilitado). La creación de sesiones usa el formato de tokens personalizados documentado por Firebase: https://firebase.google.com/docs/auth/admin/create-custom-tokens.
+
+### Inicio paginado y fotografías independientes
+
+El HTML inicia dos solicitudes independientes a `api/catalog-page.php`: perfiles públicos de restaurantes y una primera página de 12 productos. Se consultan solo los campos necesarios; las imágenes base64, portadas y QR no forman parte de esos datos. Cada respuesta se confirma con Firestore en vivo. La paginación usa el ID de documento y un máximo de 24 documentos por página; no requiere índices compuestos nuevos.
+
+La interfaz muestra seis productos elegibles y solicita nuevas páginas cerca del final. Si encuentra tiendas cerradas, bebidas o productos inactivos, continúa hasta llenar la tanda. Al buscar, filtrar o cambiar la ordenación puede consultar más páginas de metadatos para completar los resultados. Las solicitudes simultáneas se comparten. Si PHP falla, la alternativa de Firebase también está limitada a 12 documentos por página.
+
+`api/catalog-image.php` descarga solamente la fotografía solicitada. Su URL incluye la versión del documento y reutiliza archivos en `catalog-images` y la caché del navegador; los cambios generan una URL nueva. El listener de perfiles de Firestore conserva los cierres y reaperturas en vivo. Ningún archivo estático confirma disponibilidad. El asistente solicita su catálogo al abrirse y las recomendaciones utilizan su suscripción sin duplicar la lectura inicial.
+
+Las fotografías se habilitan cerca de la pantalla (200 px) y se descargan como máximo tres a la vez, reservando conexiones para metadatos. Mientras conecta la escucha de perfiles, la respuesta pequeña de disponibilidad puede renovarse desde Firestore; una renovación fallida nunca extiende su vigencia. La escucha actual todavía recibe documentos completos de perfiles: las fotos base64 heredadas siguen siendo un costo de esa conexión, aunque ya no bloquean la primera presentación. Las proyecciones reducen bytes, no el número facturado de documentos; las renovaciones y la primera lectura de una imagen también tienen costo de lectura.
+
+Hostinger debe desplegar todo `dist`, incluidos `api/catalog-page.php`, `api/catalog-image.php`, `api/catalog-live.php` y `.htaccess`. PHP necesita cURL, HTTPS a Firestore y escritura en `catalog-images` para reutilizar fotografías. El despliegue conectado a GitHub debe finalizar antes de comprobar producción.
+
+Pruebas: `node scripts/test-product-loading.cjs`, `node scripts/test-store-availability.cjs`, `node --test scripts/test-catalog-bootstrap.mjs`, `node scripts/test-hostinger-catalog.cjs` (con PHP_BINARY). La medición `node scripts/measure-home.cjs --local` utiliza Chrome/Playwright y PHP, 390×844, 200.000 bytes/s, 150 ms de latencia y CPU 4×. Las capturas y métricas quedan en `build/performance` fuera de Git; las rutas se configuran con CHROME_BINARY, PHP_BINARY y RYYCO_NODE_MODULES.

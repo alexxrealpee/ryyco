@@ -167,7 +167,7 @@ export default function LinnkProVoiceAssistant({
   ]);
 
   // Catalog and system data cache: initialized instantly from in-memory / session storage (0ms)
-  const initialMemoryCatalog = getClientAvailableCatalog();
+  const initialMemoryCatalog = getClientAvailableCatalog(false);
   const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>(
     initialMemoryCatalog.products.length > 0 ? initialMemoryCatalog.products : DEFAULT_PLATFORM_PRODUCTS
   );
@@ -254,6 +254,7 @@ export default function LinnkProVoiceAssistant({
   // 2. Non-blocking Background Open-Stores Catalog Sync & Delivery Fee
   // Visual UI renders FIRST immediately; catalog of open stores is downloaded & cached in the background.
   useEffect(() => {
+    if (!isOpen) return;
     // 1. Subscribe to in-memory catalog updates
     const unsubscribeCatalog = subscribeToAvailableCatalog((freshCatalog) => {
       if (freshCatalog.products.length > 0 || freshCatalog.stores.length > 0) {
@@ -276,7 +277,7 @@ export default function LinnkProVoiceAssistant({
       clearTimeout(timer);
       unsubscribeCatalog();
     };
-  }, []);
+  }, [isOpen]);
 
   // 3. Call Duration Timer
   useEffect(() => {

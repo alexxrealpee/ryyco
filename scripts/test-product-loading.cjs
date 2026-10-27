@@ -10,7 +10,7 @@ async function bundle(file, mock = false) {
     define: { 'import.meta.env.DEV': 'false' }, plugins: mock ? [{ name: 'firebase-mock', setup(b) {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, a => ({ path: a.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, a => ({ contents: a.path === 'firebase/firestore'
-        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const query=(collection, count)=>({collection,count}); export const limit=n=>n; export const getDocsFromServer=(...a)=>typeof a[0] === "object" ? (globalThis.__productTest.firstBatch?.(...a) ?? Promise.resolve({metadata:{fromCache:false,hasPendingWrites:false},docs:[]})) : globalThis.__productTest.getDocsFromServer(...a);'
+        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const query=(collection,...constraints)=>({collection,constraints}); export const limit=n=>({limit:n}); export const orderBy=field=>({orderBy:field}); export const documentId=()=>"__name__"; export const startAfter=id=>({after:id}); export const getDocsFromServer=(...a)=>globalThis.__productTest.getDocsFromServer(...a);'
         : 'export const db={}; export const checkIsStoreClosed=s=>s.isClosed;' }));
     }}] : [] });
   const m = { exports: {} };
@@ -22,143 +22,49 @@ async function main() {
   Object.assign(globalThis, { window: dom.window, document: dom.window.document,
     localStorage: dom.window.localStorage, sessionStorage: dom.window.sessionStorage,
     CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true });
-  let reads = 0, fetches = 0, resolveFull;
-  globalThis.__productTest = { collection: (_, name) => name, onSnapshot: () => () => {},
-    getDocsFromServer: async () => { reads++; throw Error('Simulated Firestore connection failure'); } };
-  const products = Array.from({ length: 18 }, (_, i) => ({ id: String(i), name: 'Product ' + i,
-    price: 10000 + i, userId: 'store', active: true, category: 'Hamburguesas',
-    imageURL: '/image-' + i + '.webp', createdAt: new Date(2026, 9, 18, 0, 0, 18 - i).toISOString() }));
-  window.__INITIAL_CATALOG_DATA__ = { isPartial: true, catalog: { products: products.slice(0, 6) } };
-  globalThis.fetch = () => { fetches++; return new Promise(resolve => { resolveFull = resolve; }); };
-  const { useProgressiveStoreLoader } = await bundle('src/hooks/useProgressiveStoreLoader.ts', true);
+  let reads = 0, fetches = 0;
+  globalThis.__productTest = {collection:(_,name)=>name,onSnapshot:()=>()=>{}, getDocsFromServer:async q=>{
+    reads++; assert(q.constraints.some(c=>c.limit===12)); throw Error('offline');
+  }};
+  const products = Array.from({length:30},(_,i)=>({id:String(i).padStart(3,'0'),name:'Meal '+i,userId:'store',active:true,price:10000,imageURL:'/photo-'+i+'.webp'}));
+  const page = (items,hasMore) => ({source:'firestore-server',kind:'products',items,cursor:items.at(-1)?.id||null,hasMore});
+  const response = body=>({ok:true,json:async()=>body});
+  let complete;
+  window.__RYYCO_PRODUCTS__ = Promise.resolve(page(products.slice(0,12),true));
+  globalThis.fetch = url=>{fetches++;assert(url.includes('after=011'));return new Promise(resolve=>{complete=resolve});};
+  const {useProgressiveStoreLoader}=await bundle('src/hooks/useProgressiveStoreLoader.ts',true);
   let state;
-  function Probe() { state = useProgressiveStoreLoader(); return null; }
-  let root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Probe))));
-  assert.equal(state.loadedProducts.length, 0, "Stale initial JSON is not confirmed product data");
-  const prefix = state.loadedProducts.map(p => p.id);
-  let request;
-  await act(async () => { request = state.loadNextFourProducts(); await state.loadNextFourProducts(); });
-  assert.equal(fetches, 1, 'Concurrent pagination shares one full catalog request');
-  await act(async () => { resolveFull({ ok: true, headers: { get: () => 'application/json' },
-    json: async () => ({ source: "firestore-server", complete: true, isPartial: false, totalProducts: 19, catalog: { stores: [{uid:"store"}], products: [...products, products[8]] } }) }); await request; await new Promise(resolve => setImmediate(resolve)); });
-  assert.equal(state.loadedProducts.length, 18);
-  assert.deepEqual(state.loadedProducts.slice(0, 6).map(p => p.id), products.slice(0,6).map(p=>p.id));
-  assert.equal(new Set(state.loadedProducts.map(p => p.id)).size, 18);
-  await act(async () => { await state.loadNextFourProducts(); await state.loadNextFourProducts(); });
-  assert.equal(fetches, 1);
-  assert.equal(reads, 1, 'Live product read starts without waiting for the API');
-  assert.equal(state.hasMore, false);
-  await act(async () => root.unmount());
-  // A failed API plus failed server read leaves retry available, never a false end.
-  delete window.__INITIAL_CATALOG_DATA__;
-  globalThis.fetch = async () => ({ok:false});
-  root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(Probe)));
-  assert.equal(state.hasMore, true);
-  assert(state.productsError);
-  globalThis.__productTest.getDocsFromServer = async () => ({metadata:{fromCache:false,hasPendingWrites:false},docs:products.map(p=>({id:p.id,data:()=>p}))});
-  await act(async () => { await state.retryProducts(); });
-  assert.equal(state.hasMore, false);
-  assert.equal(state.productsError, null);
-  assert.equal(state.loadedProducts.length, 18);
-  await act(async () => root.unmount());
-  // A stalled SDK read times out visibly; retry reuses it instead of duplicating reads.
-  const nativeTimeout = globalThis.setTimeout;
-  const nativeClear = globalThis.clearTimeout;
-  const productDeadlines = new Map();
-  let timerId = 100000, resolveStalled, stalledReads = 0;
-  globalThis.setTimeout = (fn, ms, ...args) => ms === 20000
-    ? (productDeadlines.set(++timerId, fn), timerId) : nativeTimeout(fn, ms, ...args);
-  globalThis.clearTimeout = id => productDeadlines.delete(id) || nativeClear(id);
-  globalThis.__productTest.getDocsFromServer = () => { stalledReads++; return new Promise(resolve => { resolveStalled = resolve; }); };
-  root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(Probe)));
-  await act(async () => { for (const fn of [...productDeadlines.values()]) fn(); });
-  assert.equal(state.isLoadingMore, false);
-  assert.equal(state.hasMore, true);
-  assert(state.productsError);
-  await act(async () => {
-    resolveStalled({metadata:{fromCache:false,hasPendingWrites:false},docs:[]});
-    await state.retryProducts();
-  });
-  assert.equal(stalledReads, 1, 'Timed out SDK read is still shared on retry');
-  assert.equal(state.hasMore, false, 'Only a confirmed empty collection is a real end');
-  assert.equal(state.productsError, null);
-  await act(async () => root.unmount());
-  assert.equal(productDeadlines.size, 0);
-  globalThis.setTimeout = nativeTimeout;
-  globalThis.clearTimeout = nativeClear;
-
-  // HTML prefetch and React must not request the same full buffer twice.
-  const beforePrefetch = fetches;
-  window.__CATALOG_PREFETCH__ = Promise.resolve({source:'firestore-server',complete:true,
-    isPartial:false,totalProducts:products.length,catalog:{stores:[{uid:'store'}],products}});
-  root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(Probe)));
-  assert.equal(state.loadedProducts.length, 18);
-  assert.equal(fetches, beforePrefetch);
-  await act(async () => root.unmount());
-
-  // A stalled Hostinger request must never hold up a successful live Firebase read.
-  const beforeFastRead = reads;
-  globalThis.fetch = () => new Promise(() => {});
-  globalThis.__productTest.getDocsFromServer = async () => {
-    reads++;
-    return { metadata: { fromCache: false, hasPendingWrites: false },
-      docs: products.map(p => ({ id: p.id, data: () => p })) };
+  function Probe(){state=useProgressiveStoreLoader();return null;}
+  let root=createRoot(document.getElementById('root'));
+  await act(async()=>root.render(React.createElement(React.StrictMode,null,React.createElement(Probe))));
+  assert.equal(state.loadedProducts.length,12);
+  assert.equal(state.hasMore,true);
+  assert.equal(reads,0,'No SDK duplication when server metadata succeeds');
+  assert.equal(fetches,0,'No full catalog or second page before requested');
+  let pending;
+  await act(async()=>{pending=state.loadNextFourProducts();void state.loadNextFourProducts();});
+  assert.equal(fetches,1,'One in-flight request per cursor');
+  await act(async()=>{complete(response(page(products.slice(12,24),true)));await pending;});
+  assert.equal(state.loadedProducts.length,24);
+  assert.deepEqual(state.loadedProducts.slice(0,12).map(p=>p.id),products.slice(0,12).map(p=>p.id));
+  globalThis.fetch=async url=>{assert(url.includes('after=023'));return response(page(products.slice(24),false));};
+  await act(async()=>{await state.loadNextFourProducts();});
+  assert.equal(state.loadedProducts.length,30);assert.equal(state.hasMore,false);
+  await act(async()=>root.unmount());
+  // Failures keep retry available; never convert a failed page into an empty catalog.
+  delete window.__RYYCO_PRODUCTS__;
+  globalThis.fetch=async()=>({ok:false});
+  root=createRoot(document.getElementById('root'));
+  await act(async()=>root.render(React.createElement(Probe)));
+  assert(state.productsError);assert.equal(state.hasMore,true);
+  globalThis.__productTest.getDocsFromServer=async q=>{
+    assert(q.constraints.some(c=>c.limit===12));
+    return {metadata:{fromCache:false,hasPendingWrites:false},docs:products.slice(0,2).map(p=>({id:p.id,data:()=>p}))};
   };
-  root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(Probe)));
-  assert.equal(state.loadedProducts.length, 18, 'Live products display while the HTTP API is still pending');
-  assert.equal(reads, beforeFastRead + 1);
-  assert.equal(state.productsError, null);
-  await act(async () => root.unmount());
-  console.log('PASS startup: slow HTTP API cannot delay confirmed Firebase products');
-
-  // A small live batch paints before a slow full collection; completeness stays false.
-  let finishFull, finishFirst;
-  let smallReads = 0;
-  globalThis.__productTest.firstBatch = async q => {
-    smallReads++;
-    assert.equal(q.count, 6);
-    return {metadata:{fromCache:false,hasPendingWrites:false}, docs:products.slice(0,6).map(p=>({id:p.id,data:()=>p}))};
-  };
-  globalThis.__productTest.getDocsFromServer = () => new Promise(resolve => { finishFull = resolve; });
-  root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(React.StrictMode, null, React.createElement(Probe))));
-  assert.equal(state.loadedProducts.length, 6);
-  assert.equal(state.hasMore, true);
-  assert.equal(smallReads, 1, 'StrictMode shares the first batch');
-  await act(async () => finishFull({metadata:{fromCache:false,hasPendingWrites:false},docs:products.map(p=>({id:p.id,data:()=>p}))}));
-  assert.equal(state.loadedProducts.length, 18);
-  assert.equal(state.hasMore, false);
-  await act(async () => root.unmount());
-  // A late small batch cannot resurrect a product absent from the complete result.
-  globalThis.__productTest.firstBatch = () => new Promise(resolve => { finishFirst = resolve; });
-  globalThis.__productTest.getDocsFromServer = async () => ({metadata:{fromCache:false,hasPendingWrites:false},docs:[]});
-  root = createRoot(document.getElementById('root'));
-  await act(async () => root.render(React.createElement(Probe)));
-  await act(async () => finishFirst({metadata:{fromCache:false,hasPendingWrites:false},docs:products.slice(0,6).map(p=>({id:p.id,data:()=>p}))}));
-  assert.equal(state.loadedProducts.length, 0);
-  assert.equal(state.hasMore, false);
-  await act(async () => root.unmount());
-  delete globalThis.__productTest.firstBatch;
-  console.log('PASS first batch: early render, shared read, full replacement and late response protection');
-
-  const {balanceCatalog, resolveProductStore} = await bundle('src/lib/catalogProducts.ts');
-  const shops = [{uid:'a',username:'Alpha'},{uid:'b',username:'Beta'},{uid:'c',username:'Gamma'}];
-  const uneven = products.map((p,i)=>({...p,userId:i<12?'a':i<15?'b':'c'}));
-  const fair = balanceCatalog(uneven,shops);
-  assert.deepEqual(fair.slice(0,3).map(p=>p.userId),['a','b','c']);
-  const extended = balanceCatalog([...uneven,{...products[0],id:'new',userId:'d'}],[...shops,{uid:'d'}],fair.slice(0,6).map(p=>p.id));
-  assert.deepEqual(extended.slice(0,6).map(p=>p.id),fair.slice(0,6).map(p=>p.id));
-  assert.equal(extended[6].id,'new');
-  assert.equal(resolveProductStore({storeUsername:' BETA '},shops).uid,'b');
-  assert.equal(resolveProductStore({userId:'a',storeUsername:'Beta'},shops).uid,'a');
-  assert.equal(new Set(extended.map(p=>p.id)).size,19);
-  console.log('PASS retry, strict completeness, canonical owner, balanced shops and stable prefix');
-  console.log('PASS catalog: confirmed full buffer, shared prefetch, timeout, retry, empty result, no duplicate reads');
+  await act(async()=>{await state.retryProducts();});
+  assert.equal(state.loadedProducts.length,2);assert.equal(state.productsError,null);assert.equal(state.hasMore,false);
+  await act(async()=>root.unmount());
+  console.log('PASS cursor pages, shared StrictMode request, deferred pages, SDK bounds, retry and stable prefix');
 
   const Image = (await bundle('src/components/ProductCardImage.tsx')).default;
   root = createRoot(document.getElementById('root'));
@@ -178,6 +84,31 @@ async function main() {
   assert(document.querySelector('button'));
   await act(async () => root.unmount());
   console.log('PASS images: content before photo, successful load, URL change, independent fallback');
+  let intersect;
+  let disconnected = 0;
+  globalThis.IntersectionObserver = class {
+    constructor(callback, options) { intersect = callback; assert.equal(options.rootMargin, '200px'); }
+    observe() {}
+    disconnect() { disconnected++; }
+  };
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(card('/far.webp')));
+  assert.equal(document.querySelector('img').getAttribute('src'), null, 'Offscreen photo makes no request');
+  assert(document.querySelector('h3'), 'Text never waits for image visibility');
+  await act(async () => intersect([{isIntersecting:true}]));
+  assert.equal(document.querySelector('img').getAttribute('src'), '/far.webp');
+  assert(disconnected > 0);
+  await act(async () => root.unmount());
+  delete globalThis.IntersectionObserver;
+  console.log('PASS offscreen images wait until within 200px of viewport');
+  root = createRoot(document.getElementById('root'));
+  await act(async () => root.render(React.createElement('div', null,
+    [1,2,3,4].map(id=>React.createElement(Image,{key:id,src:'/concurrent-'+id+'.webp',name:'Meal',priority:true})))));
+  assert.equal(document.querySelectorAll('img[src]').length,3,'Reserve connections by downloading at most three images');
+  await act(async()=>document.querySelector('img').dispatchEvent(new dom.window.Event('load')));
+  assert.equal(document.querySelectorAll('img[src]').length,4,'Completion releases the next image');
+  await act(async()=>root.unmount());
+  console.log('PASS image concurrency limit and queue release');
 
   const cart = await bundle('src/lib/cartHelper.ts');
   let writes = 0;

@@ -285,14 +285,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (selectedStore === store.uid) {
       setSelectedStore('all');
       setSelectedCategory('all');
-      setVisibleLimit(4);
+      setVisibleLimit(6);
       return;
     }
 
     setSelectedStore(store.uid);
     setSelectedCategory('all');
     setSearchTerm('');
-    setVisibleLimit(4);
+    setVisibleLimit(6);
 
     // Asegurar que el perfil del restaurante esté registrado
     setProfiles(prev => ({
@@ -302,47 +302,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ...(store.displayName ? { [store.displayName.toLowerCase()]: store } : {})
     }));
 
-    if (!hasMoreProgressive && !productsError) return; // Complete buffer already includes this store.
-
-    // Verificar si ya tenemos productos de esta tienda en memoria para renderizado instantáneo
-    const existingStoreProducts = products.filter(p => 
-      p.userId === store.uid || 
-      (store.username && p.storeUsername?.toLowerCase() === store.username.toLowerCase())
-    );
-
-    // Solo activar skeleton si aún no tenemos productos cargados para este restaurante
-    if (existingStoreProducts.length === 0) {
-      setLoadingStoreProducts(true);
-      setLoadingStoreId(store.uid);
-    }
-
-    try {
-      // Leer a Firebase directamente al hacer clic en el logo del restaurante
-      const freshProducts = (await fetchProductsForStoreOnDemand(store, 40)).map(product => ({
-        ...product,
-        userId: store.uid,
-        storeName: store.displayName || store.storeName || store.username || product.storeName,
-        storeUsername: store.username || product.storeUsername
-      }));
-
-      if (freshProducts && freshProducts.length > 0) {
-        setProducts(prev => {
-          const withoutStore = prev.filter(p => 
-            p.userId !== store.uid && 
-            (!store.username || p.storeUsername?.toLowerCase() !== store.username.toLowerCase())
-          );
-          const updated = [...withoutStore, ...freshProducts];
-          registerProductImages(freshProducts);
-          return updated;
-        });
-      }
-    } catch (err) {
-      console.warn("Error fetching store products on demand from Firebase:", err);
-    } finally {
-      setLoadingStoreProducts(false);
-      setLoadingStoreId(null);
-    }
-  }, [selectedStore, products, hasMoreProgressive, productsError]);
+    // The shared metadata pager fills this filter without a second full-image query.
+  }, [selectedStore]);
   
   // Quick View Modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
@@ -905,28 +866,28 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return balanceCatalog(matched, openRestaurants, prefix);
   }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy, catalogFilter, openRestaurants]);
 
-  // Progressive loading: show 4 products initially and reveal 4 more per batch
-  const [visibleLimit, setVisibleLimit] = useState(4);
+  // Progressive loading: show six products and reveal six more near the viewport
+  const [visibleLimit, setVisibleLimit] = useState(6);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const isFetchingNextBatchRef = useRef(false);
   const currentFilter = `${searchTerm}|${selectedCategory}|${selectedStore}|${sortBy}`;
   const currentFilterRef = useRef(currentFilter);
   currentFilterRef.current = currentFilter;
-  const prefetchMargin = Math.min(1200, Math.max(600, typeof window === 'undefined' ? 800 : window.innerHeight));
+  const prefetchMargin = 200;
 
   // Reset to the first 4 products whenever the active filters or restaurant change
   useEffect(() => {
-    setVisibleLimit(4);
+    setVisibleLimit(6);
   }, [searchTerm, selectedCategory, selectedStore, sortBy]);
 
   // Unified function to load the next batch of 4 products in order
   const loadNextBatchOfFour = useCallback(async () => {
-    if (isFetchingNextBatchRef.current) return;
+    if (isFetchingNextBatchRef.current || isLoadingRestaurants || restaurantsError || openRestaurants.length === 0) return;
     isFetchingNextBatchRef.current = true;
 
     // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
     if (visibleLimit < filteredProducts.length) {
-      setVisibleLimit(prev => Math.min(prev + 4, filteredProducts.length));
+      setVisibleLimit(prev => hasMoreProgressive ? prev + 6 : Math.min(prev + 6, filteredProducts.length));
       // Hold the guard through the next render so two scroll signals cannot reveal twice.
       // Released after React commits this six-product reveal.
       return;
@@ -939,7 +900,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       try {
         const fresh = await loadNextFourProducts();
         if (fresh && fresh.length > 0 && currentFilterRef.current === requestedFilter) {
-          setVisibleLimit(prev => prev + 4);
+          setVisibleLimit(prev => prev + 6);
         }
       } catch (err) {
         console.warn("Error loading next batch of 6:", err);
@@ -950,19 +911,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     } else {
       isFetchingNextBatchRef.current = false;
     }
-  }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError]);
+  }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // A partial first catalog can contain only closed stores or drinks. Fill the
   // metadata buffer once if filtering leaves fewer than six usable records.
   useEffect(() => {
-    if (!isLoadingRestaurants && !restaurantsError && !isLoadingProducts &&
-        hasMoreProgressive && !isProgressiveLoadingMore && !productsError) {
+    if (!isLoadingRestaurants && !restaurantsError && openRestaurants.length > 0 && !isLoadingProducts &&
+        products.length >= loadedProducts.length &&
+        hasMoreProgressive && !isProgressiveLoadingMore && !productsError &&
+        (filteredProducts.length < visibleLimit || searchTerm.trim() || selectedStore !== 'all' || selectedCategory !== 'all' || sortBy !== 'latest')) {
       void loadNextFourProducts();
     }
-  }, [isLoadingRestaurants, restaurantsError, isLoadingProducts, filteredProducts.length,
-      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError]);
+  }, [isLoadingRestaurants, restaurantsError, openRestaurants.length, isLoadingProducts, filteredProducts.length, products.length, loadedProducts.length,
+      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, visibleLimit, searchTerm, selectedStore, selectedCategory, sortBy]);
 
   useEffect(() => { isFetchingNextBatchRef.current = false; }, [visibleLimit, currentFilter]);
 
@@ -2094,7 +2057,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <button type="button" onClick={retryRestaurants} className="text-[#D62839] font-bold hover:underline cursor-pointer">Reintentar</button>
             </div>
           ) : isRestaurantsLoading ? (
-            <div role="status" aria-live="polite" className="border-t border-slate-800 pt-4 py-3 text-xs text-gray-400">{progressiveStatusMessage || 'Consultando restaurantes abiertos…'}</div>
+            <div role="status" aria-live="polite" className="border-t border-slate-800 pt-4 py-3 text-xs text-gray-400">{progressiveStatusMessage || 'Preparando restaurantes…'}</div>
           ) : uniqueStores.length > 0 ? (
             <div className="space-y-2 border-t border-slate-800 pt-4 transition-opacity duration-200">
               <div className="flex items-center justify-between px-1 flex-wrap gap-2">
@@ -2301,7 +2264,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           ? 'bg-[#D62839] ring-4 ring-[#D62839]/50 shadow-lg shadow-[#D62839]/30 scale-105'
                           : 'bg-slate-900 hover:bg-[#D62839]/20 ring-2 ring-slate-700/80 hover:ring-[#D62839] group-hover:scale-105'
                       }`}>
-                        <RestaurantLogo src={store.photoURL} name={store.displayName || store.username || "T"} priority={storeIdx < 6} />
+                        <RestaurantLogo src={store.photoURL} name={store.displayName || store.username || "T"} priority={storeIdx < 2} />
                       </div>
                       <span className={`text-[10px] sm:text-xs font-bold line-clamp-1 max-w-[72px] sm:max-w-[84px] text-center transition select-none ${
                         isSelected ? 'text-[#D62839] font-black' : 'text-[#C4CBD8] group-hover:text-white'
@@ -2440,9 +2403,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
-            aria-label="Cargando 4 productos"
+            aria-label="Cargando productos"
           >
-            {[0, 1, 2, 3].map((idx) => (
+            {[0, 1].map((idx) => (
               <ProductCardSkeleton key={`general-skeleton-${idx}`} index={idx} />
             ))}
           </div>
@@ -2562,7 +2525,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     )}
 
                     {product.imageURL ? (
-                      <ProductCardImage src={product.imageURL} name={product.name} priority={productIndex < 4} />
+                      <ProductCardImage src={product.imageURL} name={product.name} priority={productIndex < 2} />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-gray-600 gap-1.5">
                         <ShoppingBag className="w-8 h-8 opacity-45 text-orange-400" />
@@ -2664,8 +2627,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
                 <span>Mostrando</span>
                 <span className="text-white font-black">{Math.min(visibleLimit, filteredProducts.length)}</span>
-                <span>de</span>
-                <span className="text-white font-black">{filteredProducts.length}</span>
+                {!hasMoreProgressive && <><span>de</span><span className="text-white font-black">{filteredProducts.length}</span></>}
                 <span>productos</span>
               </div>
 

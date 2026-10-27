@@ -51,30 +51,19 @@
     <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" />
     <link rel="preload" href="/ryyco_combo.webp" as="image" fetchpriority="high" />
     <script>
-      try {
-        var catalogController = new AbortController();
-        var catalogTimeout = setTimeout(function() { catalogController.abort(); }, 2500);
-        window.__CATALOG_PREFETCH__ = fetch('/api/catalog/available?initial=true', { signal: catalogController.signal })
-          .then(function(r) { 
-            if (r.ok) {
-              var ct = r.headers.get('content-type') || '';
-              if (ct.indexOf('application/json') !== -1) return r.json();
-            }
-            return fetch('/catalog-initial.json').then(function(cr) { return cr.ok ? cr.json() : null; });
-          })
-          .then(function(d) {
-            if (d && d.catalog) {
-              window.__INITIAL_CATALOG_DATA__ = d;
-            }
-            // The application manages the full catalog refresh.
-            return d;
-          })
-          .catch(function() { 
-            return fetch('/catalog-initial.json')
-              .then(function(cr) { return cr.ok ? cr.json() : null; })
-              .catch(function() { return null; });
-          }).finally(function() { clearTimeout(catalogTimeout); });
-      } catch (e) {}
+      // Start independent, small metadata requests while the application bundle downloads.
+      // No image bytes, static availability or full-catalog request belongs on this path.
+      function prefetchHomePage(kind) {
+        var controller = new AbortController();
+        var timer = setTimeout(function() { controller.abort(); }, 12000);
+        return fetch('/api/catalog-page.php?kind=' + kind + '&limit=12', {cache:'no-store',priority:'high',signal:controller.signal})
+          .then(function(r) { return r.ok && (r.headers.get('content-type') || '').indexOf('json') !== -1 ? r.json() : null; })
+          .catch(function() { return null; }).finally(function() { clearTimeout(timer); });
+      }
+      if (/^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname)) {
+        window.__RYYCO_STORES__ = prefetchHomePage('stores');
+        window.__RYYCO_PRODUCTS__ = prefetchHomePage('products');
+      }
     </script>
 
     <!-- Icons & Manifest -->

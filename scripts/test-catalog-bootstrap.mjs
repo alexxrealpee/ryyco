@@ -1,49 +1,22 @@
-import { readFileSync } from 'node:fs';
+import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
-
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const bootstrap = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)]
-  .map(match => match[1]).find(script => script.includes('__CATALOG_PREFETCH__'));
-const catalog = { success: true, catalog: { stores: [], products: [] } };
-const response = data => ({ ok: true, headers: { get: () => 'application/json' }, json: async () => data });
-
-function run(fetch) {
-  const timers = new Map();
-  const context = { window: {}, AbortController, fetch,
-    setTimeout(callback, delay) { timers.set(1, { callback, delay }); return 1; },
-    clearTimeout(id) { timers.delete(id); }
-  };
-  vm.runInNewContext(bootstrap, context);
-  return { context, timers };
-}
-
-test('successful bootstrap fetches catalog once and clears deadline', async () => {
-  const urls = [];
-  const { context, timers } = run(async url => { urls.push(url); return response(catalog); });
-  assert.equal(await context.window.__CATALOG_PREFETCH__, catalog);
-  assert.equal(context.window.__INITIAL_CATALOG_DATA__, catalog);
-  assert.deepEqual(urls, ['/api/catalog/available?initial=true']);
-  assert.equal(timers.size, 0);
+import {test} from 'node:test';
+const html=readFileSync(new URL('../index.html',import.meta.url),'utf8');
+const code=[...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m=>m[1]).find(s=>s.includes('__RYYCO_PRODUCTS__'));
+test('stores and products start independently; no full collection or image prefetch',async()=>{
+ const calls=[];let productsDone;
+ const context={window:{},location:{pathname:'/'},AbortController,setTimeout,clearTimeout,
+ fetch:url=>{calls.push(url);return url.includes('stores')?Promise.resolve({ok:true,headers:{get:()=> 'application/json'},json:async()=>({kind:'stores'})}):new Promise(resolve=>{productsDone=resolve});}};
+ vm.runInNewContext(code,context);
+ assert.equal((await context.window.__RYYCO_STORES__).kind,'stores');
+ assert.equal(calls.length,2);assert(calls.every(url=>url.includes('limit=12')));
+ productsDone({ok:false});assert.equal(await context.window.__RYYCO_PRODUCTS__,null);
 });
-
-test('slow API is aborted after 2500ms and falls back to static catalog', async () => {
-  const urls = [];
-  const { context, timers } = run((url, options) => {
-    urls.push(url);
-    if (!options) return Promise.resolve(response(catalog));
-    return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('timeout'))));
-  });
-  assert.equal(timers.get(1).delay, 2500);
-  timers.get(1).callback();
-  assert.equal(await context.window.__CATALOG_PREFETCH__, catalog);
-  assert.deepEqual(urls, ['/api/catalog/available?initial=true', '/catalog-initial.json']);
-  assert.equal(timers.size, 0);
+test('non-home routes do not download the home catalog',()=>{
+ let calls=0;vm.runInNewContext(code,{window:{},location:{pathname:'/driver-portal'},fetch:()=>{calls++;}});assert.equal(calls,0);
 });
-
-test('offline bootstrap resolves without an unhandled rejection', async () => {
-  const { context, timers } = run(async () => { throw new Error('offline'); });
-  assert.equal(await context.window.__CATALOG_PREFETCH__, null);
-  assert.equal(timers.size, 0);
+test('offline resolves both requests safely',async()=>{
+ const context={window:{},location:{pathname:'/'},AbortController,setTimeout,clearTimeout,fetch:async()=>{throw Error('offline')}};
+ vm.runInNewContext(code,context);assert.equal(await context.window.__RYYCO_STORES__,null);assert.equal(await context.window.__RYYCO_PRODUCTS__,null);
 });
