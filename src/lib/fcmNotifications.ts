@@ -88,35 +88,10 @@ export function speakOrderVoiceAlert(text: string) {
   }
 }
 
-// Audio Chime Synthesizer specifically designed for delivery drivers (high-volume attention chime)
+// Audio notification for delivery drivers (exact same official 3-second notification chime as general administration)
 export function playDriverOrderAlertChime() {
   try {
-    if (typeof window === 'undefined') return;
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-
-    const ctx = new AudioContextClass();
-    const playBeep = (freq: number, startTime: number, duration: number, volume = 0.5) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, startTime);
-      gain.gain.setValueAtTime(0, startTime);
-      gain.gain.linearRampToValueAtTime(volume, startTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(startTime);
-      osc.stop(startTime + duration);
-    };
-
-    const now = ctx.currentTime;
-    // Rapid energetic alert chime sequence (E5 -> A5 -> C#6 -> E6 -> ping)
-    playBeep(659.25, now + 0.0, 0.15, 0.5);   // E5
-    playBeep(880.00, now + 0.12, 0.15, 0.55); // A5
-    playBeep(1108.73, now + 0.24, 0.18, 0.6); // C#6
-    playBeep(1318.51, now + 0.38, 0.35, 0.7); // E6
-    playBeep(1318.51, now + 0.52, 0.45, 0.7); // E6 accent ping
+    playOrderAlertChime();
   } catch (err) {
     console.warn('[FCM] Error playing driver alert chime:', err);
   }
@@ -909,7 +884,7 @@ export async function triggerDriverDeliveryPush(
             body,
             icon: '/logoryyco.png',
             badge: '/favicon.svg',
-            vibrate: [400, 200, 400, 200, 600],
+            vibrate: [350, 150, 350, 150, 500],
             tag: 'driver-order-' + order.id,
             renotify: true,
             requireInteraction: true,

@@ -507,7 +507,7 @@ export interface ClickAnalytic {
   timestamp: string;
 }
 
-export type PrizeCategory = 'dish' | 'drink' | 'dessert' | 'discount' | 'points' | 'combo' | 'appetizer' | 'main';
+export type PrizeCategory = 'dish' | 'drink' | 'dessert' | 'discount' | 'points' | 'combo' | 'appetizer' | 'main' | 'ticket';
 
 export interface RyycoMovement {
   id: string;
