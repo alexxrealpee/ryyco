@@ -96,12 +96,47 @@ service cloud.firestore {
       }
     }
 
-    // Drivers collection rules (Registration, profile management & admin approval)
+    // Driver privileges are independent of editable profile roles.
+    function driverAdmin() {
+      return isAuth() && (request.auth.token.get('admin', false) == true ||
+        (request.auth.token.get('email_verified', false) == true &&
+         request.auth.token.get('email', '') == 'alexxrealpee@gmail.com'));
+    }
+    function verifiedDriverEmail(email) {
+      return isAuth() && request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.firebase.sign_in_provider == 'google.com' &&
+        request.auth.token.get('email', '').lower() == email.lower();
+    }
+    function ownsDriver(driverId, data) {
+      return isAuth() && (verifiedDriverEmail(data.get('email', '')) ||
+        (request.auth.token.firebase.sign_in_provider == 'custom' && request.auth.uid == driverId));
+    }
     match /drivers/{driverId} {
-      allow create: if true;
-      allow read: if true;
-      allow update: if true;
-      allow delete: if isAdmin();
+      allow get: if driverAdmin() || (resource != null && ownsDriver(driverId, resource.data)) ||
+        (resource == null && isAuth() && request.auth.token.get('email_verified', false) == true &&
+         driverId == 'driver_' + request.auth.token.get('email', '').lower().replace('[^a-z0-9]', '_'));
+      allow list: if driverAdmin();
+      allow create: if verifiedDriverEmail(request.resource.data.email) &&
+        driverId == 'driver_' + request.auth.token.email.lower().replace('[^a-z0-9]', '_') &&
+        request.resource.data.id == driverId && request.resource.data.uid == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.isAvailable == false && request.resource.data.isOnline == false &&
+        request.resource.data.rating == 5 && request.resource.data.ratingCount == 0 &&
+        request.resource.data.completedDeliveriesCount == 0 && request.resource.data.totalEarnings == 0 &&
+        !('password' in request.resource.data);
+      allow update: if !('password' in request.resource.data) && (driverAdmin() ||
+        (ownsDriver(driverId, resource.data) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'uid', 'password', 'firstName', 'lastName', 'phone', 'address', 'city', 'photoURL',
+           'docType', 'docNumber', 'birthDate', 'gender', 'vehicleType', 'vehicleBrand', 'vehiclePlate',
+           'hasDeliveryBag', 'vehiclePhotoUrl', 'vehicleOwnershipCardUrl', 'driverLicenseUrl',
+           'isAvailable', 'isOnline', 'lastActiveAt', 'updatedAt'
+         ]) &&
+         (request.resource.data.uid == resource.data.uid ||
+          (verifiedDriverEmail(resource.data.email) && request.resource.data.uid == request.auth.uid)) &&
+         (resource.data.status == 'approved' ||
+          (request.resource.data.isAvailable == false && request.resource.data.isOnline == false))));
+      allow delete: if driverAdmin();
     }
 
     // Driver ratings rules
@@ -136,7 +171,7 @@ service cloud.firestore {
       }
       function assignedDriver(data) {
         let driver = data.get('driverId', data.get('deliveryDriverId', ''));
-        return isAuth() && driver != '' && driver == trackingOrder().get('deliveryDriverId', trackingOrder().get('driverId', '')) &&
+        return isAuth() && driver != '' && get(/databases/$(database)/documents/drivers/$(driver)).data.status == 'approved' && driver == trackingOrder().get('deliveryDriverId', trackingOrder().get('driverId', '')) &&
           (driver == request.auth.uid ||
            get(/databases/$(database)/documents/drivers/$(driver)).data.get('uid', '') == request.auth.uid);
       }
@@ -148,7 +183,9 @@ service cloud.firestore {
       allow get: if isAuth() && orderOpen() && (
         (resource == null && (verifiedCustomer(trackingOrder()) || assignedDriver(trackingOrder()))) ||
         (resource != null &&
-          (resource.data.get('driverAuthUid', '') == request.auth.uid || verifiedCustomer(resource.data)))
+          (resource.data.get('driverAuthUid', '') == request.auth.uid || verifiedCustomer(resource.data) ||
+           (assignedDriver(resource.data) && ownsDriver(resource.data.driverId,
+             get(/databases/$(database)/documents/drivers/$(resource.data.driverId)).data))))
       );
       allow list: if false;
       allow create: if isAuth() && orderOpen() && assignedDriver(request.resource.data) &&
@@ -156,7 +193,8 @@ service cloud.firestore {
         request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data);
       allow update: if isAuth() &&
         (resource.data.get('driverAuthUid', '') == request.auth.uid ||
-         (!('driverAuthUid' in resource.data) && resource.data.driverId == request.auth.uid)) &&
+         (assignedDriver(resource.data) && ownsDriver(resource.data.driverId,
+           get(/databases/$(database)/documents/drivers/$(resource.data.driverId)).data))) &&
         request.resource.data.driverAuthUid == request.auth.uid &&
         request.resource.data.driverId == resource.data.driverId && request.resource.data.orderId == orderId &&
         (!('driverAuthUid' in resource.data) ||
@@ -165,7 +203,7 @@ service cloud.firestore {
         request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data) &&
         (!(resource.data.get('status', '') in ['cancelled', 'delivered']) || request.resource.data.status == resource.data.status) &&
         (request.resource.data.isTrackingActive == false ||
-          (orderOpen() && !(resource.data.get('status', '') in ['cancelled', 'delivered']) &&
+          (orderOpen() && assignedDriver(resource.data) && !(resource.data.get('status', '') in ['cancelled', 'delivered']) &&
            request.resource.data.gpsTimestamp >= resource.data.get('gpsTimestamp', 0)));
       allow delete: if isAdmin();
     }
@@ -193,9 +231,14 @@ service cloud.firestore {
 
     // Driver FCM Tokens collection rules for Delivery Driver Push Notifications
     match /driver_fcm_tokens/{tokenId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if isAdmin();
+      function tokenOwner(data) {
+        return ownsDriver(data.driverId, get(/databases/$(database)/documents/drivers/$(data.driverId)).data);
+      }
+      allow read: if driverAdmin() || tokenOwner(resource.data);
+      allow create: if tokenOwner(request.resource.data);
+      allow update: if tokenOwner(resource.data) && tokenOwner(request.resource.data) &&
+        request.resource.data.driverId == resource.data.driverId;
+      allow delete: if driverAdmin() || tokenOwner(resource.data);
     }
 
     // Subscription payments collection rules (Merchants create and read theirs, administrators approve/reject)

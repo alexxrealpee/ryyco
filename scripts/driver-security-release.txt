@@ -1,0 +1,56 @@
+Driver security change — local implementation, not deployed
+
+Sign-in and registration use verified Google accounts with the same email as the
+existing driver profile. Legacy IDs and delivery history are preserved. Google
+must be enabled in Firebase Authentication and the deployed domain authorized.
+There is no longer a document-number/password recovery or demo-login bypass.
+Administrators no longer see, set or send driver passwords.
+
+The driver rules accept administrator custom claim admin=true or the verified
+existing primary admin email. Editable users/profiles.role does not grant driver
+administration. Additional administrators need claims assigned by a trusted server.
+
+Driver profiles are private to the verified owner and trusted administrators.
+Only administrators may approve/suspend/delete accounts. Owners cannot edit
+stored earnings, ratings or delivery counts. Display statistics are derived from
+order/rating history; these underlying collections still require a separate
+security migration. These numbers are informational, not a trusted payment ledger.
+Notifications require the trusted backend to enumerate driver tokens; browser
+broadcast fallbacks cannot enumerate them after the new rules are deployed.
+The PHP hosting environment still needs a trusted push backend for that flow.
+
+Active GPS records can migrate to the same verified driver's Google UID, with
+assignment and approval checks. A different driver cannot claim that GPS record.
+The production Google login/GPS/push flow still needs a staging acceptance test.
+
+Old password fields are deleted upon a verified login or administrative approval
+update. Credentials for accounts that never log in remain in their now-private
+documents until an authorized server-side cleanup. They are not authentication
+credentials anymore. No production data cleanup was executed in this task.
+
+Release both frontend and Firestore rules in a coordinated maintenance window.
+A GitHub/Hostinger frontend deployment does NOT deploy Firestore rules.
+Production uses the named database ai-studio-be9196c8-7041-4ba9-b337-ca71c1485d15;
+do not accidentally deploy only to (default). The emulator uses a demo project
+and (default) solely for isolated tests, not as a production deploy configuration.
+
+Local tests:
+  node scripts/test-driver-identity.mjs
+  firebase emulators:exec --only firestore --project demo-ryyco-security --config firebase.security.json "node scripts/test-driver-rules.cjs"
+  npm run lint
+  npm run build:client
+  node scripts/test-product-loading.cjs
+  node scripts/test-store-availability.cjs
+  node --test scripts/test-catalog-bootstrap.mjs
+
+Home regression check:
+  DriverPortal and DriverRegister remain React.lazy imports; identity verification
+  executes only inside the driver portal/registration flow, not on home.
+  Referenced initial JS/CSS gzip: 475698 bytes before, 475908 bytes after (+210).
+  Both compilations are local. This is payload comparison, not mobile timing.
+  Public production metadata probe: stores HTTP 200 / 1361 ms / 63 records;
+  products HTTP 200 / 704 ms / 6 records. Probe ran from the developer machine.
+  No new browser-based mobile rendering measurement was performed in this task.
+  A historical local-server log recorded Firestore quota exhaustion; the current
+  public probes succeeded, so the historical error alone does not prove a current
+  production outage or quantify billed reads.

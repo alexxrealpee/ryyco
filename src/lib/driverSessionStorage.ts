@@ -9,6 +9,7 @@ export function getStoredDriverSession(): DriverProfile | null {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && (parsed.id || parsed.uid)) {
+        delete parsed.password;
         return parsed as DriverProfile;
       }
     }
@@ -20,7 +21,8 @@ export function getStoredDriverSession(): DriverProfile | null {
 
 export function saveDriverSessionToStorage(driverProfile: DriverProfile): void {
   try {
-    safeSetItem(DRIVER_SESSION_STORAGE_KEY, JSON.stringify(driverProfile));
+    const { password, docNumber, birthDate, address, driverLicenseUrl, vehicleOwnershipCardUrl, ...safeProfile } = driverProfile;
+    safeSetItem(DRIVER_SESSION_STORAGE_KEY, JSON.stringify(safeProfile));
     safeSetItem('ryyco_auth_mode', 'driver');
   } catch (e) {
     console.warn("Could not save driver session to storage:", e);

@@ -6,6 +6,7 @@
 import express from 'express';
 import { driverTrackingAuth } from './server/driverTrackingAuth';
 import compression from 'compression';
+import { registerCatalogPageRoutes } from './server/catalogPage';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
@@ -498,6 +499,7 @@ Formatos válidos para:
   app.post(['/api/tts', '/api/tts.php', '/api/gemini/tts'], handleTTSRequest);
 
   // Initialize the shared server-confirmed catalog listeners
+  registerCatalogPageRoutes(app);
   initBackendCatalogManager();
 
   // API Routes: Dynamic Available Catalog & Real-time Validation
@@ -1714,6 +1716,11 @@ let nominatimDisabledUntil = 0;
   });
 
   // Serve static files from public directory
+  // Node cannot execute PHP; never serve PHP source as a static asset.
+  app.use((req, res, next) => {
+    if (/\.php$/i.test(req.path)) { res.status(404).json({ error: 'Ruta no disponible en este servidor.' }); return; }
+    next();
+  });
   app.use(express.static(path.join(process.cwd(), 'public')));
 
   // Dedicated route for Google Play Store Privacy Policy crawler and direct access

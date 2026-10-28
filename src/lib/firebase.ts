@@ -40,6 +40,7 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc,
+  deleteField,
   increment,
   limit,
   startAfter,
@@ -4372,6 +4373,12 @@ export async function fetchAdminSubscriptionsBatch(
  * Default status on creation is 'pending'.
  */
 export async function registerDriverProfile(driverData: Omit<DriverProfile, 'createdAt' | 'updatedAt' | 'rating' | 'ratingCount' | 'completedDeliveriesCount' | 'totalEarnings'>): Promise<DriverProfile> {
+  const user = auth.currentUser;
+  const identity = await user?.getIdTokenResult();
+  if (!user?.emailVerified || identity?.signInProvider !== 'google.com' ||
+      user.email?.trim().toLowerCase() !== driverData.email.trim().toLowerCase() ||
+      driverData.uid !== user.uid) throw new Error('Verifica tu correo con Google antes de registrarte.');
+  const { password: _password, ...safeDriverData } = driverData;
   const driverId = driverData.id || driverData.uid;
   const now = new Date().toISOString();
 
@@ -4382,18 +4389,10 @@ export async function registerDriverProfile(driverData: Omit<DriverProfile, 'cre
   let fullDriver: DriverProfile;
 
   if (existingDoc.exists()) {
-    const existing = existingDoc.data() as DriverProfile;
-    fullDriver = {
-      ...existing,
-      ...driverData,
-      id: driverId,
-      status: 'pending', // Resubmitted for review
-      rejectionReason: '',
-      updatedAt: now
-    };
+    throw new Error('Este correo ya tiene una cuenta de domiciliario. Ingresa con Google al portal o contacta a soporte.');
   } else {
     fullDriver = {
-      ...driverData,
+      ...safeDriverData,
       id: driverId,
       status: 'pending',
       isAvailable: false,
@@ -4407,6 +4406,7 @@ export async function registerDriverProfile(driverData: Omit<DriverProfile, 'cre
     };
   }
 
+  delete fullDriver.password;
   await setDoc(docRef, fullDriver);
   return fullDriver;
 }
@@ -4419,7 +4419,7 @@ export async function fetchDriverProfileByUid(uid: string): Promise<DriverProfil
     const docRef = doc(db, 'drivers', uid);
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      return { id: docSnap.id, ...docSnap.data() } as DriverProfile;
+      return withDriverDisplayStats({ id: docSnap.id, ...docSnap.data() } as DriverProfile);
     }
 
     // Secondary query by uid field
@@ -4439,6 +4439,8 @@ export async function fetchDriverProfileByUid(uid: string): Promise<DriverProfil
  * Update driver profile details
  */
 export async function updateDriverProfile(driverId: string, updates: Partial<DriverProfile>): Promise<void> {
+  if ('password' in updates) throw new Error('Las contraseñas se administran únicamente en Google.');
+
   const docRef = doc(db, 'drivers', driverId);
   await updateDoc(docRef, {
     ...updates,
@@ -4498,18 +4500,8 @@ export async function findDriverByCredentials(emailOrTerm: string, docNumber?: s
 /**
  * Reset / Update a driver's password
  */
-export async function resetDriverPassword(driverId: string, newPassword: string): Promise<boolean> {
-  try {
-    const docRef = doc(db, 'drivers', driverId);
-    await updateDoc(docRef, {
-      password: newPassword.trim(),
-      updatedAt: new Date().toISOString()
-    });
-    return true;
-  } catch (err) {
-    console.error("Error resetting driver password:", err);
-    return false;
-  }
+export async function resetDriverPassword(_driverId: string, _newPassword: string): Promise<boolean> {
+  throw new Error('Recupera tu cuenta desde Google. No se admiten contraseñas en perfiles de domiciliarios.');
 }
 
 /**
@@ -4528,6 +4520,21 @@ export async function updateDriverAvailability(driverId: string, isAvailable: bo
 /**
  * Fetch all driver profiles for Admin Panel
  */
+export async function withDriverDisplayStats(driver: DriverProfile): Promise<DriverProfile> {
+  const [orders, ratings] = await Promise.all([
+    fetchDriverOrdersHistory(driver.id), fetchDriverRatings(driver.id)
+  ]);
+  const completed = orders.filter(order => order.status === 'delivered' || order.deliveryStep === 'delivered');
+  const { password: _password, ...safe } = driver;
+  return {
+    ...safe,
+    completedDeliveriesCount: completed.length,
+    totalEarnings: completed.reduce((sum, order) => sum + (Number(order.deliveryFee) || 7000), 0),
+    ratingCount: ratings.length,
+    rating: ratings.length ? Number((ratings.reduce((sum, rating) => sum + rating.stars, 0) / ratings.length).toFixed(1)) : 5,
+  };
+}
+
 export async function fetchAllDrivers(): Promise<DriverProfile[]> {
   try {
     const q = query(collection(db, 'drivers'), orderBy('createdAt', 'desc'));
@@ -4536,7 +4543,7 @@ export async function fetchAllDrivers(): Promise<DriverProfile[]> {
     snapshot.forEach(d => {
       drivers.push({ id: d.id, ...d.data() } as DriverProfile);
     });
-    return drivers;
+    return Promise.all(drivers.map(withDriverDisplayStats));
   } catch (err) {
     console.error("Error fetching drivers list:", err);
     // Fallback without ordering
@@ -4545,7 +4552,7 @@ export async function fetchAllDrivers(): Promise<DriverProfile[]> {
     snapshot.forEach(d => {
       drivers.push({ id: d.id, ...d.data() } as DriverProfile);
     });
-    return drivers;
+    return Promise.all(drivers.map(withDriverDisplayStats));
   }
 }
 
@@ -4567,7 +4574,7 @@ export async function updateDriverStatus(driverId: string, status: DriverStatus,
     updates.isAvailable = false;
     updates.isOnline = false;
   }
-  await updateDoc(docRef, updates);
+  await updateDoc(docRef, { ...updates, password: deleteField() });
 }
 
 /**
@@ -4948,19 +4955,7 @@ export async function updateOrderDeliveryStep(
     }
   } catch (e) {}
 
-  // If order delivered, increment driver stats
-  if (step === 'delivered' && driverId) {
-    try {
-      const driverRef = doc(db, 'drivers', driverId);
-      await updateDoc(driverRef, {
-        completedDeliveriesCount: increment(1),
-        totalEarnings: increment(deliveryFee || 7000), // Default $7.000 COP or specified delivery fee
-        updatedAt: now
-      });
-    } catch (e) {
-      console.error("Error updating driver stats on delivery complete:", e);
-    }
-  }
+
 }
 
 /**
@@ -5022,45 +5017,7 @@ export async function submitDriverRating(ratingData: Omit<DriverRating, 'id' | '
     console.error("Error marking order as rated:", e);
   }
 
-  // Recalculate average rating for driver
-  try {
-    if (ratingData.driverId) {
-      const q = query(collection(db, 'driver_ratings'), where('driverId', '==', ratingData.driverId));
-      const snap = await getDocs(q);
-      let totalStars = 0;
-      let count = 0;
-      snap.forEach(docSnap => {
-        const r = docSnap.data() as DriverRating;
-        if (typeof r.stars === 'number') {
-          totalStars += r.stars;
-          count++;
-        }
-      });
 
-      if (count > 0) {
-        const avg = Number((totalStars / count).toFixed(1));
-        const driverRef = doc(db, 'drivers', ratingData.driverId);
-        const dSnap = await getDoc(driverRef);
-        if (dSnap.exists()) {
-          await updateDoc(driverRef, {
-            rating: avg,
-            ratingCount: count
-          });
-        } else {
-          const dQuery = query(collection(db, 'drivers'), where('uid', '==', ratingData.driverId));
-          const dQSnap = await getDocs(dQuery);
-          if (!dQSnap.empty) {
-            await updateDoc(doc(db, 'drivers', dQSnap.docs[0].id), {
-              rating: avg,
-              ratingCount: count
-            });
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.error("Error recalculating driver rating:", e);
-  }
 }
 
 /**

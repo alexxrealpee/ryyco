@@ -30,7 +30,7 @@ import {
   X,
   MessageSquare
 } from 'lucide-react';
-import { registerDriverProfile } from '../lib/firebase';
+import { registerDriverProfile, signInWithGoogleUniversal } from '../lib/firebase';
 import { VehicleType, DriverProfile } from '../types';
 import { saveDriverSessionToStorage } from './DriverPortal';
 import { compressImageFile, formatBytes, CompressionResult } from '../lib/imageCompressor';
@@ -54,8 +54,6 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
   const [email, setEmail] = useState<string>('');
   const [address, setAddress] = useState<string>('');
   const [city, setCity] = useState<string>('Ipiales');
-  const [password, setPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
   
   // Vehicle & Equipment
   const [vehicleType, setVehicleType] = useState<VehicleType>('moto');
@@ -243,10 +241,6 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
       setErrorMsg('Por favor completa la información de dirección y ciudad.');
       return;
     }
-    if (!password || password.length < 6) {
-      setErrorMsg('La contraseña debe tener al menos 6 caracteres.');
-      return;
-    }
     if ((vehicleType === 'moto' || vehicleType === 'carro') && !vehiclePlate.trim()) {
       setErrorMsg('Para motos y carros es obligatorio ingresar la placa del vehículo.');
       return;
@@ -271,12 +265,16 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
     setLoading(true);
 
     try {
-      // Clean UID based on email/doc
-      const driverUid = `driver_${email.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+      const credential = await signInWithGoogleUniversal();
+      if (!credential.user.emailVerified || credential.user.email?.trim().toLowerCase() !== email.trim().toLowerCase()) {
+        throw new Error('Verifica con Google el mismo correo que escribiste en el formulario.');
+      }
+      // Keep the existing document ID; bind ownership to Firebase Authentication.
+      const driverUid = `driver_${email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
 
       const created = await registerDriverProfile({
         id: driverUid,
-        uid: driverUid,
+        uid: credential.user.uid,
         email: email.trim().toLowerCase(),
         photoURL: photoURL.trim(),
         firstName: firstName.trim(),
@@ -288,7 +286,6 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
         phone: phone.trim(),
         address: address.trim(),
         city: city.trim(),
-        password: password.trim(),
         vehicleType,
         vehicleBrand: vehicleBrand.trim(),
         vehiclePlate: vehiclePlate.trim().toUpperCase(),
@@ -647,29 +644,9 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-[#A9B2C3] mb-1.5">Contraseña de Acceso *</label>
-                    <div className="relative">
-                      <Lock className="w-4 h-4 text-[#A9B2C3] absolute left-3.5 top-3" />
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Mínimo 6 caracteres"
-                        className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl pl-10 pr-10 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-[#E63946] transition"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-2.5 text-[#A9B2C3] hover:text-white transition focus:outline-none cursor-pointer"
-                        title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-                        aria-label={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
+                  <p className="text-xs text-[#A9B2C3] self-center">
+                    Al enviar tu solicitud verificarás este correo con Google. RYYCO no te pedirá ni guardará tu contraseña.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

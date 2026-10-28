@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, User, Phone, MapPin, Gift, Trophy, Sparkles, 
   ShoppingBag, Clock, CheckCircle2, Truck, ChevronRight, 
-  Star, Copy, Check, Utensils, Award, RefreshCw, 
+  Star, Copy, Check, Utensils, RefreshCw,
   MessageCircle, ShieldCheck, Ticket, LogOut, ArrowRight,
   Flame, Crown, GlassWater, UtensilsCrossed, Cake, Sandwich,
   Mail, FileText, CheckCircle, Lock, Eye, EyeOff, AlertCircle, Scale,
@@ -23,7 +23,7 @@ import DeliveryTrackingModal from './DeliveryTrackingModal';
 import RateDriverModal from './RateDriverModal';
 import { signInWithPopup, signOut } from 'firebase/auth';
 import { 
-  CustomerProfile, CustomerPrize, OrderItem, RedeemableFoodReward, PrizeCategory, RyycoMovement 
+  CustomerProfile, CustomerPrize, OrderItem, PrizeCategory, RyycoMovement
 } from '../types';
 import { 
   fetchCustomerProfileByPhone, 
@@ -36,8 +36,6 @@ import {
   addCustomerWonPrize, 
   consumeCustomerSpin,
   redeemCustomerPrize, 
-  exchangePointsForReward, 
-  REDEEMABLE_FOOD_REWARDS,
   sanitizeCustomerPhone,
   searchCustomerByPhone,
   transferRyycosByPhone,
@@ -169,8 +167,6 @@ export default function CustomerPortalModal({
   const [tryAgainModal, setTryAgainModal] = useState<{ title: string; description: string; icon: string } | null>(null);
   const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
 
-  // Reward redeeming action
-  const [redeemingRewardId, setRedeemingRewardId] = useState<string | null>(null);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
   // RYYCOS Wallet Sub-Tab: 'catalog' | 'transfer' | 'history'
@@ -742,20 +738,14 @@ export default function CustomerPortalModal({
 
     const sliceCount = WHEEL_SLICES.length;
     const sliceAngle = 360 / sliceCount;
-    const winIndices = WHEEL_SLICES.map((s, idx) => (!s.isLose ? idx : -1)).filter(idx => idx !== -1);
     const loseIndices = WHEEL_SLICES.map((s, idx) => (s.isLose ? idx : -1)).filter(idx => idx !== -1);
 
-    // 25% chance of winning a prize, 75% chance of landing on "¡Sigue Intentando!"
-    const isWinner = Math.random() < 0.25;
-
-    let chosenIndex: number;
-    if (isWinner && winIndices.length > 0) {
-      chosenIndex = winIndices[Math.floor(Math.random() * winIndices.length)];
-    } else {
-      chosenIndex = loseIndices.length > 0
-        ? loseIndices[Math.floor(Math.random() * loseIndices.length)]
-        : 1;
+    // Temporary mode: every spin lands on a "Sigue Intentando" segment.
+    if (loseIndices.length === 0) {
+      setIsSpinning(false);
+      return;
     }
+    const chosenIndex = loseIndices[Math.floor(Math.random() * loseIndices.length)];
     const targetSlice = WHEEL_SLICES[chosenIndex];
 
     // Precisely calculate the target rotation so the pointer at 0° (top) lands squarely on targetSlice
@@ -799,7 +789,7 @@ export default function CustomerPortalModal({
           // Show Try Again modal
           setTryAgainModal({
             title: targetSlice.title,
-            description: "¡Estuviste muy cerca de ganar un premio! Recuerda que con cada compra que realices acumulas nuevos giros y RYYCOS en RYYCO. ¡Sigue intentando!",
+            description: "Por el momento no se entregan premios en la ruleta. ¡Sigue intentando!",
             icon: targetSlice.icon
           });
         }
@@ -911,32 +901,6 @@ export default function CustomerPortalModal({
       `📅 *Fecha:* ${new Date(receipt.createdAt).toLocaleString('es-CO')}\n\n` +
       `¡Revisa tu Billetera de RYYCOS en la app para ver tu saldo acumulado!`;
     window.open(`https://wa.me/57${receipt.recipientPhone}?text=${encodeURIComponent(text)}`, '_blank');
-  };
-
-  // Exchange RYYCOS for Food Reward
-  const handleExchangeReward = async (reward: RedeemableFoodReward) => {
-    if (!customer) return;
-    if ((customer.points || 0) < reward.pointsCost) {
-      alert(`Te faltan ${reward.pointsCost - customer.points} RYYCOS para canjear este premio.`);
-      return;
-    }
-
-    const confirm = window.confirm(`¿Deseas canjear ${reward.pointsCost.toLocaleString('es-CO')} RYYCOS por "${reward.title}"?`);
-    if (!confirm) return;
-
-    setRedeemingRewardId(reward.id);
-    try {
-      const prize = await exchangePointsForReward(customer.phone, reward);
-      const fresh = await fetchCustomerProfileByPhone(customer.phone);
-      if (fresh) setCustomer(fresh);
-      setWonPrizeModal(prize);
-      setActionSuccessMsg(`¡Canje exitoso! Se ha generado tu cupón de ${reward.title}.`);
-      setTimeout(() => setActionSuccessMsg(null), 5000);
-    } catch (err: any) {
-      alert(err.message || "Error al canjear RYYCOS.");
-    } finally {
-      setRedeemingRewardId(null);
-    }
   };
 
   const handleCopyCode = (code: string, id: string) => {
@@ -1612,7 +1576,7 @@ export default function CustomerPortalModal({
                   onClick={() => setActiveTab('wheel')}
                   className={`py-2 sm:py-2.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-extrabold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-1.5 transition relative cursor-pointer ${
                     activeTab === 'wheel'
-                      ? 'bg-gradient-to-r from-amber-500 to-[#E63946] text-white shadow-md shadow-amber-500/20'
+                      ? 'bg-[#E63946] text-white'
                       : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
                   }`}
                 >
@@ -2241,60 +2205,63 @@ export default function CustomerPortalModal({
 
                   {/* WHEEL VISUAL CANVAS / SVG CONTAINER */}
                   <div className="relative flex flex-col items-center justify-center py-4">
-                    {/* Top Pointer Indicator */}
-                    <div className="absolute top-1 z-30 flex flex-col items-center pointer-events-none drop-shadow-xl">
-                      <div className="w-0 h-0 border-l-[12px] border-l-transparent border-r-[12px] border-r-transparent border-t-[20px] border-t-amber-400" />
-                    </div>
-
-                    {/* Wheel Circle */}
-                    <div className="relative w-64 h-64 sm:w-72 sm:h-72 rounded-full border-4 border-amber-400/80 shadow-2xl shadow-amber-500/20 overflow-hidden bg-[#0a0e1a]">
-                      <div
-                        className="w-full h-full relative transition-transform duration-[4000ms] ease-out"
-                        style={{
-                          transform: `rotate(${wheelRotation}deg)`,
-                        }}
-                      >
-                        {WHEEL_SLICES.map((slice, idx) => {
-                          const angle = 360 / WHEEL_SLICES.length;
-                          const rotate = idx * angle;
-                          return (
-                            <div
-                              key={idx}
-                              className="absolute w-full h-full top-0 left-0 flex justify-center origin-center"
-                              style={{
-                                transform: `rotate(${rotate}deg)`,
-                              }}
-                            >
-                              {/* Slice wedge label */}
-                              <div className="pt-2 flex flex-col items-center text-center select-none">
-                                <span className="text-xl mb-0.5">{slice.icon}</span>
-                                <span 
-                                  className="text-[9px] font-black uppercase tracking-tight max-w-[85px] leading-tight drop-shadow-md"
-                                  style={{ color: slice.color }}
-                                >
-                                  {slice.title}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-
-                        {/* Radial divider lines */}
-                        {WHEEL_SLICES.map((_, idx) => (
-                          <div
-                            key={`div-${idx}`}
-                            className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-gray-900/60 origin-center"
-                            style={{
-                              transform: `rotate(${idx * (360 / WHEEL_SLICES.length)}deg)`,
-                            }}
-                          />
-                        ))}
+                    <div className="relative isolate w-full max-w-[360px] aspect-square p-3 sm:p-4">
+                      <div aria-hidden="true" className="absolute inset-6 -z-10 rounded-full bg-amber-500/15 blur-2xl" />
+                      <div aria-hidden="true" className="absolute left-1/2 top-0 z-30 -translate-x-1/2 drop-shadow-[0_3px_4px_rgba(0,0,0,0.5)]">
+                        <svg width="34" height="42" viewBox="0 0 34 42">
+                          <path d="M3 3 Q17 -1 31 3 L17 37 Z" fill="#fbbf24" stroke="#fff1b8" strokeWidth="2" />
+                          <circle cx="17" cy="10" r="4" fill="#92400e" />
+                        </svg>
                       </div>
-
-                      {/* Center Hub */}
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-gradient-to-tr from-amber-500 to-[#E63946] p-1 shadow-2xl flex items-center justify-center z-20">
-                        <div className="w-full h-full rounded-full bg-[#0b0f19] flex items-center justify-center text-amber-400 font-black text-xs font-mono">
-                          ★
+                      <div className="relative h-full w-full rounded-full bg-gradient-to-br from-amber-100 via-amber-500 to-amber-800 p-[10px] shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_0_0_1px_#fde68a]">
+                        <svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 360 360">
+                          {Array.from({ length: 32 }, (_, index) => {
+                            const angle = index * Math.PI / 16;
+                            return <circle key={index} cx={180 + 174 * Math.sin(angle)} cy={180 - 174 * Math.cos(angle)} r="2.5" fill={index % 2 ? '#fffbeb' : '#fcd34d'} />;
+                          })}
+                        </svg>
+                        <div
+                          className="relative h-full w-full overflow-hidden rounded-full border-2 border-amber-950/50 transition-transform duration-[4000ms] ease-out"
+                          style={{ transform: `rotate(${wheelRotation}deg)` }}
+                        >
+                          <svg className="h-full w-full" viewBox="0 0 360 360" role="img" aria-label="Ruleta de premios: plato fuerte, bebida, boleta Halloween, postre y casillas de sigue intentando">
+                            <defs>
+                              <radialGradient id="reward-wheel-shine" cx="35%" cy="20%" r="85%">
+                                <stop offset="0" stopColor="#ffffff" stopOpacity="0.18" />
+                                <stop offset="1" stopColor="#ffffff" stopOpacity="0" />
+                              </radialGradient>
+                            </defs>
+                            {WHEEL_SLICES.map((slice, index) => {
+                              const step = 2 * Math.PI / WHEEL_SLICES.length;
+                              const angle = index * step;
+                              const start = angle - step / 2;
+                              const end = angle + step / 2;
+                              const x = 180 + 124 * Math.sin(angle);
+                              const y = 180 - 124 * Math.cos(angle);
+                              const labels = slice.isLose ? ['SIGUE', 'INTENTANDO']
+                                : slice.category === 'dish' ? ['PLATO FUERTE', 'GRATIS']
+                                : slice.category === 'drink' ? ['BEBIDA', 'GRATIS']
+                                : slice.category === 'ticket' ? ['BOLETA', 'HALLOWEEN'] : ['POSTRE', 'DE LA CASA'];
+                              return (
+                                <g key={index}>
+                                  <path d={`M180 180 L${180 + 180 * Math.sin(start)} ${180 - 180 * Math.cos(start)} A180 180 0 0 1 ${180 + 180 * Math.sin(end)} ${180 - 180 * Math.cos(end)} Z`}
+                                    fill={slice.isLose ? '#fff0c2' : index === 4 ? '#9f2440' : '#cf2445'} stroke="#e6ad4f" strokeWidth="1.5" />
+                                  <text x={x} y={y - 8} textAnchor="middle" fontSize="29" aria-hidden="true">{slice.icon}</text>
+                                  <text x={x} y={y + 12} textAnchor="middle" fill={slice.isLose ? '#78501c' : '#fff8e8'} fontSize="9.5" fontWeight="900" fontFamily="Arial, sans-serif" letterSpacing="0.3">
+                                    <tspan x={x}>{labels[0]}</tspan>
+                                    <tspan x={x} dy="12">{labels[1]}</tspan>
+                                  </text>
+                                </g>
+                              );
+                            })}
+                            <circle cx="180" cy="180" r="179" fill="url(#reward-wheel-shine)" pointerEvents="none" />
+                          </svg>
+                        </div>
+                        <div aria-hidden="true" className="absolute left-1/2 top-1/2 z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 via-amber-400 to-amber-700 p-[3px] shadow-[0_4px_16px_#0008]">
+                          <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-amber-300/30 bg-[#19131e] text-amber-300">
+                            <Star className="h-5 w-5 fill-amber-300" />
+                            <span className="mt-0.5 text-[8px] font-black tracking-[1.5px]">RYYCO</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2312,9 +2279,9 @@ export default function CustomerPortalModal({
                         type="button"
                         onClick={handleSpinWheel}
                         disabled={isSpinning || (customer.spinsAvailable || 0) <= 0}
-                        className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition flex items-center justify-center gap-2 shadow-xl cursor-pointer ${
+                        className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer ${
                           (customer.spinsAvailable || 0) > 0 && !isSpinning
-                            ? 'bg-gradient-to-r from-amber-500 via-[#E63946] to-[#C1121F] hover:opacity-95 text-white shadow-amber-500/25 active:scale-95'
+                            ? 'bg-[#E63946] hover:bg-[#C1121F] text-white active:scale-95'
                             : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                         }`}
                       >
@@ -2335,73 +2302,7 @@ export default function CustomerPortalModal({
                     </div>
                   </div>
 
-                  {/* WON PRIZES HISTORY */}
-                  <div className="border-t border-gray-850 pt-5 space-y-3">
-                    <h5 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
-                      <Award className="w-4 h-4 text-amber-400" />
-                      <span>Tus Premios y Platos Ganados ({customer.wonPrizes?.length || 0})</span>
-                    </h5>
 
-                    {!customer.wonPrizes || customer.wonPrizes.length === 0 ? (
-                      <p className="text-xs text-gray-500 text-center py-4 bg-gray-900/40 rounded-xl">
-                        Aún no has ganado premios en la ruleta. ¡Gira ahora!
-                      </p>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {customer.wonPrizes.map((prz) => (
-                          <div
-                            key={prz.id}
-                            className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition ${
-                              prz.isRedeemed 
-                                ? 'bg-gray-950/50 border-gray-900 text-gray-500 opacity-60' 
-                                : 'bg-[#0f1422] border-amber-500/30 text-white'
-                            }`}
-                          >
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-black text-amber-400">{prz.title}</span>
-                                {prz.isRedeemed ? (
-                                  <span className="text-[9px] bg-gray-800 text-gray-400 px-1.5 py-0.2 rounded font-bold">Canjeado</span>
-                                ) : (
-                                  <span className="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.2 rounded font-black">Disponible</span>
-                                )}
-                              </div>
-                              <p className="text-[10px] text-gray-400">{prz.description}</p>
-                            </div>
-
-                            {!prz.isRedeemed && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (onSelectRewardCode) {
-                                    onSelectRewardCode(prz.code, prz.discountAmount);
-                                    onClose();
-                                  } else {
-                                    handleCopyCode(prz.code, prz.id);
-                                  }
-                                }}
-                                className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-black rounded-lg font-black text-[11px] flex items-center gap-1 font-mono transition shrink-0 cursor-pointer"
-                              >
-                                {copiedCodeId === prz.id ? (
-                                  <>
-                                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                                    ¡Copiado!
-                                  </>
-                                ) : onSelectRewardCode ? (
-                                  'Usar en Pedido'
-                                ) : (
-                                  <>
-                                    <Copy className="w-3 h-3" />
-                                    {prz.code}
-                                  </>
-                                )}
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
@@ -2486,63 +2387,22 @@ export default function CustomerPortalModal({
                     </button>
                   </div>
 
-                  {/* SUB-VIEW 1: CANJEAR COMIDA POR RYYCOS */}
+                  {/* SUB-VIEW 1: CANJEAR POR WHATSAPP */}
                   {ryycosView === 'catalog' && (
-                    <div className="space-y-4 animate-fade-in">
-                      <div>
-                        <h4 className="text-sm font-black text-white mb-1">Catálogo de Comida para Redimir</h4>
-                        <p className="text-xs text-gray-400">Canjea tus Puntos Ryycos acumulados por bebidas, postres y platos completos sin pagar nada (1 Punto Ryyco = $1 COP).</p>
-                      </div>
-
-                      {/* REWARDS GRID */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        {REDEEMABLE_FOOD_REWARDS.map((reward) => {
-                          const canAfford = (customer.points || 0) >= reward.pointsCost;
-
-                          return (
-                            <div
-                              key={reward.id}
-                              className={`bg-[#090D16] border rounded-2xl p-4 flex flex-col justify-between gap-3 transition ${
-                                canAfford 
-                                  ? 'border-amber-400/40 hover:border-amber-400 shadow-md' 
-                                  : 'border-[#232E42] opacity-75'
-                              }`}
-                            >
-                              <div className="space-y-1.5">
-                                <div className="flex justify-between items-start gap-2">
-                                  <h5 className="text-xs font-black text-white">{reward.title}</h5>
-                                  <span className="px-2 py-0.5 rounded-md font-mono text-[11px] font-black bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0">
-                                    {reward.pointsCost.toLocaleString('es-CO')} Puntos Ryycos
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-gray-400 leading-relaxed">{reward.description}</p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => handleExchangeReward(reward)}
-                                disabled={!canAfford || redeemingRewardId === reward.id}
-                                className={`w-full py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                                  canAfford
-                                    ? 'bg-[#E63946] hover:bg-[#D62839] text-white shadow-md shadow-[#E63946]/20'
-                                    : 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                                }`}
-                              >
-                                {redeemingRewardId === reward.id ? (
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                ) : canAfford ? (
-                                  <>
-                                    <Gift className="w-3.5 h-3.5" />
-                                    Canjear Ahora
-                                  </>
-                                ) : (
-                                  `Faltan ${(reward.pointsCost - (customer.points || 0)).toLocaleString('es-CO')} RYYCOS`
-                                )}
-                              </button>
-                            </div>
-                          );
-                        })}
-                      </div>
+                    <div className="space-y-4 bg-[#090D16] border border-[#232E42] rounded-2xl p-4 sm:p-5">
+                      <h4 className="text-sm font-black text-white">Canjea tus monedas por WhatsApp</h4>
+                      <p className="text-sm text-gray-300 leading-relaxed">
+                        Comunícate al <strong className="text-white">3106502043</strong> por WhatsApp para canjear tus monedas.
+                      </p>
+                      <a
+                        href="https://wa.me/573106502043?text=Hola%2C%20quiero%20canjear%20mis%20monedas%20RYYCO."
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-black transition-colors"
+                      >
+                        <Phone className="w-4 h-4" />
+                        Canjear por WhatsApp
+                      </a>
                     </div>
                   )}
 

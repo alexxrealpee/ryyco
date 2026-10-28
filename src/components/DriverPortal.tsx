@@ -54,7 +54,8 @@ import {
   MessageCircle
 } from 'lucide-react';
 import OrderChatModal from './OrderChatModal';
-import { signInWithCustomToken } from 'firebase/auth';
+import { signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
+import { loadVerifiedDriver, signInDriverWithGoogle } from '../lib/driverAuth';
 import { getApiUrl } from '../lib/apiConfig';
 import { auth, signInWithGoogleUniversal } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -71,8 +72,6 @@ import {
   fetchDriverOrdersHistory, 
   fetchDriverRatings, 
   updateDriverProfile,
-  findDriverByCredentials,
-  resetDriverPassword,
   registerDriverProfile,
   fetchSystemSettings,
   listenToSystemSettings
@@ -121,30 +120,31 @@ interface DriverPortalProps {
 }
 
 export default function DriverPortal({ onNavigateHome, onNavigateRegister, initialDriver, onDriverSessionChange }: DriverPortalProps) {
-  // Auth & Driver Session State - Initialized synchronously from props or localStorage
-  const [driver, setDriver] = useState<DriverProfile | null>(() => {
-    if (initialDriver) {
-      saveDriverSessionToStorage(initialDriver);
-      return initialDriver;
-    }
-    return getStoredDriverSession();
-  });
-  const [loginEmail, setLoginEmail] = useState<string>('');
-  const [loginDocNumber, setLoginDocNumber] = useState<string>('');
-  const [loginPassword, setLoginPassword] = useState<string>('');
-  const [showPassword, setShowPassword] = useState<boolean>(false);
-  const [loginError, setLoginError] = useState<string>('');
-  const [authLoading, setAuthLoading] = useState<boolean>(false);
-
-  // Forgot Password / Recovery Modal State
-  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState<boolean>(false);
-  const [forgotEmail, setForgotEmail] = useState<string>('');
-  const [forgotDocNumber, setForgotDocNumber] = useState<string>('');
-  const [forgotNewPassword, setForgotNewPassword] = useState<string>('');
-  const [forgotShowPass, setForgotShowPass] = useState<boolean>(false);
-  const [forgotLoading, setForgotLoading] = useState<boolean>(false);
-  const [forgotErrorMsg, setForgotErrorMsg] = useState<string>('');
-  const [forgotSuccessMsg, setForgotSuccessMsg] = useState<string>('');
+  // Cached profile data is never proof of authentication.
+  const [driver, setDriver] = useState<DriverProfile | null>(null);
+  const [loginError, setLoginError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  useEffect(() => {
+    let generation = 0;
+    const unsubscribe = onAuthStateChanged(auth, async user => {
+      const request = ++generation;
+      setDriver(null);
+      if (!user) { clearDriverSessionStorage(); return; }
+      try {
+        const fresh = await loadVerifiedDriver(user);
+        if (request !== generation) return;
+        setDriver(fresh);
+        if (fresh) saveDriverSessionToStorage(fresh);
+        else clearDriverSessionStorage();
+        onDriverSessionChange?.(fresh);
+      } catch {
+        if (request !== generation) return;
+        clearDriverSessionStorage();
+        setLoginError('No se pudo verificar tu cuenta. Intenta ingresar nuevamente con Google.');
+      }
+    });
+    return () => { generation++; unsubscribe(); };
+  }, []);
 
   // Active view tab inside portal
   const [activeTab, setActiveTab] = useState<'deliveries' | 'history' | 'profile'>('deliveries');
@@ -439,35 +439,23 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     return () => unsubscribe();
   }, []);
 
-  // Sync with initialDriver prop changes if provided from parent
-  useEffect(() => {
-    if (initialDriver) {
-      setDriver(initialDriver);
-      saveDriverSessionToStorage(initialDriver);
-    }
-  }, [initialDriver]);
-
-  // Keep driver record updated with fresh Firestore data in the background on mount / refresh
+  // Apply approval/revocation changes while the portal is open.
   useEffect(() => {
     if (!driver?.id) return;
-    let isCancelled = false;
-
-    fetchDriverProfileByUid(driver.id)
-      .then((fresh) => {
-        if (isCancelled) return;
-        if (fresh) {
-          setDriver(fresh);
-          saveDriverSessionToStorage(fresh);
-          if (onDriverSessionChange) onDriverSessionChange(fresh);
-        }
-      })
-      .catch((err) => {
-        console.warn("Silent fallback: could not fetch latest driver record from Firestore:", err);
-      });
-
-    return () => {
-      isCancelled = true;
-    };
+    return onSnapshot(doc(db, 'drivers', driver.id), snapshot => {
+      if (!snapshot.exists()) { setDriver(null); clearDriverSessionStorage(); return; }
+      const { password: _password, ...data } = snapshot.data();
+      setDriver(previous => previous ? {
+        ...previous, ...data, id: snapshot.id,
+        rating: previous.rating, ratingCount: previous.ratingCount,
+        completedDeliveriesCount: previous.completedDeliveriesCount, totalEarnings: previous.totalEarnings,
+      } as DriverProfile : null);
+    }, () => {
+      setDriver(null);
+      setActiveDelivery(null);
+      clearDriverSessionStorage();
+      onDriverSessionChange?.(null);
+    });
   }, [driver?.id]);
 
   useEffect(() => {
@@ -673,146 +661,20 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     };
   }, [activeDelivery?.id]);
 
-  // Forgot Password / Self-service reset handler
-  const handleRecoverPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotErrorMsg('');
-    setForgotSuccessMsg('');
-
-    const cleanEmail = forgotEmail.trim().toLowerCase();
-    const cleanDoc = forgotDocNumber.trim();
-    const newPass = forgotNewPassword.trim();
-
-    if (!cleanEmail || !cleanDoc) {
-      setForgotErrorMsg('Por favor ingresa tu correo y número de documento registrados.');
-      return;
-    }
-    if (!newPass || newPass.length < 4) {
-      setForgotErrorMsg('Por favor ingresa una nueva contraseña de al menos 4 caracteres.');
-      return;
-    }
-
-    setForgotLoading(true);
-    try {
-      const driverFound = await findDriverByCredentials(cleanEmail, cleanDoc);
-      if (!driverFound) {
-        setForgotErrorMsg('No se encontró ningún domiciliario con ese correo y número de documento. Verifica tus datos o contáctanos por WhatsApp.');
-        setForgotLoading(false);
-        return;
-      }
-
-      const ok = await resetDriverPassword(driverFound.id, newPass);
-      if (ok) {
-        setForgotSuccessMsg('¡Contraseña restablecida con éxito! Ya puedes ingresar con tu nueva clave.');
-        setLoginEmail(cleanEmail);
-        setLoginDocNumber(cleanDoc);
-        setLoginPassword(newPass);
-        setTimeout(() => {
-          setShowForgotPasswordModal(false);
-          setForgotSuccessMsg('');
-        }, 2200);
-      } else {
-        setForgotErrorMsg('No se pudo actualizar la contraseña. Intenta nuevamente.');
-      }
-    } catch (err: any) {
-      console.error('Password reset error:', err);
-      setForgotErrorMsg('Error al restablecer la contraseña. Contacta a soporte por WhatsApp.');
-    } finally {
-      setForgotLoading(false);
-    }
-  };
-
-  // Login Handler
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoginError('');
-    if (!loginEmail.trim() || !loginDocNumber.trim() || !loginPassword.trim()) {
-      setLoginError('Por favor ingresa tu correo, número de documento y contraseña.');
-      return;
-    }
-
+    if (authLoading) return;
     setAuthLoading(true);
+    setLoginError('');
     try {
-      const cleanEmail = loginEmail.toLowerCase().trim();
-      if (
-        cleanEmail === 'googleplay.review@ryyco.com' || 
-        cleanEmail === 'review@ryyco.com' || 
-        cleanEmail === 'demo@ryyco.com'
-      ) {
-        const demoDriver: DriverProfile = {
-          id: 'driver_play_review_demo',
-          uid: 'driver_play_review_demo',
-          firstName: 'Repartidor',
-          lastName: 'Play Review',
-          email: cleanEmail,
-          phone: '3000000000',
-          docType: 'CC',
-          docNumber: loginDocNumber.trim() || '1020304050',
-          birthDate: '1995-01-01',
-          address: 'Calle 100 # 15-20',
-          vehicleType: 'moto',
-          vehicleBrand: 'Yamaha FZ',
-          vehiclePlate: 'DEM123',
-          city: 'Bogotá',
-          status: 'approved',
-          isAvailable: true,
-          rating: 5.0,
-          ratingCount: 18,
-          completedDeliveriesCount: 42,
-          totalEarnings: 350000,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        setDriver(demoDriver);
-        setIsAvailable(true);
-        saveDriverSessionToStorage(demoDriver);
-        if (onDriverSessionChange) {
-          onDriverSessionChange(demoDriver);
-        }
-        return;
-      }
-
-      const driverUid = `driver_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
-      const found = await fetchDriverProfileByUid(driverUid);
-
-      if (found) {
-        // Verify doc match
-        if (found.docNumber.trim() !== loginDocNumber.trim()) {
-          setLoginError('El número de documento no coincide con el correo ingresado.');
-          return;
-        }
-
-        // Verify password if set on account
-        if (found.password && found.password.trim()) {
-          if (found.password.trim() !== loginPassword.trim()) {
-            setLoginError('La contraseña ingresada es incorrecta.');
-            return;
-          }
-        } else {
-          // If no password set yet in legacy profile, save the new password for future logins
-          try {
-            await updateDriverProfile(found.id, { password: loginPassword.trim() });
-            found.password = loginPassword.trim();
-          } catch (passErr) {
-            console.warn('Could not update driver password:', passErr);
-          }
-        }
-
-        setDriver(found);
-        setIsAvailable(Boolean(found.isAvailable));
-        saveDriverSessionToStorage(found);
-        if (onDriverSessionChange) {
-          onDriverSessionChange(found);
-        }
-      } else {
-        setLoginError('No se encontró ninguna cuenta de domiciliario con esos datos. Por favor regístrate.');
-      }
-    } catch (err: any) {
-      console.error(err);
-      setLoginError('Error al iniciar sesión. Verifica tus datos.');
-    } finally {
-      setAuthLoading(false);
-    }
+      const found = await signInDriverWithGoogle();
+      setDriver(found);
+      setIsAvailable(Boolean(found.isAvailable));
+      saveDriverSessionToStorage(found);
+      onDriverSessionChange?.(found);
+    } catch (err) {
+      setLoginError((err as Error).message || 'No se pudo verificar tu cuenta con Google.');
+    } finally { setAuthLoading(false); }
   };
 
   // Logout Handler - Clears persistent storage and offline status
@@ -824,6 +686,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         console.error(e);
       }
     }
+    await signOut(auth);
     clearDriverSessionStorage();
     setDriver(null);
     setIsAvailable(false);
@@ -1146,68 +1009,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             )}
 
             <form onSubmit={handleLogin} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] mb-1.5">Correo Electrónico Registrado</label>
-                <input
-                  type="email"
-                  required
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="ejemplo@correo.com"
-                  className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-[#A9B2C3]/60 focus:outline-none focus:border-[#E63946] transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] mb-1.5">Número de Documento (Cédula/NIT)</label>
-                <input
-                  type="text"
-                  required
-                  value={loginDocNumber}
-                  onChange={(e) => setLoginDocNumber(e.target.value)}
-                  placeholder="Ej. 1020304050"
-                  className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-[#A9B2C3]/60 focus:outline-none focus:border-[#E63946] transition"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-bold text-[#A9B2C3]">Contraseña</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotEmail(loginEmail);
-                      setForgotDocNumber(loginDocNumber);
-                      setForgotNewPassword('');
-                      setForgotErrorMsg('');
-                      setForgotSuccessMsg('');
-                      setShowForgotPasswordModal(true);
-                    }}
-                    className="text-xs text-[#E63946] hover:underline font-bold cursor-pointer"
-                  >
-                    ¿Olvidaste tu contraseña?
-                  </button>
-                </div>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    required
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="Ingresa tu contraseña"
-                    className="w-full bg-[#090B12] border border-[#232B3A] rounded-xl pl-3.5 pr-11 py-2.5 text-sm text-white placeholder-[#A9B2C3]/60 focus:outline-none focus:border-[#E63946] transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A9B2C3] hover:text-white transition p-1 cursor-pointer"
-                    title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
+              <p className="text-sm text-[#A9B2C3]">
+                Ingresa con Google usando el mismo correo de tu registro. Tu cuenta y tus entregas se conservan; no necesitas registrarte nuevamente.
+              </p>
               <button
                 type="submit"
                 disabled={authLoading}
@@ -1218,7 +1022,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 ) : (
                   <>
                     <Bike className="w-4 h-4" />
-                    <span>Ingresar al Portal</span>
+                    <span>Ingresar con Google</span>
                   </>
                 )}
               </button>
@@ -3365,141 +3169,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                   </>
                 )}
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Driver Forgot Password Modal */}
-      {showForgotPasswordModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-[#111622] border border-[#232B3A] rounded-3xl p-6 sm:p-7 shadow-2xl relative text-left">
-            <button
-              type="button"
-              onClick={() => {
-                setShowForgotPasswordModal(false);
-                setForgotErrorMsg('');
-                setForgotSuccessMsg('');
-              }}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white rounded-xl hover:bg-gray-800 transition cursor-pointer"
-              title="Cerrar"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0">
-                <Key className="w-6 h-6 text-[#E63946]" />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-white">Recuperar Contraseña</h3>
-                <p className="text-xs text-[#A9B2C3]">Portal de Domiciliarios RYYCO</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-300 mb-5 leading-relaxed">
-              Verifica tu identidad con tu <strong>correo</strong> y <strong>número de documento</strong> para crear una nueva clave de acceso de inmediato.
-            </p>
-
-            {forgotErrorMsg && (
-              <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 font-semibold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
-                <span>{forgotErrorMsg}</span>
-              </div>
-            )}
-
-            {forgotSuccessMsg && (
-              <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400 font-bold flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>{forgotSuccessMsg}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleRecoverPasswordSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] mb-1">
-                  Correo Electrónico Registrado *
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="ejemplo@correo.com"
-                  className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] mb-1">
-                  Número de Documento (Cédula/NIT) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={forgotDocNumber}
-                  onChange={(e) => setForgotDocNumber(e.target.value)}
-                  placeholder="Ej. 1020304050"
-                  className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-[#A9B2C3] mb-1">
-                  Nueva Contraseña *
-                </label>
-                <div className="relative">
-                  <input
-                    type={forgotShowPass ? 'text' : 'password'}
-                    required
-                    minLength={4}
-                    value={forgotNewPassword}
-                    onChange={(e) => setForgotNewPassword(e.target.value)}
-                    placeholder="Mínimo 4 caracteres"
-                    className="w-full bg-[#090B12] border border-[#232B3A] focus:border-[#E63946] rounded-xl pl-3.5 pr-11 py-2.5 text-sm text-white placeholder-gray-500 outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setForgotShowPass(!forgotShowPass)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#A9B2C3] hover:text-white transition p-1 cursor-pointer"
-                    title={forgotShowPass ? "Ocultar clave" : "Ver clave"}
-                  >
-                    {forgotShowPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <button
-                type="submit"
-                disabled={forgotLoading}
-                className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition cursor-pointer shadow-lg shadow-[#E63946]/20 flex items-center justify-center gap-2 disabled:opacity-50 mt-2"
-              >
-                {forgotLoading ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent animate-spin rounded-full" />
-                ) : (
-                  <>
-                    <Key className="w-4 h-4" />
-                    <span>Guardar Nueva Contraseña</span>
-                  </>
-                )}
-              </button>
-            </form>
-
-            <div className="mt-5 pt-5 border-t border-[#232B3A] text-center space-y-3">
-              <p className="text-[11px] text-[#A9B2C3]">
-                ¿Prefieres que el administrador te asista por WhatsApp?
-              </p>
-              <a
-                href={`https://wa.me/573106502043?text=${encodeURIComponent(
-                  `¡Hola Soporte RYYCO! Olvidé mi contraseña de domiciliario. Mi correo registrado es: ${forgotEmail || 'N/A'} y mi documento es: ${forgotDocNumber || 'N/A'}. Por favor ayúdenme a restablecerla.`
-                )}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-2.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 font-bold text-xs rounded-xl border border-emerald-500/30 transition cursor-pointer flex items-center justify-center gap-2"
-              >
-                <MessageCircle className="w-4 h-4 text-emerald-400" />
-                <span>Pedir Ayuda a Soporte por WhatsApp</span>
-              </a>
             </div>
           </div>
         </div>
