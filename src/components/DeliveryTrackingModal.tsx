@@ -1,3 +1,4 @@
+import { lockBodyScroll } from '../lib/bodyScrollLock';
 import { GoogleMapCameraController } from './TrackingMapCamera';
 import { createPortal } from 'react-dom';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -264,14 +265,13 @@ export default function DeliveryTrackingModal({
     surface.addEventListener('touchmove', preventMapPinch, { passive: false });
     surface.addEventListener('gesturestart', preventSafariGesture);
     surface.addEventListener('gesturechange', preventSafariGesture);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const releaseScroll = lockBodyScroll();
     return () => {
       observer.disconnect();
       surface.removeEventListener('touchmove', preventMapPinch);
       surface.removeEventListener('gesturestart', preventSafariGesture);
       surface.removeEventListener('gesturechange', preventSafariGesture);
-      document.body.style.overflow = previousOverflow;
+      releaseScroll();
     };
   }, [isOpen, order?.id]);
 
@@ -680,7 +680,7 @@ export default function DeliveryTrackingModal({
   };
 
   return createPortal(
-    <div ref={viewportRef} className="delivery-tracking-viewport fixed inset-0 z-[99999] w-full bg-[#070A12] flex flex-col overflow-hidden select-none animate-fade-in font-sans">
+    <div ref={viewportRef} className="delivery-tracking-viewport fixed inset-0 z-[1000000] w-full bg-[#070A12] flex flex-col overflow-hidden select-none animate-fade-in font-sans">
       
       {/* MAP VIEWPORT FILLING 100% OF THE FULLSCREEN */}
       <div ref={mapSurfaceRef} className="absolute inset-0 w-full h-full z-0 overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'contain' }}>

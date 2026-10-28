@@ -1,3 +1,4 @@
+import { lockBodyScroll } from '../lib/bodyScrollLock';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -119,6 +120,11 @@ export default function CustomerPortalModal({
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
+  useEffect(() => {
+    if (!isOpen) { setTrackingOrder(null); return; }
+    return lockBodyScroll();
+  }, [isOpen]);
+
   const [loading, setLoading] = useState(false);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const isAndroid = isAndroidApp();
@@ -1122,10 +1128,10 @@ export default function CustomerPortalModal({
 
   const modalBody = (
     <div 
-      className="fixed inset-0 z-[99999] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+      className="customer-portal-page fixed inset-0 w-full bg-[#0b0f19] flex flex-col overflow-hidden"
       style={{ zIndex: 999999 }}
     >
-      <div className="bg-[#0b0f19] border border-gray-800 rounded-3xl max-w-2xl w-full max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden text-gray-100 animate-fade-in my-auto">
+      <div className="bg-[#0b0f19] w-full h-full min-h-0 flex flex-col relative overflow-hidden text-gray-100 animate-fade-in">
         
         {/* Glow ambient decoration */}
         <div className="absolute top-0 right-1/4 w-72 h-72 bg-[#E63946]/10 rounded-full blur-[90px] pointer-events-none" />
@@ -1133,7 +1139,7 @@ export default function CustomerPortalModal({
 
         {/* HEADER (shown when logged in, or clean close button when not logged in) */}
         {customer ? (
-          <div className="p-3 sm:p-5 border-b border-gray-800 flex items-center justify-between relative z-10 bg-[#0d1322]/95 backdrop-blur-md">
+          <div className="p-3 sm:p-5 border-b border-gray-800 flex items-center justify-between shrink-0 relative z-10 bg-[#0d1322]/95 backdrop-blur-md">
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 pr-2">
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10 shrink-0">
                 <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center overflow-hidden">
@@ -1548,7 +1554,7 @@ export default function CustomerPortalModal({
           </div>
         ) : (
           /* LOGGED IN CUSTOMER PORTAL */
-          <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
             
             {/* Top Navigation Tabs */}
             <div className={`grid ${isAndroid ? 'grid-cols-2' : 'grid-cols-4'} bg-[#090D16] border-b border-gray-800 p-1 sm:p-1.5 gap-1 shrink-0 text-center`}>
@@ -1628,7 +1634,7 @@ export default function CustomerPortalModal({
             )}
 
             {/* TAB CONTENT AREA */}
-            <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6">
+            <div className="p-4 sm:p-6 overflow-y-auto overscroll-contain min-h-0 flex-1 space-y-6">
 
               {/* TAB 1: MIS PEDIDOS (REAL-TIME STATUS TRACKER) */}
               {activeTab === 'orders' && (

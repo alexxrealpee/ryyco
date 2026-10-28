@@ -220,3 +220,11 @@ body {
 }
 
 @media (min-width: 640px) { .delivery-tracking-hud { --tracking-inset: 1.25rem; } }
+
+/* Customer account fills the screen; only the active tab content scrolls. */
+.customer-portal-page {
+  height: 100vh;
+  height: 100dvh;
+  max-width: 100%;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
