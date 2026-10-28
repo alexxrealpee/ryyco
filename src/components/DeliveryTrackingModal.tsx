@@ -1,3 +1,5 @@
+import { GoogleMapCameraController } from './TrackingMapCamera';
+import { createPortal } from 'react-dom';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   X, 
@@ -207,59 +209,6 @@ function GoogleMapRouteLayer({
   return null;
 }
 
-/**
- * Google Maps Camera and Centering controller
- */
-function GoogleMapCameraController({
-  driverLat,
-  driverLng,
-  storeLat,
-  storeLng,
-  destLat,
-  destLng,
-  isPickedUp,
-  centerModeTrigger
-}: {
-  driverLat: number;
-  driverLng: number;
-  storeLat: number;
-  storeLng: number;
-  destLat: number;
-  destLng: number;
-  isPickedUp: boolean;
-  centerModeTrigger: { mode: 'all' | 'driver'; id: number };
-}) {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) return;
-
-    if (centerModeTrigger.mode === 'driver') {
-      map.panTo({ lat: driverLat, lng: driverLng });
-      map.setZoom(16);
-    } else {
-      // Fit bounds including padding for top HUD and bottom card
-      const bounds = new google.maps.LatLngBounds();
-      bounds.extend({ lat: driverLat, lng: driverLng });
-      if (!isPickedUp) {
-        bounds.extend({ lat: storeLat, lng: storeLng });
-      }
-      bounds.extend({ lat: destLat, lng: destLng });
-
-      // In mobile, bottom sheet occupies roughly 240px
-      const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-      map.fitBounds(bounds, {
-        top: isMobile ? 120 : 100,
-        bottom: isMobile ? 270 : 250,
-        left: 40,
-        right: 40
-      });
-    }
-  }, [map, centerModeTrigger.id, centerModeTrigger.mode]);
-
-  return null;
-}
-
 export const isValidMapsKey = (k?: string | null): boolean => {
   return isValidGoogleMapsKey(k);
 };
@@ -282,6 +231,50 @@ export default function DeliveryTrackingModal({
     finally { setVerifyingAccount(false); }
   };
   const [centerRequest, setCenterRequest] = useState(0);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const mapSurfaceRef = useRef<HTMLDivElement>(null);
+  const topBarRef = useRef<HTMLDivElement>(null);
+  const bottomPanelRef = useRef<HTMLDivElement>(null);
+  const [mapPadding, setMapPadding] = useState({ top: 80, bottom: 300, left: 28, right: 28 });
+  useEffect(() => {
+    if (!isOpen || !order) return;
+    const viewport = viewportRef.current;
+    const surface = mapSurfaceRef.current;
+    const top = topBarRef.current;
+    const bottom = bottomPanelRef.current;
+    if (!viewport || !surface || !top || !bottom) return;
+    const measure = () => {
+      const rect = viewport.getBoundingClientRect();
+      const next = {
+        top: Math.ceil(top.getBoundingClientRect().bottom - rect.top + 20),
+        bottom: Math.ceil(rect.bottom - bottom.getBoundingClientRect().top + 20),
+        left: 28, right: 28
+      };
+      setMapPadding(previous => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+      leafletMapRef.current?.invalidateSize({ pan: false });
+    };
+    const observer = new ResizeObserver(measure);
+    [viewport, top, bottom].forEach(element => observer.observe(element));
+    measure();
+    // Cancel only native multi-touch zoom on the map, never propagation to Maps.
+    const preventMapPinch = (event: TouchEvent) => {
+      if (event.touches.length > 1 && event.cancelable) event.preventDefault();
+    };
+    const preventSafariGesture = (event: Event) => { if (event.cancelable) event.preventDefault(); };
+    surface.addEventListener('touchmove', preventMapPinch, { passive: false });
+    surface.addEventListener('gesturestart', preventSafariGesture);
+    surface.addEventListener('gesturechange', preventSafariGesture);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      observer.disconnect();
+      surface.removeEventListener('touchmove', preventMapPinch);
+      surface.removeEventListener('gesturestart', preventSafariGesture);
+      surface.removeEventListener('gesturechange', preventSafariGesture);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen, order?.id]);
+
   const [liveOrder, setLiveOrder] = useState<OrderItem | null>(order);
   const { tracking, connection, error: trackingError, retry: retryTracking, now } = useDeliveryTracking(order?.id, isOpen && !['delivered', 'cancelled'].includes((liveOrder || order)?.status || '') && (liveOrder || order)?.deliveryStep !== 'delivered');
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>(() => {
@@ -340,6 +333,7 @@ export default function DeliveryTrackingModal({
   // Leaflet references (for seamless fallback)
   const leafletContainerRef = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<L.Map | null>(null);
+  const leafletFrameRef = useRef('');
   const driverMarkerRef = useRef<L.Marker | null>(null);
   const destMarkerRef = useRef<L.Marker | null>(null);
   const storeMarkerRef = useRef<L.Marker | null>(null);
@@ -420,10 +414,17 @@ export default function DeliveryTrackingModal({
   const gpsLabel = finished ? 'Seguimiento finalizado' : !courierPoint ? (tracking?.isTrackingActive === false ? 'Sin señal' : 'Esperando ubicación')
     : hasLiveGps ? 'En vivo' : connection !== 'live' || tracking?.isTrackingActive === false || secondsAgo === null || secondsAgo > GPS_FRESH_MS / 1000
     ? 'Sin señal' : 'Con retraso';
-  const gpsDescription = finished ? 'Seguimiento finalizado' : trackingError || (secondsAgo === null ? 'Esperando ubicación del domiciliario'
-    : `Última ubicación recibida hace ${secondsAgo} segundos`);
+
   const driverLat = courierPoint?.lat ?? (hasStore ? storeLat : destLat);
   const driverLng = courierPoint?.lng ?? (hasStore ? storeLng : destLng);
+  const cameraPoints = [
+    ...(hasDriverFix ? [{ lat: driverLat, lng: driverLng }] : []),
+    ...(hasStore && !isPickedUp ? [{ lat: storeLat, lng: storeLng }] : []),
+    ...(hasDestination ? [{ lat: destLat, lng: destLng }] : []),
+  ];
+  const leafletPadding = useRef(mapPadding);
+  leafletPadding.current = mapPadding;
+
 
   // Courier vehicle type
   const vehicleType = tracking?.vehicleType || activeOrder?.deliveryVehicle || 'moto';
@@ -520,10 +521,6 @@ export default function DeliveryTrackingModal({
         stage2PolylineRef.current = poly2;
         leafletMapRef.current = map;
 
-        const bounds = isPickedUp
-          ? L.latLngBounds([[driverLat, driverLng], [destLat, destLng]])
-          : L.latLngBounds([[driverLat, driverLng], [storeLat, storeLng], [destLat, destLng]]);
-        map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
       } else {
         if (hasDriverFix && !driverMarkerRef.current) {
           driverMarkerRef.current = L.marker([driverLat, driverLng], { icon: driverIcon, zIndexOffset: 1000 }).addTo(leafletMapRef.current);
@@ -545,15 +542,26 @@ export default function DeliveryTrackingModal({
           );
         }
       }
+      const frame = JSON.stringify([hasDriverFix, hasStore, hasDestination, isPickedUp, mapPadding]);
+      if (leafletFrameRef.current !== frame && cameraPoints.length) {
+        leafletFrameRef.current = frame;
+        const padding = leafletPadding.current;
+        leafletMapRef.current?.invalidateSize({ pan: false });
+        leafletMapRef.current?.fitBounds(L.latLngBounds(cameraPoints), {
+          paddingTopLeft: [padding.left, padding.top],
+          paddingBottomRight: [padding.right, padding.bottom], maxZoom: 16
+        });
+      }
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [isOpen, isUsingLeaflet, driverLat, driverLng, destLat, destLng, storeLat, storeLng, tracking?.heading, isBike, isPickedUp, hasDriverFix, hasStore, hasDestination]);
+  }, [isOpen, isUsingLeaflet, driverLat, driverLng, destLat, destLng, storeLat, storeLng, tracking?.heading, isBike, isPickedUp, hasDriverFix, hasStore, hasDestination, mapPadding]);
 
   useEffect(() => {
     return () => {
       leafletMapRef.current?.remove();
       leafletMapRef.current = null;
+      leafletFrameRef.current = '';
       driverMarkerRef.current = destMarkerRef.current = storeMarkerRef.current = null;
       stage1PolylineRef.current = stage2PolylineRef.current = null;
     };
@@ -566,7 +574,13 @@ export default function DeliveryTrackingModal({
   }, isUsingLeaflet);
 
   useEffect(() => {
-    if (centerRequest && courierPoint) leafletMapRef.current?.panTo([courierPoint.lat, courierPoint.lng]);
+    const map = leafletMapRef.current;
+    if (centerRequest && courierPoint && map) {
+      const zoom = 16;
+      const center = map.project([courierPoint.lat, courierPoint.lng], zoom)
+        .add(L.point((mapPadding.right - mapPadding.left) / 2, (mapPadding.bottom - mapPadding.top) / 2));
+      map.setView(map.unproject(center, zoom), zoom);
+    }
   }, [centerRequest]);
 
   if (!isOpen || !activeOrder) return null;
@@ -665,11 +679,11 @@ export default function DeliveryTrackingModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[99999] w-screen h-screen bg-[#070A12] flex flex-col overflow-hidden select-none animate-fade-in font-sans">
+  return createPortal(
+    <div ref={viewportRef} className="delivery-tracking-viewport fixed inset-0 z-[99999] w-full bg-[#070A12] flex flex-col overflow-hidden select-none animate-fade-in font-sans">
       
       {/* MAP VIEWPORT FILLING 100% OF THE FULLSCREEN */}
-      <div className="absolute inset-0 w-full h-full z-0 overflow-hidden">
+      <div ref={mapSurfaceRef} className="absolute inset-0 w-full h-full z-0 overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'contain' }}>
         {mapProvider === 'google' && isValidMapsKey(googleMapsApiKey) ? (
           <APIProvider
             apiKey={googleMapsApiKey}
@@ -707,14 +721,10 @@ export default function DeliveryTrackingModal({
               />
 
               {/* Camera centering manager */}
-              <GoogleMapCameraController
-                driverLat={driverLat}
-                driverLng={driverLng}
-                storeLat={storeLat}
-                storeLng={storeLng}
-                destLat={destLat}
-                destLng={destLng}
-                isPickedUp={isPickedUp}
+              <GoogleMapCameraController identity={trackingIdentity}
+                points={cameraPoints}
+                driver={courierPoint}
+                padding={mapPadding}
                 centerModeTrigger={centerTrigger}
               />
 
@@ -788,10 +798,10 @@ export default function DeliveryTrackingModal({
       </div>
 
       {/* FLOATING HUD CONTROLS OVER THE MAP (POINTER-EVENTS-NONE WITH INTERACTIVE CHILDREN) */}
-      <div className="relative z-10 w-full h-full flex flex-col justify-between p-3 sm:p-5 pointer-events-none">
+      <div className="delivery-tracking-hud relative z-10 w-full h-full min-h-0 flex flex-col justify-between gap-3 p-3 sm:p-5 pointer-events-none">
         
         {/* TOP BAR HUD: BACK BUTTON, LIVE STATUS BADGE, & QUICK TOOLS */}
-        <div className="w-full flex items-start justify-between gap-2.5">
+        <div ref={topBarRef} className="w-full min-w-0 flex flex-wrap items-start justify-between gap-2 shrink-0">
           
           {/* Back button */}
           <div className="pointer-events-auto flex items-center gap-2">
@@ -841,21 +851,23 @@ export default function DeliveryTrackingModal({
         </div>
 
 
-          <div className="pointer-events-auto self-center max-w-[90%] px-3 py-1 rounded-xl bg-black/75 text-[10px] text-gray-200 backdrop-blur-md" role="status">
-            {accountError || gpsDescription} · Líneas orientativas, no rutas por calles.
-            {connection === 'error' && <button type="button" disabled={verifyingAccount} onClick={verifyTrackingAccount} className="ml-2 underline pointer-events-auto">{verifyingAccount ? 'Verificando cuenta…' : 'Verificar cuenta con Google'}</button>}
-            {(connection === 'error' || connection === 'offline') && <button type="button" onClick={retryTracking} className="ml-2 underline pointer-events-auto">Reintentar GPS</button>}
-          </div>
         {/* BOTTOM HUD CARD: DRIVER INFO, PIN & CONTACT BUTTONS */}
-        <div className="pointer-events-auto w-full max-w-xl mx-auto">
+        <div ref={bottomPanelRef} className="pointer-events-auto w-full min-w-0 max-w-xl mx-auto max-h-[48%] overflow-y-auto overscroll-contain shrink-0 rounded-3xl">
           <div className="bg-[#090D16]/95 border border-gray-800/90 rounded-3xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl text-white space-y-3.5 transition-all">
 
             <p className="text-[11px] text-gray-400 truncate" title={activeOrder.customerAddress}>
               {activeOrder.storeName || 'Restaurante'} ➔ {activeOrder.customerAddress || 'Dirección registrada en el pedido'}
             </p>
+            {(accountError || connection === 'error' || connection === 'offline') && (
+              <div className="text-xs text-amber-300 space-x-2" role="status">
+                <span>{accountError || trackingError || 'Conexión interrumpida.'}</span>
+                {connection === 'error' && <button type="button" disabled={verifyingAccount} onClick={verifyTrackingAccount} className="underline">{verifyingAccount ? 'Verificando cuenta…' : 'Verificar cuenta con Google'}</button>}
+                <button type="button" onClick={retryTracking} className="underline">Reintentar GPS</button>
+              </div>
+            )}
             {/* SECURITY PIN BANNER (CRITICAL FOR CUSTOMER) */}
             {!finished ? (showDeliveryCode && (
-              <div className="p-3 sm:p-3.5 bg-gradient-to-r from-emerald-950/70 via-[#0A161E] to-emerald-950/50 border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 shadow-lg">
+              <div className="p-3 sm:p-3.5 bg-gradient-to-r from-emerald-950/70 via-[#0A161E] to-emerald-950/50 border border-emerald-500/40 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
                     <Key className="w-5 h-5" />
@@ -1016,6 +1028,7 @@ export default function DeliveryTrackingModal({
         }}
       />
 
-    </div>
+    </div>,
+    document.body
   );
 }

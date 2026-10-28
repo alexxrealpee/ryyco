@@ -208,3 +208,15 @@ body {
     scroll-padding-block: 12px;
   }
 }
+
+/* Tracking stays inside the dynamic mobile viewport; browser zoom remains available outside the map. */
+.delivery-tracking-viewport { height: 100vh; height: 100dvh; max-width: 100%; }
+.delivery-tracking-hud {
+  --tracking-inset: 0.75rem;
+  padding-top: max(var(--tracking-inset), env(safe-area-inset-top));
+  padding-bottom: max(var(--tracking-inset), env(safe-area-inset-bottom));
+  padding-left: max(var(--tracking-inset), env(safe-area-inset-left));
+  padding-right: max(var(--tracking-inset), env(safe-area-inset-right));
+}
+
+@media (min-width: 640px) { .delivery-tracking-hud { --tracking-inset: 1.25rem; } }
