@@ -111,6 +111,23 @@ service cloud.firestore {
       return isAuth() && (verifiedDriverEmail(data.get('email', '')) ||
         (request.auth.token.firebase.sign_in_provider == 'custom' && request.auth.uid == driverId));
     }
+    // Private latest position, never exposed to customers or other drivers.
+    match /driver_presence/{driverId} {
+      function driver() { return get(/databases/$(database)/documents/drivers/$(driverId)).data; }
+      allow read: if driverAdmin();
+      allow delete: if driverAdmin() || ownsDriver(driverId, driver());
+      allow create, update: if ownsDriver(driverId, driver()) &&
+        driver().status == 'approved' && driver().isAvailable == true &&
+        request.resource.data.keys().hasOnly(['lat', 'lng', 'accuracy', 'gpsTimestamp', 'updatedAt']) &&
+        request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90 &&
+        request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180 &&
+        request.resource.data.accuracy is number && request.resource.data.accuracy >= 0 && request.resource.data.accuracy <= 60 &&
+        request.resource.data.gpsTimestamp is number &&
+        request.resource.data.gpsTimestamp >= request.time.toMillis() - 45000 &&
+        request.resource.data.gpsTimestamp <= request.time.toMillis() + 5000 &&
+        request.resource.data.updatedAt == request.time;
+    }
+
     match /drivers/{driverId} {
       allow get: if driverAdmin() || (resource != null && ownsDriver(driverId, resource.data)) ||
         (resource == null && isAuth() && request.auth.token.get('email_verified', false) == true &&

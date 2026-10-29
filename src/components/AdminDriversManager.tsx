@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { 
   Bike, 
   Car, 
@@ -47,7 +47,10 @@ import {
   DriverFCMTokenRecord
 } from '../lib/fcmNotifications';
 
+const AdminDriversMap = lazy(() => import('./AdminDriversMap'));
+
 export default function AdminDriversManager() {
+  const [showDriversMap, setShowDriversMap] = useState(false);
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -369,6 +372,9 @@ export default function AdminDriversManager() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <button onClick={() => setShowDriversMap(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
+            <MapPin className="w-4 h-4" /> Ver disponibles en el mapa
+          </button>
           {/* Availability Filter Toggle */}
           <div className="flex items-center gap-1 bg-gray-950 p-1 rounded-xl border border-gray-800 shrink-0">
             <span className="text-[10px] font-bold uppercase text-gray-500 px-2">Disponibilidad:</span>
@@ -940,6 +946,7 @@ export default function AdminDriversManager() {
         </div>
       )}
 
+      {showDriversMap && <Suspense fallback={<div className="fixed inset-0 z-[1000000] bg-gray-950 text-white p-6">Cargando mapa… <button onClick={() => setShowDriversMap(false)}>Cerrar</button></div>}><AdminDriversMap onClose={() => setShowDriversMap(false)} /></Suspense>}
     </div>
   );
 }

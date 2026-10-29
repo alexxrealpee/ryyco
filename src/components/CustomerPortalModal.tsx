@@ -1986,6 +1986,41 @@ export default function CustomerPortalModal({
                               </div>
                             )}
 
+                            {/* Actions - driver tracking, rating & Soporte Ryyco */}
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              {!isDelivered && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTrackingOrder(order)}
+                                  className="flex-1 py-3 bg-[#E63946] hover:bg-[#D62839] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+                                >
+                                  <Navigation className="w-4 h-4 text-white animate-pulse" />
+                                  <span>Rastrear mi domicilio en vivo (Google Maps)</span>
+                                </button>
+                              )}
+
+                              {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven && (
+                                <button
+                                  type="button"
+                                  onClick={() => setRatingDriverOrder(order)}
+                                  className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+                                >
+                                  <Star className="w-3.5 h-3.5 fill-gray-950" />
+                                  <span>Calificar Domiciliario</span>
+                                </button>
+                              )}
+
+                              <a
+                                href={`https://wa.me/573106502043?text=${encodeURIComponent(`Hola Soporte Ryyco, necesito ayuda con mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={`${(!isDelivered || ((order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven)) ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                                Soporte Ryyco
+                              </a>
+                            </div>
+
                             {/* Calificar al Domiciliario (Si el pedido ya fue entregado y no ha sido calificado) */}
                             {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven && (
                               <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-[#151D2A] to-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
@@ -2053,33 +2088,6 @@ export default function CustomerPortalModal({
                                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20 shrink-0">
                                   ✓ Calificado
                                 </span>
-                              </div>
-                            )}
-
-                            {/* Real-time status history timeline */}
-                            {order.statusHistory && order.statusHistory.length > 0 && (
-                              <div className="bg-[#090D16] p-3 rounded-xl border border-gray-800/80 text-xs space-y-1.5">
-                                <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-gray-800/80 pb-1">
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3 text-amber-400" /> Historial de Estado en Vivo
-                                  </span>
-                                  <span className="text-emerald-400 font-mono text-[9px] flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Tiempo Real
-                                  </span>
-                                </div>
-                                <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
-                                  {order.statusHistory.map((h, hIdx) => (
-                                    <div key={hIdx} className="flex items-start justify-between gap-2 text-[11px] text-gray-300">
-                                      <span className="flex items-center gap-1.5">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-[#E63946] shrink-0" />
-                                        <span>{h.note || h.status}</span>
-                                      </span>
-                                      <span className="text-gray-500 font-mono text-[9px] shrink-0">
-                                        {new Date(h.timestamp).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
                               </div>
                             )}
 
@@ -2153,40 +2161,32 @@ export default function CustomerPortalModal({
                               </div>
                             </div>
 
-                            {/* Actions - driver tracking, rating & Soporte Ryyco */}
-                            <div className="flex flex-col sm:flex-row gap-2">
-                              {!isDelivered && (
-                                <button
-                                  type="button"
-                                  onClick={() => setTrackingOrder(order)}
-                                  className="flex-1 py-3 bg-gradient-to-r from-[#E63946] via-[#ea384c] to-amber-500 hover:brightness-110 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/30 active:scale-[0.98] cursor-pointer"
-                                >
-                                  <Navigation className="w-4 h-4 text-white animate-pulse" />
-                                  <span>Rastrear mi domicilio en vivo (Google Maps)</span>
-                                </button>
-                              )}
-
-                              {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven && (
-                                <button
-                                  type="button"
-                                  onClick={() => setRatingDriverOrder(order)}
-                                  className="flex-1 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
-                                >
-                                  <Star className="w-3.5 h-3.5 fill-gray-950" />
-                                  <span>Calificar Domiciliario</span>
-                                </button>
-                              )}
-
-                              <a
-                                href={`https://wa.me/573106502043?text=${encodeURIComponent(`Hola Soporte Ryyco, necesito ayuda con mi pedido #${order.orderNumber} a nombre de ${customer.name}.`)}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className={`${(!isDelivered || ((order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven)) ? 'flex-1' : 'w-full'} py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 border border-gray-800`}
-                              >
-                                <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                                Soporte Ryyco
-                              </a>
-                            </div>
+                            {/* Real-time status history timeline */}
+                            {order.statusHistory && order.statusHistory.length > 0 && (
+                              <div className="bg-[#090D16] p-3 rounded-xl border border-gray-800/80 text-xs space-y-1.5">
+                                <div className="flex items-center justify-between text-[10px] text-gray-400 font-bold uppercase tracking-wider border-b border-gray-800/80 pb-1">
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-400" /> Historial de Estado en Vivo
+                                  </span>
+                                  <span className="text-emerald-400 font-mono text-[9px] flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Tiempo Real
+                                  </span>
+                                </div>
+                                <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                                  {order.statusHistory.map((h, hIdx) => (
+                                    <div key={hIdx} className="flex items-start justify-between gap-2 text-[11px] text-gray-300">
+                                      <span className="flex items-center gap-1.5">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-[#E63946] shrink-0" />
+                                        <span>{h.note || h.status}</span>
+                                      </span>
+                                      <span className="text-gray-500 font-mono text-[9px] shrink-0">
+                                        {new Date(h.timestamp).toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\./g, '').toUpperCase()}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}

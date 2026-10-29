@@ -77,6 +77,7 @@ import {
   listenToSystemSettings
 } from '../lib/firebase';
 import { DriverProfile, OrderItem, VehicleType, DriverRating } from '../types';
+import { useDriverPresence } from '../hooks/useDriverPresence';
 import { useDriverLiveTracking } from '../hooks/useDriverLiveTracking';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
 import { safeGetItem, safeSetItem, safeRemoveItem } from '../lib/safeStorage';
@@ -286,6 +287,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     activeDelivery,
     driver
   });
+
+  const presenceError = useDriverPresence(driver, isAvailable, activeDelivery, currentCoords);
 
   const [verifyingGps, setVerifyingGps] = useState(false);
   const [gpsAuthError, setGpsAuthError] = useState<string | null>(null);
@@ -2032,8 +2035,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                           </div>
                           <div>
                             <span className="text-xs font-bold text-[#A9B2C3] block">Estado GPS & Radar</span>
+                            {isAvailable && <p className="text-xs text-gray-400">Tu ubicación se comparte con administración mientras estás disponible y mantienes el portal abierto.</p>}
                             <span className="text-xs font-bold text-[#E63946] flex items-center gap-1.5">
-                              {gpsError || (isGpsTracking ? 'GPS activo' : isAvailable ? 'Buscando pedidos en tiempo real...' : 'Modo no disponible')}
+                              {presenceError || gpsError || (isGpsTracking ? 'GPS activo' : isAvailable ? 'Buscando pedidos en tiempo real...' : 'Modo no disponible')}
                             </span>
                           </div>
                         </div>

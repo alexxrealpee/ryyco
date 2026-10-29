@@ -59,3 +59,12 @@ Las fotografías se habilitan cerca de la pantalla (200 px) y se descargan como 
 Hostinger debe desplegar todo `dist`, incluidos `api/catalog-page.php`, `api/catalog-image.php`, `api/catalog-live.php` y `.htaccess`. PHP necesita cURL, HTTPS a Firestore y escritura en `catalog-images` para reutilizar fotografías. El despliegue conectado a GitHub debe finalizar antes de comprobar producción.
 
 Pruebas: `node scripts/test-product-loading.cjs`, `node scripts/test-store-availability.cjs`, `node --test scripts/test-catalog-bootstrap.mjs`, `node scripts/test-hostinger-catalog.cjs` (con PHP_BINARY). La medición `node scripts/measure-home.cjs --local` utiliza Chrome/Playwright y PHP, 390×844, 200.000 bytes/s, 150 ms de latencia y CPU 4×. Las capturas y métricas quedan en `build/performance` fuera de Git; las rutas se configuran con CHROME_BINARY, PHP_BINARY y RYYCO_NODE_MODULES.
+
+
+### Mapa privado de domiciliarios disponibles
+
+En Administración general → Domiciliarios, **Ver disponibles en el mapa** abre una vista con suscripciones en tiempo real. Solo aparecen marcadores de domiciliarios aprobados, disponibles, con datos confirmados por Firebase y GPS de menos de 45 segundos. Los demás figuran como **Sin GPS reciente**; no se inventa una ubicación.
+
+El portal del domiciliario comparte su última posición en `driver_presence/{driverId}` mientras está abierto y el domiciliario está disponible, con permiso GPS. Durante una entrega reutiliza el GPS existente. Al salir o desactivar disponibilidad, detiene el envío y elimina la posición; si el dispositivo pierde conexión, el marcador caduca. No proporciona rastreo en segundo plano con el navegador cerrado. La colección guarda solo la última posición y únicamente administración puede leerla.
+
+Antes de utilizar esta función en producción, publicar las reglas actualizadas de `firestore.rules` en la base de datos configurada de RYYCO (`ai-studio-be9196c8-7041-4ba9-b337-ca71c1485d15`, proyecto `studio-9002217802-13e05`). El despliegue de Hostinger no publica reglas de Firebase. Actualizar también el portal que usan los domiciliarios. La configuración `firebase.security.json` sirve exclusivamente para las pruebas locales del emulador.

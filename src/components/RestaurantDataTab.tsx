@@ -350,7 +350,7 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
   return (
     <div className="space-y-6 w-full min-w-0 max-w-full">
       {/* HEADER WITH STATUS BADGE */}
-      <div className="border-b border-gray-900 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4 w-full min-w-0">
+      <div className="border-b border-gray-900 pb-4 flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-4 w-full min-w-0">
         <div className="min-w-0">
           <div className="flex items-center gap-2.5 mb-1 flex-wrap">
             <h2 className="text-lg sm:text-xl font-black text-white flex items-center gap-2 truncate">
@@ -367,7 +367,20 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            form="restaurant-profile-form"
+            disabled={isSaving}
+            className="hidden md:flex items-center justify-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
+          >
+            {isSaving ? (
+              <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin rounded-full" />
+            ) : (
+              <Save className="w-4 h-4 stroke-[2.5]" />
+            )}
+            <span>Guardar Datos del Restaurante</span>
+          </button>
           {/* Real-time kitchen toggle */}
           <button
             type="button"
@@ -1300,8 +1313,8 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
           </div>
         </div>
 
-        {/* BOTTOM SAVE BUTTON */}
-        <div className="bg-gray-950 border border-gray-900 p-4 rounded-2xl sm:rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+        {/* Bottom save action remains available on mobile. */}
+        <div className="bg-gray-950 border border-gray-900 p-4 rounded-2xl sm:rounded-3xl flex md:hidden flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
           <div className="flex items-center gap-2 text-xs text-gray-400">
             <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
             <span>Los datos guardados se aplicarán instantáneamente al menú digital y comensales.</span>

@@ -3770,16 +3770,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
-              className="bg-[#111827] border border-[#232B3A] rounded-3xl w-full max-w-lg relative overflow-hidden shadow-2xl flex flex-col z-10 max-h-[92vh] p-6 text-center space-y-6"
+              role="dialog" aria-modal="true" aria-labelledby="order-success-title"
+              className="bg-[#111827] border border-[#334155] rounded-3xl w-full max-w-md relative overflow-y-auto overscroll-contain flex flex-col z-10 max-h-[90dvh] p-5 sm:p-6 text-center gap-5"
             >
-              <div className="w-14 h-14 bg-[#E63946]/10 border border-[#E63946]/20 text-[#E63946] rounded-full flex items-center justify-center text-2xl mx-auto animate-bounce shrink-0">
-                🎉
+              <div className="w-14 h-14 bg-[#16382C] text-[#6EE7B7] rounded-2xl flex items-center justify-center mx-auto shrink-0">
+                <Check className="w-7 h-7" aria-hidden="true" />
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-xl font-black text-white leading-tight">¡Pedido Registrado con Éxito!</h3>
+                <h3 id="order-success-title" className="text-xl font-black text-white leading-tight">¡Pedido Registrado con Éxito!</h3>
                 <p className="text-xs text-[#A9B2C3] max-w-sm mx-auto leading-relaxed">
-                  Espera que un domiciliario de ryyco tome su pedido.
+                  Puedes consultar el estado de tu pedido y seguir la entrega desde tu portal.
                 </p>
               </div>
 
@@ -3790,38 +3791,38 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   setCustomerPortalTab('orders');
                   setIsCustomerPortalOpen(true);
                 }}
-                className="w-full py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-sm rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/30 cursor-pointer active:scale-95 shrink-0"
+                className="w-full min-h-12 px-4 py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-bold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
               >
                 <ShoppingBag className="w-5 h-5 text-white" />
-                Ver y Rastrear Mi Pedido en Tiempo Real 📦
+                Ver y rastrear mi pedido
               </button>
 
               {/* Created Orders list with send WhatsApp buttons */}
-              <div className="space-y-3 flex-grow overflow-y-auto max-h-[40vh] pr-1">
+              <div className="space-y-3 shrink-0">
                 {submittedOrders.map((order) => {
                   const profile = profiles[order.storeOwnerId];
                   const storeName = profile?.displayName || `@${profile?.username || 'tienda'}`;
                   const currency = profile?.currency || '$';
 
                   return (
-                    <div key={order.id} className="bg-[#090B12] border border-[#232B3A] p-4 rounded-2xl flex flex-col items-stretch text-left space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <span className="text-[8px] font-black uppercase text-[#A9B2C3] block leading-none">TIENDA</span>
-                          <h4 className="font-extrabold text-white text-sm">{storeName}</h4>
+                    <div key={order.id} className="bg-[#182231] border border-[#334155] p-4 rounded-2xl flex flex-col items-stretch text-left space-y-3">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-black uppercase text-[#A9B2C3] block leading-none">TIENDA</span>
+                          <h4 className="font-extrabold text-white text-sm break-words">{storeName}</h4>
                           <span className="text-[10px] text-[#A9B2C3] font-semibold font-mono">Orden #{order.orderNumber}</span>
                         </div>
-                        <div className="text-right">
-                          <span className="text-[8px] font-black uppercase text-[#A9B2C3] block leading-none">TOTAL</span>
-                          <span className="text-sm font-black text-[#E63946] font-mono">{currency}{order.totalAmount.toLocaleString()}</span>
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] font-black uppercase text-[#A9B2C3] block leading-none">TOTAL</span>
+                          <span className="text-base font-black text-white font-mono">{currency}{order.totalAmount.toLocaleString('es-CO')}</span>
                         </div>
                       </div>
 
                       <button
                         onClick={() => triggerShopperWhatsAppMessage(order)}
-                        className="w-full py-2.5 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-[11px] uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shadow-[#E63946]/20"
+                        className="w-full min-h-11 px-3 py-2.5 bg-[#16803D] hover:bg-[#166534] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors"
                       >
-                        <MessageCircle className="w-4 h-4 fill-white text-white" />
+                        <MessageCircle className="w-4 h-4 text-white" />
                         Enviar Orden por WhatsApp
                       </button>
                     </div>
@@ -3830,18 +3831,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
 
               {/* Close / Done action */}
-              <div className="flex flex-col gap-2 pt-2">
-                <button
-                  onClick={() => {
-                    setIsSuccessOpen(false);
-                    setCustomerPortalTab('orders');
-                    setIsCustomerPortalOpen(true);
-                  }}
-                  className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-[#E63946]/20 cursor-pointer"
-                >
-                  <ShoppingBag className="w-4 h-4 text-white" />
-                  Ver y Rastrear Mis Pedidos en Tiempo Real 📦
-                </button>
+              <div className="flex flex-col gap-3 border-t border-[#334155] pt-4 shrink-0">
                 {!isAndroid && (
                   <button
                     onClick={() => {
@@ -3849,10 +3839,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                       setCustomerPortalTab('wheel');
                       setIsCustomerPortalOpen(true);
                     }}
-                    className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 cursor-pointer"
+                    className="w-full min-h-11 px-3 py-3 bg-[#F4B400] hover:bg-[#D99F00] text-[#111827] font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Crown className="w-4 h-4 text-black" />
-                    ¡Girar Ruleta de Platos Gratis & Ver Mis Puntos Ryycos! 🎁
+                    Platos gratis y mis puntos Ryycos
                   </button>
                 )}
                 <button
@@ -3860,9 +3850,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     setIsSuccessOpen(false);
                     setSubmittedOrders([]);
                   }}
-                  className="w-full py-2.5 bg-[#090B12] hover:bg-[#232B3A] border border-[#232B3A] text-gray-400 hover:text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                  className="w-full min-h-11 py-3 bg-[#111827] hover:bg-[#1E293B] border border-[#475569] text-[#CBD5E1] hover:text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
                 >
-                  Cerrar y Volver a la Vitrina
+                  Volver a la vitrina
                 </button>
               </div>
 

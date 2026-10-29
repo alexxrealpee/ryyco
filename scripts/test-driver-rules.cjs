@@ -42,5 +42,22 @@ const pending = {id,uid:'google-owner',email:'test@example.com',status:'pending'
   // Legacy credentials can be removed by the verified owner, preserving status and ID.
   await request(`drivers/${id}`,'owner',{...pending,uid:id,password:'synthetic-legacy'});
   assert.equal((await request(`drivers/${id}`,owner,pending)).status,200,'legacy migration');
-  console.log('PASS: 17 driver access, approval, credential and migration checks');
+  const location = {lat:1,lng:-77,accuracy:10,gpsTimestamp:Date.now()};
+  async function writePresence(bearer, overrides = {}) {
+    return fetch(base.slice(0,-1)+':commit', {method:'POST', headers:{'Content-Type':'application/json',Authorization:`Bearer ${bearer}`},
+      body:JSON.stringify({writes:[{update:{name:`projects/demo-ryyco-security/databases/(default)/documents/driver_presence/${id}`,fields:toFields({...location,gpsTimestamp:Date.now(),...overrides})},updateTransforms:[{fieldPath:'updatedAt',setToServerValue:'REQUEST_TIME'}]}]})});
+  }
+  assert.equal((await writePresence(owner)).status,403,'pending driver GPS blocked');
+  await request(`drivers/${id}`,admin,{...pending,status:'approved',isAvailable:true,isOnline:true});
+  assert.equal((await writePresence(owner)).status,200,'available owner GPS');
+  assert.equal((await writePresence(other)).status,403,'other identity GPS spoofing');
+  assert.equal((await writePresence(owner,{lat:91})).status,403,'invalid coordinates');
+  assert.equal((await writePresence(owner,{gpsTimestamp:Date.now()-60000})).status,403,'stale GPS rejected');
+  assert.equal((await request(`driver_presence/${id}`,null)).status,403,'GPS not public');
+  assert.equal((await request('driver_presence',other)).status,403,'drivers cannot enumerate GPS');
+  assert.equal((await request('driver_presence',admin)).status,200,'admin live map access');
+  await request(`drivers/${id}`,admin,{...pending,status:'approved'});
+  assert.equal((await writePresence(owner)).status,403,'offline driver GPS blocked');
+  assert.equal((await fetch(base+`driver_presence/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${owner}`}})).status,200,'offline owner cleanup');
+  console.log('PASS: 27 driver access, approval, credential, migration and private GPS checks');
 })().catch(e=>{console.error(e);process.exitCode=1;});

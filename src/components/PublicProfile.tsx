@@ -4016,7 +4016,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 onClick={() => {
                   setDirectTrackingOrder(submittedOrder);
                 }}
-                className="w-full py-3.5 bg-gradient-to-r from-[#E63946] via-[#ea384c] to-amber-500 hover:brightness-110 text-white text-xs font-black rounded-xl transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#E63946]/30 active:scale-95"
+                className="w-full py-3.5 bg-[#E63946] hover:bg-[#D62839] text-white text-xs font-black rounded-xl transition-colors flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Navigation className="w-4 h-4 text-white animate-pulse" />
                 Rastrear mi domicilio en vivo (Google Maps)
