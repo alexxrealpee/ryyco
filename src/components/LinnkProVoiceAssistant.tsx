@@ -1540,7 +1540,7 @@ export default function LinnkProVoiceAssistant({
       {/* 1. FLOATING CALL & CHAT TRIGGER (1. Botón Inicial Minimalista & 4. Opción Alternativa & 5. Modo Minimizado) */}
       <div 
         id="linnkpro-voice-fab-container"
-        className="fixed bottom-20 left-4 sm:bottom-6 sm:left-6 z-40 flex items-center gap-3"
+        className="fixed bottom-16 left-4 sm:bottom-4 sm:left-6 z-40 flex items-center gap-3"
       >
         {/* 5. MODO MINIMIZADO: Sleek floating indicator docked in the corner */}
         {isOpen && isMinimized ? (
@@ -1576,7 +1576,7 @@ export default function LinnkProVoiceAssistant({
                 setIsMinimized(false);
                 setActiveTab('chat');
               }}
-              className="relative w-14 h-14 rounded-full border-2 border-[#EF4444] bg-[#0E131F]/95 shadow-[0_0_25px_rgba(239,68,68,0.45)] hover:shadow-[0_0_35px_rgba(239,68,68,0.7)] flex items-center justify-center transition-all duration-300 backdrop-blur-md cursor-pointer group flex-shrink-0"
+              className="relative box-border w-14 h-14 min-w-14 min-h-14 p-0 rounded-full border-2 border-[#EF4444] bg-[#0E131F]/95 shadow-[0_0_25px_rgba(239,68,68,0.45)] hover:shadow-[0_0_35px_rgba(239,68,68,0.7)] flex items-center justify-center transition-all duration-300 backdrop-blur-md cursor-pointer group flex-shrink-0"
               aria-label="Abrir Chat de Ryyco"
               title="Abrir Chat de Ryyco y Mesero Virtual"
             >

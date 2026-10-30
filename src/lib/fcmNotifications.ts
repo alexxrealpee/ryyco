@@ -1,3 +1,4 @@
+import { isNativePush, initializeNativePush, nativePushPermission, registerNativePush, clearNativePushBinding } from './nativePush';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -9,8 +10,56 @@
 
 import { getMessaging, getToken, onMessage, isSupported, Messaging } from 'firebase/messaging';
 import { doc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
-import { app, db } from './firebase';
+import { app, db, auth } from './firebase';
 import { OrderItem } from '../types';
+
+const nativeTokenId = (token: string) => token.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-100);
+export async function disableNativePushForLogout() {
+  if (!isNativePush()) return;
+  await clearNativePushBinding();
+  for (const role of ['admin', 'seller', 'driver']) {
+    const token = localStorage.getItem(`ryyco_${role}_native_token`);
+    if (token) await deleteDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(token))).catch(() => {});
+    localStorage.removeItem(`ryyco_${role}_native_token`);
+    localStorage.removeItem(`ryyco_${role}_fcm_token`);
+  }
+  localStorage.removeItem('ryyco_driver_notifications_enabled');
+}
+async function requestNativeRole(role: 'admin' | 'seller' | 'driver', identity: Record<string, string>) {
+  try {
+    const sessionUid = auth.currentUser?.uid;
+    if (!sessionUid) throw new Error('Inicia sesión para activar las notificaciones.');
+    // Only report success after the native token is stored under the authenticated account.
+    const token = await registerNativePush(async value => {
+      if (auth.currentUser?.uid !== sessionUid) throw new Error('La sesión cambió. Vuelve a activar las notificaciones.');
+      for (const otherRole of ['admin', 'seller', 'driver'].filter(value => value !== role)) {
+        const otherToken = localStorage.getItem(`ryyco_${otherRole}_native_token`);
+        if (otherToken) {
+          await deleteDoc(doc(db, `${otherRole}_fcm_tokens`, nativeTokenId(otherToken)));
+          localStorage.removeItem(`ryyco_${otherRole}_native_token`);
+          localStorage.removeItem(`ryyco_${otherRole}_fcm_token`);
+        }
+      }
+      const previous = localStorage.getItem(`ryyco_${role}_native_token`);
+      await setDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(value)), {
+        ...identity, token: value, device: 'android', active: true,
+        userAgent: navigator.userAgent, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+      }, { merge: true });
+      if (previous && previous !== value) await deleteDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(previous)));
+      localStorage.setItem(`ryyco_${role}_native_token`, value);
+      localStorage.setItem(`ryyco_${role}_fcm_token`, value);
+      localStorage.setItem(`ryyco_${role}_native_owner`, identity.driverId || identity.storeOwnerId || identity.adminUid);
+    });
+    return { success: true, token };
+  } catch (error: any) { return { success: false, error: error?.message || 'No se pudo activar el dispositivo Android.' }; }
+}
+function nativeRoleStatus(role: string, owner?: string) {
+  const token = localStorage.getItem(`ryyco_${role}_native_token`);
+  const matches = !owner || owner === localStorage.getItem(`ryyco_${role}_native_owner`);
+  return { supported: true, permission: nativePushPermission(), token: matches ? token : null,
+    hasToken: Boolean(matches && token && nativePushPermission() === 'granted'),
+    tokenPreview: matches && token ? `${token.slice(0, 12)}...${token.slice(-8)}` : null };
+}
 
 let messagingInstance: Messaging | null = null;
 let serviceWorkerReg: ServiceWorkerRegistration | null = null;
@@ -118,6 +167,7 @@ export function speakDriverVoiceAlert(text: string) {
  */
 export async function initializeFCM(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
+  if (isNativePush()) return initializeNativePush();
   if (messagingInstance && serviceWorkerReg) return true;
 
   try {
@@ -268,6 +318,8 @@ export async function requestAdminFCMPermission(adminUser?: {
   if (typeof window === 'undefined') {
     return { success: false, error: 'No se puede ejecutar en el servidor' };
   }
+
+  if (isNativePush()) return requestNativeRole('admin', { adminUid: adminUser?.uid || '', adminEmail: adminUser?.email || '', adminName: adminUser?.name || 'Administración RYYCO' });
 
   if (!('Notification' in window)) {
     return { success: false, error: 'Este navegador no soporta notificaciones push nativas.' };
@@ -492,6 +544,7 @@ export function getFCMStatus(): {
   hasToken: boolean;
   tokenPreview: string | null;
 } {
+  if (isNativePush()) return nativeRoleStatus('admin');
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return {
       supported: false,
@@ -506,7 +559,7 @@ export function getFCMStatus(): {
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token || isGranted),
+    hasToken: Boolean(token && isGranted && !/^(driver_|seller_)?(web|native)_push_/.test(token)),
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
 }
@@ -522,6 +575,8 @@ export async function requestSellerFCMPermission(seller: {
   if (typeof window === 'undefined') {
     return { success: false, error: 'No se puede ejecutar en el servidor' };
   }
+
+  if (isNativePush()) return requestNativeRole('seller', { storeOwnerId: seller.uid, sellerUid: seller.uid, sellerEmail: seller.email || '', storeName: seller.storeName || 'Restaurante' });
 
   if (!('Notification' in window)) {
     return { success: false, error: 'Este navegador o dispositivo no soporta notificaciones push nativas.' };
@@ -717,6 +772,7 @@ export function getSellerFCMStatus(storeOwnerId?: string): {
   token: string | null;
   tokenPreview: string | null;
 } {
+  if (isNativePush()) return nativeRoleStatus('seller', storeOwnerId);
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return {
       supported: false,
@@ -732,7 +788,7 @@ export function getSellerFCMStatus(storeOwnerId?: string): {
   return {
     supported: true,
     permission: Notification.permission,
-    hasToken: Boolean(token || isGranted),
+    hasToken: Boolean(token && isGranted && !/^(driver_|seller_)?(web|native)_push_/.test(token)),
     token,
     tokenPreview: token ? (token.length > 24 ? `${token.slice(0, 12)}...${token.slice(-8)}` : token) : null
   };
@@ -750,6 +806,8 @@ export async function requestDriverFCMPermission(driver: {
   if (typeof window === 'undefined') {
     return { success: false, error: 'No se puede ejecutar en el servidor' };
   }
+
+  if (isNativePush()) return requestNativeRole('driver', { driverId: driver.id, driverName: driver.name || 'Domiciliario', phone: driver.phone || '', vehicleType: driver.vehicleType || 'moto' });
 
   if (!('Notification' in window)) {
     return { success: false, error: 'Este dispositivo no soporta notificaciones push nativas.' };
@@ -786,11 +844,11 @@ export async function requestDriverFCMPermission(driver: {
           });
         } catch (defaultErr: any) {
           console.warn('[FCM-DRIVER] Default getToken fallback error:', defaultErr);
-          fcmToken = 'driver_web_push_' + driver.id + '_' + Date.now();
+          throw new Error('Firebase no pudo generar un token válido. Reintenta activar las notificaciones.');
         }
       }
     } else {
-      fcmToken = 'driver_native_push_' + driver.id + '_' + Date.now();
+      throw new Error('Push web no está disponible en este dispositivo.');
     }
 
     // Save locally
@@ -815,7 +873,9 @@ export async function requestDriverFCMPermission(driver: {
       }, { merge: true });
       console.log('[FCM-DRIVER] Token de domiciliario guardado en Firestore con éxito.');
     } catch (saveErr) {
-      console.warn('[FCM-DRIVER] Error al guardar token de domiciliario en Firestore:', saveErr);
+      localStorage.removeItem('ryyco_driver_fcm_token');
+      localStorage.removeItem('ryyco_driver_notifications_enabled');
+      throw new Error('No se pudo guardar el dispositivo en Firebase.');
     }
 
     // Also register token with server for direct Google FCM dispatch when Chrome is closed
@@ -976,6 +1036,7 @@ export function getDriverFCMStatus(driverId?: string): {
   token: string | null;
   tokenPreview: string | null;
 } {
+  if (isNativePush()) return nativeRoleStatus('driver', driverId);
   if (typeof window === 'undefined' || !('Notification' in window)) {
     return {
       supported: false,
@@ -988,11 +1049,7 @@ export function getDriverFCMStatus(driverId?: string): {
 
   const token = localStorage.getItem('ryyco_driver_fcm_token');
   const isGranted = typeof Notification !== 'undefined' && Notification.permission === 'granted';
-  const hasToken = Boolean(
-    isGranted ||
-    token ||
-    (typeof localStorage !== 'undefined' && localStorage.getItem('ryyco_driver_notifications_enabled') === 'true')
-  );
+  const hasToken = Boolean(isGranted && token && !/^driver_(web|native)_push_/.test(token) && (!driverId || localStorage.getItem('ryyco_driver_fcm_driver_id') === driverId));
 
   return {
     supported: true,

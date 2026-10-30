@@ -59,5 +59,11 @@ const pending = {id,uid:'google-owner',email:'test@example.com',status:'pending'
   await request(`drivers/${id}`,admin,{...pending,status:'approved'});
   assert.equal((await writePresence(owner)).status,403,'offline driver GPS blocked');
   assert.equal((await fetch(base+`driver_presence/${id}`,{method:'DELETE',headers:{Authorization:`Bearer ${owner}`}})).status,200,'offline owner cleanup');
-  console.log('PASS: 27 driver access, approval, credential, migration and private GPS checks');
+  assert.equal((await request('admin_fcm_tokens/fake',other,{adminUid:'other',token:'test'})).status,403,'editable profile admin cannot register admin push');
+  assert.equal((await request('admin_fcm_tokens/admin',admin,{adminUid:'admin',token:'test'})).status,200,'verified admin push');
+  assert.equal((await request('seller_fcm_tokens/own',other,{storeOwnerId:'other',sellerUid:'other',token:'test'})).status,200,'own restaurant push');
+  assert.equal((await request('seller_fcm_tokens/spoof',other,{storeOwnerId:'victim',sellerUid:'victim',token:'test'})).status,403,'another restaurant token denied');
+  assert.equal((await request('driver_fcm_tokens/own',owner,{driverId:id,token:'test'})).status,200,'verified driver push');
+  assert.equal((await request('driver_fcm_tokens/spoof',other,{driverId:id,token:'test'})).status,403,'another driver token denied');
+  console.log('PASS: 33 driver, private GPS and notification access checks');
 })().catch(e=>{console.error(e);process.exitCode=1;});

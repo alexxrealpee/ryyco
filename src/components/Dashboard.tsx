@@ -1,3 +1,6 @@
+import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
+import { lockBodyScroll } from '../lib/bodyScrollLock';
+import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -564,6 +567,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     typeof window !== 'undefined' ? localStorage.getItem('ryyco_seller_fcm_token') : null
   );
   const [showFCMDetails, setShowFCMDetails] = useState(false);
+  useEffect(() => {
+    const refreshPushStatus = () => { const status = getSellerFCMStatus(profile.uid); setPushPermission(status.permission); setSellerFCMToken(status.hasToken ? status.token : null); };
+    window.addEventListener('ryyco:push-status', refreshPushStatus);
+    return () => window.removeEventListener('ryyco:push-status', refreshPushStatus);
+  }, [profile.uid]);
   const [copiedFCMToken, setCopiedFCMToken] = useState(false);
   const [isFcmModalOpen, setIsFcmModalOpen] = useState(false);
   const [customVapidKey, setCustomVapidKey] = useState(() => 
@@ -578,8 +586,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       setPushPermission('unsupported');
     }
 
-    // Auto-initialize FCM and check seller registration
-    initializeFCM().catch(() => {});
+    // Refresh the real Android registration when this account opens its portal.
+    initializeFCM().then(async () => {
+      if (!isNativePush()) return;
+      if (nativePushPermission() === 'granted') await requestSellerFCMPermission({ uid: profile.uid, email: profile.email, storeName: profile.displayName });
+      const status = getSellerFCMStatus(profile.uid);
+      setPushPermission(status.permission);
+      setSellerFCMToken(status.hasToken ? status.token : null);
+    }).catch(() => {});
     if (profile.uid) {
       const status = getSellerFCMStatus(profile.uid);
       if (status.token) {
@@ -1110,6 +1124,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   
   // Detail Order overlay state
   const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
+  const isOrderDetailOpen = Boolean(viewingOrder);
+  useEffect(() => {
+    if (isOrderDetailOpen) return lockBodyScroll();
+  }, [isOrderDetailOpen]);
+  usePushOrderNavigation('seller', orders, setViewingOrder, () => setActiveTab('orders'));
 
   // Manual Create Order form states
   const [isAddingOrder, setIsAddingOrder] = useState(false);
@@ -2252,13 +2271,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             type="button"
             onClick={() => setIsFcmModalOpen(true)}
             className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
-              pushPermission === 'granted'
+              (pushPermission === 'granted' && Boolean(sellerFCMToken))
                 ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shadow-sm'
                 : 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border-amber-500/40 animate-pulse'
             }`}
-            title={pushPermission === 'granted' ? 'Notificaciones PUSH FCM Activas - Clic para ver detalles o probar' : 'Activar Notificaciones PUSH (FCM) para recibir pedidos en tiempo real'}
+            title={(pushPermission === 'granted' && Boolean(sellerFCMToken)) ? 'Notificaciones PUSH FCM Activas - Clic para ver detalles o probar' : 'Activar Notificaciones PUSH (FCM) para recibir pedidos en tiempo real'}
           >
-            {pushPermission === 'granted' ? (
+            {(pushPermission === 'granted' && Boolean(sellerFCMToken)) ? (
               <>
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -4806,7 +4825,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       </div>
                       <div className="flex flex-wrap items-center gap-2 shrink-0 self-start sm:self-center">
                         {/* FCM Push Notification Toggle Button */}
-                        {pushPermission === 'granted' ? (
+                        {(pushPermission === 'granted' && Boolean(sellerFCMToken)) ? (
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
@@ -4958,7 +4977,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                     )}
 
                     {/* Notice to activate FCM if not granted yet */}
-                    {pushPermission !== 'granted' && (
+                    {(pushPermission !== 'granted' || !sellerFCMToken) && (
                       <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-300 shrink-0">
@@ -6804,23 +6823,25 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
       {/* 6. ORDER DETAIL MODAL OVERLAY */}
       {viewingOrder && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-gray-950 border border-gray-850 rounded-3xl w-full max-w-lg overflow-hidden flex flex-col p-6 space-y-5">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-fade-in">
+          <div role="dialog" aria-modal="true" aria-labelledby="restaurant-order-detail-title" className="bg-gray-950 border border-gray-850 rounded-3xl w-full max-w-lg min-h-0 max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col">
             
-            <div className="flex items-center justify-between border-b border-gray-900 pb-3">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-900 mx-6 mt-6 pb-3">
               <div>
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Detalles del Pedido</span>
-                <h4 className="text-sm font-extrabold text-white">Orden #{viewingOrder.orderNumber}</h4>
+                <h4 id="restaurant-order-detail-title" className="text-sm font-extrabold text-white">Orden #{viewingOrder.orderNumber}</h4>
               </div>
               <button
                 type="button"
                 onClick={() => setViewingOrder(null)}
+                aria-label="Cerrar detalles del pedido"
                 className="text-gray-500 hover:text-white transition p-1"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            <div className="min-h-0 overflow-y-auto overscroll-contain p-6 pt-5 space-y-5">
             {/* Buyer specifics */}
             <div className="space-y-2 text-xs text-gray-400 bg-gray-900/40 p-4 rounded-xl border border-gray-900/80">
               <span className="text-[9px] font-bold uppercase text-indigo-450 tracking-wider block">Procedencia de compra</span>
@@ -7126,7 +7147,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 WhatsApp Aviso
               </button>
             </div>
-
+            </div>
           </div>
         </div>
       )}
@@ -8038,7 +8059,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <div className="space-y-4 text-xs">
                 {/* Status card */}
                 <div className={`p-4 rounded-2xl border ${
-                  pushPermission === 'granted'
+                  (pushPermission === 'granted' && Boolean(sellerFCMToken))
                     ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-200'
                     : pushPermission === 'denied'
                     ? 'bg-red-950/30 border-red-500/40 text-red-200'
@@ -8049,18 +8070,18 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                       Estado en este Navegador / Celular
                     </span>
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                      pushPermission === 'granted'
+                      (pushPermission === 'granted' && Boolean(sellerFCMToken))
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                         : pushPermission === 'denied'
                         ? 'bg-red-500/20 text-red-300 border border-red-500/40'
                         : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     }`}>
-                      {pushPermission === 'granted' ? 'Activo y Conectado' : pushPermission === 'denied' ? 'Bloqueado' : 'Por Activar'}
+                      {(pushPermission === 'granted' && Boolean(sellerFCMToken)) ? 'Activo y Conectado' : pushPermission === 'denied' ? 'Bloqueado' : 'Por Activar'}
                     </span>
                   </div>
 
                   <p className="font-bold text-sm text-white mt-1.5 flex items-center gap-1.5">
-                    {pushPermission === 'granted' ? (
+                    {(pushPermission === 'granted' && Boolean(sellerFCMToken)) ? (
                       <>
                         <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                         <span>¡Tu tienda recibirá alertas de pedidos en segundo plano!</span>
@@ -8079,7 +8100,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   </p>
 
                   <p className="text-xs text-gray-300 mt-1">
-                    {pushPermission === 'granted'
+                    {(pushPermission === 'granted' && Boolean(sellerFCMToken))
                       ? 'Cuando un cliente confirme un pedido, tu dispositivo emitirá un timbre armónico, voz sintetizada y una notificación nativa en la pantalla.'
                       : pushPermission === 'denied'
                       ? 'Debes dar clic en el ícono del candado 🔒 en la barra de direcciones de tu navegador y habilitar los permisos de notificaciones para ryyco.com.'
@@ -8089,7 +8110,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
                 {/* Main Action Buttons */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {pushPermission !== 'granted' ? (
+                  {(pushPermission !== 'granted' || !sellerFCMToken) ? (
                     <button
                       type="button"
                       onClick={async () => {

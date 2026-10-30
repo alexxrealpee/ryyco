@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict');
+const ts=require('typescript');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const code=ts.transpileModule(fs.readFileSync('src/lib/imageCompressor.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+let mode='normal',exportsObject={};
+const canvases=[];
+const context={exports:exportsObject,FileReader:class{readAsDataURL(){this.result='data:image/png;base64,AA==';this.onload();}},Image:class{constructor(){this.naturalWidth=3000;this.naturalHeight=4500;}set src(value){this.onload();}},document:{createElement(){const canvas={width:0,height:0,getContext:()=>({fillRect(){},drawImage(){}}),toDataURL(format){if(mode==='fallback'&&format==='image/webp')return 'data:image/png;base64,AAA';const size=mode==='oversize'?150000:mode==='small'?12000:canvas.width>=1000?120000:70000;return `data:${format};base64,`+'A'.repeat(size);}};canvases.push(canvas);return canvas;}}};
+vm.runInNewContext(code,context);
+(async()=>{
+ const file={type:'image/png',size:4*1024*1024};
+ const result=await exportsObject.compressPaymentReceipt(file);
+ assert(result.dataUrl.length<=exportsObject.RECEIPT_STORAGE_LIMIT);
+ assert(canvases.length===3,'retry with smaller dimensions');
+ assert(result.width===850);
+ mode='small';canvases.length=0;
+ await exportsObject.compressPaymentReceipt(file);assert.equal(canvases.length,1,'stop when compact');
+ mode='fallback';const fallback=await exportsObject.compressPaymentReceipt(file);assert(fallback.dataUrl.startsWith('data:image/jpeg'));
+ mode='oversize';await assert.rejects(()=>exportsObject.compressPaymentReceipt(file),/Recorta/);
+ console.log('PASS: receipt storage ceiling includes Base64, progressive resizing, early stop, JPEG fallback and oversized rejection');
+})().catch(e=>{console.error(e);process.exitCode=1;});

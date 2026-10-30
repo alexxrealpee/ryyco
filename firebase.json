@@ -18,5 +18,12 @@
         "supportEmail": "alexxrealpee@gmail.com"
       }
     }
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "order-notifications",
+      "runtime": "nodejs22"
+    }
+  ]
 }

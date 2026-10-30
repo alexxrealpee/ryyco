@@ -9,6 +9,7 @@ const config: CapacitorConfig = {
     cleartext: true
   },
   plugins: {
+    PushNotifications: { presentationOptions: ['badge', 'sound', 'alert'] },
     StatusBar: {
       backgroundColor: '#090B12',
       style: 'DARK',

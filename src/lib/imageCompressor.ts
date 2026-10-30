@@ -20,6 +20,26 @@ export interface CompressOptions {
   maxSizeBytes?: number;
 }
 
+// Includes Base64 overhead: Firestore stores the data URL, not the binary image.
+export const RECEIPT_STORAGE_LIMIT = 96 * 1024;
+
+export async function compressPaymentReceipt(file: File): Promise<CompressionResult> {
+  const attempts = [
+    { maxWidth: 1200, maxHeight: 1800, quality: 0.72 },
+    { maxWidth: 1000, maxHeight: 1500, quality: 0.65 },
+    { maxWidth: 850, maxHeight: 1280, quality: 0.6 },
+  ];
+  let smallest: CompressionResult | undefined;
+  for (const options of attempts) {
+    const result = await compressImageFile(file, { ...options, maxSizeBytes: 60 * 1024 });
+    if (!smallest || result.dataUrl.length < smallest.dataUrl.length) smallest = result;
+    // Preserve resolution once the compact storage target has been reached.
+    if (result.dataUrl.length <= 80 * 1024) return result;
+  }
+  if (smallest && smallest.dataUrl.length <= RECEIPT_STORAGE_LIMIT) return smallest;
+  throw new Error('Recorta la imagen para mostrar solo el comprobante y vuelve a subirla.');
+}
+
 /**
  * Formats bytes into a human-readable string (e.g. "45 KB", "1.2 MB").
  */

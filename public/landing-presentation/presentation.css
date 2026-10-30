@@ -32,3 +32,7 @@
  .focus{min-height:0;height:calc(100dvh - 20px)}
 }
 @media(max-width:420px){.top-actions{gap:4px}.focus-bottom small{display:none}.pager{width:100%;justify-content:space-between}.scroll-prompt{display:none}}
+
+.top-actions .home-link{background:#15202f}
+.top-actions .home-link:hover{background:#273346}
+@media(max-width:480px){.identity>div{display:none}.top{gap:8px}}

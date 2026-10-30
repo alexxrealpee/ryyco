@@ -26,7 +26,8 @@
     "lint": "tsc --noEmit",
     "postbuild": "node scripts/sanitize-public-build.mjs",
     "postbuild:client": "node scripts/sanitize-public-build.mjs",
-    "postbuild:web": "node scripts/sanitize-public-build.mjs"
+    "postbuild:web": "node scripts/sanitize-public-build.mjs",
+    "capacitor:sync:after": "node scripts/configure-android-push.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",
@@ -37,6 +38,7 @@
     "@capacitor/geolocation": "^8.2.2",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.5.2",
+    "@capacitor/push-notifications": "^8.1.3",
     "@capacitor/status-bar": "^8.0.3",
     "@google/genai": "^1.29.0",
     "@openai/agents": "^0.16.0",

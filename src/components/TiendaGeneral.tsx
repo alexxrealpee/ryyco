@@ -1,3 +1,5 @@
+import { doc, onSnapshot } from 'firebase/firestore';
+import CheckoutBankTransfer, { validTransferAccounts } from './CheckoutBankTransfer';
 import { balanceCatalog, resolveProductStore } from '../lib/catalogProducts';
 /**
  * @license
@@ -404,10 +406,44 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
   const [custNotes, setCustNotes] = useState('');
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
-  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('transfer');
+  const [isPaymentStep, setIsPaymentStep] = useState(false);
+  useEffect(() => { if (!isCheckoutOpen) setIsPaymentStep(false); }, [isCheckoutOpen]);
+  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
   useEffect(() => {
-    if (deliveryType === 'delivery' && payMethod === 'delivery_cash') setPayMethod('transfer');
+    if (deliveryType === 'delivery' && payMethod === 'delivery_cash') setPayMethod('whatsapp');
   }, [deliveryType, payMethod]);
+
+  const checkoutSellerIds: string[] = [...new Set<string>(cart.map(item =>
+    (profiles[item.product.userId] || findStoreForProduct(item.product, profiles))?.uid || item.product.userId || 'default_seller'))].sort();
+  const checkoutSellersKey = JSON.stringify(checkoutSellerIds);
+  const [paymentProfiles, setPaymentProfiles] = useState<Record<string, UserProfile>>({});
+  const [paymentConnectionError, setPaymentConnectionError] = useState(false);
+  const [paymentRetry, setPaymentRetry] = useState(0);
+  const [transferProofs, setTransferProofs] = useState<Record<string, string>>({});
+  const [proofBusy, setProofBusy] = useState<Record<string, boolean>>({});
+  const uploadingProof = Object.values(proofBusy).some(Boolean);
+  useEffect(() => {
+    setPaymentProfiles({});
+    setPaymentConnectionError(false);
+    if (!isCheckoutOpen) return;
+    const ids: string[] = JSON.parse(checkoutSellersKey);
+    const stops = ids.map(id => onSnapshot(doc(db, 'profiles', id), { includeMetadataChanges: true }, snapshot => {
+      setPaymentProfiles(previous => {
+        const next = { ...previous };
+        if (!snapshot.metadata.fromCache && snapshot.exists()) next[id] = { ...snapshot.data(), uid: id } as UserProfile;
+        else delete next[id];
+        return next;
+      });
+    }, () => {
+      setPaymentConnectionError(true);
+      setPaymentProfiles(previous => { const next = { ...previous }; delete next[id]; return next; });
+    }));
+    return () => stops.forEach(stop => stop());
+  }, [isCheckoutOpen, checkoutSellersKey, paymentRetry]);
+  const transferAvailable = checkoutSellerIds.some(id => validTransferAccounts(paymentProfiles[id]?.bankAccounts).length > 0);
+  useEffect(() => {
+    if (!transferAvailable && payMethod === 'transfer') setPayMethod('whatsapp');
+  }, [transferAvailable, payMethod]);
 
   // Customer Loyalty & Account Modal
   const isAndroid = isAndroidApp();
@@ -1204,6 +1240,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   };
 
   const executePlaceOrder = async (customer: CustomerProfile) => {
+    if (uploadingProof) { alert('Espera a que termine de cargar el comprobante.'); return; }
+    if (payMethod === 'transfer' && !transferAvailable) { alert('Revisa el método de pago: no hay cuentas disponibles.'); return; }
     setOrderSubmitting(true);
 
     // Group cart items by merchant userId
@@ -1283,7 +1321,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           deliveryFee: deliveryFee,
           packagingCost: sellerPackagingCost > 0 ? sellerPackagingCost : undefined,
           orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
-          paymentMethod: payMethod === 'transfer' ? 'transfer' : payMethod === 'delivery_cash' && deliveryType === 'pickup' ? 'delivery_cash' : 'whatsapp',
+          paymentMethod: payMethod === 'transfer' && validTransferAccounts(paymentProfiles[sellerId]?.bankAccounts).length > 0 ? 'transfer' : payMethod === 'delivery_cash' && deliveryType === 'pickup' ? 'delivery_cash' : 'whatsapp',
+          proofImage: payMethod === 'transfer' && validTransferAccounts(paymentProfiles[sellerId]?.bankAccounts).length > 0 ? (transferProofs[sellerId] || undefined) : undefined,
           notes: custNotes.trim() || undefined,
           status: 'pending',
           createdAt: new Date().toISOString()
@@ -1294,6 +1333,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
 
       setSubmittedOrders(created);
+      setTransferProofs({});
       clearAllCart();
       setCart([]);
       setIsCartOpen(false);
@@ -1336,6 +1376,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return;
     }
     setPhoneError("");
+    if (!isPaymentStep) { setIsPaymentStep(true); return; }
+    if (orderSubmitting || uploadingProof) return;
 
     // If customer is already logged in, allow them to freely change data for this order form
     if (activeCustomer) {
@@ -3400,7 +3442,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
       {/* 5.2. Checkout Form Modal */}
       <AnimatePresence>
-        {isCheckoutOpen && (
+        {isCheckoutOpen && !isPaymentStep && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             {/* Backdrop */}
             <motion.div
@@ -3647,39 +3689,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   />
                 </div>
 
-                {/* Payment Method Option */}
-                <div className="space-y-2 pt-2 border-t border-[#232B3A]">
-                  <span className="text-[10px] font-black uppercase text-[#A9B2C3] block">Método de coordinación de pago</span>
-                  
-                  <div className="space-y-2">
-                    {[
-                      ...(deliveryType === 'pickup' ? [{ id: 'delivery_cash', title: 'Pago en Restaurante', desc: 'Paga en efectivo o tarjeta al recoger' }] : []),
-                      { id: 'transfer', title: 'Transferencia Bancaria', desc: 'Soporte de transferencia bancaria' },
-                      { id: 'whatsapp', title: 'Pedido por WhatsApp', desc: 'Coordinar pago por chat' }
-                    ].map((opt) => (
-                      <label 
-                        key={opt.id}
-                        onClick={() => setPayMethod(opt.id as any)}
-                        className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
-                          payMethod === opt.id 
-                            ? 'bg-[#E63946]/10 border-[#E63946] pt-3 pb-3' 
-                            : 'bg-[#090B12] border-[#232B3A] hover:border-gray-700 pt-3 pb-3'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-4.5 h-4.5 rounded-full border border-[#232B3A] flex items-center justify-center">
-                            {payMethod === opt.id && <div className="w-2.5 h-2.5 bg-[#E63946] rounded-full" />}
-                          </div>
-                          <div className="text-left">
-                            <span className="text-xs font-extrabold text-white block leading-tight">{opt.title}</span>
-                            <span className="text-[10px] text-[#A9B2C3] font-medium">{opt.desc}</span>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Total Summary */}
                 {cart.length > 0 && (() => {
                   const subtotal = cart.reduce((sum, item) => sum + getCartItemUnitPrice(item) * (item.quantity || 1), 0);
@@ -3734,7 +3743,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <div className="pt-4">
                   <button
                     type="submit"
-                    disabled={orderSubmitting}
+                    disabled={orderSubmitting || uploadingProof}
                     className="w-full py-3 bg-[#E63946] hover:bg-[#D62839] disabled:bg-[#232B3A] text-white font-black text-xs rounded-xl transition uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-[#E63946]/20"
                   >
                     {orderSubmitting ? (
@@ -3747,6 +3756,126 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     )}
                   </button>
                 </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Payment is a separate step; the order is saved only after confirmation. */}
+      <AnimatePresence>
+        {isCheckoutOpen && isPaymentStep && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/85" />
+            <motion.div role="dialog" aria-modal="true" aria-labelledby="checkout-payment-title"
+              initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+              className="relative z-10 flex flex-col w-full max-w-lg max-h-[92dvh] bg-[#111827] border border-[#232B3A] rounded-3xl overflow-hidden">
+              <header className="p-5 flex items-center justify-between gap-3 border-b border-[#232B3A]">
+                <h2 id="checkout-payment-title" className="font-bold text-base text-white">Coordinar pago</h2>
+                <button type="button" autoFocus disabled={orderSubmitting || uploadingProof} onClick={() => setIsPaymentStep(false)}
+                  className="px-3 py-2 rounded-xl bg-[#334155] text-white text-xs font-bold disabled:opacity-50">Volver a mis datos</button>
+              </header>
+              <form onSubmit={handlePlaceOrderSubmit} className="overflow-y-auto p-5 space-y-4 text-left">
+                <p className="text-xs text-gray-300">Elige cómo pagar. Tu pedido se registrará al confirmar este paso.</p>
+                {/* Payment Method Option */}
+                <div className="space-y-2 pt-2 border-t border-[#232B3A]">
+                  <span className="text-[10px] font-black uppercase text-[#A9B2C3] block">Método de pago</span>
+                  
+                  <div className="space-y-2">
+                    {[
+                      ...(deliveryType === 'pickup' ? [{ id: 'delivery_cash', title: 'Pago en Restaurante', desc: 'Paga en efectivo o tarjeta al recoger' }] : []),
+                      ...(transferAvailable ? [{ id: 'transfer', title: 'Transferencia bancaria por Nequi, Bancolombia o Daviplata', desc: 'Consulta los medios habilitados por cada restaurante' }] : []),
+                      { id: 'whatsapp', title: 'Coordinar pago por WhatsApp', desc: 'Coordinar pago por chat' }
+                    ].map((opt) => (
+                      <label 
+                        key={opt.id}
+                        onClick={() => setPayMethod(opt.id as any)}
+                        className={`p-3 rounded-xl border flex items-center justify-between cursor-pointer transition ${
+                          payMethod === opt.id 
+                            ? 'bg-[#E63946]/10 border-[#E63946] pt-3 pb-3' 
+                            : 'bg-[#090B12] border-[#232B3A] hover:border-gray-700 pt-3 pb-3'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-4.5 h-4.5 rounded-full border border-[#232B3A] flex items-center justify-center">
+                            {payMethod === opt.id && <div className="w-2.5 h-2.5 bg-[#E63946] rounded-full" />}
+                          </div>
+                          <div className="text-left">
+                            <span className="text-xs font-extrabold text-white block leading-tight">{opt.title}</span>
+                            <span className="text-[10px] text-[#A9B2C3] font-medium">{opt.desc}</span>
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {paymentConnectionError && <p role="status" className="text-xs text-amber-300">No se pudieron consultar las cuentas de pago. <button type="button" className="underline" onClick={() => setPaymentRetry(v => v + 1)}>Reintentar</button></p>}
+                {payMethod === 'transfer' && <div className="space-y-3">
+                  {checkoutSellerIds.map(id => {
+                    const accounts = validTransferAccounts(paymentProfiles[id]?.bankAccounts);
+                    const name = paymentProfiles[id]?.displayName || profiles[id]?.displayName || 'Restaurante';
+                    return accounts.length ? <div key={id}><CheckoutBankTransfer name={name} accounts={accounts} proof={transferProofs[id]}
+                      onProof={image => setTransferProofs(previous => ({ ...previous, [id]: image }))}
+                      onBusy={busy => setProofBusy(previous => ({ ...previous, [id]: busy }))} /></div> :
+                      <p key={id} className="text-xs text-gray-300">{name}: sin cuenta de transferencia disponible. El pago de este restaurante se coordinará por WhatsApp.</p>;
+                  })}
+                </div>}
+
+                {/* Total Summary */}
+                {cart.length > 0 && (() => {
+                  const subtotal = cart.reduce((sum, item) => sum + getCartItemUnitPrice(item) * (item.quantity || 1), 0);
+                  const totalPackagingFee = cart.reduce((sum, item) => {
+                    const p = item?.product || (item as any) || {};
+                    const prodId = p.id || (item as any)?.productId;
+                    const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+                    const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+                      ? p.packagingCost
+                      : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+                      ? matchedProd.packagingCost
+                      : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+                    return sum + (cost * (item.quantity || 1));
+                  }, 0);
+                  const uniqueSellersCount = Math.max(1, new Set(cart.map(item => item?.product?.userId || (item as any)?.userId || 'store')).size);
+                  const totalDeliveryFee = deliveryType === 'pickup' ? 0 : uniqueSellersCount * systemDeliveryFee;
+                  const total = subtotal + totalPackagingFee + totalDeliveryFee;
+                  const firstUserId = cart[0]?.product?.userId || (cart[0] as any)?.userId;
+                  const curr = (firstUserId ? profiles[firstUserId]?.currency : undefined) || '$';
+
+                  return (
+                    <div className="border-t border-[#232B3A] pt-4 space-y-2">
+                      <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
+                        <span>Subtotal de productos:</span>
+                        <span className="font-mono text-white">{curr}{subtotal.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
+                        <span className="flex items-center gap-1.5">
+                          <span>🥡 Costo de recipiente para llevar:</span>
+                        </span>
+                        <span className={`font-mono ${totalPackagingFee > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400 font-bold'}`}>
+                          {totalPackagingFee > 0 ? `${curr}${totalPackagingFee.toLocaleString()}` : '$0'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-[#A9B2C3] font-bold">
+                        <span>Costo de Domicilio {deliveryType === 'pickup' ? '(Recoger en Restaurante)' : `(${uniqueSellersCount} ${uniqueSellersCount === 1 ? 'envío' : 'envíos'})`}:</span>
+                        {deliveryType === 'pickup' ? (
+                          <span className="font-mono text-emerald-400 font-bold">GRATIS ($0)</span>
+                        ) : (
+                          <span className="font-mono text-[#F4B400]">{curr}{totalDeliveryFee.toLocaleString()}</span>
+                        )}
+                      </div>
+                      <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-[#232B3A] pt-2 text-white">
+                        <span>Monto Total a Pagar:</span>
+                        <span className="text-[#E63946] text-base font-mono">{curr}{total.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <button type="submit" disabled={orderSubmitting || uploadingProof}
+                  className="w-full min-h-12 py-3 px-4 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-white text-sm font-bold disabled:opacity-50">
+                  {uploadingProof ? 'Preparando comprobante…' : orderSubmitting ? 'Procesando…' : 'Confirmar mi pedido'}
+                </button>
               </form>
             </motion.div>
           </div>
@@ -3955,6 +4084,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           />
         )}
       </React.Suspense>
+
+      {/* Keep the cart accessible while browsing, without covering checkout. */}
+      {cart.length > 0 && !isCartOpen && !isCheckoutOpen && (
+        <button
+          type="button"
+          onClick={() => setIsCartOpen(true)}
+          aria-label={`Ver mi carrito, ${cart.reduce((sum, item) => sum + item.quantity, 0)} productos`}
+          title="Ver mi carrito"
+          className="fixed bottom-16 sm:bottom-4 z-40 box-border w-14 h-14 min-w-14 min-h-14 p-0 flex items-center justify-center bg-slate-900 hover:bg-slate-800 border-2 border-[#E63946] rounded-xl text-white hover:border-[#D62839] shadow-lg transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          style={{ right: 'max(1rem, env(safe-area-inset-right))' }}
+        >
+          <ShoppingBag className="w-6 h-6 stroke-[2] text-white" />
+          <span className="absolute -top-1.5 -right-1.5 bg-[#D62839] text-white font-black text-[11px] min-w-6 h-6 px-1 rounded-full flex items-center justify-center">
+            {cart.reduce((sum, item) => sum + item.quantity, 0)}
+          </span>
+        </button>
+      )}
 
       {/* 6. Footer */}
       <footer className="border-t border-[#232B3A] py-12 px-4 sm:px-6 md:px-8 bg-[#090B12] text-[#A9B2C3] text-center text-xs mt-12 space-y-3">

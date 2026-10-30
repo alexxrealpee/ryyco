@@ -77,7 +77,10 @@ export async function startOrderPush() {
             title: role === 'admin' ? 'Nuevo pedido en Ryyco' : 'Nuevo pedido en tu tienda',
             body: `Pedido #${order.orderNumber || snapshot.id} · ${order.storeName || 'Ryyco'}`,
             url: role === 'admin' ? '/?view=admin&tab=orders' : '/?view=dashboard&tab=orders'
-          }, webpush: { headers: { Urgency: 'high', TTL: '3600' } } });
+          }, ...(doc.get('device') === 'android' ? {
+            notification: { title: role === 'admin' ? 'Nuevo pedido en Ryyco' : 'Nuevo pedido en tu tienda', body: `Pedido #${order.orderNumber || snapshot.id} · ${order.storeName || 'Ryyco'}` },
+            android: { priority: 'high' as const, ttl: 3600000, notification: { channelId: 'ryyco_orders_v2', icon: 'ic_notification', color: '#E63946', sound: 'ryyco_order', defaultVibrateTimings: true, visibility: 'public' as const, priority: 'high' as const, tag: `${role}-${snapshot.id}` } }
+          } : { webpush: { headers: { Urgency: 'high', TTL: '3600' } } }) });
           await receipt.set({ sent: true, sentAt: FieldValue.serverTimestamp() });
         } catch (error: any) {
           if (['messaging/registration-token-not-registered', 'messaging/invalid-registration-token'].includes(error.code)) {

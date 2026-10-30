@@ -28,6 +28,9 @@ export async function initCapacitorNative() {
     return;
   }
 
+  const { initializeNativePush } = await import('./nativePush');
+  initializeNativePush().catch(error => console.warn('[Push] Inicialización pendiente:', error));
+
   try {
     // Configurar la barra de estado superior para que sea oscura y se funda con el fondo (#090B12)
     await StatusBar.setOverlaysWebView({ overlay: false });

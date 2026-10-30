@@ -541,6 +541,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
+      await (await import('./lib/fcmNotifications')).disableNativePushForLogout();
       localStorage.removeItem('ryyco_auth_mode');
       await signOut(auth);
       setUserProfile(null);

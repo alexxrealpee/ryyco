@@ -50,7 +50,8 @@ test('Node sender delivers to both roles without a browser and skips already del
   };
   const sent = [];
   const modules = {
-    'firebase-admin/app': { initializeApp() {}, cert() {}, applicationDefault() {} },
+    'firebase-admin/app': { getApps: () => [], initializeApp: () => ({}), cert() {}, applicationDefault() {} },
+    'node:fs': { default: { existsSync: () => true } },
     'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { serverTimestamp: () => 1 } },
     'firebase-admin/messaging': { getMessaging: () => ({ send: async message => sent.push(message) }) },
     'node:crypto': await import('node:crypto')

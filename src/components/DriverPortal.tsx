@@ -1,3 +1,5 @@
+import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
+import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -94,6 +96,7 @@ import {
 import {
   playDriverOrderAlertChime,
   speakDriverVoiceAlert,
+  initializeFCM,
   requestDriverFCMPermission,
   getDriverFCMStatus,
   connectFCMStream,
@@ -315,6 +318,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
   // Incoming Order Modal Alert Popup
   const [selectedIncomingOrder, setSelectedIncomingOrder] = useState<OrderItem | null>(null);
+  usePushOrderNavigation('driver', availableOrders, setSelectedIncomingOrder, () => setActiveTab('deliveries'));
   const selectedIncomingOrderRef = useRef<OrderItem | null>(null);
   selectedIncomingOrderRef.current = selectedIncomingOrder;
   const [incomingStoreRef, setIncomingStoreRef] = useState<string>('');
@@ -379,24 +383,24 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   // Push Notifications (FCM) State for Domiciliario
   const [fcmStatus, setFcmStatus] = useState(() => getDriverFCMStatus(driver?.id));
   const [activatingPush, setActivatingPush] = useState(false);
+  useEffect(() => {
+    const refreshPushStatus = () => { setFcmStatus(getDriverFCMStatus(driver?.id)); };
+    window.addEventListener('ryyco:push-status', refreshPushStatus);
+    return () => window.removeEventListener('ryyco:push-status', refreshPushStatus);
+  }, [driver?.id]);
   const [pushNotificationFeedback, setPushNotificationFeedback] = useState<string>('');
 
-  // Sincronizar estado real de notificaciones activadas en el navegador
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'granted') {
-        localStorage.setItem('ryyco_driver_notifications_enabled', 'true');
-        setFcmStatus(getDriverFCMStatus(driver?.id));
-      }
-    }
+    if (!driver) return;
+    let cancelled = false;
+    initializeFCM().then(async () => {
+      if (cancelled) return;
+      if (isNativePush() && nativePushPermission() === 'granted') await requestDriverFCMPermission(driver);
+      if (!cancelled) setFcmStatus(getDriverFCMStatus(driver.id));
+    }).catch(() => {});
+    return () => { cancelled = true; };
   }, [driver?.id]);
-
-  const isPushNotificationsActive = Boolean(
-    fcmStatus.hasToken ||
-    (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') ||
-    (typeof window !== 'undefined' && localStorage.getItem('ryyco_driver_notifications_enabled') === 'true') ||
-    (typeof window !== 'undefined' && localStorage.getItem('ryyco_driver_fcm_token'))
-  );
+  const isPushNotificationsActive = fcmStatus.hasToken;
 
   // Request & register FCM Push Notification token for this driver
   const handleEnablePushNotifications = async () => {
@@ -689,6 +693,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         console.error(e);
       }
     }
+    await (await import('../lib/fcmNotifications')).disableNativePushForLogout();
     await signOut(auth);
     clearDriverSessionStorage();
     setDriver(null);
@@ -709,8 +714,8 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     setIsAvailable(nextState);
 
     // If driver is turning on availability, request / refresh FCM push notification token if not granted
-    if (nextState && typeof window !== 'undefined' && 'Notification' in window) {
-      if (!isPushNotificationsActive && Notification.permission === 'default') {
+    if (nextState && typeof window !== 'undefined') {
+      if (!isPushNotificationsActive && (isNativePush() || ('Notification' in window && Notification.permission === 'default'))) {
         handleEnablePushNotifications();
       }
     }

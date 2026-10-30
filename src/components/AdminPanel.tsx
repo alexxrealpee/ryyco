@@ -1,3 +1,5 @@
+import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
+import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -396,6 +398,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     } catch (e) {}
   };
 
+  useEffect(() => {
+    const openOrders = () => handleSwitchTab('orders');
+    window.addEventListener('ryyco:admin-navigate-tab', openOrders);
+    return () => window.removeEventListener('ryyco:admin-navigate-tab', openOrders);
+  }, []);
+
   // Ensure URL reflection on initial component mount
   useEffect(() => {
     try {
@@ -448,6 +456,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [selectedOrderStatusFilter, setSelectedOrderStatusFilter] = useState<string>('all');
   const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
   const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
+  usePushOrderNavigation('admin', allOrders, setViewingOrder, () => handleSwitchTab('orders'));
 
   // Orders progressive display pagination state (initial batch of 6)
   const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(6);
@@ -481,6 +490,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [whatsAppDispatchOrder, setWhatsAppDispatchOrder] = useState<OrderItem | null>(null);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
   const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
+  useEffect(() => {
+    const refreshPushStatus = () => { const status = getFCMStatus(); setPushPermission(status.permission); setFcmToken(status.hasToken ? localStorage.getItem('ryyco_admin_fcm_token') : null); };
+    window.addEventListener('ryyco:push-status', refreshPushStatus);
+    return () => window.removeEventListener('ryyco:push-status', refreshPushStatus);
+  }, []);
   const [isRequestingFCM, setIsRequestingFCM] = useState<boolean>(false);
   const [showFCMDetails, setShowFCMDetails] = useState<boolean>(false);
   const [adminVapidKey, setAdminVapidKey] = useState<string>(() => getFCMVapidKey());
@@ -562,6 +576,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     (async () => {
       try {
         const supported = await initializeFCM();
+        if (isNativePush() && nativePushPermission() === 'granted' && auth.currentUser) {
+          await requestAdminFCMPermission({ uid: auth.currentUser.uid, email: auth.currentUser.email || '', name: auth.currentUser.displayName || '' });
+        }
         if (isMounted) {
           setIsFCMReady(supported);
           const status = getFCMStatus();
@@ -643,7 +660,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
       if (res.success) {
         setPushPermission('granted');
-        setFcmToken(res.token || 'fcm_registered');
+        setFcmToken(res.token || null);
         setNotif("🔔 ¡Notificaciones PUSH FCM activadas y registradas para Administración General!");
         setTimeout(() => setNotif(''), 6000);
       } else {
@@ -4020,7 +4037,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
               {/* Notification, Sound and FCM Vibration Controls */}
               <div className="flex flex-wrap items-center gap-2">
-                {pushPermission !== 'granted' ? (
+                {(pushPermission !== 'granted' || !fcmToken) ? (
                   <button
                     type="button"
                     onClick={requestPushPermission}

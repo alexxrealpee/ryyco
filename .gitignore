@@ -19,6 +19,8 @@ public/api/keys.php
 
 # Android / iOS
 android/
+!native/android/
+!native/android/RyycoApplication.java
 addroid/
 ios/
 .gradle/
