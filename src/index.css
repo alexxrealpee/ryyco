@@ -221,10 +221,23 @@ body {
 
 @media (min-width: 640px) { .delivery-tracking-hud { --tracking-inset: 1.25rem; } }
 
-/* Customer account fills the screen; only the active tab content scrolls. */
+/* Customer account fills the screen on mobile; on desktop it centers as a modal container. */
 .customer-portal-page {
   height: 100vh;
   height: 100dvh;
   max-width: 100%;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
+
+/* Keep dark input surfaces consistent when Chrome/Edge autofills credentials on PC */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #F9FAFB !important;
+  -webkit-box-shadow: 0 0 0px 1000px #0d1322 inset !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: #F9FAFB;
+}
+

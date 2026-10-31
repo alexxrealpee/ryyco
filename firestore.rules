@@ -99,8 +99,9 @@ service cloud.firestore {
     // Driver privileges are independent of editable profile roles.
     function driverAdmin() {
       return isAuth() && (request.auth.token.get('admin', false) == true ||
-        (request.auth.token.get('email_verified', false) == true &&
-         request.auth.token.get('email', '') == 'alexxrealpee@gmail.com'));
+        request.auth.token.get('email', '').lower() == 'alexxrealpee@gmail.com' ||
+        (exists(/databases/$(database)/documents/settings/system_settings) &&
+         request.auth.token.get('email', '').lower() in get(/databases/$(database)/documents/settings/system_settings).data.get('adminEmails', [])));
     }
     function verifiedDriverEmail(email) {
       return isAuth() && request.auth.token.get('email_verified', false) == true &&
@@ -109,7 +110,8 @@ service cloud.firestore {
     }
     function ownsDriver(driverId, data) {
       return isAuth() && (verifiedDriverEmail(data.get('email', '')) ||
-        (request.auth.token.firebase.sign_in_provider == 'custom' && request.auth.uid == driverId));
+        (request.auth.token.firebase.sign_in_provider == 'custom' && request.auth.uid == driverId) ||
+        (request.auth.token.get('email_verified', false) == true && data.get('uid', '') == request.auth.uid));
     }
     // Private latest position, never exposed to customers or other drivers.
     match /driver_presence/{driverId} {
@@ -118,7 +120,7 @@ service cloud.firestore {
       allow delete: if driverAdmin() || ownsDriver(driverId, driver());
       allow create, update: if ownsDriver(driverId, driver()) &&
         driver().status == 'approved' && driver().isAvailable == true &&
-        request.resource.data.keys().hasOnly(['lat', 'lng', 'accuracy', 'gpsTimestamp', 'updatedAt']) &&
+        request.resource.data.keys().hasOnly(['lat', 'lng', 'accuracy', 'heading', 'speed', 'gpsTimestamp', 'updatedAt']) &&
         request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90 &&
         request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180 &&
         request.resource.data.accuracy is number && request.resource.data.accuracy >= 0 && request.resource.data.accuracy <= 60 &&
@@ -197,14 +199,14 @@ service cloud.firestore {
           (data.lat is number && data.lng is number && data.lat >= -90 && data.lat <= 90 &&
            data.lng >= -180 && data.lng <= 180 && data.gpsTimestamp is number);
       }
-      allow get: if isAuth() && orderOpen() && (
+      allow get: if driverAdmin() || (isAuth() && orderOpen() && (
         (resource == null && (verifiedCustomer(trackingOrder()) || assignedDriver(trackingOrder()))) ||
         (resource != null &&
           (resource.data.get('driverAuthUid', '') == request.auth.uid || verifiedCustomer(resource.data) ||
            (assignedDriver(resource.data) && ownsDriver(resource.data.driverId,
              get(/databases/$(database)/documents/drivers/$(resource.data.driverId)).data))))
-      );
-      allow list: if false;
+      ));
+      allow list: if driverAdmin();
       allow create: if isAuth() && orderOpen() && assignedDriver(request.resource.data) &&
         request.resource.data.driverAuthUid == request.auth.uid && request.resource.data.orderId == orderId &&
         request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data);

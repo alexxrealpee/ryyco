@@ -65,7 +65,11 @@ import { smartApiFetch } from '../lib/apiConfig';
 import { 
   initClientCatalogManager, 
   getClientAvailableCatalog, 
-  subscribeToAvailableCatalog 
+  subscribeToAvailableCatalog,
+  validateStoreAndProductBeforeCart,
+  validateCartBeforeOrder,
+  isRestaurantOpenNow,
+  isProductAvailableNow
 } from '../lib/catalogManager';
 
 interface LinnkProVoiceAssistantProps {
@@ -166,13 +170,13 @@ export default function LinnkProVoiceAssistant({
     }
   ]);
 
-  // Catalog and system data cache: initialized instantly from in-memory / session storage (0ms)
+  // Catalog and system data: strictly sourced from confirmed real-time catalog (never stale/static open defaults)
   const initialMemoryCatalog = getClientAvailableCatalog(false);
   const [catalogProducts, setCatalogProducts] = useState<ProductItem[]>(
-    initialMemoryCatalog.products.length > 0 ? initialMemoryCatalog.products : DEFAULT_PLATFORM_PRODUCTS
+    initialMemoryCatalog.isLoaded ? initialMemoryCatalog.products : []
   );
   const [catalogStores, setCatalogStores] = useState<Record<string, UserProfile>>(
-    Object.keys(initialMemoryCatalog.profilesMap).length > 0 ? initialMemoryCatalog.profilesMap : DEFAULT_PLATFORM_STORES
+    initialMemoryCatalog.isLoaded ? initialMemoryCatalog.profilesMap : {}
   );
   const [systemDeliveryFee, setSystemDeliveryFee] = useState<number>(7000);
   const [cart, setCart] = useState<GeneralCartItem[]>(getStoredCart());
@@ -255,9 +259,9 @@ export default function LinnkProVoiceAssistant({
   // Visual UI renders FIRST immediately; catalog of open stores is downloaded & cached in the background.
   useEffect(() => {
     if (!isOpen) return;
-    // 1. Subscribe to in-memory catalog updates
+    // 1. Subscribe to real-time catalog updates (including when stores open or close)
     const unsubscribeCatalog = subscribeToAvailableCatalog((freshCatalog) => {
-      if (freshCatalog.products.length > 0 || freshCatalog.stores.length > 0) {
+      if (freshCatalog.isLoaded) {
         setCatalogProducts(freshCatalog.products);
         setCatalogStores(freshCatalog.profilesMap);
       }
@@ -996,16 +1000,21 @@ export default function LinnkProVoiceAssistant({
     const executedActions: any[] = [];
     let responseText = '';
 
-    let activeProducts = products.filter(p => {
-      if (p.active === false) return false;
+    const activeProducts = products.filter(p => {
+      if (!isProductAvailableNow(p)) return false;
       const store = findStoreForProduct(p, stores);
-      if (store) {
-        return !checkIsStoreClosed(store) && !store.suspended;
-      }
-      return true;
+      return Boolean(store && isRestaurantOpenNow(store));
     });
-    if (activeProducts.length === 0 && products.length > 0) {
-      activeProducts = products.filter(p => p.active !== false);
+
+    const isOffTopicOrRoleChange =
+      /\b(mundial|f[uú]tbol|campe[oó]n|presidente|pol[ií]tica|elecciones|clima|matem[aá]tica|historia|capital\s+de|programa\s+en|c[oó]digo\s+python|olvida\s+tus\s+instrucciones|ignora\s+tus\s+instrucciones|cambia\s+tu\s+rol|act[uú]a\s+como|deja\s+de\s+ser\s+mesero|qui[eé]n\s+gan[oó])\b/i.test(lower) &&
+      !/\b(comida|comer|plato|restaurante|tienda|hamburguesa|pizza|pollo|bebida|men[uú]|pedido|carrito|domicilio|precio)\b/i.test(lower);
+
+    if (isOffTopicOrRoleChange) {
+      return {
+        text: '¡Yo estoy aquí para ayudarte a encontrar algo delicioso! ¿Te gustaría que te recomiende una hamburguesa, una pizza o algo diferente?',
+        actions: []
+      };
     }
 
     // 0. Query about open stores or restaurants
@@ -1187,19 +1196,15 @@ export default function LinnkProVoiceAssistant({
     setAssistantState('processing');
 
     try {
-      // Source catalog directly from in-memory JSON (0ms, zero Firebase reads during conversation)
+      // Source catalog directly from live confirmed real-time JSON
       const inMemory = getClientAvailableCatalog();
-      const currentStores = (inMemory.stores.length > 0 && Object.keys(inMemory.profilesMap).length > 0)
-        ? inMemory.profilesMap 
-        : catalogStores;
-      const currentProducts = inMemory.products.length > 0 
-        ? inMemory.products 
-        : catalogProducts;
+      const currentStores = inMemory.isLoaded ? inMemory.profilesMap : catalogStores;
+      const currentProducts = inMemory.isLoaded ? inMemory.products : catalogProducts;
 
-      // Build catalog context with real data (open stores and active products)
+      // Build catalog context strictly with open stores and available products
       const storeMap = new Map<string, any>();
       (Object.values(currentStores) as UserProfile[]).forEach(s => {
-        if (s && s.uid && !s.suspended && !storeMap.has(s.uid)) {
+        if (s && s.uid && isRestaurantOpenNow(s) && !storeMap.has(s.uid)) {
           storeMap.set(s.uid, {
             uid: s.uid,
             username: s.username || '',
@@ -1213,35 +1218,13 @@ export default function LinnkProVoiceAssistant({
         }
       });
 
-      // Also extract and ensure stores for all active products are included
-      currentProducts.forEach(p => {
-        if (p.active !== false) {
-          const store = findStoreForProduct(p, currentStores);
-          if (store && store.uid && !store.suspended && !storeMap.has(store.uid)) {
-            storeMap.set(store.uid, {
-              uid: store.uid,
-              username: store.username || '',
-              displayName: store.displayName || store.username || 'Tienda',
-              bio: store.bio || '',
-              address: store.address || '',
-              phone: store.phone || '',
-              whatsapp: store.whatsapp || '',
-              isClosed: false
-            });
-          }
-        }
-      });
-
       const storesArray = Array.from(storeMap.values());
 
-      let productsArray = currentProducts
+      const productsArray = currentProducts
         .filter(p => {
-          if (p.active === false) return false;
+          if (!isProductAvailableNow(p)) return false;
           const store = findStoreForProduct(p, currentStores);
-          if (store) {
-            return !checkIsStoreClosed(store) && !store.suspended;
-          }
-          return true;
+          return Boolean(store && isRestaurantOpenNow(store));
         })
         .map(p => {
           const store = findStoreForProduct(p, currentStores);
@@ -1256,28 +1239,9 @@ export default function LinnkProVoiceAssistant({
             imageURL: p.imageURL && p.imageURL.startsWith('data:') ? undefined : p.imageURL,
             storeName: store?.displayName || 'Tienda',
             storeUsername: store?.username || '',
-            active: p.active
+            active: true
           };
         });
-
-      if (productsArray.length === 0 && currentProducts.length > 0) {
-        productsArray = currentProducts.filter(p => p.active !== false).map(p => {
-          const store = findStoreForProduct(p, currentStores);
-          return {
-            id: p.id,
-            userId: p.userId || store?.uid || '',
-            name: p.name,
-            description: p.description || '',
-            price: p.price,
-            stock: p.stock,
-            category: p.category || 'General',
-            imageURL: p.imageURL && p.imageURL.startsWith('data:') ? undefined : p.imageURL,
-            storeName: store?.displayName || 'Tienda',
-            storeUsername: store?.username || '',
-            active: p.active
-          };
-        });
-      }
 
       const currentCart = getStoredCart();
       const cartPayload = currentCart.map(c => {
@@ -1325,7 +1289,9 @@ export default function LinnkProVoiceAssistant({
               products: productsArray,
               stores: storesArray,
               deliveryFee: systemDeliveryFee,
-              cart: cartPayload
+              cart: cartPayload,
+              compactAiJson: inMemory.compactAiJson,
+              recentlyClosedStores: inMemory.recentlyClosedStores
             }
           })
         });
@@ -1348,21 +1314,35 @@ export default function LinnkProVoiceAssistant({
         );
       }
 
-      const aiReplyText = result.text || 'Entendido. ¿Deseas hacer algo más?';
+      let aiReplyText = result.text || 'Entendido. ¿Deseas hacer algo más?';
       const actions = result.actions || [];
 
-      // Process and execute any direct client-side state actions (like adding to cart)
+      // Process and execute any direct client-side state actions (like adding to cart) with 4-point live validation
       let primaryActionPayload: any = null;
 
       for (const action of actions) {
-        if (action.type === 'ADD_TO_CART' && action.product) {
-          addProductToCart(action.product, action.quantity || 1, action.variant);
+        if ((action.type === 'ADD_TO_CART' || action.type === 'add_to_cart') && (action.product || action.payload)) {
+          const rawProd = action.product || action.payload;
+          const prodId = rawProd.id || rawProd.productId;
+          const validation = await validateStoreAndProductBeforeCart(
+            prodId,
+            rawProd.userId,
+            rawProd.price,
+            rawProd.name
+          );
+          if (!validation.valid) {
+            aiReplyText = validation.reason || 'Lo sentimos, este producto o restaurante acaba de cerrar o agotarse. ¿Te gustaría que te recomiende otra opción disponible?';
+            continue;
+          }
+          const finalProd = validation.verifiedProduct || rawProd;
+          const qty = action.quantity || rawProd.quantity || 1;
+          addProductToCart(finalProd, qty, action.variant);
           setCart(getStoredCart());
           primaryActionPayload = {
             type: 'CART_SUMMARY',
             data: {
-              addedProduct: action.product,
-              quantity: action.quantity || 1,
+              addedProduct: finalProd,
+              quantity: qty,
               cart: getStoredCart()
             }
           };
@@ -1388,6 +1368,11 @@ export default function LinnkProVoiceAssistant({
             data: action.orderProposal
           };
         } else if (action.type === 'ORDER_CREATE_CONFIRMED') {
+          const orderCheck = await validateCartBeforeOrder(getStoredCart());
+          if (!orderCheck.valid) {
+            aiReplyText = orderCheck.reason || 'No pudimos confirmar el pedido porque uno de los restaurantes cerró o un plato se agotó.';
+            continue;
+          }
           // Execute order creation in Firestore
           await handleExecuteOrderCreation(action.orderData);
           primaryActionPayload = {

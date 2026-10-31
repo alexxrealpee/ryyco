@@ -1364,6 +1364,43 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
               </div>
             )}
 
+            {/* Official RYYCO Driver Welcome Guide (Collapsible) */}
+            {!activeDelivery && (
+              <details className="group bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/40 rounded-2xl overflow-hidden transition shadow-md">
+                <summary className="list-none cursor-pointer p-4 flex items-center justify-between gap-3 select-none">
+                  <div className="flex items-center gap-2.5 text-xs sm:text-sm font-black text-white">
+                    <span>🚀 ¡Bienvenido a RYYCO! 🛵</span>
+                    <span className="text-[11px] font-semibold text-[#A9B2C3] hidden sm:inline">
+                      — Conoce cómo funciona nuestra plataforma ($7.000 100% para ti)
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-[#E63946] flex items-center gap-1 shrink-0">
+                    <span className="group-open:hidden">Ver guía</span>
+                    <span className="hidden group-open:inline">Ocultar</span>
+                    <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+                  </span>
+                </summary>
+                <div className="px-4 pb-5 pt-2 border-t border-[#232B3A] space-y-3 text-xs text-gray-200 leading-relaxed">
+                  <p className="text-gray-300">
+                    Nos alegra que quieras formar parte de nuestro equipo de domiciliarios. Queremos explicarte cómo funciona nuestra plataforma:
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    <p>✅ <strong className="text-white">Tú decides cuándo trabajar:</strong> Puedes activarte y desactivarte en la aplicación cuando quieras, sin horarios establecidos.</p>
+                    <p>💰 <strong className="text-white">El 100% del domicilio es para ti:</strong> En la zona urbana de Ipiales, el servicio tiene un valor de <strong className="text-emerald-400">$7.000</strong>, y ese dinero es completamente tuyo. RYYCO no te cobra comisión.</p>
+                    <p>🎒 <strong className="text-white">Pedidos según tu maletín:</strong> Por el tipo de maletín que tienes, lo único que no debes aceptar son pedidos de pizza. Puedes tomar los demás pedidos que desees.</p>
+                    <p>📍 <strong className="text-white">Toda la información en tu aplicación:</strong> Cada pedido te mostrará la dirección del restaurante, la dirección de entrega y los datos necesarios para realizar el servicio.</p>
+                    <p>⭐ <strong className="text-white">Tu buen servicio te abrirá más oportunidades:</strong> Al principio es posible que recibas pocos pedidos, pero a medida que los clientes te califiquen positivamente y aumenten tus estrellas, tendrás más oportunidades de recibir domicilios.</p>
+                    <p>🤝 <strong className="text-white">Siempre tendrás nuestro apoyo:</strong> En la aplicación encontrarás un botón de soporte para comunicarte con nosotros ante cualquier inconveniente. Estaremos atentos para acompañarte cuando lo necesites.</p>
+                  </div>
+                  <p>❤️ <strong className="text-white">¿Qué esperamos de ti?</strong> Únicamente responsabilidad, amabilidad, puntualidad y un excelente servicio al cliente.</p>
+                  <div className="pt-2.5 border-t border-[#232B3A] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                    <span className="font-bold text-white">En RYYCO tú manejas tu tiempo, decides qué pedidos aceptar y recibes el 100% del valor de tus domicilios.</span>
+                    <span className="text-[#F4B400] font-extrabold shrink-0">¡Bienvenido a esta nueva experiencia! 🚀❤️💛 — Equipo RYYCO</span>
+                  </div>
+                </div>
+              </details>
+            )}
+
 
 
             {/* TAB 1: DELIVERIES WORKSPACE */}

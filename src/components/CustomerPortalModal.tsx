@@ -508,6 +508,8 @@ export default function CustomerPortalModal({
       console.warn("Google sign in error:", err);
       if (err.code === 'auth/popup-blocked') {
         setAuthError("Tu navegador o dispositivo bloqueó la ventana emergente de Google. Permite las ventanas emergentes en tu navegador o ingresa con tu número celular y contraseña abajo.");
+      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+        setAuthError(`El dominio actual (${window.location.hostname}) aún no está autorizado en Firebase Authentication. Agrégalo en Firebase Console → Authentication → Settings → Dominios autorizados, o recarga la página si acabas de autorizarlo.`);
       } else if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
         setAuthError(err.message || "Error al iniciar sesión con Google / Gmail");
       }
@@ -1128,16 +1130,22 @@ export default function CustomerPortalModal({
 
   const modalBody = (
     <div 
-      className="customer-portal-page fixed inset-0 w-full bg-[#0b0f19] flex flex-col overflow-hidden"
+      className="customer-portal-page fixed inset-0 w-full bg-[#0b0f19] lg:bg-[#04060b]/80 lg:backdrop-blur-md flex flex-col lg:items-center lg:justify-center lg:p-6 xl:p-10 overflow-hidden"
       style={{ zIndex: 999999 }}
     >
-      <div className="bg-[#0b0f19] w-full h-full min-h-0 flex flex-col relative overflow-hidden text-gray-100 animate-fade-in">
+      <div
+        className={`bg-[#0b0f19] w-full h-full min-h-0 flex flex-col relative overflow-hidden text-gray-100 animate-fade-in lg:border lg:border-white/10 lg:rounded-3xl lg:shadow-[0_32px_90px_-15px_rgba(0,0,0,0.9)] ${
+          customer
+            ? 'lg:max-w-[1120px] lg:h-[88vh]'
+            : 'lg:max-w-[980px] lg:h-auto lg:max-h-[88vh]'
+        }`}
+      >
         
         {/* Glow ambient decoration */}
         <div className="absolute top-0 right-1/4 w-72 h-72 bg-[#E63946]/10 rounded-full blur-[90px] pointer-events-none" />
         <div className="absolute bottom-0 left-10 w-72 h-72 bg-amber-500/10 rounded-full blur-[90px] pointer-events-none" />
 
-        {/* HEADER (shown when logged in, or clean close button when not logged in) */}
+        {/* HEADER (shown when logged in, or mobile header when not logged in) */}
         {customer ? (
           <div className="p-3 sm:p-5 border-b border-gray-800 flex items-center justify-between shrink-0 relative z-10 bg-[#0d1322]/95 backdrop-blur-md">
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 pr-2">
@@ -1195,7 +1203,8 @@ export default function CustomerPortalModal({
             </div>
           </div>
         ) : (
-          <div className="p-5 sm:p-6 pb-2 flex items-start justify-between relative z-20">
+          /* Mobile & Tablet Header (hidden on lg where the left showcase panel appears) */
+          <div className="p-5 sm:p-6 pb-2 flex items-start justify-between relative z-20 lg:hidden">
             <div className="pr-3 text-left">
               <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold mb-1.5 shadow-sm">
                 <User className="w-3.5 h-3.5" />
@@ -1220,337 +1229,446 @@ export default function CustomerPortalModal({
 
         {/* NOT LOGGED IN SCREEN */}
         {!customer ? (
-          <div className="p-5 sm:p-8 pt-2 sm:pt-3 overflow-y-auto flex-1 space-y-6">
-            {/* Error prompt */}
-            {authError && (
-              <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold">
-                ⚠️ {authError}
-              </div>
-            )}
+          <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden">
+            {/* LEFT PANEL: Desktop Brand & Benefits Showcase (PC only) */}
+            <div className="hidden lg:flex lg:col-span-5 flex-col justify-between p-9 bg-gradient-to-br from-[#12192b] via-[#0d1322] to-[#080b14] border-r border-white/[0.08] relative overflow-hidden">
+              <div className="absolute -top-24 -left-24 w-64 h-64 bg-[#E63946]/15 rounded-full blur-[80px] pointer-events-none" />
+              <div className="absolute -bottom-24 -right-16 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] pointer-events-none" />
 
-            {/* Login / Register Tab toggle */}
-            <div className="flex bg-[#090D16] p-1.5 rounded-xl border border-gray-800">
-              <button
-                type="button"
-                onClick={() => setIsRegisterMode(false)}
-                className={`flex-1 py-2.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                  !isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Ya tengo cuenta (Ingresar)
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsRegisterMode(true)}
-                className={`flex-1 py-2.5 rounded-lg text-xs font-black transition cursor-pointer ${
-                  isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                {isAndroid ? 'Crear Cuenta Nueva' : 'Crear Cuenta Nueva (¡+500 RYYCOS!)'}
-              </button>
-            </div>
-
-            {/* GOOGLE / GMAIL SIGN IN & REGISTER BUTTON */}
-            <div className="space-y-3">
-              <button
-                type="button"
-                onClick={handleGoogleSignIn}
-                disabled={isGoogleLoading || loading}
-                className="w-full min-h-[52px] py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 active:scale-[0.99] text-gray-900 font-black text-xs transition flex items-center gap-3 shadow-lg shadow-white/5 border border-white/20 cursor-pointer"
-              >
-                {isGoogleLoading ? (
-                  <div className="w-full flex items-center justify-center gap-2">
-                    <RefreshCw className="w-4 h-4 animate-spin text-gray-700" />
-                    <span className="text-gray-700">Conectando con Google...</span>
-                  </div>
-                ) : (
-                  <>
-                    <GoogleIcon />
-                    <div className="text-left flex-1">
-                      <div className="text-xs sm:text-sm font-black text-slate-900">
-                        {isRegisterMode ? 'Registrarme como Cliente Comprador con Google' : 'Ingresar como Cliente Comprador con Google'}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-semibold">
-                        {isAndroid ? 'Acceso rápido y seguro a tus pedidos y perfil' : 'Acceso a RYYCOS, ruleta de premios y pedidos'}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </button>
-
-              {/* DIVIDER */}
-              <div className="relative flex py-1 items-center">
-                <div className="flex-grow border-t border-gray-800"></div>
-                <span className="flex-shrink mx-3 text-[10px] uppercase font-black tracking-wider text-gray-500">
-                  {isRegisterMode ? 'O llena tus datos con número celular' : 'O ingresa con tu celular y clave'}
-                </span>
-                <div className="flex-grow border-t border-gray-800"></div>
-              </div>
-            </div>
-
-            {/* FORM */}
-            <form onSubmit={isRegisterMode ? handleRegisterSubmit : handleLoginSubmit} className="space-y-3.5">
-              <div>
-                <label className="text-[11px] font-black uppercase text-gray-400 block mb-1">
-                  Número de Celular o WhatsApp *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 font-mono text-xs">
-                    <Phone className="w-4 h-4 mr-1 text-[#E63946]" />
-                  </div>
-                  <input
-                    type="tel"
-                    required
-                    value={phoneInput}
-                    onChange={(e) => setPhoneInput(e.target.value)}
-                    placeholder="Ej: 3106502043"
-                    className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+              <div className="relative z-10 space-y-6">
+                <div className="flex items-center gap-3">
+                  <img
+                    src="/logoryyco.png"
+                    alt="RYYCO"
+                    className="w-10 h-10 rounded-xl object-contain bg-[#0b0f19] p-1 border border-white/10 shadow-md"
                   />
+                  <div className="text-xs text-emerald-400 font-bold tracking-wide flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5" />
+                    <span>Cuenta de Cliente Comprador</span>
+                  </div>
                 </div>
-                <span className="text-[9.5px] text-gray-500 mt-1 block">Tu número celular es tu usuario de acceso para rastrear pedidos.</span>
-              </div>
 
-              {!isRegisterMode && (
                 <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-black uppercase text-gray-400">
-                      Contraseña de Acceso *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotPasswordInfo(!showForgotPasswordInfo)}
-                      className="text-[10px] text-[#E63946] hover:underline font-bold cursor-pointer"
-                    >
-                      ¿Olvidaste tu contraseña?
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                      <Lock className="w-4 h-4 text-[#E63946]" />
+                  <h2 className="text-3xl font-black text-white tracking-tight leading-tight">
+                    Bienvenido a RYYCO
+                  </h2>
+                  <p className="text-sm text-gray-300 mt-2.5 leading-relaxed">
+                    {isAndroid
+                      ? 'Inicia sesión para ver el estado de tus pedidos en vivo y gestionar tus direcciones de entrega.'
+                      : 'Inicia sesión para seguir tus pedidos en vivo, girar la ruleta de premios y acumular RYYCOS en cada compra.'}
+                  </p>
+                </div>
+
+                <div className="space-y-4 pt-2 border-t border-white/[0.08]">
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-9 h-9 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center text-[#E63946] shrink-0 mt-0.5">
+                      <Truck className="w-4 h-4" />
                     </div>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={passwordInput}
-                      onChange={(e) => setPasswordInput(e.target.value)}
-                      placeholder="Ingresa tu contraseña"
-                      className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-10 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white cursor-pointer"
-                      title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between text-[9.5px] text-gray-500 mt-1">
-                    <span>O usa el botón de Google arriba para entrar sin clave.</span>
+                    <div>
+                      <h4 className="text-xs font-extrabold text-white">Rastreo de pedidos en tiempo real</h4>
+                      <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">
+                        Conoce cada etapa de tu orden desde la cocina hasta tu puerta.
+                      </p>
+                    </div>
                   </div>
 
-                  {showForgotPasswordInfo && (
-                    <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 space-y-2">
-                      <p className="font-bold flex items-center gap-1.5">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        ¿No recuerdas tu contraseña de cliente?
-                      </p>
-                      <p className="text-[10.5px] text-gray-300 leading-relaxed">
-                        Puedes ingresar de inmediato con 1 clic usando el botón blanco <strong>"Ingresar como Cliente con Google"</strong> arriba, o escribir a soporte para recuperar tu acceso.
-                      </p>
-                      <a
-                        href="https://wa.me/573106502043?text=Hola%20soporte%20Ryyco,%20necesito%20ayuda%20para%20restablecer%20mi%20contrase%C3%B1a%20de%20cliente"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black transition"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        Pedir Ayuda a Soporte por WhatsApp
-                      </a>
-                    </div>
+                  {!isAndroid && (
+                    <>
+                      <div className="flex items-start gap-3.5">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                          <Coins className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-white">+500 RYYCOS de regalo al registrarte</h4>
+                          <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">
+                            Acumula puntos con tus compras y transfiérelos o canjéalos por comida.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3.5">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                          <Trophy className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-extrabold text-white">Ruleta de Platos Gratis</h4>
+                          <p className="text-[11px] text-gray-400 mt-0.5 leading-snug">
+                            Recibe giros por tus compras y gana hamburguesas, bebidas y postres.
+                          </p>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
-              )}
+              </div>
 
-              {isRegisterMode && (
-                <>
-                  <div>
-                    <label className="text-[11px] font-black uppercase text-gray-400 block mb-1">
-                      Nombre Completo *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                        <User className="w-4 h-4 text-[#E63946]" />
-                      </div>
-                      <input
-                        type="text"
-                        required
-                        value={nameInput}
-                        onChange={(e) => setNameInput(e.target.value)}
-                        placeholder="Ej: Alex Realpe"
-                        className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                      />
-                    </div>
-                  </div>
+              <div className="relative z-10 pt-6 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-gray-400">
+                <span>Acceso rápido y seguro</span>
+                <span aria-hidden="true">·</span>
+                <span>Soporte directo en línea</span>
+              </div>
+            </div>
 
-                  <div>
-                    <label className="text-[11px] font-black uppercase text-gray-400 block mb-1">
-                      Crear Contraseña de Acceso *
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                        <Lock className="w-4 h-4 text-[#E63946]" />
-                      </div>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={passwordInput}
-                        onChange={(e) => setPasswordInput(e.target.value)}
-                        placeholder="Crea una clave (mínimo 4 caracteres)"
-                        className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-10 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white cursor-pointer"
-                        title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                    <span className="text-[9.5px] text-gray-500 mt-1 block">Esta será tu clave para ingresar cuando uses tu número de celular.</span>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-black uppercase text-gray-400 block mb-1 flex items-center justify-between">
-                      <span>Correo Electrónico / Gmail</span>
-                      <span className="text-[9px] text-[#E63946] font-bold normal-case">Recomendado</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                        <Mail className="w-4 h-4 text-[#E63946]" />
-                      </div>
-                      <input
-                        type="email"
-                        value={emailInput}
-                        onChange={(e) => setEmailInput(e.target.value)}
-                        placeholder="Ej: tuemail@gmail.com"
-                        className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                      />
-                    </div>
-                    <span className="text-[9.5px] text-gray-500 mt-1 block">{isAndroid ? 'Recibe confirmaciones de despacho y novedades de tus pedidos.' : 'Recibe confirmaciones de despacho y respalda tus RYYCOS de comida.'}</span>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-black uppercase text-gray-400 block mb-1">
-                      Dirección de Despacho Habitual (Opcional)
-                    </label>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                          <MapPin className="w-4 h-4 text-[#E63946]" />
-                        </div>
-                        <input
-                          type="text"
-                          value={addressInput}
-                          onChange={(e) => setAddressInput(e.target.value)}
-                          placeholder="Ej: Calle 45 #23-12, Apto 302"
-                          className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsMapPickerOpen(true)}
-                        className="h-11 px-3 bg-[#E63946]/10 hover:bg-[#E63946]/20 border border-[#E63946]/40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0 cursor-pointer"
-                        title="Fijar con Google Maps"
-                      >
-                        <MapPin className="w-4 h-4 text-[#E63946]" />
-                        <span className="hidden sm:inline">Google Maps</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-[11px] font-black uppercase text-gray-400 block mb-1">
-                      Punto de Referencia o Notas para Domicilios (Opcional)
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
-                        <FileText className="w-4 h-4 text-[#E63946]" />
-                      </div>
-                      <input
-                        type="text"
-                        value={notesInput}
-                        onChange={(e) => setNotesInput(e.target.value)}
-                        placeholder="Ej: Dejar en portería, casa esquinera de dos pisos"
-                        className="w-full h-11 bg-[#090D16] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Términos y Condiciones para Compradores */}
-                  <div className="pt-1">
-                    <label className="flex items-start gap-2.5 cursor-pointer select-none bg-[#090D16] p-3 rounded-xl border border-[#232E42] hover:border-[#E63946]/50 transition">
-                      <input
-                        type="checkbox"
-                        checked={acceptedBuyerTerms}
-                        onChange={(e) => {
-                          setAcceptedBuyerTerms(e.target.checked);
-                          if (authError && authError.includes('Términos')) setAuthError('');
-                        }}
-                        className="w-4 h-4 mt-0.5 accent-[#E63946] rounded cursor-pointer shrink-0"
-                      />
-                      <span className="text-[11px] text-gray-300 leading-snug">
-                        He leído y acepto los{' '}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsBuyerTermsModalOpen(true);
-                          }}
-                          className="text-[#E63946] hover:underline font-bold inline cursor-pointer"
-                        >
-                          Términos y Condiciones para Usuarios y Compradores
-                        </button>
-                        {' '}y la Política de Tratamiento de Datos Personales de Ryyco.
-                      </span>
-                    </label>
-                  </div>
-                </>
-              )}
-
+            {/* RIGHT PANEL: Form container (Full width on mobile, 7 cols centered on PC) */}
+            <div className="p-5 sm:p-8 lg:p-9 pt-2 sm:pt-3 lg:pt-8 overflow-y-auto flex-1 lg:col-span-7 relative flex flex-col justify-between">
+              {/* Desktop Close Button */}
               <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-2 bg-[#E63946] hover:bg-[#D62839] text-white shadow-[#E63946]/25 active:scale-[0.99]"
+                onClick={onClose}
+                className="hidden lg:flex absolute top-6 right-6 w-9 h-9 rounded-xl bg-white/[0.06] hover:bg-[#E63946] border border-white/10 hover:border-red-500/60 items-center justify-center text-gray-300 hover:text-white shadow-md transition cursor-pointer active:scale-95 z-20"
+                title="Cerrar"
               >
-                {loading ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : isRegisterMode ? (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    {isAndroid ? 'Crear Cuenta y Continuar' : 'Crear Cuenta y Ganar 500 RYYCOS ($500 COP) 🎁'}
-                  </>
-                ) : (
-                  <>
-                    <ArrowRight className="w-4 h-4" />
-                    Ingresar como Cliente Comprador
-                  </>
-                )}
+                <X className="w-4 h-4 stroke-[2.5]" />
               </button>
 
-              {/* Botón para consultar términos */}
-              <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={() => setIsBuyerTermsModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-gray-400 hover:text-white transition cursor-pointer"
-                >
-                  <Scale className="w-3.5 h-3.5 text-[#F4B400]" />
-                  <span>Consultar Términos y Condiciones para Usuarios y Compradores</span>
-                </button>
+              <div className="w-full lg:max-w-[440px] lg:mx-auto my-auto space-y-6 lg:space-y-5">
+                {/* Desktop Form Heading */}
+                <div className="hidden lg:block pr-10">
+                  <h3 className="text-xl font-black text-white tracking-tight">
+                    {isRegisterMode ? 'Crear cuenta nueva' : 'Ingresa a tu cuenta'}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">
+                    {isRegisterMode
+                      ? 'Completa tus datos para pedir más rápido y recibir tus beneficios.'
+                      : 'Ingresa con Google en 1 clic o usa tu número de celular.'}
+                  </p>
+                </div>
+
+                {/* Error prompt */}
+                {authError && (
+                  <div className="p-3.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold">
+                    ⚠️ {authError}
+                  </div>
+                )}
+
+                {/* Login / Register Tab toggle */}
+                <div className="flex bg-[#090D16] p-1.5 rounded-xl border border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsRegisterMode(false)}
+                    className={`flex-1 py-2.5 px-2 rounded-lg text-xs font-black transition cursor-pointer ${
+                      !isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Ya tengo cuenta (Ingresar)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsRegisterMode(true)}
+                    className={`flex-1 py-2.5 px-2 rounded-lg text-xs font-black transition cursor-pointer ${
+                      isRegisterMode ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/25' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {isAndroid ? 'Crear Cuenta Nueva' : 'Crear Cuenta Nueva (¡+500 RYYCOS!)'}
+                  </button>
+                </div>
+
+                {/* GOOGLE / GMAIL SIGN IN & REGISTER BUTTON */}
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    disabled={isGoogleLoading || loading}
+                    className="w-full min-h-[52px] py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 active:scale-[0.99] text-gray-900 font-black text-xs transition flex items-center gap-3.5 shadow-lg shadow-black/20 border border-white/20 cursor-pointer group"
+                  >
+                    {isGoogleLoading ? (
+                      <div className="w-full flex items-center justify-center gap-2">
+                        <RefreshCw className="w-4 h-4 animate-spin text-gray-700" />
+                        <span className="text-gray-700">Conectando con Google...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                          <GoogleIcon />
+                        </div>
+                        <div className="text-left flex-1 min-w-0">
+                          <div className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                            {isRegisterMode ? 'Registrarme como Cliente con Google' : 'Ingresar como Cliente Comprador con Google'}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-semibold truncate">
+                            {isAndroid ? 'Acceso rápido y seguro a tus pedidos y perfil' : 'Acceso a RYYCOS, ruleta de premios y pedidos'}
+                          </div>
+                        </div>
+                        <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition shrink-0 hidden sm:block" />
+                      </>
+                    )}
+                  </button>
+
+                  {/* DIVIDER */}
+                  <div className="relative flex py-1 items-center">
+                    <div className="flex-grow border-t border-gray-800"></div>
+                    <span className="flex-shrink mx-3 text-[10px] uppercase font-black tracking-wider text-gray-500">
+                      {isRegisterMode ? 'O llena tus datos con número celular' : 'O ingresa con tu celular y clave'}
+                    </span>
+                    <div className="flex-grow border-t border-gray-800"></div>
+                  </div>
+                </div>
+
+                {/* FORM */}
+                <form onSubmit={isRegisterMode ? handleRegisterSubmit : handleLoginSubmit} className="space-y-3.5">
+                  <div>
+                    <label className="text-[11px] font-black uppercase text-gray-300 block mb-1.5">
+                      Número de Celular o WhatsApp *
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500 font-mono text-xs z-10">
+                        <Phone className="w-4 h-4 mr-1 text-[#E63946]" />
+                      </div>
+                      <input
+                        type="tel"
+                        required
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="Ej: 3106502043"
+                        className="w-full h-11 bg-[#0d1322] border border-[#232E42] hover:border-[#32415c] focus:border-[#E63946] rounded-xl pl-10 pr-3 text-xs sm:text-sm font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                      />
+                    </div>
+                    <span className="text-[10px] text-gray-400 mt-1 block">Tu número celular es tu usuario de acceso para rastrear pedidos.</span>
+                  </div>
+
+                  {!isRegisterMode && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-[11px] font-black uppercase text-gray-300">
+                          Contraseña de Acceso *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setShowForgotPasswordInfo(!showForgotPasswordInfo)}
+                          className="text-[10.5px] text-[#E63946] hover:underline font-bold cursor-pointer"
+                        >
+                          ¿Olvidaste tu contraseña?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-gray-500 z-10">
+                          <Lock className="w-4 h-4 text-[#E63946]" />
+                        </div>
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          value={passwordInput}
+                          onChange={(e) => setPasswordInput(e.target.value)}
+                          placeholder="Ingresa tu contraseña"
+                          className="w-full h-11 bg-[#0d1322] border border-[#232E42] hover:border-[#32415c] focus:border-[#E63946] rounded-xl pl-10 pr-10 text-xs sm:text-sm font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-gray-400 hover:text-white cursor-pointer z-10"
+                          title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-gray-400 mt-1">
+                        <span>O usa el botón de Google arriba para entrar sin clave.</span>
+                      </div>
+
+                      {showForgotPasswordInfo && (
+                        <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300 space-y-2">
+                          <p className="font-bold flex items-center gap-1.5">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            ¿No recuerdas tu contraseña de cliente?
+                          </p>
+                          <p className="text-[10.5px] text-gray-300 leading-relaxed">
+                            Puedes ingresar de inmediato con 1 clic usando el botón blanco <strong>"Ingresar como Cliente con Google"</strong> arriba, o escribir a soporte para recuperar tu acceso.
+                          </p>
+                          <a
+                            href="https://wa.me/573106502043?text=Hola%20soporte%20Ryyco,%20necesito%20ayuda%20para%20restablecer%20mi%20contrase%C3%B1a%20de%20cliente"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black transition"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            Pedir Ayuda a Soporte por WhatsApp
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {isRegisterMode && (
+                    <>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
+                        <div>
+                          <label className="text-[11px] font-black uppercase text-gray-300 block mb-1">
+                            Nombre Completo *
+                          </label>
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 z-10">
+                              <User className="w-4 h-4 text-[#E63946]" />
+                            </div>
+                            <input
+                              type="text"
+                              required
+                              value={nameInput}
+                              onChange={(e) => setNameInput(e.target.value)}
+                              placeholder="Ej: Alex Realpe"
+                              className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-black uppercase text-gray-300 block mb-1">
+                            Crear Contraseña *
+                          </label>
+                          <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 z-10">
+                              <Lock className="w-4 h-4 text-[#E63946]" />
+                            </div>
+                            <input
+                              type={showPassword ? 'text' : 'password'}
+                              required
+                              value={passwordInput}
+                              onChange={(e) => setPasswordInput(e.target.value)}
+                              placeholder="Mínimo 4 caracteres"
+                              className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-10 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white cursor-pointer z-10"
+                              title={showPassword ? "Ocultar contraseña" : "Ver contraseña"}
+                            >
+                              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-black uppercase text-gray-300 block mb-1 flex items-center justify-between">
+                          <span>Correo Electrónico / Gmail</span>
+                          <span className="text-[9px] text-[#E63946] font-bold normal-case">Recomendado</span>
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 z-10">
+                            <Mail className="w-4 h-4 text-[#E63946]" />
+                          </div>
+                          <input
+                            type="email"
+                            value={emailInput}
+                            onChange={(e) => setEmailInput(e.target.value)}
+                            placeholder="Ej: tuemail@gmail.com"
+                            className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                          />
+                        </div>
+                        <span className="text-[9.5px] text-gray-500 mt-1 block">{isAndroid ? 'Recibe confirmaciones de despacho y novedades de tus pedidos.' : 'Recibe confirmaciones de despacho y respalda tus RYYCOS de comida.'}</span>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-black uppercase text-gray-300 block mb-1">
+                          Dirección de Despacho Habitual (Opcional)
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 z-10">
+                              <MapPin className="w-4 h-4 text-[#E63946]" />
+                            </div>
+                            <input
+                              type="text"
+                              value={addressInput}
+                              onChange={(e) => setAddressInput(e.target.value)}
+                              placeholder="Ej: Calle 45 #23-12, Apto 302"
+                              className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsMapPickerOpen(true)}
+                            className="h-11 px-3 bg-[#E63946]/10 hover:bg-[#E63946]/20 border border-[#E63946]/40 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+                            title="Fijar con Google Maps"
+                          >
+                            <MapPin className="w-4 h-4 text-[#E63946]" />
+                            <span className="hidden sm:inline">Google Maps</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-black uppercase text-gray-300 block mb-1">
+                          Punto de Referencia o Notas para Domicilios (Opcional)
+                        </label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500 z-10">
+                            <FileText className="w-4 h-4 text-[#E63946]" />
+                          </div>
+                          <input
+                            type="text"
+                            value={notesInput}
+                            onChange={(e) => setNotesInput(e.target.value)}
+                            placeholder="Ej: Dejar en portería, casa esquinera de dos pisos"
+                            className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-3 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Términos y Condiciones para Compradores */}
+                      <div className="pt-1">
+                        <label className="flex items-start gap-2.5 cursor-pointer select-none bg-[#0d1322] p-3 rounded-xl border border-[#232E42] hover:border-[#E63946]/50 transition">
+                          <input
+                            type="checkbox"
+                            checked={acceptedBuyerTerms}
+                            onChange={(e) => {
+                              setAcceptedBuyerTerms(e.target.checked);
+                              if (authError && authError.includes('Términos')) setAuthError('');
+                            }}
+                            className="w-4 h-4 mt-0.5 accent-[#E63946] rounded cursor-pointer shrink-0"
+                          />
+                          <span className="text-[11px] text-gray-300 leading-snug">
+                            He leído y acepto los{' '}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsBuyerTermsModalOpen(true);
+                              }}
+                              className="text-[#E63946] hover:underline font-bold inline cursor-pointer"
+                            >
+                              Términos y Condiciones para Usuarios y Compradores
+                            </button>
+                            {' '}y la Política de Tratamiento de Datos Personales de Ryyco.
+                          </span>
+                        </label>
+                      </div>
+                    </>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-2 bg-[#E63946] hover:bg-[#D62839] text-white shadow-[#E63946]/25 active:scale-[0.99]"
+                  >
+                    {loading ? (
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                    ) : isRegisterMode ? (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        {isAndroid ? 'Crear Cuenta y Continuar' : 'Crear Cuenta y Ganar 500 RYYCOS ($500 COP) 🎁'}
+                      </>
+                    ) : (
+                      <>
+                        <ArrowRight className="w-4 h-4" />
+                        Ingresar como Cliente Comprador
+                      </>
+                    )}
+                  </button>
+
+                  {/* Botón para consultar términos */}
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setIsBuyerTermsModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 text-[10.5px] font-bold text-gray-400 hover:text-white transition cursor-pointer"
+                    >
+                      <Scale className="w-3.5 h-3.5 text-[#F4B400]" />
+                      <span>Consultar Términos y Condiciones para Usuarios y Compradores</span>
+                    </button>
+                  </div>
+                </form>
               </div>
-            </form>
+            </div>
           </div>
         ) : (
           /* LOGGED IN CUSTOMER PORTAL */
@@ -1586,11 +1704,18 @@ export default function CustomerPortalModal({
                       : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'
                   }`}
                 >
-                  <Trophy className="w-4 h-4 shrink-0 text-amber-300 animate-pulse" />
+                  <div className="flex items-center justify-center gap-1 shrink-0">
+                    <Trophy className="w-4 h-4 shrink-0 text-amber-300 animate-pulse" />
+                    {(customer.spinsAvailable || 0) > 0 && (
+                      <span className="sm:hidden px-1.5 py-0.5 rounded-full text-[8.5px] leading-none font-black bg-amber-400 text-black shadow-sm whitespace-nowrap">
+                        {customer.spinsAvailable} {customer.spinsAvailable === 1 ? 'Giro' : 'Giros'}
+                      </span>
+                    )}
+                  </div>
                   <span className="truncate">Platos Gratis</span>
                   {(customer.spinsAvailable || 0) > 0 && (
-                    <span className="absolute -top-1 right-1 sm:static px-1.5 py-0.2 rounded-full text-[8.5px] font-black bg-amber-400 text-black shadow-sm animate-bounce">
-                      {customer.spinsAvailable} Giro
+                    <span className="hidden sm:inline-block px-1.5 py-0.5 rounded-full text-[9px] leading-none font-black bg-amber-400 text-black shadow-sm whitespace-nowrap">
+                      {customer.spinsAvailable} {customer.spinsAvailable === 1 ? 'Giro' : 'Giros'}
                     </span>
                   )}
                 </button>

@@ -10,9 +10,10 @@ export async function driverTrackingAuth(req: Request, res: Response) {
   const bearer = req.headers.authorization?.match(/^Bearer (\S+)$/)?.[1];
   if (!bearer) { res.status(401).json({ error: 'Verifica tu correo con Google.' }); return; }
   try {
+    const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+      (process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim().startsWith('{') ? process.env.GOOGLE_APPLICATION_CREDENTIALS.trim() : '');
     const app = getApps().find(app => app.name === 'driver-tracking-auth') || initializeApp({
-      credential: process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-        ? cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)) : applicationDefault(),
+      credential: rawJson ? cert(JSON.parse(rawJson)) : applicationDefault(),
       projectId: process.env.FIREBASE_PROJECT_ID || 'studio-9002217802-13e05'
     }, 'driver-tracking-auth');
     const auth = getAuth(app);

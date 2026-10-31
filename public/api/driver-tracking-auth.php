@@ -39,9 +39,13 @@ function gpsHttp(string $url, ?array $body = null, array $headers = [], bool $fo
 }
 function gpsCredentials(string $project): array {
     $json = getenv('FIREBASE_SERVICE_ACCOUNT_JSON');
+    $envCreds = getenv('GOOGLE_APPLICATION_CREDENTIALS');
+    if (!$json && is_string($envCreds) && str_starts_with(ltrim($envCreds), '{')) {
+        $json = $envCreds;
+    }
     if (!$json) {
         $root = realpath($_SERVER['DOCUMENT_ROOT'] ?? dirname(__DIR__));
-        $candidate = getenv('GOOGLE_APPLICATION_CREDENTIALS') ?: dirname($root ?: dirname(__DIR__)) . '/firebase-service-account.json';
+        $candidate = $envCreds ?: dirname($root ?: dirname(__DIR__)) . '/firebase-service-account.json';
         $path = realpath($candidate);
         // Never accept an exposed credential file, including symlinks into public_html.
         if (!$path || !$root || str_starts_with(strtolower($path), strtolower($root . DIRECTORY_SEPARATOR))) {

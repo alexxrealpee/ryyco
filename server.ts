@@ -602,12 +602,12 @@ Formatos válidos para:
   });
 
   app.post('/api/catalog/validate-item', async (req, res) => {
-    const { productId, storeId } = req.body || {};
+    const { productId, storeId, expectedPrice, expectedName } = req.body || {};
     if (!productId) {
       res.status(400).json({ valid: false, reason: "productId es requerido" });
       return;
     }
-    const result = await validateProductForCart(productId, storeId);
+    const result = await validateProductForCart(productId, storeId, expectedPrice, expectedName);
     res.json(result);
   });
 

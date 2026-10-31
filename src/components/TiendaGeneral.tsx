@@ -90,6 +90,7 @@ import {
   CART_UPDATED_EVENT 
 } from '../lib/cartHelper';
 import { isFoodCategory, isFoodProduct, isDrinkProduct, orderProductBatch } from '../lib/productUtils';
+import { syncConfirmedCatalogFromPage } from '../lib/catalogManager';
 export { isFoodCategory, isFoodProduct, isDrinkProduct, orderProductBatch };
 
 // --- Skeleton Screen Components (Delivery App Pattern with Subdued Shimmer & Zero CLS) ---
@@ -233,6 +234,20 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   useEffect(() => {
     setProfiles(profilesMap);
   }, [profilesMap]);
+
+  // Non-blockingly generate and keep updated the Virtual Waiter AI dynamic JSON once Firebase confirms open restaurants
+  useEffect(() => {
+    if (isLoadingRestaurants || restaurantsError) return;
+    const triggerAiSync = () => {
+      syncConfirmedCatalogFromPage(openRestaurants, profilesMap, loadedProducts);
+    };
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const idleId = (window as any).requestIdleCallback(triggerAiSync, { timeout: 1000 });
+      return () => (window as any).cancelIdleCallback?.(idleId);
+    }
+    const timer = setTimeout(triggerAiSync, 60);
+    return () => clearTimeout(timer);
+  }, [isLoadingRestaurants, restaurantsError, openRestaurants, profilesMap, loadedProducts]);
 
   // Direct listener for background full catalog completion
   useEffect(() => {

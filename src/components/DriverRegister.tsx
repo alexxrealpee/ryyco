@@ -348,6 +348,33 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
               </p>
             </div>
 
+            {/* Official RYYCO Welcome Guide */}
+            <div className="bg-[#090B12] border border-[#E63946]/30 rounded-2xl p-5 sm:p-6 text-left max-w-xl mx-auto mb-6 space-y-3.5 text-xs sm:text-sm text-gray-200 leading-relaxed shadow-lg">
+              <h3 className="text-base sm:text-lg font-black text-white">
+                🚀 ¡Bienvenido a RYYCO! 🛵
+              </h3>
+              <p className="text-gray-300">
+                Nos alegra que quieras formar parte de nuestro equipo de domiciliarios. Queremos explicarte cómo funciona nuestra plataforma:
+              </p>
+              <div className="space-y-2.5 text-xs sm:text-[13px]">
+                <p>✅ <strong className="text-white">Tú decides cuándo trabajar:</strong> Puedes activarte y desactivarte en la aplicación cuando quieras, sin horarios establecidos.</p>
+                <p>💰 <strong className="text-white">El 100% del domicilio es para ti:</strong> En la zona urbana de Ipiales, el servicio tiene un valor de <strong className="text-emerald-400">$7.000</strong>, y ese dinero es completamente tuyo. RYYCO no te cobra comisión.</p>
+                <p>🎒 <strong className="text-white">Pedidos según tu maletín:</strong> Por el tipo de maletín que tienes, lo único que no debes aceptar son pedidos de pizza. Puedes tomar los demás pedidos que desees.</p>
+                <p>📍 <strong className="text-white">Toda la información en tu aplicación:</strong> Cada pedido te mostrará la dirección del restaurante, la dirección de entrega y los datos necesarios para realizar el servicio.</p>
+                <p>⭐ <strong className="text-white">Tu buen servicio te abrirá más oportunidades:</strong> Al principio es posible que recibas pocos pedidos, pero a medida que los clientes te califiquen positivamente y aumenten tus estrellas, tendrás más oportunidades de recibir domicilios.</p>
+                <p>🤝 <strong className="text-white">Siempre tendrás nuestro apoyo:</strong> En la aplicación encontrarás un botón de soporte para comunicarte con nosotros ante cualquier inconveniente. Estaremos atentos para acompañarte cuando lo necesites.</p>
+                <p>❤️ <strong className="text-white">¿Qué esperamos de ti?</strong> Únicamente responsabilidad, amabilidad, puntualidad y un excelente servicio al cliente.</p>
+              </div>
+              <div className="pt-3 border-t border-[#232B3A] space-y-1.5">
+                <p className="font-bold text-white">
+                  En RYYCO tú manejas tu tiempo, decides qué pedidos aceptar y recibes el 100% del valor de tus domicilios.
+                </p>
+                <p className="text-[#F4B400] font-bold">
+                  ¡Bienvenido a esta nueva experiencia! 🚀❤️💛 — Equipo RYYCO
+                </p>
+              </div>
+            </div>
+
             <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 max-w-xl mx-auto text-xs text-[#A9B2C3] text-left space-y-2 mb-8">
               <div className="flex justify-between border-b border-[#232B3A] pb-2">
                 <span>Estado de la Cuenta:</span>
@@ -397,7 +424,7 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
         ) : (
           /* Form View */
           <div>
-            <div className="text-center mb-8">
+            <div className="text-center mb-6">
               <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center justify-center gap-3">
                 <span>Registrarse como Domiciliario</span>
                 <Sparkles className="w-6 h-6 text-[#F4B400]" />
@@ -405,6 +432,29 @@ export default function DriverRegister({ onNavigateLogin, onNavigateHome, onSucc
               <p className="text-sm text-[#A9B2C3] mt-2 max-w-lg mx-auto">
                 Únete a la red independiente de repartidores. Realiza entregas para todas las tiendas registradas en la plataforma con total autonomía.
               </p>
+            </div>
+
+            {/* Welcome & How RYYCO Works Card */}
+            <div className="mb-6 bg-[#090B12] border border-[#E63946]/30 rounded-2xl p-5 space-y-3 text-xs sm:text-[13px] text-gray-200 leading-relaxed shadow-lg">
+              <div className="font-black text-sm sm:text-base text-white">
+                🚀 ¡Bienvenido a RYYCO! 🛵
+              </div>
+              <p className="text-gray-300">
+                Nos alegra que quieras formar parte de nuestro equipo de domiciliarios. Queremos explicarte cómo funciona nuestra plataforma:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <p>✅ <strong className="text-white">Tú decides cuándo trabajar:</strong> Puedes activarte y desactivarte en la aplicación cuando quieras, sin horarios establecidos.</p>
+                <p>💰 <strong className="text-white">El 100% del domicilio es para ti:</strong> En la zona urbana de Ipiales, el servicio tiene un valor de <strong className="text-emerald-400">$7.000</strong>, y ese dinero es completamente tuyo. RYYCO no te cobra comisión.</p>
+                <p>🎒 <strong className="text-white">Pedidos según tu maletín:</strong> Por el tipo de maletín que tienes, lo único que no debes aceptar son pedidos de pizza. Puedes tomar los demás pedidos que desees.</p>
+                <p>📍 <strong className="text-white">Toda la información en tu aplicación:</strong> Cada pedido te mostrará la dirección del restaurante, la dirección de entrega y los datos necesarios para realizar el servicio.</p>
+                <p>⭐ <strong className="text-white">Tu buen servicio te abrirá más oportunidades:</strong> Al principio es posible que recibas pocos pedidos, pero a medida que los clientes te califiquen positivamente y aumenten tus estrellas, tendrás más oportunidades de recibir domicilios.</p>
+                <p>🤝 <strong className="text-white">Siempre tendrás nuestro apoyo:</strong> En la aplicación encontrarás un botón de soporte para comunicarte con nosotros ante cualquier inconveniente. Estaremos atentos para acompañarte cuando lo necesites.</p>
+              </div>
+              <p className="pt-1">❤️ <strong className="text-white">¿Qué esperamos de ti?</strong> Únicamente responsabilidad, amabilidad, puntualidad y un excelente servicio al cliente.</p>
+              <div className="pt-2 border-t border-[#232B3A] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                <span className="font-bold text-white">En RYYCO tú manejas tu tiempo, decides qué pedidos aceptar y recibes el 100% del valor de tus domicilios.</span>
+                <span className="text-[#F4B400] font-extrabold shrink-0">¡Bienvenido a esta nueva experiencia! 🚀❤️💛 Equipo RYYCO</span>
+              </div>
             </div>
 
             {errorMsg && (

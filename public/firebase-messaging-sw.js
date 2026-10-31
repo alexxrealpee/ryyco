@@ -1,3 +1,16 @@
+// Activate Service Worker immediately so getToken() never fails with "no active Service Worker"
+self.addEventListener('install', function() {
+  if (typeof self.skipWaiting === 'function') {
+    self.skipWaiting();
+  }
+});
+
+self.addEventListener('activate', function(event) {
+  if (event && typeof event.waitUntil === 'function' && typeof clients !== 'undefined' && clients && typeof clients.claim === 'function') {
+    event.waitUntil(clients.claim());
+  }
+});
+
 // Notification click handler: focus tab or open administration / seller / driver dashboard
 self.addEventListener('notificationclick', function(event) {
   event.notification.close();

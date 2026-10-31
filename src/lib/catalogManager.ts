@@ -3,10 +3,36 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db, checkIsStoreClosed, findStoreForProduct } from './firebase';
 import { ProductItem, UserProfile } from '../types';
 import { smartApiFetch } from './apiConfig';
+
+export interface CompactAiDish {
+  id: string;
+  nombre: string;
+  precio: number;
+  categoria: string;
+  ingredientes?: string;
+  variantes?: string[];
+}
+
+export interface CompactAiRestaurant {
+  id: string;
+  nombre: string;
+  usuario: string;
+  especialidad?: string;
+  platos: CompactAiDish[];
+}
+
+export interface CompactAiCatalogPayload {
+  actualizadoEn: string;
+  version: number;
+  totalRestaurantesAbiertos: number;
+  totalPlatosDisponibles: number;
+  restaurantesAbiertos: CompactAiRestaurant[];
+  restaurantesRecienCerrados?: string[];
+}
 
 export interface ClientAvailableCatalog {
   stores: UserProfile[];
@@ -15,111 +41,454 @@ export interface ClientAvailableCatalog {
   catalogUpdatedAt: string;
   version: number;
   isLoaded: boolean;
+  compactAiJson: string;
+  compactPayload: CompactAiCatalogPayload;
+  recentlyClosedStores: string[];
 }
 
 export const CATALOG_UPDATED_EVENT = 'linnk:available_catalog_updated';
-const SESSION_CATALOG_STORAGE_KEY = 'ryyco_open_catalog_json';
+const LEGACY_SESSION_STORAGE_KEY = 'ryyco_open_catalog_json';
 
-// In-Memory Open Stores Catalog Singleton (Accessible in 0ms by AI during conversation)
-let clientAvailableCatalog: ClientAvailableCatalog = initInMemoryFromStorage();
-let isClientInitialized = false;
+// Never use stale cached data to determine if a restaurant is open
+try {
+  if (typeof window !== 'undefined' && window.sessionStorage) {
+    window.sessionStorage.removeItem(LEGACY_SESSION_STORAGE_KEY);
+  }
+} catch {}
+
+const emptyCompactPayload: CompactAiCatalogPayload = {
+  actualizadoEn: new Date().toISOString(),
+  version: 0,
+  totalRestaurantesAbiertos: 0,
+  totalPlatosDisponibles: 0,
+  restaurantesAbiertos: [],
+  restaurantesRecienCerrados: []
+};
+
+let clientAvailableCatalog: ClientAvailableCatalog = {
+  stores: [],
+  products: [],
+  profilesMap: {},
+  catalogUpdatedAt: new Date().toISOString(),
+  version: 0,
+  isLoaded: false,
+  compactAiJson: JSON.stringify(emptyCompactPayload),
+  compactPayload: emptyCompactPayload,
+  recentlyClosedStores: []
+};
+
+// Single deduplicated real-time listener state
+const rawProfilesMap = new Map<string, UserProfile>();
+const rawProductsMap = new Map<string, ProductItem>();
+const previousOpenStoreNames = new Map<string, string>();
+const recentlyClosedStoreNames = new Set<string>();
+
+let profilesServerConfirmed = false;
+let productsServerConfirmed = false;
+let isRealtimeListenersAttached = false;
+let unsubProfilesListener: (() => void) | null = null;
+let unsubProductsListener: (() => void) | null = null;
+let scheduleIntervalId: ReturnType<typeof setInterval> | null = null;
 let inFlightPromise: Promise<ClientAvailableCatalog> | null = null;
 const catalogListeners: Array<(catalog: ClientAvailableCatalog) => void> = [];
 
 /**
- * Fast synchronous initializer: reads warm session storage if available
- * so the catalog is ready in memory in 0ms without waiting for network.
+ * Sanitizes product names, descriptions, and store bios so embedded text
+ * can never be interpreted as prompt-injection commands to alter the AI role.
  */
-function initInMemoryFromStorage(): ClientAvailableCatalog {
-  try {
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      const raw = window.sessionStorage.getItem(SESSION_CATALOG_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.stores) && Array.isArray(parsed.products)) {
-          return {
-            stores: parsed.stores,
-            products: parsed.products,
-            profilesMap: parsed.profilesMap || {},
-            catalogUpdatedAt: parsed.catalogUpdatedAt || new Date().toISOString(),
-            version: parsed.version || 1,
-            isLoaded: true
-          };
-        }
-      }
-    }
-  } catch (e) {}
+export function sanitizeCatalogTextForAi(input?: string, maxLength = 160): string {
+  if (!input || typeof input !== 'string') return '';
+  return input
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(
+      /\b(ignore\s+(all\s+)?(previous|prior)\s+instructions?|system\s*prompt|olvida\s+(todas\s+)?(tus\s+)?instrucciones|ignora\s+(todas\s+)?(tus\s+)?instrucciones|cambia\s+tu\s+(rol|papel)|act[uú]a\s+como|deja\s+de\s+ser\s+mesero|you\s+are\s+now)\b/gi,
+      ''
+    )
+    .replace(/[<>`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+/**
+ * Strictly checks whether a restaurant is currently open.
+ */
+export function isRestaurantOpenNow(store?: UserProfile | null): boolean {
+  if (!store) return false;
+  const isSuspended =
+    store.suspended === true ||
+    store.subscriptionStatus === 'suspended' ||
+    store.subscriptionStatus === 'expired';
+  if (isSuspended) return false;
+  if (store.isClosed === true) return false;
+  if (checkIsStoreClosed(store)) return false;
+  return true;
+}
+
+/**
+ * Strictly checks whether a product is available (enabled and not out of stock).
+ */
+export function isProductAvailableNow(product?: ProductItem | null): boolean {
+  if (!product) return false;
+  if (product.active === false) return false;
+  if ((product as any).disabled === true || (product as any).available === false) return false;
+  if (product.stock !== undefined && product.stock !== null && Number(product.stock) <= 0) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Builds the compact AI JSON exclusively with open restaurants and their available dishes.
+ */
+export function buildCompactAiCatalogPayload(
+  openStores: UserProfile[],
+  availableProducts: ProductItem[],
+  version: number,
+  recentlyClosed: string[] = []
+): CompactAiCatalogPayload {
+  const storesByUid = new Map<string, CompactAiRestaurant>();
+  const storesByUsername = new Map<string, CompactAiRestaurant>();
+
+  for (const s of openStores) {
+    const cleanName = sanitizeCatalogTextForAi(s.displayName || s.username || 'Restaurante', 70);
+    const cleanBio = sanitizeCatalogTextForAi(s.bio || '', 100);
+    const entry: CompactAiRestaurant = {
+      id: s.uid,
+      nombre: cleanName,
+      usuario: s.username || s.uid,
+      ...(cleanBio ? { especialidad: cleanBio } : {}),
+      platos: []
+    };
+    if (s.uid) storesByUid.set(s.uid, entry);
+    if (s.username) storesByUsername.set(s.username.toLowerCase(), entry);
+  }
+
+  for (const p of availableProducts) {
+    if (!isProductAvailableNow(p)) continue;
+    const price = typeof p.price === 'number' && !isNaN(p.price) ? p.price : Number(p.price) || 0;
+    if (price <= 0) continue;
+
+    let targetRest =
+      (p.userId && storesByUid.get(p.userId)) ||
+      (p.storeUsername && storesByUsername.get(p.storeUsername.toLowerCase()));
+
+    if (!targetRest) continue;
+
+    const cleanDishName = sanitizeCatalogTextForAi(p.name, 80);
+    if (!cleanDishName) continue;
+
+    const cleanDesc = sanitizeCatalogTextForAi(p.description || '', 140);
+    const cleanCat = sanitizeCatalogTextForAi(p.category || 'General', 40);
+    const variantsList = Array.isArray(p.variants)
+      ? p.variants.map((v: any) => sanitizeCatalogTextForAi(typeof v === 'string' ? v : `${v.name || ''}${v.price ? ` (${v.price} COP)` : ''}`, 50)).filter(Boolean)
+      : undefined;
+
+    targetRest.platos.push({
+      id: p.id,
+      nombre: cleanDishName,
+      precio: price,
+      categoria: cleanCat || 'General',
+      ...(cleanDesc ? { ingredientes: cleanDesc } : {}),
+      ...(variantsList && variantsList.length > 0 ? { variantes: variantsList } : {})
+    });
+  }
+
+  const restaurantesAbiertos = Array.from(storesByUid.values());
 
   return {
-    stores: [],
-    products: [],
-    profilesMap: {},
-    catalogUpdatedAt: new Date().toISOString(),
-    version: 1,
-    isLoaded: false
+    actualizadoEn: new Date().toISOString(),
+    version,
+    totalRestaurantesAbiertos: restaurantesAbiertos.length,
+    totalPlatosDisponibles: restaurantesAbiertos.reduce((sum, r) => sum + r.platos.length, 0),
+    restaurantesAbiertos,
+    ...(recentlyClosed.length > 0 ? { restaurantesRecienCerrados: recentlyClosed } : {})
   };
 }
 
 /**
- * Persists current in-memory catalog to session storage
+ * Rebuilds the in-memory open catalog from live confirmed maps and notifies subscribers.
  */
-function persistToSessionStorage(catalog: ClientAvailableCatalog) {
-  try {
-    if (typeof window !== 'undefined' && window.sessionStorage) {
-      window.sessionStorage.setItem(SESSION_CATALOG_STORAGE_KEY, JSON.stringify({
-        stores: catalog.stores,
-        products: catalog.products,
-        profilesMap: catalog.profilesMap,
-        catalogUpdatedAt: catalog.catalogUpdatedAt,
-        version: catalog.version
-      }));
+function rebuildAndPublishFromLiveMaps(): ClientAvailableCatalog {
+  const openStores: UserProfile[] = [];
+  const profilesMap: Record<string, UserProfile> = {};
+  const openStoreUids = new Set<string>();
+  const openStoreUsernames = new Set<string>();
+
+  rawProfilesMap.forEach((store) => {
+    const uid = store.uid;
+    if (isRestaurantOpenNow(store)) {
+      const cleanStore: UserProfile = {
+        ...store,
+        uid,
+        isClosed: false,
+        suspended: false
+      };
+      openStores.push(cleanStore);
+      openStoreUids.add(uid);
+      if (store.username) {
+        openStoreUsernames.add(store.username.toLowerCase());
+        profilesMap[store.username.toLowerCase()] = cleanStore;
+      }
+      profilesMap[uid] = cleanStore;
+      previousOpenStoreNames.set(uid, cleanStore.displayName || cleanStore.username || 'Restaurante');
+      recentlyClosedStoreNames.delete(cleanStore.displayName || cleanStore.username || '');
+    } else if (previousOpenStoreNames.has(uid)) {
+      // A restaurant that was previously open during this session just closed!
+      const closedName = previousOpenStoreNames.get(uid)!;
+      previousOpenStoreNames.delete(uid);
+      if (closedName) {
+        recentlyClosedStoreNames.add(closedName);
+      }
     }
-  } catch (e) {}
+  });
+
+  const availableProducts: ProductItem[] = [];
+  rawProductsMap.forEach((product) => {
+    if (!isProductAvailableNow(product)) return;
+
+    const belongsToOpenStore =
+      (product.userId && openStoreUids.has(product.userId)) ||
+      (product.storeUsername && openStoreUsernames.has(product.storeUsername.toLowerCase()));
+
+    if (!belongsToOpenStore) return;
+
+    const matchedStore = findStoreForProduct(product, profilesMap);
+    if (!matchedStore || !isRestaurantOpenNow(matchedStore)) return;
+
+    const numericPrice =
+      typeof product.price === 'number' && !isNaN(product.price)
+        ? product.price
+        : parseFloat(String(product.price)) || 0;
+
+    if (numericPrice <= 0) return;
+
+    availableProducts.push({
+      ...product,
+      id: product.id,
+      userId: matchedStore.uid || product.userId,
+      name: sanitizeCatalogTextForAi(product.name || 'Producto', 90) || 'Producto',
+      description: sanitizeCatalogTextForAi(product.description || '', 180),
+      price: numericPrice,
+      storeName: matchedStore.displayName || product.storeName || 'Restaurante',
+      storeUsername: matchedStore.username || product.storeUsername || 'tienda',
+      active: true
+    });
+  });
+
+  return updateInMemoryCatalog(
+    openStores,
+    availableProducts,
+    profilesMap,
+    Array.from(recentlyClosedStoreNames)
+  );
 }
 
 /**
- * Updates the in-memory catalog and notifies listeners
+ * Updates the in-memory catalog and notifies listeners if data changed.
  */
 function updateInMemoryCatalog(
-  stores: UserProfile[], 
-  products: ProductItem[], 
-  profilesMap: Record<string, UserProfile>
+  stores: UserProfile[],
+  products: ProductItem[],
+  profilesMap: Record<string, UserProfile>,
+  recentlyClosed: string[] = []
 ): ClientAvailableCatalog {
+  const nextVersion = clientAvailableCatalog.version + 1;
+  const compactPayload = buildCompactAiCatalogPayload(stores, products, nextVersion, recentlyClosed);
+  const compactAiJson = JSON.stringify(compactPayload);
+
+  // Avoid redundant notifications if the compact representation hasn't changed
+  const prevComparable = JSON.stringify({
+    r: clientAvailableCatalog.compactPayload.restaurantesAbiertos,
+    c: clientAvailableCatalog.compactPayload.restaurantesRecienCerrados
+  });
+  const nextComparable = JSON.stringify({
+    r: compactPayload.restaurantesAbiertos,
+    c: compactPayload.restaurantesRecienCerrados
+  });
+
+  if (clientAvailableCatalog.isLoaded && prevComparable === nextComparable) {
+    return clientAvailableCatalog;
+  }
+
   clientAvailableCatalog = {
     stores,
     products,
     profilesMap,
-    catalogUpdatedAt: new Date().toISOString(),
-    version: clientAvailableCatalog.version + 1,
-    isLoaded: true
+    catalogUpdatedAt: compactPayload.actualizadoEn,
+    version: nextVersion,
+    isLoaded: true,
+    compactAiJson,
+    compactPayload,
+    recentlyClosedStores: recentlyClosed
   };
 
-  persistToSessionStorage(clientAvailableCatalog);
-
-  // Dispatch custom window event
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(CATALOG_UPDATED_EVENT, { detail: clientAvailableCatalog }));
   }
 
-  // Notify registered callbacks
   catalogListeners.forEach(listener => {
     try {
       listener(clientAvailableCatalog);
-    } catch (e) {}
+    } catch {}
   });
 
   return clientAvailableCatalog;
 }
 
 /**
- * Background fetcher:
- * 1. Executes in the background without blocking the UI rendering.
- * 2. Downloads ONLY open restaurants (isClosed === false) and their active products.
- * 3. Keeps the resulting JSON in memory for the voice & text AI.
+ * Synchronizes confirmed stores and products from the progressive loader once
+ * the RYYCO page has loaded and Firebase has confirmed restaurant availability.
+ */
+export function syncConfirmedCatalogFromPage(
+  confirmedOpenStores: UserProfile[],
+  confirmedProfilesMap: Record<string, UserProfile>,
+  confirmedProducts: ProductItem[]
+): void {
+  if (!Array.isArray(confirmedOpenStores)) return;
+
+  // Update rawProfilesMap with confirmed profiles
+  Object.values(confirmedProfilesMap || {}).forEach(profile => {
+    if (profile && profile.uid) {
+      rawProfilesMap.set(profile.uid, profile);
+    }
+  });
+  confirmedOpenStores.forEach(store => {
+    if (store && store.uid) {
+      rawProfilesMap.set(store.uid, store);
+    }
+  });
+  profilesServerConfirmed = true;
+
+  if (Array.isArray(confirmedProducts) && confirmedProducts.length > 0) {
+    confirmedProducts.forEach(prod => {
+      if (prod && prod.id) {
+        rawProductsMap.set(prod.id, prod);
+      }
+    });
+  }
+
+  rebuildAndPublishFromLiveMaps();
+  // Ensure real-time onSnapshot listeners are attached non-blockingly
+  initClientCatalogManager();
+}
+
+/**
+ * Attaches a single pair of real-time Firestore `onSnapshot` listeners
+ * (using incremental `docChanges()` updates and strict server confirmation).
+ */
+function attachRealtimeCatalogListeners(): void {
+  if (isRealtimeListenersAttached) return;
+  isRealtimeListenersAttached = true;
+
+  try {
+    unsubProfilesListener = onSnapshot(
+      collection(db, 'profiles'),
+      { includeMetadataChanges: true },
+      snapshot => {
+        // Never use stale cached data to determine if a restaurant is open
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+          return;
+        }
+
+        if (!profilesServerConfirmed) {
+          rawProfilesMap.clear();
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as UserProfile;
+            const uid = data.uid || docSnap.id;
+            rawProfilesMap.set(uid, { ...data, uid });
+          });
+          profilesServerConfirmed = true;
+        } else {
+          // Incremental update via docChanges()
+          const changes = snapshot.docChanges();
+          if (changes.length === 0) return;
+          for (const change of changes) {
+            const data = change.doc.data() as UserProfile;
+            const uid = data.uid || change.doc.id;
+            if (change.type === 'removed') {
+              if (previousOpenStoreNames.has(uid)) {
+                recentlyClosedStoreNames.add(previousOpenStoreNames.get(uid)!);
+                previousOpenStoreNames.delete(uid);
+              }
+              rawProfilesMap.delete(uid);
+            } else {
+              rawProfilesMap.set(uid, { ...data, uid });
+            }
+          }
+        }
+
+        if (profilesServerConfirmed) {
+          rebuildAndPublishFromLiveMaps();
+        }
+      },
+      err => {
+        console.warn('Real-time profiles listener notice:', err?.code || err);
+      }
+    );
+
+    unsubProductsListener = onSnapshot(
+      collection(db, 'products'),
+      { includeMetadataChanges: true },
+      snapshot => {
+        if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+          return;
+        }
+
+        if (!productsServerConfirmed) {
+          rawProductsMap.clear();
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as ProductItem;
+            rawProductsMap.set(docSnap.id, { ...data, id: docSnap.id });
+          });
+          productsServerConfirmed = true;
+        } else {
+          // Incremental update via docChanges()
+          const changes = snapshot.docChanges();
+          if (changes.length === 0) return;
+          for (const change of changes) {
+            if (change.type === 'removed') {
+              rawProductsMap.delete(change.doc.id);
+            } else {
+              const data = change.doc.data() as ProductItem;
+              rawProductsMap.set(change.doc.id, { ...data, id: change.doc.id });
+            }
+          }
+        }
+
+        if (profilesServerConfirmed) {
+          rebuildAndPublishFromLiveMaps();
+        }
+      },
+      err => {
+        console.warn('Real-time products listener notice:', err?.code || err);
+      }
+    );
+
+    // Re-evaluate store operating schedules every 30s in memory without extra Firebase reads
+    if (!scheduleIntervalId) {
+      scheduleIntervalId = setInterval(() => {
+        if (profilesServerConfirmed && rawProfilesMap.size > 0) {
+          rebuildAndPublishFromLiveMaps();
+        }
+      }, 30 * 1000);
+    }
+  } catch (err) {
+    isRealtimeListenersAttached = false;
+    console.warn('Failed to attach real-time catalog listeners:', err);
+  }
+}
+
+/**
+ * Background fetcher & real-time listener initializer:
+ * 1. Executes in the background without blocking visual UI rendering.
+ * 2. Downloads ONLY confirmed open restaurants and their available products.
+ * 3. Attaches real-time `onSnapshot` listeners for instant updates.
  */
 export async function loadOpenStoresCatalogInBackground(forceRefresh: boolean = false): Promise<ClientAvailableCatalog> {
-  // If already loaded and not forcing refresh, return in-memory immediately
-  if (!forceRefresh && clientAvailableCatalog.isLoaded && clientAvailableCatalog.stores.length > 0) {
+  attachRealtimeCatalogListeners();
+
+  if (!forceRefresh && clientAvailableCatalog.isLoaded && profilesServerConfirmed && productsServerConfirmed) {
     return clientAvailableCatalog;
   }
 
@@ -129,133 +498,112 @@ export async function loadOpenStoresCatalogInBackground(forceRefresh: boolean = 
 
   inFlightPromise = (async () => {
     try {
-      // 1. Primary Strategy: Download the pre-built open-stores JSON from server endpoint
+      // 1. Primary Strategy: Fetch server-confirmed open-stores catalog
       try {
         const res = await smartApiFetch('/api/catalog/available');
         if (res && res.ok) {
           const data = await res.json();
-          if (data && data.success && data.catalog) {
+          if (data && data.success && data.source === 'firestore-server' && data.catalog) {
             const serverStores: any[] = data.catalog.stores || [];
             const serverProducts: any[] = data.catalog.products || [];
 
-            const formattedStores: UserProfile[] = [];
-            const profilesMap: Record<string, UserProfile> = {};
+            if (!profilesServerConfirmed) {
+              rawProfilesMap.clear();
+              serverStores.forEach((s: any) => {
+                const uid = s.uid;
+                if (!uid) return;
+                const prof: UserProfile = {
+                  ...s,
+                  uid,
+                  email: s.email || '',
+                  username: s.username || uid,
+                  displayName: s.displayName || s.username || 'Restaurante',
+                  bio: s.bio || '',
+                  address: s.address || '',
+                  phone: s.phone || '',
+                  whatsapp: s.whatsapp || '',
+                  role: 'user',
+                  plan: 'pro',
+                  createdAt: s.createdAt || new Date().toISOString(),
+                  isClosed: s.isClosed === true,
+                  suspended: s.suspended === true
+                };
+                if (isRestaurantOpenNow(prof)) {
+                  rawProfilesMap.set(uid, prof);
+                }
+              });
+              profilesServerConfirmed = true;
+            }
 
-            serverStores.forEach((s: any) => {
-              const prof: UserProfile = {
-                uid: s.uid,
-                email: s.email || '',
-                username: s.username || '',
-                displayName: s.displayName || s.username || 'Restaurante',
-                bio: s.bio || '',
-                address: s.address || '',
-                phone: s.phone || '',
-                whatsapp: s.whatsapp || '',
-                role: 'user',
-                plan: 'pro',
-                createdAt: s.createdAt || new Date().toISOString(),
-                isClosed: false,
-                suspended: false
-              };
-              formattedStores.push(prof);
-              if (prof.uid) profilesMap[prof.uid] = prof;
-              if (prof.username) profilesMap[prof.username.toLowerCase()] = prof;
-            });
+            if (!productsServerConfirmed) {
+              rawProductsMap.clear();
+              serverProducts.forEach((p: any) => {
+                if (!p || !p.id) return;
+                rawProductsMap.set(p.id, {
+                  ...p,
+                  id: p.id,
+                  userId: p.userId || '',
+                  name: p.name || 'Producto',
+                  description: p.description || '',
+                  price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
+                  stock: p.stock !== undefined && p.stock !== null ? Number(p.stock) : undefined,
+                  category: p.category || 'General',
+                  imageURL: p.imageURL || '',
+                  storeName: p.storeName || 'Restaurante',
+                  storeUsername: p.storeUsername || 'tienda',
+                  active: p.active !== false
+                });
+              });
+              productsServerConfirmed = true;
+            }
 
-            const formattedProducts: ProductItem[] = serverProducts.map((p: any) => ({
-              id: p.id,
-              userId: p.userId,
-              name: p.name || 'Producto',
-              description: p.description || '',
-              price: typeof p.price === 'number' ? p.price : parseFloat(p.price) || 0,
-              stock: typeof p.stock === 'number' ? p.stock : parseInt(p.stock) || 0,
-              category: p.category || 'General',
-              imageURL: p.imageURL || '',
-              storeName: p.storeName || 'Restaurante Asociado',
-              storeUsername: p.storeUsername || 'tienda',
-              active: true,
-              variants: p.variants,
-              options: p.options
-            }));
-
-            return updateInMemoryCatalog(formattedStores, formattedProducts, profilesMap);
+            return rebuildAndPublishFromLiveMaps();
           }
         }
       } catch (apiErr) {
-        console.warn("Server catalog download notice, falling back to direct background query:", apiErr);
+        console.warn('Server catalog endpoint notice, using direct Firestore confirmation:', apiErr);
       }
 
-      // 2. Fallback Strategy: Direct query to Firestore in background
-      const openStores: UserProfile[] = [];
-      const profilesMap: Record<string, UserProfile> = {};
-      const openStoreUids = new Set<string>();
-      const openStoreUsernames = new Set<string>();
-
-      try {
-        const profilesSnap = await getDocs(collection(db, 'profiles'));
-        if (profilesSnap && !profilesSnap.empty) {
-          profilesSnap.forEach(docSnap => {
-            const data = docSnap.data() as UserProfile;
-            const uid = data.uid || docSnap.id;
-            const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
-            const isClosed = isSuspended || data.isClosed === true || checkIsStoreClosed(data);
-
-            // Filter ONLY open stores
-            if (!isClosed && !isSuspended) {
-              const cleanProf: UserProfile = {
-                ...data,
-                uid,
-                isClosed: false,
-                suspended: false
-              };
-              openStores.push(cleanProf);
-              openStoreUids.add(uid);
-              if (data.username) {
-                openStoreUsernames.add(data.username.toLowerCase());
-              }
-              profilesMap[uid] = cleanProf;
-              if (data.username) profilesMap[data.username.toLowerCase()] = cleanProf;
-            }
-          });
+      // 2. Fallback Strategy: Direct query to Firestore
+      if (!profilesServerConfirmed) {
+        try {
+          const profilesSnap = await getDocs(collection(db, 'profiles'));
+          if (profilesSnap && !profilesSnap.metadata.fromCache) {
+            rawProfilesMap.clear();
+            profilesSnap.forEach(docSnap => {
+              const data = docSnap.data() as UserProfile;
+              const uid = data.uid || docSnap.id;
+              rawProfilesMap.set(uid, { ...data, uid });
+            });
+            profilesServerConfirmed = true;
+          }
+        } catch (profErr) {
+          console.warn('Firestore profiles query notice:', profErr);
         }
-      } catch (profErr) {
-        console.warn("Firestore profiles background query notice:", profErr);
       }
 
-      // Query products and retain ONLY products belonging to open stores
-      const availableProducts: ProductItem[] = [];
-      try {
-        const productsSnap = await getDocs(collection(db, 'products'));
-        if (productsSnap && !productsSnap.empty) {
-          productsSnap.forEach(docSnap => {
-            const data = docSnap.data() as ProductItem;
-            if (data && data.active !== false) {
-              const belongsToOpenStore = 
-                (data.userId && openStoreUids.has(data.userId)) ||
-                (data.storeUsername && openStoreUsernames.has(data.storeUsername.toLowerCase()));
-
-              if (belongsToOpenStore) {
-                const matchedStore = findStoreForProduct(data, profilesMap);
-                availableProducts.push({
-                  ...data,
-                  id: docSnap.id,
-                  name: data.name || 'Producto',
-                  price: typeof data.price === 'number' && !isNaN(data.price) ? data.price : parseFloat(data.price as any) || 0,
-                  storeName: matchedStore?.displayName || data.storeName || 'Restaurante Asociado',
-                  storeUsername: matchedStore?.username || data.storeUsername || 'tienda',
-                  active: true
-                });
-              }
-            }
-          });
+      if (!productsServerConfirmed) {
+        try {
+          const productsSnap = await getDocs(collection(db, 'products'));
+          if (productsSnap && !productsSnap.metadata.fromCache) {
+            rawProductsMap.clear();
+            productsSnap.forEach(docSnap => {
+              const data = docSnap.data() as ProductItem;
+              rawProductsMap.set(docSnap.id, { ...data, id: docSnap.id });
+            });
+            productsServerConfirmed = true;
+          }
+        } catch (prodErr) {
+          console.warn('Firestore products query notice:', prodErr);
         }
-      } catch (prodErr) {
-        console.warn("Firestore products background query notice:", prodErr);
       }
 
-      return updateInMemoryCatalog(openStores, availableProducts, profilesMap);
+      if (profilesServerConfirmed) {
+        return rebuildAndPublishFromLiveMaps();
+      }
+      return clientAvailableCatalog;
     } catch (err) {
-      console.warn("Background open catalog generation notice:", err);
+      console.warn('Background open catalog generation notice:', err);
       return clientAvailableCatalog;
     } finally {
       inFlightPromise = null;
@@ -266,68 +614,67 @@ export async function loadOpenStoresCatalogInBackground(forceRefresh: boolean = 
 }
 
 /**
- * Initializes the client catalog manager in the background:
- * - Defers execution so initial page rendering & user interaction is 100% instantaneous.
- * - Schedules a periodic 3-minute silent refresh to keep open restaurants updated in memory.
+ * Initializes the client catalog manager non-blockingly after the page loads
+ * and attaches the single shared real-time Firestore `onSnapshot` listeners.
  */
 export function initClientCatalogManager(): () => void {
-  if (isClientInitialized) return () => {};
-  isClientInitialized = true;
+  if (isRealtimeListenersAttached) {
+    return () => {};
+  }
 
-  // Defer background load to idle time so visual UI loads first
-  const scheduleDeferredLoad = () => {
+  const startNonBlocking = () => {
     if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(() => {
-        loadOpenStoresCatalogInBackground().catch(() => {});
-      }, { timeout: 1500 });
+      (window as any).requestIdleCallback(
+        () => {
+          attachRealtimeCatalogListeners();
+          loadOpenStoresCatalogInBackground().catch(() => {});
+        },
+        { timeout: 1200 }
+      );
     } else {
       setTimeout(() => {
+        attachRealtimeCatalogListeners();
         loadOpenStoresCatalogInBackground().catch(() => {});
       }, 150);
     }
   };
 
   if (typeof document !== 'undefined' && document.readyState === 'complete') {
-    scheduleDeferredLoad();
+    startNonBlocking();
   } else if (typeof window !== 'undefined') {
-    window.addEventListener('load', scheduleDeferredLoad, { once: true });
-    scheduleDeferredLoad();
+    window.addEventListener('load', startNonBlocking, { once: true });
+    startNonBlocking();
   }
 
-  // Periodic 3-minute background refresh to keep open stores up to date
-  const intervalId = setInterval(() => {
-    loadOpenStoresCatalogInBackground(true).catch(() => {});
-  }, 3 * 60 * 1000);
-
-  return () => {
-    clearInterval(intervalId);
-  };
+  return () => {};
 }
 
 /**
- * Fast synchronous access to the in-memory catalog.
- * The AI uses this as the sole source of truth during conversations.
- * NO repeated Firebase calls during chat.
+ * Synchronous access to the live confirmed in-memory catalog.
  */
 export function getClientAvailableCatalog(loadIfMissing = true): ClientAvailableCatalog {
   if (loadIfMissing && !clientAvailableCatalog.isLoaded && !inFlightPromise) {
-    // Fire background load without blocking
     loadOpenStoresCatalogInBackground().catch(() => {});
   }
   return clientAvailableCatalog;
 }
 
 /**
- * Alias for clarity
+ * Returns the compact JSON string for the Virtual Waiter AI.
  */
+export function getCompactAiCatalogJson(): string {
+  return getClientAvailableCatalog().compactAiJson;
+}
+
 export const getInMemoryOpenCatalog = getClientAvailableCatalog;
 
 /**
- * Subscribe to in-memory catalog updates
+ * Subscribe to real-time catalog updates.
  */
 export function subscribeToAvailableCatalog(callback: (catalog: ClientAvailableCatalog) => void): () => void {
-  catalogListeners.push(callback);
-  // Send current in-memory state immediately
+  if (!catalogListeners.includes(callback)) {
+    catalogListeners.push(callback);
+  }
   callback(clientAvailableCatalog);
   return () => {
     const idx = catalogListeners.indexOf(callback);
@@ -336,92 +683,213 @@ export function subscribeToAvailableCatalog(callback: (catalog: ClientAvailableC
 }
 
 /**
- * In-Memory Validation before Cart Add or Quantity Change (0ms, zero Firebase reads)
+ * 4-Point Live Validation against Firebase before offering/adding a product to the cart:
+ * 1. The restaurant continues open.
+ * 2. The product continues available (active and in stock).
+ * 3. The price is still valid.
+ * 4. The information corresponds to the right product.
  */
-export async function validateStoreAndProductBeforeCart(productId: string, storeId?: string): Promise<{
+export async function validateStoreAndProductBeforeCart(
+  productId: string,
+  storeId?: string,
+  expectedPrice?: number,
+  expectedName?: string
+): Promise<{
   valid: boolean;
   reason?: string;
+  verifiedProduct?: ProductItem;
+  verifiedPrice?: number;
 }> {
+  if (!productId) {
+    return { valid: false, reason: 'Identificador de producto inválido.' };
+  }
+
+  // 1. Try server-side validation endpoint first
   try {
-    const catalog = getClientAvailableCatalog();
-    
-    // If catalog hasn't finished loading yet, allow action
-    if (!catalog.isLoaded || (catalog.stores.length === 0 && catalog.products.length === 0)) {
-      return { valid: true };
+    const res = await smartApiFetch('/api/catalog/validate-item', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        productId,
+        storeId,
+        expectedPrice,
+        expectedName
+      })
+    });
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data && typeof data.valid === 'boolean') {
+        if (!data.valid) {
+          return { valid: false, reason: data.reason || 'El producto o restaurante ya no está disponible.' };
+        }
+        if (data.product) {
+          return {
+            valid: true,
+            verifiedProduct: data.product,
+            verifiedPrice: Number(data.product.price) || expectedPrice
+          };
+        }
+      }
+    }
+  } catch {}
+
+  // 2. Direct live check against Firestore / confirmed real-time listener state
+  try {
+    let liveProduct: ProductItem | undefined = rawProductsMap.get(productId);
+    if (!liveProduct) {
+      const prodSnap = await getDoc(doc(db, 'products', productId));
+      if (prodSnap.exists()) {
+        liveProduct = { ...(prodSnap.data() as ProductItem), id: prodSnap.id };
+        rawProductsMap.set(prodSnap.id, liveProduct);
+      }
     }
 
-    const product = catalog.products.find(p => p.id === productId);
-    const targetStoreId = product?.userId || storeId;
+    if (!liveProduct || !isProductAvailableNow(liveProduct)) {
+      return {
+        valid: false,
+        reason: 'El plato seleccionado se acaba de agotar o ya no se encuentra disponible.'
+      };
+    }
 
-    if (targetStoreId) {
-      const store = catalog.stores.find(s => s.uid === targetStoreId || s.username?.toLowerCase() === targetStoreId.toLowerCase());
-      if (!store) {
+    // Check 4: Product identity correspondence
+    if (expectedName && expectedName.trim()) {
+      const normExpected = expectedName.toLowerCase().trim();
+      const normActual = (liveProduct.name || '').toLowerCase().trim();
+      if (normActual && !normActual.includes(normExpected) && !normExpected.includes(normActual)) {
         return {
           valid: false,
-          reason: "El restaurante se encuentra actualmente cerrado y no puede recibir pedidos."
+          reason: `La información del producto no coincide con el plato solicitado ("${expectedName}").`
         };
       }
     }
 
-    if (productId && !product) {
+    // Check 1: Restaurant continues open
+    const targetStoreId = liveProduct.userId || storeId;
+    let liveStore: UserProfile | undefined = targetStoreId ? rawProfilesMap.get(targetStoreId) : undefined;
+    if (!liveStore && liveProduct.storeUsername) {
+      liveStore = Array.from(rawProfilesMap.values()).find(
+        s => s.username?.toLowerCase() === liveProduct!.storeUsername?.toLowerCase()
+      );
+    }
+    if (!liveStore && targetStoreId) {
+      const storeSnap = await getDoc(doc(db, 'profiles', targetStoreId));
+      if (storeSnap.exists()) {
+        liveStore = { ...(storeSnap.data() as UserProfile), uid: storeSnap.id };
+        rawProfilesMap.set(storeSnap.id, liveStore);
+      }
+    }
+
+    if (!liveStore || !isRestaurantOpenNow(liveStore)) {
+      const storeLabel = liveStore?.displayName || liveProduct.storeName || 'El restaurante';
       return {
         valid: false,
-        reason: "El producto seleccionado ya no se encuentra disponible."
+        reason: `${storeLabel} se encuentra cerrado en este momento y no puede recibir pedidos.`
       };
     }
 
-    return { valid: true };
+    // Check 3: Price validity
+    const livePrice = typeof liveProduct.price === 'number' ? liveProduct.price : Number(liveProduct.price) || 0;
+    if (livePrice <= 0) {
+      return {
+        valid: false,
+        reason: `El precio del producto "${liveProduct.name}" no es válido actualmente.`
+      };
+    }
+
+    return {
+      valid: true,
+      verifiedProduct: {
+        ...liveProduct,
+        price: livePrice,
+        storeName: liveStore.displayName || liveProduct.storeName,
+        storeUsername: liveStore.username || liveProduct.storeUsername
+      },
+      verifiedPrice: livePrice
+    };
   } catch (err) {
-    return { valid: true };
+    const catalog = getClientAvailableCatalog(false);
+    const fallbackProd = catalog.products.find(p => p.id === productId);
+    if (!fallbackProd) {
+      return {
+        valid: false,
+        reason: 'No se pudo confirmar la disponibilidad actual del producto en Firebase.'
+      };
+    }
+    return {
+      valid: true,
+      verifiedProduct: fallbackProd,
+      verifiedPrice: fallbackProd.price
+    };
   }
 }
 
 /**
- * In-Memory Validation before Order Confirmation (0ms, zero Firebase reads)
+ * 4-Point Live Validation before Order Confirmation
  */
-export async function validateCartBeforeOrder(cartItems: Array<{ product: ProductItem; quantity: number }>): Promise<{
+export async function validateCartBeforeOrder(
+  cartItems: Array<{ product: ProductItem; quantity: number }>
+): Promise<{
   valid: boolean;
   reason?: string;
 }> {
-  try {
-    const catalog = getClientAvailableCatalog();
+  if (!Array.isArray(cartItems) || cartItems.length === 0) {
+    return { valid: false, reason: 'Tu carrito está vacío.' };
+  }
 
-    if (!catalog.isLoaded || (catalog.stores.length === 0 && catalog.products.length === 0)) {
-      return { valid: true };
+  // 1. Validate each item against live Firebase / server
+  for (const item of cartItems) {
+    if (!item) continue;
+    const prod = item.product || (item as any) || {};
+    const prodId = prod.id || (item as any)?.productId || (item as any)?.id;
+    const storeId = prod.userId || (item as any)?.storeOwnerId;
+    const itemPrice = typeof prod.price === 'number' ? prod.price : Number(prod.price) || undefined;
+
+    const check = await validateStoreAndProductBeforeCart(prodId, storeId, itemPrice, prod.name);
+    if (!check.valid) {
+      return {
+        valid: false,
+        reason: check.reason || `El producto "${prod.name || 'seleccionado'}" ya no está disponible.`
+      };
     }
+    // Sync price in-place if updated in Firebase
+    if (check.verifiedPrice && prod && typeof prod === 'object') {
+      prod.price = check.verifiedPrice;
+    }
+  }
 
-    for (const item of cartItems) {
-      if (!item) continue;
-      const prod = item.product || (item as any) || {};
-      const storeId = prod.userId || (item as any)?.storeOwnerId;
-      if (storeId) {
-        const store = catalog.stores.find(s => s.uid === storeId || s.username?.toLowerCase() === storeId.toLowerCase());
-        if (!store) {
-          const sName = prod.storeName || 'El restaurante';
-          return {
-            valid: false,
-            reason: `No podemos completar tu pedido porque ${sName} se encuentra cerrado en este momento.`
-          };
-        }
-      }
+  // 2. Final backend order validation
+  try {
+    const firstProd = cartItems[0]?.product || (cartItems[0] as any) || {};
+    const storeOwnerId = firstProd.userId || (cartItems[0] as any)?.storeOwnerId;
+    const orderPayloadItems = cartItems.map(i => {
+      const p = i.product || (i as any) || {};
+      return {
+        productId: p.id || (i as any)?.productId || (i as any)?.id,
+        name: p.name,
+        quantity: i.quantity || 1,
+        price: Number(p.price) || 0
+      };
+    });
 
-      const prodId = prod.id || (item as any)?.productId || (item as any)?.id;
-      const availableProd = catalog.products.find(p => p.id === prodId);
-      if (!availableProd) {
-        const prodName = prod.name || (item as any)?.name || 'Producto';
+    const res = await smartApiFetch('/api/catalog/validate-order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: orderPayloadItems, storeOwnerId })
+    });
+    if (res && res.ok) {
+      const data = await res.json();
+      if (data && data.valid === false) {
         return {
           valid: false,
-          reason: `El producto "${prodName}" ya no se encuentra disponible.`
+          reason: data.reason || 'No se pudo validar el pedido porque un restaurante cerró o un producto se agotó.'
         };
       }
     }
+  } catch {}
 
-    return { valid: true };
-  } catch (err) {
-    return { valid: true };
-  }
+  return { valid: true };
 }
 
-// Legacy alias for compatibility
+// Legacy aliases for compatibility
 export const fetchCatalogData = loadOpenStoresCatalogInBackground;
 export const rebuildClientAvailableCatalog = getClientAvailableCatalog;

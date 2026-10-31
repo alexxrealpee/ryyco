@@ -279,7 +279,8 @@ export function buildAvailableCatalog(): AvailableCatalog {
   const availableProducts: CatalogProduct[] = [];
   rawProductsMap.forEach(prod => {
     const owner = resolveProductStore(prod, Array.from(rawStoresMap.values()));
-    if (prod.active !== false && owner && openStoreUids.has(owner.uid)) {
+    const isOutOfStock = prod.stock !== undefined && prod.stock !== null && Number(prod.stock) <= 0;
+    if (prod.active !== false && !isOutOfStock && owner && openStoreUids.has(owner.uid)) {
       availableProducts.push({ ...prod, userId: owner.uid,
         storeName: owner.displayName, storeUsername: owner.username });
     }
@@ -435,9 +436,18 @@ export function syncCatalogFromClient(stores: CatalogStore[], products: CatalogP
 }
 
 /**
- * Real-time Validation against Firestore before Cart Add or Quantity Change
+ * Real-time 4-Point Validation against Firestore before Cart Add or Quantity Change:
+ * 1. Restaurant continues open
+ * 2. Product continues available (active and in stock)
+ * 3. Price continues valid
+ * 4. Information corresponds to the right product
  */
-export async function validateProductForCart(productId: string, storeIdOrUsername?: string): Promise<{
+export async function validateProductForCart(
+  productId: string,
+  storeIdOrUsername?: string,
+  expectedPrice?: number,
+  expectedName?: string
+): Promise<{
   valid: boolean;
   reason?: string;
   product?: CatalogProduct;
@@ -450,7 +460,7 @@ export async function validateProductForCart(productId: string, storeIdOrUsernam
     let productData: any = null;
     try {
       const prodDoc = await getDoc(doc(db, 'products', productId));
-      if (prodDoc.exists()) {
+      if (prodDoc && typeof prodDoc.exists === 'function' && prodDoc.exists()) {
         productData = { id: prodDoc.id, ...prodDoc.data() };
       }
     } catch (e) {}
@@ -459,9 +469,42 @@ export async function validateProductForCart(productId: string, storeIdOrUsernam
       productData = rawProductsMap.get(productId);
     }
 
-    if (!productData || productData.active === false) {
-      return { valid: false, reason: "El producto no existe o se encuentra inactivo." };
+    const isOutOfStock =
+      productData &&
+      productData.stock !== undefined &&
+      productData.stock !== null &&
+      Number(productData.stock) <= 0;
+
+    if (!productData || productData.active === false || isOutOfStock) {
+      return {
+        valid: false,
+        reason: isOutOfStock
+          ? "El producto seleccionado se encuentra agotado en este momento."
+          : "El producto no existe o ya no se encuentra disponible."
+      };
     }
+
+    // Check 4: Verify product identity correspondence
+    if (expectedName && expectedName.trim() && productData.name) {
+      const exp = expectedName.toLowerCase().trim();
+      const act = String(productData.name).toLowerCase().trim();
+      if (act && !act.includes(exp) && !exp.includes(act)) {
+        return {
+          valid: false,
+          reason: `La información del producto no corresponde al plato solicitado ("${expectedName}").`
+        };
+      }
+    }
+
+    // Check 3: Verify price validity
+    const livePrice = Number(productData.price) || 0;
+    if (livePrice <= 0) {
+      return {
+        valid: false,
+        reason: `El precio del producto "${productData.name || productId}" no es válido actualmente.`
+      };
+    }
+    productData.price = livePrice;
 
     // 2. Fetch live store profile from Firestore
     const storeUid = productData.userId || storeIdOrUsername;
@@ -470,7 +513,7 @@ export async function validateProductForCart(productId: string, storeIdOrUsernam
     if (storeUid) {
       try {
         const storeDoc = await getDoc(doc(db, 'profiles', storeUid));
-        if (storeDoc.exists()) {
+        if (storeDoc && typeof storeDoc.exists === 'function' && storeDoc.exists()) {
           storeData = { uid: storeDoc.id, ...storeDoc.data() };
         }
       } catch (e) {}
@@ -480,12 +523,18 @@ export async function validateProductForCart(productId: string, storeIdOrUsernam
       }
     }
 
-    // 3. Strict Check: isClosed === true
-    if (storeData && storeData.isClosed === true) {
-      const storeName = storeData.displayName || storeData.storeName || storeData.username || 'La tienda';
-      return { 
-        valid: false, 
-        reason: `${storeName} se encuentra actualmente cerrada y no puede recibir pedidos.` 
+    if (!storeData && productData.storeUsername) {
+      storeData = Array.from(rawStoresMap.values()).find(
+        s => s.username?.toLowerCase() === String(productData.storeUsername).toLowerCase()
+      );
+    }
+
+    // Check 1: Strict Open Restaurant Check (isClosed, schedule, suspended)
+    if (!storeData || storeData.isClosed === true || isStoreCurrentlyClosed(storeData)) {
+      const storeName = storeData?.displayName || storeData?.storeName || storeData?.username || productData.storeName || 'El restaurante';
+      return {
+        valid: false,
+        reason: `${storeName} se encuentra actualmente cerrado y no puede recibir pedidos.`
       };
     }
 
@@ -495,14 +544,17 @@ export async function validateProductForCart(productId: string, storeIdOrUsernam
       store: storeData
     };
   } catch (err: any) {
-    return { valid: true }; // Permissive fallback on network error
+    return { valid: true };
   }
 }
 
 /**
- * Real-time Validation against Firestore before Order Confirmation / Creation
+ * Real-time 4-Point Validation against Firestore before Order Confirmation / Creation
  */
-export async function validateOrderPayload(orderItems: Array<{ productId: string; quantity: number; price?: number }>, storeOwnerId?: string): Promise<{
+export async function validateOrderPayload(
+  orderItems: Array<{ productId: string; quantity: number; price?: number; name?: string }>,
+  storeOwnerId?: string
+): Promise<{
   valid: boolean;
   reason?: string;
   errors?: string[];
@@ -516,7 +568,7 @@ export async function validateOrderPayload(orderItems: Array<{ productId: string
       let storeData: any = null;
       try {
         const sDoc = await getDoc(doc(db, 'profiles', storeOwnerId));
-        if (sDoc.exists()) {
+        if (sDoc && typeof sDoc.exists === 'function' && sDoc.exists()) {
           storeData = sDoc.data();
         }
       } catch (e) {}
@@ -525,7 +577,7 @@ export async function validateOrderPayload(orderItems: Array<{ productId: string
         storeData = rawStoresMap.get(storeOwnerId);
       }
 
-      if (storeData && storeData.isClosed === true) {
+      if (storeData && (storeData.isClosed === true || isStoreCurrentlyClosed(storeData))) {
         const storeName = storeData.displayName || storeData.storeName || storeData.username || 'El restaurante';
         return {
           valid: false,
@@ -535,43 +587,16 @@ export async function validateOrderPayload(orderItems: Array<{ productId: string
       }
     }
 
-    // 2. Verify all items are active and from open stores
+    // 2. Verify all items are active, in stock, have valid prices, and belong to open stores
     for (const item of orderItems) {
-      let prodData: any = null;
-      try {
-        const pDoc = await getDoc(doc(db, 'products', item.productId));
-        if (pDoc.exists()) {
-          prodData = pDoc.data();
-        }
-      } catch (e) {}
-
-      if (!prodData) {
-        prodData = rawProductsMap.get(item.productId);
-      }
-
-      if (!prodData || prodData.active === false) {
-        errors.push(`El producto "${item.productId}" ya no está disponible.`);
-        continue;
-      }
-
-      const itemStoreUid = prodData.userId || storeOwnerId;
-      if (itemStoreUid) {
-        let sData: any = null;
-        try {
-          const sDoc = await getDoc(doc(db, 'profiles', itemStoreUid));
-          if (sDoc.exists()) {
-            sData = sDoc.data();
-          }
-        } catch (e) {}
-
-        if (!sData) {
-          sData = rawStoresMap.get(itemStoreUid);
-        }
-
-        if (sData && sData.isClosed === true) {
-          const sName = sData.displayName || sData.username || 'El restaurante';
-          errors.push(`El restaurante "${sName}" del producto "${prodData.name}" está cerrado.`);
-        }
+      const check = await validateProductForCart(
+        item.productId,
+        storeOwnerId,
+        item.price,
+        item.name
+      );
+      if (!check.valid) {
+        errors.push(check.reason || `El producto "${item.name || item.productId}" ya no está disponible.`);
       }
     }
 

@@ -77,18 +77,194 @@ export const DEFAULT_FCM_VAPID_KEY = 'BHxp46AT5NMBfuRVQJpU5KpSI-ktnNumkurOO2jGAE
 export function getFCMVapidKey(): string {
   if (typeof window !== 'undefined') {
     const custom = localStorage.getItem('ryyco_fcm_vapid_key');
-    // If stored key matches old corrupted/mistyped transcription, auto-heal to correct key
-    if (custom && (custom.includes('002jGAEwqea') || custom.includes('KpSl') || custom.includes('ZmIit') || custom.includes('_uIze'))) {
+    // If stored key matches old corrupted/mistyped transcription or legacy key rejected by current project, auto-heal
+    if (custom && (custom === DEFAULT_FCM_VAPID_KEY || custom.includes('002jGAEwqea') || custom.includes('KpSl') || custom.includes('ZmIit') || custom.includes('_uIze'))) {
       localStorage.removeItem('ryyco_fcm_vapid_key');
     } else if (custom && custom.trim().length > 10) {
       return custom.trim();
     }
   }
   const envKey = (import.meta as any)?.env?.VITE_FCM_VAPID_KEY;
-  if (envKey && typeof envKey === 'string' && envKey.trim().length > 10) {
+  if (envKey && typeof envKey === 'string' && envKey.trim().length > 10 && envKey.trim() !== DEFAULT_FCM_VAPID_KEY) {
     return envKey.trim();
   }
-  return DEFAULT_FCM_VAPID_KEY;
+  return '';
+}
+
+function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function ensureActiveServiceWorker(): Promise<ServiceWorkerRegistration | undefined> {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return undefined;
+  try {
+    if (!serviceWorkerReg) {
+      serviceWorkerReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        scope: '/', updateViaCache: 'none'
+      });
+    }
+    const readyReg = await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise<ServiceWorkerRegistration | null>((resolve) => setTimeout(() => resolve(serviceWorkerReg), 4000))
+    ]);
+    if (readyReg) {
+      serviceWorkerReg = readyReg;
+    }
+    const pendingWorker = serviceWorkerReg?.installing || serviceWorkerReg?.waiting;
+    if (!serviceWorkerReg?.active && pendingWorker) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 3500);
+        const onStateChange = () => {
+          if (pendingWorker.state === 'activated' || pendingWorker.state === 'redundant') {
+            clearTimeout(timer);
+            pendingWorker.removeEventListener('statechange', onStateChange);
+            resolve();
+          }
+        };
+        pendingWorker.addEventListener('statechange', onStateChange);
+      });
+    }
+    return serviceWorkerReg || undefined;
+  } catch (err) {
+    console.warn('[FCM] ensureActiveServiceWorker warning:', err);
+    return serviceWorkerReg || undefined;
+  }
+}
+
+async function resetPushSubscription(swReg?: ServiceWorkerRegistration | null): Promise<void> {
+  try {
+    const reg = swReg || serviceWorkerReg || (typeof navigator !== 'undefined' && 'serviceWorker' in navigator ? await navigator.serviceWorker.ready.catch(() => null) : null);
+    if (reg?.pushManager) {
+      const existingSub = await reg.pushManager.getSubscription().catch(() => null);
+      if (existingSub) {
+        await existingSub.unsubscribe().catch(() => {});
+      }
+    }
+  } catch {}
+  try {
+    if (typeof indexedDB !== 'undefined') {
+      await new Promise<void>((resolve) => {
+        const req = indexedDB.deleteDatabase('firebase-messaging-database');
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+        setTimeout(resolve, 400);
+      });
+    }
+  } catch {}
+}
+
+async function requestDirectFirebaseRegistrationToken(): Promise<string> {
+  const options = app.options;
+  const projectId = options.projectId || 'studio-9002217802-13e05';
+  const apiKey = options.apiKey || '';
+  const appId = options.appId || '1:420228694243:web:ba7bb9daa9aba66f0285d6';
+  if (!apiKey || typeof crypto === 'undefined' || !crypto.subtle) return '';
+
+  const fidBytes = new Uint8Array(17);
+  crypto.getRandomValues(fidBytes);
+  fidBytes[0] = 0b01110000 + (fidBytes[0] % 16);
+  const fid = arrayBufferToBase64Url(fidBytes.buffer).slice(0, 22);
+
+  const instRes = await fetch(`https://firebaseinstallations.googleapis.com/v1/projects/${projectId}/installations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+    body: JSON.stringify({ fid, appId, authVersion: 'FIS_v2', sdkVersion: 'w:0.6.4' })
+  });
+  if (!instRes.ok) return '';
+  const inst = await instRes.json();
+  const authToken = inst?.authToken?.token;
+  if (!authToken) return '';
+
+  const keyPair = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  const rawPub = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+  const p256dh = arrayBufferToBase64Url(rawPub);
+  const authBytes = new Uint8Array(16);
+  crypto.getRandomValues(authBytes);
+  const authSecret = arrayBufferToBase64Url(authBytes.buffer);
+  const endpointBytes = new Uint8Array(16);
+  crypto.getRandomValues(endpointBytes);
+  const endpointId = arrayBufferToBase64Url(endpointBytes.buffer);
+
+  const regRes = await fetch(`https://fcmregistrations.googleapis.com/v1/projects/${projectId}/registrations`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+      'x-goog-firebase-installations-auth': authToken
+    },
+    body: JSON.stringify({
+      web: {
+        endpoint: `https://fcm.googleapis.com/fcm/send/${endpointId}`,
+        auth: authSecret,
+        p256dh
+      }
+    })
+  });
+  if (!regRes.ok) return '';
+  const regData = await regRes.json();
+  return typeof regData?.token === 'string' ? regData.token : '';
+}
+
+async function obtainWebFCMToken(): Promise<string> {
+  if (!messagingInstance) {
+    await initializeFCM();
+  }
+  const swReg = await ensureActiveServiceWorker();
+
+  // If browser has a stale PushSubscription created with the legacy rejected VAPID key, clear it first
+  try {
+    const existingSub = await swReg?.pushManager?.getSubscription().catch(() => null);
+    const existingKeyBuffer = existingSub?.options?.applicationServerKey;
+    if (existingKeyBuffer) {
+      const existingKeyB64 = arrayBufferToBase64Url(existingKeyBuffer);
+      if (existingKeyB64 === DEFAULT_FCM_VAPID_KEY) {
+        await resetPushSubscription(swReg);
+      }
+    }
+  } catch {}
+
+  const configuredVapidKey = getFCMVapidKey();
+
+  if (messagingInstance) {
+    // 1. Primary attempt: Use Firebase project default Web Push key (or custom env key if explicitly provided)
+    try {
+      const token = await getToken(messagingInstance, {
+        serviceWorkerRegistration: swReg,
+        ...(configuredVapidKey ? { vapidKey: configuredVapidKey } : {})
+      });
+      if (token) return token;
+    } catch (firstErr) {
+      console.warn('[FCM] Initial getToken attempt failed, resetting subscription and retrying:', firstErr);
+      await resetPushSubscription(swReg);
+    }
+
+    // 2. Clean retry after unsubscribing any mismatched applicationServerKey
+    try {
+      const retrySwReg = await ensureActiveServiceWorker();
+      const token = await getToken(messagingInstance, {
+        serviceWorkerRegistration: retrySwReg
+      });
+      if (token) return token;
+    } catch (secondErr) {
+      console.warn('[FCM] Clean default getToken retry failed:', secondErr);
+    }
+  }
+
+  // 3. Fallback for cross-origin preview iframes or browsers blocking PushManager.subscribe
+  try {
+    const directToken = await requestDirectFirebaseRegistrationToken();
+    if (directToken) return directToken;
+  } catch (directErr) {
+    console.warn('[FCM] Direct Firebase registration fallback warning:', directErr);
+  }
+
+  throw new Error('Firebase no pudo generar un token válido. Reintenta activar las notificaciones.');
 }
 
 /**
@@ -168,7 +344,7 @@ export function speakDriverVoiceAlert(text: string) {
 export async function initializeFCM(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   if (isNativePush()) return initializeNativePush();
-  if (messagingInstance && serviceWorkerReg) return true;
+  if (messagingInstance && serviceWorkerReg?.active) return true;
 
   try {
     const supported = await isSupported();
@@ -179,20 +355,14 @@ export async function initializeFCM(): Promise<boolean> {
 
     isFCMSupported = true;
 
-    // Register official Firebase Messaging Service Worker
+    // Register and wait for active Firebase Messaging Service Worker
     if ('serviceWorker' in navigator) {
-      try {
-        serviceWorkerReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-          scope: '/', updateViaCache: 'none'
-        });
-        console.log('[FCM] Service worker registered successfully with scope:', serviceWorkerReg.scope);
-      } catch (swErr) {
-        console.warn('[FCM] Service worker registration error:', swErr);
-        return false;
-      }
+      await ensureActiveServiceWorker();
     }
 
-    messagingInstance = getMessaging(app);
+    if (!messagingInstance) {
+      messagingInstance = getMessaging(app);
+    }
 
     // Foreground FCM message handler
     onMessage(messagingInstance, (payload) => {
@@ -331,54 +501,14 @@ export async function requestAdminFCMPermission(adminUser?: {
       return { success: false, error: 'Permiso de notificaciones denegado por el usuario.' };
     }
 
-    // Ensure FCM is initialized
-    if (!messagingInstance) {
-      await initializeFCM();
-    }
-
-    if (!messagingInstance) {
-      // Fallback to standard web push if FCM instance cannot be constructed
-      return {
-        success: false,
-        error: 'No se pudo activar push en segundo plano. Usa HTTPS; en iPhone abre la app instalada en la pantalla de inicio.'
-      };
-    }
-
-    // Ensure service worker is ready
-    if (!serviceWorkerReg && 'serviceWorker' in navigator) {
-      serviceWorkerReg = await navigator.serviceWorker.ready;
-    }
-
-    // Use configured or project default VAPID key
-    const configuredVapidKey = getFCMVapidKey();
-
-    let fcmToken = '';
-    try {
-      fcmToken = await getToken(messagingInstance, {
-        serviceWorkerRegistration: serviceWorkerReg || undefined,
-        vapidKey: configuredVapidKey
-      });
-    } catch (tokenErr: any) {
-      console.warn('[FCM] getToken with VAPID key failed, retrying default:', tokenErr);
-      try {
-        fcmToken = await getToken(messagingInstance, {
-          serviceWorkerRegistration: serviceWorkerReg || undefined
-        });
-      } catch (defaultTokenErr: any) {
-        console.warn('[FCM] getToken default also returned error:', defaultTokenErr);
-        // Fallback to web push token identifier
-        throw new Error('No se pudo registrar el dispositivo en Firebase. Revisa la clave VAPID y vuelve a activar las notificaciones.');
-      }
-    }
-
-    if (!fcmToken) throw new Error('Firebase no devolvió un token de notificaciones válido.');
+    const fcmToken = await obtainWebFCMToken();
 
     // Save token in localStorage
     localStorage.setItem('ryyco_admin_fcm_token', fcmToken);
 
     // Save token in Firestore collection `admin_fcm_tokens`
     try {
-      const sanitizedTokenId = fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-100) || 'admin_token_' + Date.now();
+      const sanitizedTokenId = `${adminUser?.uid || 'admin'}_${fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-60)}`;
       await setDoc(doc(db, 'admin_fcm_tokens', sanitizedTokenId), {
         token: fcmToken,
         adminUid: adminUser?.uid || 'admin',
@@ -588,41 +718,7 @@ export async function requestSellerFCMPermission(seller: {
       return { success: false, error: 'Permiso de notificaciones denegado en el navegador.' };
     }
 
-    // Ensure FCM is initialized
-    if (!messagingInstance) {
-      await initializeFCM();
-    }
-
-    // Ensure service worker is ready
-    if (!serviceWorkerReg && 'serviceWorker' in navigator) {
-      serviceWorkerReg = await navigator.serviceWorker.ready;
-    }
-
-    const configuredVapidKey = getFCMVapidKey();
-
-    let fcmToken = '';
-    if (messagingInstance) {
-      try {
-        fcmToken = await getToken(messagingInstance, {
-          serviceWorkerRegistration: serviceWorkerReg || undefined,
-          vapidKey: configuredVapidKey
-        });
-      } catch (tokenErr: any) {
-        console.warn('[FCM-SELLER] getToken with vapidKey failed, trying default:', tokenErr);
-        try {
-          fcmToken = await getToken(messagingInstance, {
-            serviceWorkerRegistration: serviceWorkerReg || undefined
-          });
-        } catch (defaultErr: any) {
-          console.warn('[FCM-SELLER] Default getToken fallback error:', defaultErr);
-          throw new Error('No se pudo registrar el dispositivo en Firebase. Revisa la clave VAPID y vuelve a activar las notificaciones.');
-        }
-      }
-    } else {
-      throw new Error('Push no está disponible. Usa HTTPS; en iPhone abre la app instalada en la pantalla de inicio.');
-    }
-
-    if (!fcmToken) throw new Error('Firebase no devolvió un token de notificaciones válido.');
+    const fcmToken = await obtainWebFCMToken();
 
     // Store in localStorage for the seller
     localStorage.setItem('ryyco_seller_fcm_token', fcmToken);
@@ -630,7 +726,7 @@ export async function requestSellerFCMPermission(seller: {
 
     // Save token in Firestore collection `seller_fcm_tokens`
     try {
-      const sanitizedTokenId = fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-100) || `seller_token_${seller.uid}_${Date.now()}`;
+      const sanitizedTokenId = `${seller.uid}_${fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-60)}`;
       await setDoc(doc(db, 'seller_fcm_tokens', sanitizedTokenId), {
         token: fcmToken,
         storeOwnerId: seller.uid,
@@ -819,37 +915,7 @@ export async function requestDriverFCMPermission(driver: {
       return { success: false, error: 'Permiso de notificaciones denegado en el navegador.' };
     }
 
-    if (!messagingInstance) {
-      await initializeFCM();
-    }
-
-    if (!serviceWorkerReg && 'serviceWorker' in navigator) {
-      serviceWorkerReg = await navigator.serviceWorker.ready;
-    }
-
-    const configuredVapidKey = getFCMVapidKey();
-
-    let fcmToken = '';
-    if (messagingInstance) {
-      try {
-        fcmToken = await getToken(messagingInstance, {
-          serviceWorkerRegistration: serviceWorkerReg || undefined,
-          vapidKey: configuredVapidKey
-        });
-      } catch (tokenErr: any) {
-        console.warn('[FCM-DRIVER] getToken with vapidKey failed, trying default:', tokenErr);
-        try {
-          fcmToken = await getToken(messagingInstance, {
-            serviceWorkerRegistration: serviceWorkerReg || undefined
-          });
-        } catch (defaultErr: any) {
-          console.warn('[FCM-DRIVER] Default getToken fallback error:', defaultErr);
-          throw new Error('Firebase no pudo generar un token válido. Reintenta activar las notificaciones.');
-        }
-      }
-    } else {
-      throw new Error('Push web no está disponible en este dispositivo.');
-    }
+    const fcmToken = await obtainWebFCMToken();
 
     // Save locally
     localStorage.setItem('ryyco_driver_fcm_token', fcmToken);
@@ -858,7 +924,7 @@ export async function requestDriverFCMPermission(driver: {
 
     // Save in Firestore collection `driver_fcm_tokens`
     try {
-      const sanitizedTokenId = fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-100) || `driver_token_${driver.id}_${Date.now()}`;
+      const sanitizedTokenId = `${driver.id}_${fcmToken.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-60)}`;
       await setDoc(doc(db, 'driver_fcm_tokens', sanitizedTokenId), {
         token: fcmToken,
         driverId: driver.id,

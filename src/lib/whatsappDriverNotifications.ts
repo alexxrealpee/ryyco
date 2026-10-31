@@ -119,6 +119,31 @@ export function buildDriverOrderWhatsAppMessage(
 }
 
 /**
+ * Builds the official RYYCO Welcome & Onboarding WhatsApp message for delivery drivers
+ */
+export function buildDriverWelcomeWhatsAppMessage(firstName?: string | null): string {
+  const cleanName = firstName?.trim();
+  const header = cleanName
+    ? `🚀 *¡Bienvenido a RYYCO, ${cleanName}! 🛵*`
+    : `🚀 *¡Bienvenido a RYYCO! 🛵*`;
+
+  return (
+    `${header}\n\n` +
+    `Nos alegra que quieras formar parte de nuestro equipo de domiciliarios. Queremos explicarte cómo funciona nuestra plataforma:\n\n` +
+    `✅ *Tú decides cuándo trabajar:* Puedes activarte y desactivarte en la aplicación cuando quieras, sin horarios establecidos.\n\n` +
+    `💰 *El 100% del domicilio es para ti:* En la zona urbana de Ipiales, el servicio tiene un valor de *$7.000*, y ese dinero es completamente tuyo. RYYCO no te cobra comisión.\n\n` +
+    `🎒 *Pedidos según tu maletín:* Por el tipo de maletín que tienes, lo único que no debes aceptar son pedidos de pizza. Puedes tomar los demás pedidos que desees.\n\n` +
+    `📍 *Toda la información en tu aplicación:* Cada pedido te mostrará la dirección del restaurante, la dirección de entrega y los datos necesarios para realizar el servicio.\n\n` +
+    `⭐ *Tu buen servicio te abrirá más oportunidades:* Al principio es posible que recibas pocos pedidos, pero a medida que los clientes te califiquen positivamente y aumenten tus estrellas, tendrás más oportunidades de recibir domicilios.\n\n` +
+    `🤝 *Siempre tendrás nuestro apoyo:* En la aplicación encontrarás un botón de soporte para comunicarte con nosotros ante cualquier inconveniente. Estaremos atentos para acompañarte cuando lo necesites.\n\n` +
+    `❤️ *¿Qué esperamos de ti?* Únicamente responsabilidad, amabilidad, puntualidad y un excelente servicio al cliente.\n\n` +
+    `*En RYYCO tú manejas tu tiempo, decides qué pedidos aceptar y recibes el 100% del valor de tus domicilios.*\n\n` +
+    `¡Bienvenido a esta nueva experiencia! 🚀❤️💛\n\n` +
+    `*Equipo RYYCO*`
+  );
+}
+
+/**
  * Builds the direct WhatsApp Web / App universal link
  */
 export function buildDriverWhatsAppUrl(rawPhone?: string | null, messageText?: string): string {

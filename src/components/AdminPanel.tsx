@@ -35,6 +35,7 @@ import {
   getOrderDeliveryCode
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
+const AdminDriversMap = React.lazy(() => import('./AdminDriversMap'));
 import AdminReferralsManager from './AdminReferralsManager';
 import AdminStoresManager from './AdminStoresManager';
 import AdminSalesStats from './AdminSalesStats';
@@ -100,7 +101,8 @@ import {
   ChevronDown,
   Package,
   Info,
-  Key
+  Key,
+  MapPin
 } from 'lucide-react';
 import { smartApiFetch } from '../lib/apiConfig';
 import {
@@ -488,6 +490,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
   const [allApprovedDrivers, setAllApprovedDrivers] = useState<DriverProfile[]>([]);
   const [whatsAppDispatchOrder, setWhatsAppDispatchOrder] = useState<OrderItem | null>(null);
+  const [showLiveDriversMap, setShowLiveDriversMap] = useState<boolean>(false);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
   const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
   useEffect(() => {
@@ -2468,14 +2471,24 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               <span>Volver a la Tienda</span>
             </button>
 
-            <button 
-              onClick={loadAdminData}
-              title="Recargar"
-              className="flex items-center gap-1.5 px-3 py-2 bg-gray-900/80 border border-gray-800/80 rounded-xl text-xs font-bold font-mono text-gray-300 transition"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
-              <span className="hidden sm:inline">Sincronizar</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowLiveDriversMap(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition shadow-md cursor-pointer"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                <span>Mapa en Vivo</span>
+              </button>
+              <button 
+                onClick={loadAdminData}
+                title="Recargar"
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-900/80 border border-gray-800/80 rounded-xl text-xs font-bold font-mono text-gray-300 transition"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
+                <span className="hidden sm:inline">Sincronizar</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center justify-between gap-2 pt-1">
@@ -2521,6 +2534,15 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
               {/* Sync Button */}
               <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLiveDriversMap(true)}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-extrabold transition cursor-pointer shadow-lg shadow-emerald-600/25"
+                >
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>Mapa Domiciliarios en Vivo</span>
+                </button>
+
                 <button 
                   onClick={loadAdminData}
                   title="Recargar"
@@ -7261,6 +7283,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             storeNameFallback={getStoreNameForOrder(whatsAppDispatchOrder)}
             onClose={() => setWhatsAppDispatchOrder(null)}
           />
+        )}
+
+        {/* Mapa en vivo de domiciliarios en tiempo real */}
+        {showLiveDriversMap && (
+          <React.Suspense fallback={null}>
+            <AdminDriversMap onClose={() => setShowLiveDriversMap(false)} />
+          </React.Suspense>
         )}
 
       </div>
