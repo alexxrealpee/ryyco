@@ -4,10 +4,11 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { auth, db, signInWithGoogleUniversal } from '../lib/firebase';
+import { auth, db, signInWithGoogleUniversal, checkIsStoreClosed } from '../lib/firebase';
 import { lockBodyScroll } from '../lib/bodyScrollLock';
 import { animateGps, validCoordinates, GPS_FRESH_MS, type GpsPoint } from '../lib/deliveryTracking';
-import type { DriverProfile } from '../types';
+import { extractCoordinates } from '../lib/coordinateUtils';
+import type { DriverProfile, UserProfile } from '../types';
 
 type PresenceRecord = {
   lat: number;
@@ -19,6 +20,14 @@ type PresenceRecord = {
   orderNumber?: number | string;
   storeName?: string;
   deliveryStatus?: string;
+};
+
+type LocatedOpenStore = {
+  store: UserProfile;
+  lat: number;
+  lng: number;
+  hasExactGps: boolean;
+  addressLabel: string;
 };
 
 function escapeHtml(value: string): string {
@@ -35,6 +44,52 @@ function getVehicleEmoji(vehicleType?: string): string {
   if (v.includes('car') || v.includes('auto') || v.includes('carro')) return '🚗';
   if (v.includes('bici') || v.includes('bike')) return '🚲';
   return '🛵';
+}
+
+/**
+ * Resolves coordinates for an open restaurant.
+ * Uses exact stored GPS coordinates (`lat`/`lng` or `mapUrl` extraction) when available,
+ * and falls back to a deterministic position in Ipiales urban center so all open restaurants
+ * are visible on the map.
+ */
+function resolveStoreMapCoordinates(store: UserProfile, index: number): { lat: number; lng: number; hasExactGps: boolean } {
+  const rawLat = typeof store.lat === 'number' ? store.lat : Number(store.lat);
+  const rawLng = typeof store.lng === 'number' ? store.lng : Number(store.lng);
+  if (validCoordinates(rawLat, rawLng)) {
+    return { lat: rawLat, lng: rawLng, hasExactGps: true };
+  }
+
+  const candidateTexts = [
+    store.mapUrl,
+    (store as any).restaurantMapUrl,
+    store.restaurantAddress,
+    store.address,
+    store.location,
+  ];
+  for (const text of candidateTexts) {
+    if (text && typeof text === 'string') {
+      const parsed = extractCoordinates(text);
+      if (parsed && validCoordinates(parsed.lat, parsed.lng)) {
+        return { lat: parsed.lat, lng: parsed.lng, hasExactGps: true };
+      }
+    }
+  }
+
+  // Deterministic fallback in Ipiales urban area so open stores without saved GPS still appear on the map
+  const seedStr = store.uid || store.username || store.displayName || String(index);
+  let hash = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = (hash * 31 + seedStr.charCodeAt(i)) >>> 0;
+  }
+  const angle = ((index * 137.508 + (hash % 360)) * Math.PI) / 180;
+  const radius = 0.0022 + ((hash % 7) * 0.0009); // ~250m to 850m around central Ipiales
+  const baseLat = 0.8262;
+  const baseLng = -77.6412;
+  return {
+    lat: Number((baseLat + Math.sin(angle) * radius).toFixed(6)),
+    lng: Number((baseLng + Math.cos(angle) * radius * 1.15).toFixed(6)),
+    hasExactGps: false,
+  };
 }
 
 function buildDriverMarkerHtml(driver: DriverProfile, pos: PresenceRecord, isFollowed: boolean): string {
@@ -66,15 +121,44 @@ function buildDriverMarkerHtml(driver: DriverProfile, pos: PresenceRecord, isFol
   `;
 }
 
+function buildStoreMarkerHtml(store: UserProfile, isSelected: boolean): string {
+  const rawName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
+  const shortName = rawName.length > 20 ? `${rawName.slice(0, 18)}…` : rawName;
+  const borderColor = isSelected ? '#34d399' : '#f97316';
+  const badgeBg = isSelected ? '#7c2d12' : '#18181b';
+  const photoUrl = (store.photoURL || '').trim();
+
+  const avatarInner = photoUrl
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(rawName)}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px;display:block;" onerror="this.style.display='none';this.parentElement.textContent='🍽️';" />`
+    : `<span>🍽️</span>`;
+
+  return `
+    <div style="position:relative;display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-50%);pointer-events:auto;">
+      <div data-store-badge style="margin-bottom:4px;padding:2px 8px;border-radius:9999px;background:${badgeBg};border:1.5px solid ${borderColor};color:#fff;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:flex;align-items:center;gap:4px;">
+        <span style="width:6px;height:6px;border-radius:9999px;background:#10b981;display:inline-block;flex-shrink:0;"></span>
+        <span>${escapeHtml(shortName)}</span>
+      </div>
+      <div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
+        <div style="position:relative;width:34px;height:34px;border-radius:9999px;background:#ea580c;border:2.5px solid #ffffff;box-shadow:0 4px 14px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;">
+          ${avatarInner}
+        </div>
+        <span style="position:absolute;bottom:0;right:0;width:13px;height:13px;border-radius:9999px;background:#10b981;border:2px solid #090d18;display:flex;align-items:center;justify-content:center;font-size:8px;" title="Restaurante abierto"></span>
+      </div>
+    </div>
+  `;
+}
+
 export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const markers = useRef(new Map<string, L.Marker>());
+  const storeMarkers = useRef(new Map<string, L.Marker>());
   const prevPoints = useRef(new Map<string, GpsPoint>());
   const cancelAnims = useRef(new Map<string, () => void>());
   const centered = useRef(false);
 
   const [drivers, setDrivers] = useState<DriverProfile[]>([]);
+  const [rawStores, setRawStores] = useState<UserProfile[]>([]);
   const [presenceMap, setPresenceMap] = useState<Record<string, PresenceRecord>>({});
   const [deliveryMap, setDeliveryMap] = useState<Record<string, PresenceRecord>>({});
   const [confirmed, setConfirmed] = useState({ drivers: false, positions: false });
@@ -84,6 +168,10 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const [now, setNow] = useState(Date.now());
   const [waiting, setWaiting] = useState(false);
   const [followedDriverId, setFollowedDriverId] = useState<string | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  const [showDriversLayer, setShowDriversLayer] = useState(true);
+  const [showStoresLayer, setShowStoresLayer] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<'all' | 'drivers' | 'stores'>('all');
 
   // Merge real-time positions from both driver_presence and active delivery_tracking (picking the freshest fix)
   const positions = useMemo<Record<string, PresenceRecord>>(() => {
@@ -122,11 +210,75 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     });
   }, [drivers, positions, now, live]);
 
+  // Filter and deduplicate currently open restaurants
+  const openStores = useMemo<LocatedOpenStore[]>(() => {
+    const byKey = new Map<string, UserProfile>();
+    rawStores.forEach(s => {
+      if (!s) return;
+      if (s.role === 'driver') return;
+      const name = (s.displayName || s.storeName || s.username || '').trim();
+      if (!name) return;
+      if (checkIsStoreClosed(s)) return;
+
+      const key = (s.username || s.uid || name).toLowerCase().trim();
+      const prev = byKey.get(key);
+      if (!prev) {
+        byKey.set(key, s);
+      } else {
+        byKey.set(key, {
+          ...prev,
+          ...s,
+          lat: s.lat ?? prev.lat,
+          lng: s.lng ?? prev.lng,
+          mapUrl: s.mapUrl || prev.mapUrl,
+          photoURL: s.photoURL || prev.photoURL,
+          restaurantAddress: s.restaurantAddress || prev.restaurantAddress || s.address || prev.address,
+        });
+      }
+    });
+
+    const list = Array.from(byKey.values()).sort((a, b) => {
+      const nameA = (a.displayName || a.storeName || a.username || '').toLowerCase();
+      const nameB = (b.displayName || b.storeName || b.username || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+
+    return list.map((store, idx) => {
+      const coords = resolveStoreMapCoordinates(store, idx);
+      const addressLabel = (store.restaurantAddress || store.address || store.restaurantCity || store.location || 'Ipiales').trim();
+      return {
+        store,
+        lat: coords.lat,
+        lng: coords.lng,
+        hasExactGps: coords.hasExactGps,
+        addressLabel,
+      };
+    });
+  }, [rawStores, now]);
+
+  // Sort drivers so those with live GPS appear first in the sidebar
+  const sortedDrivers = useMemo(() => {
+    const locatedIds = new Set(located.map(d => d.id));
+    return [...drivers].sort((a, b) => {
+      const aLive = locatedIds.has(a.id) ? 1 : 0;
+      const bLive = locatedIds.has(b.id) ? 1 : 0;
+      if (aLive !== bLive) return bLive - aLive;
+      const nameA = ([a.firstName, a.lastName].filter(Boolean).join(' ') || a.name || '').toLowerCase();
+      const nameB = ([b.firstName, b.lastName].filter(Boolean).join(' ') || b.name || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [drivers, located]);
+
   const center = () => {
     setFollowedDriverId(null);
-    if (map.current && markers.current.size) {
+    setSelectedStoreId(null);
+    const allMarkers = [
+      ...(showDriversLayer ? [...markers.current.values()] : []),
+      ...(showStoresLayer ? [...storeMarkers.current.values()] : []),
+    ];
+    if (map.current && allMarkers.length) {
       map.current.fitBounds(
-        L.featureGroup([...markers.current.values()]).getBounds(),
+        L.featureGroup(allMarkers).getBounds(),
         { padding: [50, 50], maxZoom: 16 }
       );
     }
@@ -168,12 +320,14 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     let unsubDrivers: (() => void) | undefined;
     let unsubPresence: (() => void) | undefined;
     let unsubTracking: (() => void) | undefined;
+    let unsubStores: (() => void) | undefined;
     let cancelled = false;
 
     const attachListeners = () => {
       unsubDrivers?.();
       unsubPresence?.();
       unsubTracking?.();
+      unsubStores?.();
 
       const failDrivers = () => {
         if (cancelled) return;
@@ -255,6 +409,27 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           // Non-fatal if delivery_tracking is not used
         }
       );
+
+      // Real-time stream of store profiles so open restaurants appear and update live on the map
+      unsubStores = onSnapshot(
+        collection(db, 'profiles'),
+        { includeMetadataChanges: true },
+        snapshot => {
+          if (cancelled) return;
+          const profilesList: UserProfile[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as UserProfile;
+            profilesList.push({
+              ...data,
+              uid: data.uid || docSnap.id,
+            });
+          });
+          setRawStores(profilesList);
+        },
+        () => {
+          // Non-fatal
+        }
+      );
     };
 
     const unsubAuth = onAuthStateChanged(auth, () => {
@@ -270,6 +445,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       unsubDrivers?.();
       unsubPresence?.();
       unsubTracking?.();
+      unsubStores?.();
       window.clearInterval(timer);
       window.clearTimeout(timeout);
     };
@@ -293,14 +469,17 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       instance.remove();
       map.current = null;
       markers.current.clear();
+      storeMarkers.current.clear();
     };
   }, []);
 
+  // Render & animate live delivery driver markers
   useEffect(() => {
     if (!map.current) return;
-    const activeIds = new Set(located.map(d => d.id));
+    const visibleDrivers = showDriversLayer ? located : [];
+    const activeIds = new Set(visibleDrivers.map(d => d.id));
 
-    // Remove markers for drivers no longer located
+    // Remove markers for drivers no longer located or when layer is hidden
     markers.current.forEach((marker, id) => {
       if (!activeIds.has(id)) {
         cancelAnims.current.get(id)?.();
@@ -311,7 +490,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       }
     });
 
-    located.forEach(d => {
+    visibleDrivers.forEach(d => {
       const p = positions[d.id];
       if (!p) return;
       const isFollowed = followedDriverId === d.id;
@@ -338,9 +517,10 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           iconSize: [40, 56],
           iconAnchor: [20, 28],
         });
-        marker = L.marker([p.lat, p.lng], { icon }).addTo(map.current!);
+        marker = L.marker([p.lat, p.lng], { icon, zIndexOffset: 500 }).addTo(map.current!);
         marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -24] });
         marker.on('click', () => {
+          setSelectedStoreId(null);
           setFollowedDriverId(prev => (prev === d.id ? null : d.id));
         });
         markers.current.set(d.id, marker);
@@ -393,17 +573,75 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       }
     });
 
-    if (!centered.current && located.length) {
+    if (!centered.current && (visibleDrivers.length || openStores.length)) {
       center();
       centered.current = true;
     }
-  }, [drivers, positions, now, live, followedDriverId]);
+  }, [drivers, positions, now, live, followedDriverId, showDriversLayer]);
+
+  // Render open restaurant markers on the map
+  useEffect(() => {
+    if (!map.current) return;
+    const visibleStores = showStoresLayer ? openStores : [];
+    const activeStoreIds = new Set(visibleStores.map(item => item.store.uid));
+
+    storeMarkers.current.forEach((marker, id) => {
+      if (!activeStoreIds.has(id)) {
+        marker.remove();
+        storeMarkers.current.delete(id);
+      }
+    });
+
+    visibleStores.forEach(item => {
+      const { store, lat, lng, addressLabel } = item;
+      const storeId = store.uid;
+      const isSelected = selectedStoreId === storeId;
+      const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
+      const tooltipText = `🍽️ ${storeName} · Abierto ahora${addressLabel ? ` · ${addressLabel}` : ''}`;
+
+      let marker = storeMarkers.current.get(storeId);
+      if (!marker) {
+        const icon = L.divIcon({
+          className: 'ryyco-open-store-marker',
+          html: buildStoreMarkerHtml(store, isSelected),
+          iconSize: [40, 56],
+          iconAnchor: [20, 28],
+        });
+        marker = L.marker([lat, lng], { icon, zIndexOffset: 200 }).addTo(map.current!);
+        marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -24] });
+        marker.on('click', () => {
+          setFollowedDriverId(null);
+          setSelectedStoreId(prev => (prev === storeId ? null : storeId));
+          if (map.current) {
+            map.current.setView([lat, lng], 16, { animate: true });
+          }
+        });
+        storeMarkers.current.set(storeId, marker);
+      } else {
+        marker.setLatLng([lat, lng]);
+        marker.setTooltipContent(tooltipText);
+        const el = marker.getElement();
+        if (el) {
+          const badgeEl = el.querySelector<HTMLElement>('[data-store-badge]');
+          if (badgeEl) {
+            badgeEl.style.background = isSelected ? '#7c2d12' : '#18181b';
+            badgeEl.style.borderColor = isSelected ? '#34d399' : '#f97316';
+          }
+        }
+      }
+    });
+
+    if (!centered.current && visibleStores.length) {
+      center();
+      centered.current = true;
+    }
+  }, [openStores, selectedStoreId, showStoresLayer]);
 
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Mapa de domiciliarios disponibles"
+      aria-label="Mapa de domiciliarios disponibles y restaurantes abiertos"
       className="fixed inset-0 z-[1000000] bg-[#0d1322] text-white flex flex-col h-[100dvh]"
     >
       <header className="p-4 border-b border-gray-800 bg-[#090d18] flex flex-wrap items-center gap-3">
@@ -411,17 +649,43 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2">
             <span className={`w-2.5 h-2.5 rounded-full ${live ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400 animate-ping'}`} />
             <h2 className="font-black text-base sm:text-lg tracking-tight">
-              Domiciliarios disponibles · Mapa en vivo
+              Domiciliarios disponibles y Restaurantes · Mapa en vivo
             </h2>
           </div>
           <p className="text-xs text-gray-300 mt-0.5" aria-live="polite">
             {live
-              ? `${located.length} moviéndose con GPS en tiempo real · ${Math.max(0, drivers.length - located.length)} sin GPS reciente`
+              ? `${located.length} moviéndose con GPS en tiempo real · ${Math.max(0, drivers.length - located.length)} sin GPS reciente · ${openStores.length} restaurantes abiertos`
               : 'Conectando con Firebase…'}
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowDriversLayer(v => !v)}
+            className={`rounded-xl px-3 py-1.5 text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+              showDriversLayer
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                : 'bg-gray-900 border-gray-800 text-gray-400'
+            }`}
+          >
+            <span>🛵</span>
+            <span>Domiciliarios ({located.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowStoresLayer(v => !v)}
+            className={`rounded-xl px-3 py-1.5 text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+              showStoresLayer
+                ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                : 'bg-gray-900 border-gray-800 text-gray-400'
+            }`}
+          >
+            <span>🍽️</span>
+            <span>Restaurantes abiertos ({openStores.length})</span>
+          </button>
+
           {followedDriverId && (
             <button
               onClick={() => setFollowedDriverId(null)}
@@ -482,91 +746,200 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           style={{ touchAction: 'none' }}
         />
 
-        <aside className="md:w-80 max-h-[36dvh] md:max-h-none overflow-y-auto p-4 space-y-2.5 bg-[#0b101d] border-t md:border-t-0 md:border-l border-gray-800">
-          <div className="flex items-center justify-between pb-1 border-b border-gray-800/80">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-gray-400">
-              Repartidores Activos ({drivers.length})
-            </span>
-            <span className="text-[11px] text-emerald-400 font-bold">
-              {located.length} con GPS
-            </span>
+        <aside className="md:w-80 max-h-[38dvh] md:max-h-none overflow-y-auto p-4 space-y-3 bg-[#0b101d] border-t md:border-t-0 md:border-l border-gray-800">
+          {/* Sidebar Filter Tabs */}
+          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-gray-900/90 border border-gray-800">
+            <button
+              type="button"
+              onClick={() => setSidebarTab('all')}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+                sidebarTab === 'all'
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Todos
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('drivers')}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
+                sidebarTab === 'drivers'
+                  ? 'bg-emerald-600 text-white shadow'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🛵 ({drivers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('stores')}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
+                sidebarTab === 'stores'
+                  ? 'bg-orange-600 text-white shadow'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🍽️ ({openStores.length})
+            </button>
           </div>
 
-          {live && !drivers.length && (
-            <p className="text-sm text-gray-400 py-4 text-center">
-              No hay domiciliarios aprobados disponibles en este momento.
-            </p>
+          {/* Open Restaurants Section */}
+          {(sidebarTab === 'all' || sidebarTab === 'stores') && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between pb-1 border-b border-gray-800/80">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-orange-400">
+                  Restaurantes Abiertos ({openStores.length})
+                </span>
+                <span className="text-[11px] text-emerald-400 font-bold">
+                  En vivo
+                </span>
+              </div>
+
+              {openStores.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2 text-center">
+                  No hay restaurantes abiertos en este momento.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {openStores.map(({ store, lat, lng, hasExactGps, addressLabel }) => {
+                    const isSelected = selectedStoreId === store.uid;
+                    const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
+                    return (
+                      <button
+                        key={store.uid}
+                        type="button"
+                        className={`block text-left w-full rounded-xl p-2.5 border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-orange-950/60 border-orange-500/70 shadow-lg'
+                            : 'bg-gray-900/80 hover:bg-gray-800/90 border-orange-500/25'
+                        }`}
+                        onClick={() => {
+                          setFollowedDriverId(null);
+                          setSelectedStoreId(prev => (prev === store.uid ? null : store.uid));
+                          if (!showStoresLayer) setShowStoresLayer(true);
+                          const marker = storeMarkers.current.get(store.uid);
+                          if (map.current) {
+                            map.current.setView([lat, lng], 16, { animate: true });
+                            marker?.openTooltip();
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-sm text-white truncate flex items-center gap-1.5">
+                            <span>🍽️</span>
+                            <span className="truncate">{storeName}</span>
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
+                            Abierto
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                          <span className="truncate">📍 {addressLabel}</span>
+                          <span className="text-[10px] font-bold text-orange-300 shrink-0 underline">
+                            {hasExactGps ? 'Ver GPS' : 'Ver en mapa'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
 
-          {drivers.map(d => {
-            const p = positions[d.id];
-            const isLiveGps = located.some(v => v.id === d.id);
-            const isFollowing = followedDriverId === d.id;
-            const ageSec = p && isLiveGps ? Math.max(0, Math.round((now - p.gpsTimestamp) / 1000)) : null;
-            const speedKmh = p && typeof p.speed === 'number' && p.speed >= 1 ? Math.round(p.speed) : null;
+          {/* Active Drivers Section */}
+          {(sidebarTab === 'all' || sidebarTab === 'drivers') && (
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between pb-1 border-b border-gray-800/80">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-gray-400">
+                  Repartidores Activos ({drivers.length})
+                </span>
+                <span className="text-[11px] text-emerald-400 font-bold">
+                  {located.length} con GPS
+                </span>
+              </div>
 
-            return (
-              <button
-                key={d.id}
-                className={`block text-left w-full rounded-xl p-3 border transition cursor-pointer ${
-                  isFollowing
-                    ? 'bg-emerald-950/60 border-emerald-500/60 shadow-lg'
-                    : isLiveGps
-                    ? 'bg-gray-900/90 hover:bg-gray-800 border-emerald-500/30'
-                    : 'bg-gray-900/50 hover:bg-gray-800/70 border-gray-800'
-                }`}
-                onClick={() => {
-                  const marker = markers.current.get(d.id);
-                  if (marker && map.current) {
-                    setFollowedDriverId(prev => (prev === d.id ? null : d.id));
-                    map.current.setView(marker.getLatLng(), 16, { animate: true });
-                    marker.openTooltip();
-                  }
-                }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-sm text-white truncate">
-                    {getVehicleEmoji(d.vehicleType)}{' '}
-                    {[d.firstName, d.lastName].filter(Boolean).join(' ') || d.name}
-                  </span>
-                  {d.vehiclePlate && (
-                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700 shrink-0">
-                      {d.vehiclePlate}
-                    </span>
-                  )}
-                </div>
+              {live && !drivers.length && (
+                <p className="text-sm text-gray-400 py-4 text-center">
+                  No hay domiciliarios aprobados disponibles en este momento.
+                </p>
+              )}
 
-                <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs">
-                  {isLiveGps ? (
-                    <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                      <span>
-                        GPS en vivo{speedKmh ? ` · ${speedKmh} km/h` : ''}
-                        {ageSec !== null ? ` · hace ${ageSec}s` : ''}
+              {sortedDrivers.map(d => {
+                const p = positions[d.id];
+                const isLiveGps = located.some(v => v.id === d.id);
+                const isFollowing = followedDriverId === d.id;
+                const ageSec = p && isLiveGps ? Math.max(0, Math.round((now - p.gpsTimestamp) / 1000)) : null;
+                const speedKmh = p && typeof p.speed === 'number' && p.speed >= 1 ? Math.round(p.speed) : null;
+
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className={`block text-left w-full rounded-xl p-3 border transition cursor-pointer ${
+                      isFollowing
+                        ? 'bg-emerald-950/60 border-emerald-500/60 shadow-lg'
+                        : isLiveGps
+                        ? 'bg-gray-900/90 hover:bg-gray-800 border-emerald-500/30'
+                        : 'bg-gray-900/50 hover:bg-gray-800/70 border-gray-800'
+                    }`}
+                    onClick={() => {
+                      if (!showDriversLayer) setShowDriversLayer(true);
+                      const marker = markers.current.get(d.id);
+                      if (marker && map.current) {
+                        setSelectedStoreId(null);
+                        setFollowedDriverId(prev => (prev === d.id ? null : d.id));
+                        map.current.setView(marker.getLatLng(), 16, { animate: true });
+                        marker.openTooltip();
+                      }
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold text-sm text-white truncate">
+                        {getVehicleEmoji(d.vehicleType)}{' '}
+                        {[d.firstName, d.lastName].filter(Boolean).join(' ') || d.name}
                       </span>
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">Sin GPS reciente</span>
-                  )}
+                      {d.vehiclePlate && (
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 border border-gray-700 shrink-0">
+                          {d.vehiclePlate}
+                        </span>
+                      )}
+                    </div>
 
-                  {isLiveGps && (
-                    <span className="text-[10px] font-bold text-emerald-300 underline">
-                      {isFollowing ? 'Siguiendo' : 'Seguir'}
-                    </span>
-                  )}
-                </div>
+                    <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-xs">
+                      {isLiveGps ? (
+                        <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                          <span>
+                            GPS en vivo{speedKmh ? ` · ${speedKmh} km/h` : ''}
+                            {ageSec !== null ? ` · hace ${ageSec}s` : ''}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">Sin GPS reciente</span>
+                      )}
 
-                {isLiveGps && p?.orderNumber && (
-                  <div className="mt-1.5 px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-300 font-bold truncate">
-                    📦 En pedido #{p.orderNumber} {p.storeName ? `· ${p.storeName}` : ''}
-                  </div>
-                )}
-              </button>
-            );
-          })}
+                      {isLiveGps && (
+                        <span className="text-[10px] font-bold text-emerald-300 underline">
+                          {isFollowing ? 'Siguiendo' : 'Seguir'}
+                        </span>
+                      )}
+                    </div>
+
+                    {isLiveGps && p?.orderNumber && (
+                      <div className="mt-1.5 px-2 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-300 font-bold truncate">
+                        📦 En pedido #{p.orderNumber} {p.storeName ? `· ${p.storeName}` : ''}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <p className="text-[11px] text-gray-400 pt-2 leading-relaxed">
-            Los domiciliarios con GPS activo se mueven en tiempo real sobre el mapa. Haz clic en un domiciliario para centrarlo y seguir su recorrido en vivo.
+            Los domiciliarios con GPS activo y los restaurantes abiertos se muestran en tiempo real sobre el mapa. Haz clic en cualquiera para ubicarlo en el mapa.
           </p>
         </aside>
       </div>
@@ -574,3 +947,4 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     document.body
   );
 }
+

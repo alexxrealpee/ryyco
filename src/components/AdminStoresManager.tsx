@@ -2111,19 +2111,26 @@ export default function AdminStoresManager({
 
       {/* Edit Restaurant / Store Location Modal */}
       {locationModalStore && (
-        <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 z-50 animate-fade-in text-left">
-          <div className="relative max-w-lg w-full bg-[#0b101d] border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-gray-200">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-gray-850 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0">
+        <div
+          className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-start sm:items-center justify-center p-2 sm:p-4 z-50 animate-fade-in text-left overflow-y-auto overscroll-contain"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !savingLocation) {
+              setLocationModalStore(null);
+            }
+          }}
+        >
+          <div className="relative max-w-lg w-full max-h-[92dvh] sm:max-h-[88dvh] my-auto bg-[#0b101d] border border-gray-800 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-gray-200">
+            {/* Modal Header (Fixed at top) */}
+            <div className="flex items-start justify-between gap-3 border-b border-gray-850 p-4 sm:px-6 sm:py-4 shrink-0 bg-[#0b101d]">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-center text-amber-400 shrink-0">
                   <MapPin className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="font-black text-white text-base">
+                <div className="min-w-0">
+                  <h3 className="font-black text-white text-sm sm:text-base truncate">
                     Editar Ubicación del Restaurante
                   </h3>
-                  <p className="text-xs text-gray-400 font-mono">
+                  <p className="text-xs text-gray-400 font-mono truncate">
                     {locationModalStore.displayName || locationModalStore.username}
                     {locationModalStore.username && (
                       <span className="text-pink-400 font-bold ml-1">@{locationModalStore.username}</span>
@@ -2135,252 +2142,255 @@ export default function AdminStoresManager({
               <button
                 type="button"
                 onClick={() => setLocationModalStore(null)}
-                className="p-1.5 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl transition cursor-pointer"
+                className="p-2 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl transition cursor-pointer shrink-0"
+                title="Cerrar ventana"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveLocation} className="space-y-3.5">
-              {/* Field 1: Physical Address */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                  <Building2 className="w-3.5 h-3.5 text-amber-400" />
-                  Dirección Comercial / Local:
-                </label>
-                <input
-                  type="text"
-                  value={editAddress}
-                  onChange={(e) => setEditAddress(e.target.value)}
-                  placeholder="Ej: Calle 29 Progreso # 12-34 ó Carrera 5 # 10-20"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition"
-                  autoFocus
-                />
-                <span className="text-[10px] text-gray-500 block">
-                  Dirección exacta para envíos de domicilios y ubicación del local.
-                </span>
-              </div>
-
-              {/* Field 2: City / Municipality */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                  <Globe className="w-3.5 h-3.5 text-sky-400" />
-                  Ciudad / Municipio:
-                </label>
-                <input
-                  type="text"
-                  value={editCity}
-                  onChange={(e) => setEditCity(e.target.value)}
-                  placeholder="Ej: Ipiales, Pasto, Cali, Bogotá..."
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-sky-500 transition"
-                />
-
-                {/* Quick Selection Chips for Cities */}
-                <div className="flex flex-wrap items-center gap-1 pt-1">
-                  <span className="text-[10px] text-gray-500 font-bold mr-1">Sugerencias:</span>
-                  {['Ipiales', 'Pasto', 'Túquerres', 'Pupiales', 'Cumbal', 'Cali', 'Bogotá', 'Medellín'].map(c => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setEditCity(c)}
-                      className={`text-[10px] px-2 py-0.5 rounded-lg border transition cursor-pointer ${
-                        editCity.toLowerCase() === c.toLowerCase()
-                          ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
-                          : 'bg-gray-900 text-gray-400 border-gray-800 hover:text-white hover:border-gray-700'
-                      }`}
-                    >
-                      {c}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Field 3: Reference / Neighborhood for Drivers */}
-              <div className="space-y-1">
-                <label className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                  <Navigation className="w-3.5 h-3.5 text-emerald-400" />
-                  Punto de Referencia para Domiciliarios:
-                </label>
-                <input
-                  type="text"
-                  value={editReference}
-                  onChange={(e) => setEditReference(e.target.value)}
-                  placeholder="Ej: Barrio El Progreso, frente al parque San Felipe o al lado de la droguería"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition"
-                />
-                <span className="text-[10px] text-gray-500 block">
-                  Indicación o punto de referencia clave para que el domiciliario ubique el local de inmediato al recoger el pedido.
-                </span>
-              </div>
-
-              {/* Field 4: Exact GPS Coordinates & Google Maps Link */}
-              <div className="space-y-2 bg-gray-950/60 p-3.5 rounded-2xl border border-gray-800">
-                <div className="flex items-center justify-between">
-                  <label className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
-                    <Navigation className="w-3.5 h-3.5 text-amber-400" />
-                    Ubicación Exacta para Domiciliarios (GPS):
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleGetCurrentGps}
-                    disabled={detectingGps}
-                    className="text-[10px] px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold flex items-center gap-1 transition cursor-pointer disabled:opacity-50"
-                    title="Obtener coordenadas de la ubicación actual del dispositivo"
-                  >
-                    <Crosshair className={`w-3 h-3 ${detectingGps ? 'animate-spin' : ''}`} />
-                    <span>{detectingGps ? 'Localizando...' : 'Usar GPS actual'}</span>
-                  </button>
-                </div>
-
-                <span className="text-[10.5px] text-gray-400 block leading-tight">
-                  Pega el enlace de Google Maps con las coordenadas o ingresa latitud y longitud. Los domiciliarios recibirán la ruta exacta turn-by-turn hasta la puerta de la tienda.
-                </span>
-
-                {/* Botón Seleccionar ubicación en el mapa */}
-                <button
-                  type="button"
-                  onClick={() => setIsMapPickerOpen(true)}
-                  className="w-full py-2.5 px-3.5 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-sky-500/20 hover:from-emerald-500/30 hover:to-sky-500/30 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 hover:text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer"
-                  title="Abrir mapa interactivo para seleccionar la ubicación exacta del restaurante"
-                >
-                  <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Seleccionar ubicación en el mapa</span>
-                </button>
-
-                {/* Google Maps link input */}
+            <form onSubmit={handleSaveLocation} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              {/* Scrollable Form Content */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:px-6 sm:py-4 space-y-3.5">
+                {/* Field 1: Physical Address */}
                 <div className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-gray-400 font-mono">Enlace de Google Maps / Coordenadas:</span>
-                    {editMapUrl && (
-                      <a
-                        href={buildGoogleNavigationUrl({
-                          lat: parseFloat(editLat),
-                          lng: parseFloat(editLng),
-                          mapUrl: editMapUrl,
-                          address: `${editAddress} ${editCity}`.trim(),
-                          storeName: locationModalStore?.displayName || locationModalStore?.storeName
-                        })}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition"
-                        title="Probar ruta de cómo llegar para el domiciliario"
-                      >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>Probar ¿Cómo Llegar?</span>
-                      </a>
-                    )}
-                  </div>
+                  <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                    <Building2 className="w-3.5 h-3.5 text-amber-400" />
+                    Dirección Comercial / Local:
+                  </label>
                   <input
                     type="text"
-                    value={editMapUrl}
-                    onChange={(e) => handleMapUrlInput(e.target.value)}
-                    placeholder="Ej: https://www.google.com/maps?q=0.827429,-77.659088"
-                    className="w-full bg-black border border-gray-800 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    placeholder="Ej: Calle 29 Progreso # 12-34 ó Carrera 5 # 10-20"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition"
                   />
+                  <span className="text-[10px] text-gray-500 block">
+                    Dirección exacta para envíos de domicilios y ubicación del local.
+                  </span>
                 </div>
 
-                {/* Direct Latitude and Longitude fields */}
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="space-y-1">
-                    <span className="text-[9.5px] font-bold text-gray-400 font-mono">Latitud:</span>
-                    <input
-                      type="text"
-                      value={editLat}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEditLat(val);
-                        const latNum = parseFloat(val);
-                        const lngNum = parseFloat(editLng);
-                        if (isValidCoordinate(latNum, lngNum)) {
-                          setEditMapUrl(buildNormalizedMapUrl(latNum, lngNum));
-                        }
-                      }}
-                      placeholder="Ej: 0.827429"
-                      className="w-full bg-black border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-[9.5px] font-bold text-gray-400 font-mono">Longitud:</span>
-                    <input
-                      type="text"
-                      value={editLng}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setEditLng(val);
-                        const latNum = parseFloat(editLat);
-                        const lngNum = parseFloat(val);
-                        if (isValidCoordinate(latNum, lngNum)) {
-                          setEditMapUrl(buildNormalizedMapUrl(latNum, lngNum));
-                        }
-                      }}
-                      placeholder="Ej: -77.659088"
-                      className="w-full bg-black border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition font-mono"
-                    />
+                {/* Field 2: City / Municipality */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                    <Globe className="w-3.5 h-3.5 text-sky-400" />
+                    Ciudad / Municipio:
+                  </label>
+                  <input
+                    type="text"
+                    value={editCity}
+                    onChange={(e) => setEditCity(e.target.value)}
+                    placeholder="Ej: Ipiales, Pasto, Cali, Bogotá..."
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-sky-500 transition"
+                  />
+
+                  {/* Quick Selection Chips for Cities */}
+                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                    <span className="text-[10px] text-gray-500 font-bold mr-1">Sugerencias:</span>
+                    {['Ipiales', 'Pasto', 'Túquerres', 'Pupiales', 'Cumbal', 'Cali', 'Bogotá', 'Medellín'].map(c => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setEditCity(c)}
+                        className={`text-[10px] px-2 py-0.5 rounded-lg border transition cursor-pointer ${
+                          editCity.toLowerCase() === c.toLowerCase()
+                            ? 'bg-sky-500/20 text-sky-300 border-sky-500/40 font-bold'
+                            : 'bg-gray-900 text-gray-400 border-gray-800 hover:text-white hover:border-gray-700'
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                {/* Real-time coordinates validation banner */}
-                {isValidCoordinate(parseFloat(editLat), parseFloat(editLng)) ? (
-                  <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between text-emerald-300 text-[10.5px]">
-                    <div className="flex items-center gap-1.5 font-semibold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                      <span>Coordenadas exactas vinculadas ({parseFloat(editLat).toFixed(6)}, {parseFloat(editLng).toFixed(6)})</span>
-                    </div>
-                    <a
-                      href={`https://www.google.com/maps?q=${parseFloat(editLat)},${parseFloat(editLng)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline text-emerald-200 hover:text-white font-bold text-[10px]"
+                {/* Field 3: Reference / Neighborhood for Drivers */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                    <Navigation className="w-3.5 h-3.5 text-emerald-400" />
+                    Punto de Referencia para Domiciliarios:
+                  </label>
+                  <input
+                    type="text"
+                    value={editReference}
+                    onChange={(e) => setEditReference(e.target.value)}
+                    placeholder="Ej: Barrio El Progreso, frente al parque San Felipe o al lado de la droguería"
+                    className="w-full bg-gray-950 border border-gray-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-emerald-500 transition"
+                  />
+                  <span className="text-[10px] text-gray-500 block">
+                    Indicación o punto de referencia clave para que el domiciliario ubique el local de inmediato al recoger el pedido.
+                  </span>
+                </div>
+
+                {/* Field 4: Exact GPS Coordinates & Google Maps Link */}
+                <div className="space-y-2 bg-gray-950/60 p-3.5 rounded-2xl border border-gray-800">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-[11px] font-bold text-amber-300 uppercase tracking-wider flex items-center gap-1.5 font-mono">
+                      <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>Ubicación Exacta para Domiciliarios (GPS):</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleGetCurrentGps}
+                      disabled={detectingGps}
+                      className="text-[10px] px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 rounded-lg font-bold flex items-center gap-1 transition cursor-pointer disabled:opacity-50 shrink-0"
+                      title="Obtener coordenadas de la ubicación actual del dispositivo"
                     >
-                      Ver punto
-                    </a>
+                      <Crosshair className={`w-3 h-3 ${detectingGps ? 'animate-spin' : ''}`} />
+                      <span>{detectingGps ? 'Localizando...' : 'Usar GPS actual'}</span>
+                    </button>
                   </div>
-                ) : (
-                  <div className="text-[10px] text-gray-500 italic">
-                    💡 Si tienes el link de Google Maps de la tienda, pégalo arriba y las coordenadas se extraerán automáticamente.
-                  </div>
-                )}
-              </div>
 
-              {/* Live Preview Box */}
-              <div className="bg-gray-950/80 p-3 rounded-2xl border border-gray-850 space-y-1">
-                <span className="text-[9.5px] font-mono uppercase font-bold text-gray-500 tracking-wider block">
-                  Vista Previa en Tarjeta y Catálogo:
-                </span>
-                <div className="flex items-start gap-2 text-xs">
-                  <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <div className="font-bold text-white truncate">
-                      {editAddress.trim() || <span className="text-gray-600 italic">Sin dirección especificada</span>}
+                  <span className="text-[10.5px] text-gray-400 block leading-tight">
+                    Pega el enlace de Google Maps con las coordenadas o ingresa latitud y longitud. Los domiciliarios recibirán la ruta exacta turn-by-turn hasta la puerta de la tienda.
+                  </span>
+
+                  {/* Botón Seleccionar ubicación en el mapa */}
+                  <button
+                    type="button"
+                    onClick={() => setIsMapPickerOpen(true)}
+                    className="w-full py-2.5 px-3.5 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-sky-500/20 hover:from-emerald-500/30 hover:to-sky-500/30 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 hover:text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                    title="Abrir mapa interactivo para seleccionar la ubicación exacta del restaurante"
+                  >
+                    <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Seleccionar ubicación en el mapa</span>
+                  </button>
+
+                  {/* Google Maps link input */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[10px] font-bold text-gray-400 font-mono">Enlace de Google Maps / Coordenadas:</span>
+                      {editMapUrl && (
+                        <a
+                          href={buildGoogleNavigationUrl({
+                            lat: parseFloat(editLat),
+                            lng: parseFloat(editLng),
+                            mapUrl: editMapUrl,
+                            address: `${editAddress} ${editCity}`.trim(),
+                            storeName: locationModalStore?.displayName || locationModalStore?.storeName
+                          })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition"
+                          title="Probar ruta de cómo llegar para el domiciliario"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Probar ¿Cómo Llegar?</span>
+                        </a>
+                      )}
                     </div>
-                    {editCity.trim() && (
-                      <div className="text-[11px] text-amber-300 font-bold truncate">
-                        {editCity.trim()}
+                    <input
+                      type="text"
+                      value={editMapUrl}
+                      onChange={(e) => handleMapUrlInput(e.target.value)}
+                      placeholder="Ej: https://www.google.com/maps?q=0.827429,-77.659088"
+                      className="w-full bg-black border border-gray-800 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                    />
+                  </div>
+
+                  {/* Direct Latitude and Longitude fields */}
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <div className="space-y-1">
+                      <span className="text-[9.5px] font-bold text-gray-400 font-mono">Latitud:</span>
+                      <input
+                        type="text"
+                        value={editLat}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditLat(val);
+                          const latNum = parseFloat(val);
+                          const lngNum = parseFloat(editLng);
+                          if (isValidCoordinate(latNum, lngNum)) {
+                            setEditMapUrl(buildNormalizedMapUrl(latNum, lngNum));
+                          }
+                        }}
+                        placeholder="Ej: 0.827429"
+                        className="w-full bg-black border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[9.5px] font-bold text-gray-400 font-mono">Longitud:</span>
+                      <input
+                        type="text"
+                        value={editLng}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEditLng(val);
+                          const latNum = parseFloat(editLat);
+                          const lngNum = parseFloat(val);
+                          if (isValidCoordinate(latNum, lngNum)) {
+                            setEditMapUrl(buildNormalizedMapUrl(latNum, lngNum));
+                          }
+                        }}
+                        placeholder="Ej: -77.659088"
+                        className="w-full bg-black border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-amber-500 transition font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Real-time coordinates validation banner */}
+                  {isValidCoordinate(parseFloat(editLat), parseFloat(editLng)) ? (
+                    <div className="p-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center justify-between gap-2 text-emerald-300 text-[10.5px]">
+                      <div className="flex items-center gap-1.5 font-semibold min-w-0">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span className="truncate">Coordenadas exactas vinculadas ({parseFloat(editLat).toFixed(6)}, {parseFloat(editLng).toFixed(6)})</span>
                       </div>
-                    )}
-                    {editReference.trim() && (
-                      <div className="text-[10px] text-gray-400 truncate">
-                        Ref: {editReference.trim()}
+                      <a
+                        href={`https://www.google.com/maps?q=${parseFloat(editLat)},${parseFloat(editLng)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline text-emerald-200 hover:text-white font-bold text-[10px] shrink-0"
+                      >
+                        Ver punto
+                      </a>
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-gray-500 italic">
+                      💡 Si tienes el link de Google Maps de la tienda, pégalo arriba y las coordenadas se extraerán automáticamente.
+                    </div>
+                  )}
+                </div>
+
+                {/* Live Preview Box */}
+                <div className="bg-gray-950/80 p-3 rounded-2xl border border-gray-850 space-y-1">
+                  <span className="text-[9.5px] font-mono uppercase font-bold text-gray-500 tracking-wider block">
+                    Vista Previa en Tarjeta y Catálogo:
+                  </span>
+                  <div className="flex items-start gap-2 text-xs">
+                    <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <div className="font-bold text-white truncate">
+                        {editAddress.trim() || <span className="text-gray-600 italic">Sin dirección especificada</span>}
                       </div>
-                    )}
+                      {editCity.trim() && (
+                        <div className="text-[11px] text-amber-300 font-bold truncate">
+                          {editCity.trim()}
+                        </div>
+                      )}
+                      {editReference.trim() && (
+                        <div className="text-[10px] text-gray-400 truncate">
+                          Ref: {editReference.trim()}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Modal Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-850">
+              {/* Modal Action Buttons (Fixed at bottom) */}
+              <div className="flex items-center justify-end gap-2 p-4 sm:px-6 sm:py-3.5 border-t border-gray-850 bg-[#0b101d] shrink-0">
                 <button
                   type="button"
                   onClick={() => setLocationModalStore(null)}
                   disabled={savingLocation}
-                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingLocation}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95"
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-black rounded-xl text-xs transition cursor-pointer flex items-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{savingLocation ? 'Guardando...' : 'Guardar Ubicación'}</span>
@@ -2449,8 +2459,8 @@ export default function AdminStoresManager({
         const isSamePlan = currentPlan === selectedNewPlan;
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
-            <div className="bg-[#0f1422] border border-amber-500/40 rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl shadow-amber-950/40 space-y-4 max-h-[92vh] overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn overflow-y-auto overscroll-contain">
+            <div className="bg-[#0f1422] border border-amber-500/40 rounded-3xl w-full max-w-lg my-auto p-5 sm:p-6 shadow-2xl shadow-amber-950/40 space-y-4 max-h-[90dvh] overflow-y-auto">
               {/* Encabezado */}
               <div className="flex items-center justify-between border-b border-gray-800 pb-3">
                 <div className="flex items-center gap-3">
