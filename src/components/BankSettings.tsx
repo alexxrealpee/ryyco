@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Plus, 
@@ -8,10 +8,17 @@ import {
   UploadCloud, 
   X, 
   Check, 
-  Copy, 
-  FileText
+  FileText,
+  DollarSign,
+  Percent,
+  ShieldAlert
 } from 'lucide-react';
 import { BankAccount, UserProfile } from '../types';
+import {
+  normalizeBankAccount,
+  isBankAccountFeeActive,
+  calculateBankAccountFee
+} from '../lib/paymentFeeUtils';
 
 interface BankSettingsProps {
   profile: UserProfile;
@@ -68,10 +75,17 @@ const BANK_PRESETS = [
 ];
 
 export default function BankSettings({ profile, onSave }: BankSettingsProps) {
-  const [accounts, setAccounts] = useState<BankAccount[]>(profile.bankAccounts || []);
+  const [accounts, setAccounts] = useState<BankAccount[]>(() =>
+    (profile.bankAccounts || []).map(normalizeBankAccount)
+  );
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Sync when profile.bankAccounts updates from Firestore
+  useEffect(() => {
+    setAccounts((profile.bankAccounts || []).map(normalizeBankAccount));
+  }, [profile.bankAccounts]);
 
   // Form states
   const [bankName, setBankName] = useState('');
@@ -79,6 +93,9 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
   const [accountNumber, setAccountNumber] = useState('');
   const [qrCodeURL, setQrCodeURL] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [additionalFeeEnabled, setAdditionalFeeEnabled] = useState(false);
+  const [additionalFeeType, setAdditionalFeeType] = useState<'fixed' | 'percentage'>('fixed');
+  const [additionalFeeValue, setAdditionalFeeValue] = useState<string>('0');
   const [error, setError] = useState('');
 
   // Drag and drop states
@@ -91,6 +108,9 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
     setAccountNumber('');
     setQrCodeURL('');
     setInstructions('');
+    setAdditionalFeeEnabled(false);
+    setAdditionalFeeType('fixed');
+    setAdditionalFeeValue('0');
     setEditingId(null);
     setError('');
   };
@@ -101,12 +121,20 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
   };
 
   const handleOpenEdit = (acc: BankAccount) => {
-    setEditingId(acc.id);
-    setBankName(acc.bankName);
-    setAccountType(acc.accountType);
-    setAccountNumber(acc.accountNumber);
-    setQrCodeURL(acc.qrCodeURL || '');
-    setInstructions(acc.instructions || '');
+    const normalized = normalizeBankAccount(acc);
+    setEditingId(normalized.id);
+    setBankName(normalized.bankName);
+    setAccountType(normalized.accountType);
+    setAccountNumber(normalized.accountNumber);
+    setQrCodeURL(normalized.qrCodeURL || '');
+    setInstructions(normalized.instructions || '');
+    setAdditionalFeeEnabled(Boolean(normalized.additionalFeeEnabled));
+    setAdditionalFeeType(normalized.additionalFeeType === 'percentage' ? 'percentage' : 'fixed');
+    setAdditionalFeeValue(
+      normalized.additionalFeeEnabled && normalized.additionalFeeValue && normalized.additionalFeeValue > 0
+        ? String(normalized.additionalFeeValue)
+        : '0'
+    );
     setError('');
     setIsEditing(true);
   };
@@ -165,6 +193,19 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
     }
   };
 
+  const parseFeeInputNumber = (raw: string, type: 'fixed' | 'percentage'): number => {
+    const cleaned = String(raw || '').trim();
+    if (!cleaned) return 0;
+    if (type === 'percentage') {
+      const normalized = cleaned.replace(',', '.').replace(/[^0-9.]/g, '');
+      const num = parseFloat(normalized);
+      return isNaN(num) ? NaN : Math.round(num * 100) / 100;
+    }
+    const digitsOnly = cleaned.replace(/[^0-9]/g, '');
+    const num = parseInt(digitsOnly, 10);
+    return isNaN(num) ? 0 : num;
+  };
+
   const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bankName.trim()) {
@@ -176,6 +217,26 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
       return;
     }
 
+    let parsedFeeVal = 0;
+    if (additionalFeeEnabled) {
+      parsedFeeVal = parseFeeInputNumber(additionalFeeValue, additionalFeeType);
+      if (isNaN(parsedFeeVal) || parsedFeeVal < 0) {
+        setError('Ingresa un valor numérico válido para el costo adicional.');
+        return;
+      }
+      if (additionalFeeType === 'percentage' && (parsedFeeVal <= 0 || parsedFeeVal > 100)) {
+        setError('El porcentaje adicional debe estar entre 0.1% y 100%.');
+        return;
+      }
+      if (additionalFeeType === 'fixed' && parsedFeeVal > 500000) {
+        setError('El valor fijo adicional parece excesivo. Verifica el monto en pesos ($ COP).');
+        return;
+      }
+    }
+
+    const effectiveEnabled = Boolean(additionalFeeEnabled && parsedFeeVal > 0);
+    const effectiveValue = effectiveEnabled ? parsedFeeVal : 0;
+
     setSaving(true);
     setError('');
 
@@ -185,7 +246,10 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
       accountType,
       accountNumber: accountNumber.trim(),
       ...(qrCodeURL.trim() ? { qrCodeURL: qrCodeURL.trim() } : {}),
-      ...(instructions.trim() ? { instructions: instructions.trim() } : {})
+      ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
+      additionalFeeEnabled: effectiveEnabled,
+      additionalFeeType: additionalFeeType,
+      additionalFeeValue: effectiveValue
     };
 
     let updatedList: BankAccount[];
@@ -208,6 +272,17 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
     }
   };
 
+  const previewNumericFee = parseFeeInputNumber(additionalFeeValue, additionalFeeType);
+  const previewExampleBase = 42000; // Ejemplo: Productos $35.000 + Domicilio $7.000
+  const previewCalculatedFee = calculateBankAccountFee(
+    {
+      additionalFeeEnabled,
+      additionalFeeType,
+      additionalFeeValue: isNaN(previewNumericFee) ? 0 : previewNumericFee
+    },
+    previewExampleBase
+  );
+
   return (
     <div className="space-y-6">
       <div className="border-b border-gray-900 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -222,7 +297,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
           <button
             type="button"
             onClick={handleOpenAdd}
-            className="py-2.5 px-4 bg-emerald-400 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-300 transition shrink-0"
+            className="py-2.5 px-4 bg-emerald-400 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-300 transition shrink-0 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Agregar Cuenta
@@ -245,7 +320,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="text-gray-500 hover:text-white transition"
+                className="text-gray-500 hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -275,7 +350,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                       key={preset}
                       type="button"
                       onClick={() => setBankName(preset)}
-                      className={`text-[10px] py-1 px-2.5 rounded-lg border font-bold transition ${
+                      className={`text-[10px] py-1 px-2.5 rounded-lg border font-bold transition cursor-pointer ${
                         bankName === preset 
                           ? 'bg-emerald-450/10 text-emerald-400 border-emerald-500/20' 
                           : 'bg-gray-900/50 text-gray-400 border-gray-850 hover:bg-gray-900 hover:text-white'
@@ -296,7 +371,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                       key={type}
                       type="button"
                       onClick={() => setAccountType(type)}
-                      className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 ${
+                      className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
                         accountType === type 
                           ? 'bg-emerald-450/10 text-emerald-400 border-emerald-500/20' 
                           : 'bg-gray-900/50 text-gray-400 border-gray-850 hover:bg-gray-900'
@@ -322,6 +397,192 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                 />
               </div>
 
+              {/* Costo adicional por pagar con este método */}
+              <div className="bg-gray-900/35 border border-gray-900 rounded-2xl p-4 space-y-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black uppercase text-emerald-400 tracking-wider block">
+                      Costo adicional por pagar con este método
+                    </label>
+                    <p className="text-[11px] text-gray-400 font-medium leading-relaxed">
+                      Este valor se sumará automáticamente al total del pedido cuando el cliente seleccione este método de pago
+                    </p>
+                  </div>
+
+                  {/* Interruptor para activar o desactivar el cobro adicional */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={additionalFeeEnabled}
+                    aria-label="Activar o desactivar costo adicional por pagar con este método"
+                    onClick={() => {
+                      const next = !additionalFeeEnabled;
+                      setAdditionalFeeEnabled(next);
+                      if (!next) {
+                        setAdditionalFeeValue('0');
+                      } else if (additionalFeeValue === '0' || !additionalFeeValue.trim()) {
+                        setAdditionalFeeValue('1000');
+                      }
+                    }}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                      additionalFeeEnabled ? 'bg-emerald-400' : 'bg-gray-800'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow ring-0 transition duration-200 ease-in-out ${
+                        additionalFeeEnabled ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Controles de tipo de cobro y valor adicional */}
+                <div className={`space-y-3 pt-2 border-t border-gray-900/80 transition-opacity ${
+                  additionalFeeEnabled ? 'opacity-100' : 'opacity-60'
+                }`}>
+                  {/* Selector del tipo de cobro: Valor fijo ($ COP) o Porcentaje (%) */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1.5">
+                      Tipo de Cobro Adicional
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdditionalFeeType('fixed');
+                          if (!additionalFeeEnabled) setAdditionalFeeEnabled(true);
+                        }}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                          additionalFeeType === 'fixed'
+                            ? 'bg-emerald-450/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-gray-950 text-gray-400 border-gray-850 hover:bg-gray-900'
+                        }`}
+                      >
+                        <DollarSign className="w-3.5 h-3.5" />
+                        <span>Valor fijo ($ COP)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdditionalFeeType('percentage');
+                          if (!additionalFeeEnabled) setAdditionalFeeEnabled(true);
+                          const curr = parseFeeInputNumber(additionalFeeValue, 'percentage');
+                          if (curr > 100) setAdditionalFeeValue('2');
+                        }}
+                        className={`py-2.5 px-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
+                          additionalFeeType === 'percentage'
+                            ? 'bg-emerald-450/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-gray-950 text-gray-400 border-gray-850 hover:bg-gray-900'
+                        }`}
+                      >
+                        <Percent className="w-3.5 h-3.5" />
+                        <span>Porcentaje (%)</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Campo numérico para ingresar el valor adicional */}
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">
+                      {additionalFeeType === 'percentage' ? 'Porcentaje Adicional (%)' : 'Valor Adicional ($ COP)'}
+                    </label>
+                    <div className="relative flex items-center">
+                      <span className="absolute left-3.5 text-xs font-black text-emerald-400 select-none font-mono">
+                        {additionalFeeType === 'percentage' ? '%' : '$'}
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={additionalFeeType === 'percentage' ? '100' : '500000'}
+                        step={additionalFeeType === 'percentage' ? '0.1' : '100'}
+                        disabled={!additionalFeeEnabled}
+                        placeholder={additionalFeeType === 'percentage' ? 'Ej. 2' : 'Ej. 1000'}
+                        value={additionalFeeEnabled ? additionalFeeValue : '0'}
+                        onChange={(e) => {
+                          setAdditionalFeeValue(e.target.value);
+                          if (error) setError('');
+                        }}
+                        className="w-full bg-gray-950 border border-gray-900 focus:border-emerald-500 outline-none rounded-xl py-2.5 pl-8 pr-16 text-xs font-mono font-bold text-white transition focus:ring-1 focus:ring-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                      />
+                      <span className="absolute right-3.5 text-[10px] font-black uppercase text-gray-500 select-none">
+                        {additionalFeeType === 'percentage' ? '%' : 'COP'}
+                      </span>
+                    </div>
+
+                    {/* Sugerencias rápidas cuando está activo */}
+                    {additionalFeeEnabled && (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <span className="text-[9.5px] text-gray-500 font-bold mr-1">Valores rápidos:</span>
+                        {(additionalFeeType === 'percentage'
+                          ? ['1', '2', '3', '5']
+                          : ['0', '500', '1000', '1500', '2000']
+                        ).map(presetVal => (
+                          <button
+                            key={presetVal}
+                            type="button"
+                            onClick={() => {
+                              if (presetVal === '0') {
+                                setAdditionalFeeEnabled(false);
+                                setAdditionalFeeValue('0');
+                              } else {
+                                setAdditionalFeeValue(presetVal);
+                              }
+                            }}
+                            className={`text-[10px] py-0.5 px-2 rounded-lg border font-mono font-bold transition cursor-pointer ${
+                              additionalFeeValue === presetVal
+                                ? 'bg-emerald-450/15 text-emerald-400 border-emerald-500/30'
+                                : 'bg-gray-950 text-gray-400 border-gray-850 hover:text-white'
+                            }`}
+                          >
+                            {presetVal === '0'
+                              ? 'Sin costo ($0)'
+                              : additionalFeeType === 'percentage'
+                              ? `${presetVal}%`
+                              : `$${Number(presetVal).toLocaleString('es-CO')}`}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Vista previa transparente de cómo lo verá el cliente */}
+                  {additionalFeeEnabled && previewCalculatedFee > 0 ? (
+                    <div className="bg-gray-950 border border-emerald-500/20 rounded-xl p-3 space-y-1 text-[11px]">
+                      <span className="text-[9.5px] font-black uppercase text-emerald-400 tracking-wider block">
+                        Vista previa en el resumen del pedido del cliente:
+                      </span>
+                      <div className="flex justify-between text-gray-400">
+                        <span>Productos ($35.000) + Domicilio ($7.000):</span>
+                        <span className="font-mono text-gray-300">$42.000</span>
+                      </div>
+                      <div className="flex justify-between text-amber-300 font-bold">
+                        <span>Costo adicional por pagar con {bankName.trim() || 'este método'}:</span>
+                        <span className="font-mono">+${previewCalculatedFee.toLocaleString('es-CO')}</span>
+                      </div>
+                      <div className="flex justify-between text-white font-extrabold border-t border-gray-900 pt-1">
+                        <span>Total a pagar:</span>
+                        <span className="font-mono text-emerald-400">
+                          ${(previewExampleBase + previewCalculatedFee).toLocaleString('es-CO')}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-gray-950/60 border border-gray-900 rounded-xl px-3 py-2 flex items-center justify-between text-[11px] text-gray-400">
+                      <span>Estado actual para {bankName.trim() || 'este método'}:</span>
+                      <span className="font-mono font-bold text-emerald-400">Sin costo adicional ($0)</span>
+                    </div>
+                  )}
+
+                  {/* Aviso normativo y condiciones del proveedor */}
+                  <div className="flex items-start gap-2 bg-amber-500/5 border border-amber-500/15 rounded-xl p-2.5 text-[10px] text-amber-200/80 leading-relaxed">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      Verifica que el recargo esté permitido por la normativa colombiana y las condiciones del proveedor de pago antes de habilitar su cobro. El valor se informará de forma transparente al cliente antes de confirmar su pedido.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* QR Code Upload with Drag and Drop */}
               <div>
                 <label className="text-[10px] font-black uppercase text-gray-500 tracking-wider block mb-1">Código QR de la Cuenta / Billetera (Opcional)</label>
@@ -338,14 +599,14 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="py-1.5 px-3 bg-gray-900 border border-gray-800 text-gray-300 hover:text-white rounded-lg text-xs font-extrabold transition flex items-center gap-1"
+                        className="py-1.5 px-3 bg-gray-900 border border-gray-800 text-gray-300 hover:text-white rounded-lg text-xs font-extrabold transition flex items-center gap-1 cursor-pointer"
                       >
                         Reemplazar Imagen
                       </button>
                       <button
                         type="button"
                         onClick={() => setQrCodeURL('')}
-                        className="py-1.5 px-3 bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 rounded-lg text-xs font-extrabold transition flex items-center gap-1"
+                        className="py-1.5 px-3 bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 rounded-lg text-xs font-extrabold transition flex items-center gap-1 cursor-pointer"
                       >
                         Eliminar QR
                       </button>
@@ -398,7 +659,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 py-3 px-4 bg-emerald-400 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-300 transition"
+                  className="flex-1 py-3 px-4 bg-emerald-400 text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 hover:bg-emerald-300 transition cursor-pointer"
                 >
                   {saving ? (
                     <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
@@ -410,7 +671,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                 <button
                   type="button"
                   onClick={() => setIsEditing(false)}
-                  className="py-3 px-4 bg-gray-900 border border-gray-850 text-gray-400 font-bold text-xs rounded-xl hover:text-white transition"
+                  className="py-3 px-4 bg-gray-900 border border-gray-850 text-gray-400 font-bold text-xs rounded-xl hover:text-white transition cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -433,7 +694,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                 <button
                   type="button"
                   onClick={handleOpenAdd}
-                  className="py-2 px-4 bg-emerald-400 text-black font-extrabold text-xs rounded-xl inline-flex items-center gap-1.5 hover:bg-emerald-300 transition"
+                  className="py-2 px-4 bg-emerald-400 text-black font-extrabold text-xs rounded-xl inline-flex items-center gap-1.5 hover:bg-emerald-300 transition cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   Agregar Primera Cuenta
@@ -441,78 +702,97 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
-                {accounts.map((acc) => (
-                  <div 
-                    key={acc.id}
-                    className="bg-gray-950 border border-gray-900 p-5 rounded-3xl space-y-4 flex flex-col justify-between"
-                  >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2.5">
-                          <div className="p-2 bg-emerald-450/10 text-emerald-400 border border-emerald-500/10 rounded-xl shrink-0">
-                            <Landmark className="w-5 h-5" />
+                {accounts.map((acc) => {
+                  const feeActive = isBankAccountFeeActive(acc);
+                  return (
+                    <div 
+                      key={acc.id}
+                      className="bg-gray-950 border border-gray-900 p-5 rounded-3xl space-y-4 flex flex-col justify-between"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="p-2 bg-emerald-450/10 text-emerald-400 border border-emerald-500/10 rounded-xl shrink-0">
+                              <Landmark className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-black text-white uppercase">{acc.bankName}</h4>
+                              <span className="text-[10px] text-indigo-400 font-bold uppercase">{acc.accountType}</span>
+                            </div>
                           </div>
+
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(acc)}
+                              className="p-1.5 bg-gray-900 hover:bg-gray-850 text-gray-400 hover:text-white rounded-lg transition cursor-pointer"
+                              title="Editar cuenta"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(acc.id)}
+                              className="p-1.5 bg-red-500/5 hover:bg-red-500/15 text-red-400 rounded-lg transition cursor-pointer"
+                              title="Eliminar cuenta"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="h-[1px] bg-gray-900/50" />
+
+                        <div className="space-y-2.5">
                           <div>
-                            <h4 className="text-xs font-black text-white uppercase">{acc.bankName}</h4>
-                            <span className="text-[10px] text-indigo-400 font-bold uppercase">{acc.accountType}</span>
+                            <span className="text-[8px] font-black text-gray-550 uppercase block tracking-wider">Número de Cuenta</span>
+                            <span className="font-mono text-sm font-extrabold text-white">{acc.accountNumber}</span>
                           </div>
-                        </div>
 
-                        <div className="flex gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEdit(acc)}
-                            className="p-1.5 bg-gray-900 hover:bg-gray-850 text-gray-400 hover:text-white rounded-lg transition"
-                            title="Editar cuenta"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(acc.id)}
-                            className="p-1.5 bg-red-500/5 hover:bg-red-500/15 text-red-400 rounded-lg transition"
-                            title="Eliminar cuenta"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {/* Costo adicional configurado para este método */}
+                          <div className="flex items-center justify-between bg-gray-900/50 border border-gray-900 px-3 py-2 rounded-xl text-[10px]">
+                            <span className="text-gray-400 font-bold">Costo adicional al cliente:</span>
+                            {feeActive ? (
+                              <span className="font-mono font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg">
+                                {acc.additionalFeeType === 'percentage'
+                                  ? `+${acc.additionalFeeValue}% adicional`
+                                  : `+$${Math.round(Number(acc.additionalFeeValue) || 0).toLocaleString('es-CO')} adicionales`}
+                              </span>
+                            ) : (
+                              <span className="font-mono font-bold text-emerald-400">
+                                Sin costo adicional ($0)
+                              </span>
+                            )}
+                          </div>
+
+                          {acc.instructions && (
+                            <div className="bg-gray-900/40 border border-gray-900 p-2.5 rounded-xl text-[10px] text-gray-400 font-semibold leading-relaxed">
+                              <span className="font-bold text-gray-300 block mb-0.5 flex items-center gap-1">
+                                <FileText className="w-3 h-3 text-gray-500" /> Instrucciones:
+                              </span>
+                              {acc.instructions}
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="h-[1px] bg-gray-900/50" />
-
-                      <div className="space-y-2">
-                        <div>
-                          <span className="text-[8px] font-black text-gray-550 uppercase block tracking-wider">Número de Cuenta</span>
-                          <span className="font-mono text-sm font-extrabold text-white">{acc.accountNumber}</span>
-                        </div>
-
-                        {acc.instructions && (
-                          <div className="bg-gray-900/40 border border-gray-900 p-2.5 rounded-xl text-[10px] text-gray-400 font-semibold leading-relaxed">
-                            <span className="font-bold text-gray-300 block mb-0.5 flex items-center gap-1">
-                              <FileText className="w-3 h-3 text-gray-500" /> Instrucciones:
-                            </span>
-                            {acc.instructions}
+                      {acc.qrCodeURL && (
+                        <div className="border border-gray-900 bg-gray-900/20 p-2.5 rounded-2xl flex items-center gap-3">
+                          <img 
+                            src={acc.qrCodeURL} 
+                            alt="QR" 
+                            className="w-12 h-12 object-contain bg-white rounded-lg p-0.5 border border-gray-800"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="text-[10px]">
+                            <span className="text-white font-extrabold block">Tiene Código QR</span>
+                            <span className="text-gray-500 block font-medium">Se mostrará en la pasarela.</span>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
-
-                    {acc.qrCodeURL && (
-                      <div className="border border-gray-900 bg-gray-900/20 p-2.5 rounded-2xl flex items-center gap-3">
-                        <img 
-                          src={acc.qrCodeURL} 
-                          alt="QR" 
-                          className="w-12 h-12 object-contain bg-white rounded-lg p-0.5 border border-gray-800"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="text-[10px]">
-                          <span className="text-white font-extrabold block">Tiene Código QR</span>
-                          <span className="text-gray-500 block font-medium">Se mostrará en la pasarela.</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </motion.div>
@@ -521,3 +801,4 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
     </div>
   );
 }
+

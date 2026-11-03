@@ -165,6 +165,9 @@ export interface BankAccount {
   accountNumber: string;
   qrCodeURL?: string; // Base64 data URL representing uploaded QR code image
   instructions?: string; // Custom instructions
+  additionalFeeEnabled?: boolean; // Si está activo el cobro adicional por pagar con este método
+  additionalFeeType?: 'fixed' | 'percentage'; // Tipo de cobro: Valor fijo ($ COP) o Porcentaje (%)
+  additionalFeeValue?: number; // Valor numérico del costo adicional (por defecto 0)
 }
 
 export interface SubscriptionPayment {
@@ -318,6 +321,11 @@ export interface OrderItem {
   deliveryFee?: number; // Valor del domicilio
   deliveryCost?: number; // Alias alternativo del valor del domicilio
   packagingCost?: number; // Costo total de recipientes para llevar
+  paymentMethodFee?: number; // Costo adicional aplicado por pagar con el método de pago seleccionado
+  paymentMethodFeeType?: 'fixed' | 'percentage'; // Tipo de recargo aplicado al momento del pedido
+  paymentMethodFeeValue?: number; // Valor base o porcentaje configurado al momento del pedido
+  paymentMethodBankName?: string; // Nombre del método/banco seleccionado (ej. Nequi, Daviplata)
+  paymentMethodAccountId?: string; // ID de la cuenta bancaria seleccionada
   notes?: string;
   createdAt: string;
   proofImage?: string; // Base64 data URL representing uploaded payment receipt or purchase transaction photo

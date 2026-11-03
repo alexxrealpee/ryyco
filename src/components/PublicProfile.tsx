@@ -62,6 +62,12 @@ import { ProductShareButton } from './ProductShareButton';
 import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import { isAndroidApp } from '../lib/capacitor';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
+import {
+  normalizeBankAccount,
+  isBankAccountFeeActive,
+  calculateBankAccountFee,
+  resolveSelectedBankAccount
+} from '../lib/paymentFeeUtils';
 import { 
   Share2, 
   Copy, 
@@ -209,9 +215,20 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [tableNumber, setTableNumber] = useState('');
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
   const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('transfer');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
   useEffect(() => {
     if (deliveryType === 'delivery' && payMethod === 'cod') setPayMethod('transfer');
   }, [deliveryType, payMethod]);
+  useEffect(() => {
+    const accounts = profile?.bankAccounts || [];
+    if (accounts.length > 0) {
+      if (!selectedBankAccountId || !accounts.some(a => a.id === selectedBankAccountId)) {
+        setSelectedBankAccountId(accounts[0].id);
+      }
+    } else if (selectedBankAccountId) {
+      setSelectedBankAccountId('');
+    }
+  }, [profile?.bankAccounts, selectedBankAccountId]);
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
   const [acceptedBuyerTermsInCheckout, setAcceptedBuyerTermsInCheckout] = useState(true);
@@ -531,6 +548,25 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const totalCartUnitsCount = useMemo(() => {
     return cart.reduce((uq, item) => uq + item.quantity, 0);
   }, [cart]);
+
+  const normalizedBankAccounts = useMemo(() => {
+    return (profile?.bankAccounts || []).map(normalizeBankAccount);
+  }, [profile?.bankAccounts]);
+
+  const selectedBankAccount = useMemo(() => {
+    return resolveSelectedBankAccount(normalizedBankAccounts, selectedBankAccountId);
+  }, [normalizedBankAccounts, selectedBankAccountId]);
+
+  const baseOrderAmountBeforePaymentFee = useMemo(() => {
+    const dFee = deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee;
+    const disc = Math.min(totalCartCost, rewardDiscountAmount);
+    return Math.max(0, totalCartCost + totalPackagingCost + dFee - disc);
+  }, [totalCartCost, totalPackagingCost, deliveryType, systemDeliveryFee, rewardDiscountAmount]);
+
+  const activePaymentMethodFee = useMemo(() => {
+    if (payMethod !== 'transfer' || !selectedBankAccount) return 0;
+    return calculateBankAccountFee(selectedBankAccount, baseOrderAmountBeforePaymentFee);
+  }, [payMethod, selectedBankAccount, baseOrderAmountBeforePaymentFee]);
 
   const [nowTick, setNowTick] = useState(Date.now());
   useEffect(() => {
@@ -931,7 +967,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       return sum + (cost * (item.quantity || 1));
     }, 0);
     const finalDiscount = Math.min(subtotal, rewardDiscountAmount);
-    const totalSum = Math.max(0, subtotal + deliveryFee + packagingCost - finalDiscount);
+    const effectivePayMethod = deliveryType === 'delivery' && payMethod === 'cod' ? 'whatsapp' : payMethod;
+    const baseSubtotal = Math.max(0, subtotal + deliveryFee + packagingCost - finalDiscount);
+    const chosenBankAcc = effectivePayMethod === 'transfer'
+      ? resolveSelectedBankAccount((profile.bankAccounts || []).map(normalizeBankAccount), selectedBankAccountId)
+      : undefined;
+    const paymentMethodFee = effectivePayMethod === 'transfer' && chosenBankAcc
+      ? calculateBankAccountFee(chosenBankAcc, baseSubtotal)
+      : 0;
+    const totalSum = Math.max(0, baseSubtotal + paymentMethodFee);
     const rNo = Math.floor(1000 + Math.random() * 9000);
 
     const formattedPhone = formatColombianPhoneWith57(custPhone.trim() || customer.phone);
@@ -991,10 +1035,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
       packagingCost: packagingCost > 0 ? packagingCost : undefined,
+      paymentMethodFee: paymentMethodFee > 0 ? paymentMethodFee : undefined,
+      paymentMethodFeeType: paymentMethodFee > 0 && chosenBankAcc ? chosenBankAcc.additionalFeeType : undefined,
+      paymentMethodFeeValue: paymentMethodFee > 0 && chosenBankAcc ? chosenBankAcc.additionalFeeValue : undefined,
+      paymentMethodBankName: effectivePayMethod === 'transfer' && chosenBankAcc ? chosenBankAcc.bankName : undefined,
+      paymentMethodAccountId: effectivePayMethod === 'transfer' && chosenBankAcc ? chosenBankAcc.id : undefined,
       orderType: isTable ? 'table' : isPickup ? 'pickup' : 'delivery',
       isTableOrder: isTable,
       tableNumber: isTable ? tableNumber.trim() : undefined,
-      paymentMethod: deliveryType === 'delivery' && payMethod === 'cod' ? 'whatsapp' : payMethod,
+      paymentMethod: effectivePayMethod,
       notes: finalNotes || undefined,
       status: 'pending',
       createdAt: new Date().toISOString(),
@@ -1158,6 +1207,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
     if (order.packagingCost && order.packagingCost > 0) {
       msg += `🥡 Recipientes para llevar: ${profile.currency || '$'}${order.packagingCost.toLocaleString()}\n`;
+    }
+    if (order.paymentMethodFee && order.paymentMethodFee > 0) {
+      msg += `💳 Costo adicional por pagar con ${order.paymentMethodBankName || 'transferencia'}: ${profile.currency || '$'}${order.paymentMethodFee.toLocaleString('es-CO')}\n`;
     }
     msg += `Total: *${profile.currency || '$'}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
@@ -3728,7 +3780,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             </div>
 
-            {payMethod === 'transfer' && profile?.bankAccounts && profile.bankAccounts.length > 0 && (
+            {payMethod === 'transfer' && normalizedBankAccounts.length > 0 && (
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -3738,62 +3790,105 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider flex items-center gap-1.5">
                     <Landmark className="w-3.5 h-3.5" /> Cuentas para Transferencia
                   </span>
-                  <span className="text-[9px] text-gray-500 font-bold">Datos del Vendedor</span>
+                  <span className="text-[9px] text-gray-400 font-bold">
+                    {normalizedBankAccounts.length > 1 ? 'Selecciona la cuenta de pago' : 'Datos del Vendedor'}
+                  </span>
                 </div>
                 
                 <div className="space-y-3">
-                  {profile.bankAccounts.map((acc) => (
-                    <div 
-                      key={acc.id} 
-                      className="bg-[#05080f] border border-gray-900 p-3.5 rounded-xl space-y-3"
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h4 className="text-xs font-black text-white uppercase tracking-tight">{acc.bankName}</h4>
-                          <span className="text-[9px] text-indigo-400 font-bold uppercase">{acc.accountType}</span>
+                  {normalizedBankAccounts.map((acc) => {
+                    const isSelectedAcc = selectedBankAccount ? selectedBankAccount.id === acc.id : false;
+                    const feeActive = isBankAccountFeeActive(acc);
+                    const accCalculatedFee = calculateBankAccountFee(acc, baseOrderAmountBeforePaymentFee);
+
+                    return (
+                      <div 
+                        key={acc.id}
+                        onClick={() => setSelectedBankAccountId(acc.id)}
+                        className={`bg-[#05080f] border p-3.5 rounded-xl space-y-3 transition cursor-pointer ${
+                          isSelectedAcc
+                            ? 'border-indigo-500/80 ring-1 ring-indigo-500/20'
+                            : 'border-gray-900 hover:border-gray-800'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="radio"
+                              name="selectedBankAccount"
+                              checked={isSelectedAcc}
+                              onChange={() => setSelectedBankAccountId(acc.id)}
+                              className="w-4 h-4 accent-indigo-400 shrink-0 cursor-pointer"
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-xs font-black text-white uppercase tracking-tight">{acc.bankName}</h4>
+                                {feeActive ? (
+                                  <span className="text-[9px] font-mono font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded-md">
+                                    {acc.additionalFeeType === 'percentage'
+                                      ? `+${acc.additionalFeeValue}% (${getStoreCurrency()}${accCalculatedFee.toLocaleString('es-CO')})`
+                                      : `+${getStoreCurrency()}${Math.round(Number(acc.additionalFeeValue) || 0).toLocaleString('es-CO')} adicionales`}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] font-mono font-bold text-emerald-400">
+                                    Sin costo adicional
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[9px] text-indigo-400 font-bold uppercase block">{acc.accountType}</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBankAccountId(acc.id);
+                              handleCopyAccountNumber(acc.accountNumber, acc.id);
+                            }}
+                            className="py-1 px-2.5 bg-gray-900 border border-gray-850 hover:border-gray-700 text-gray-300 hover:text-white rounded-lg text-[10px] font-black transition flex items-center gap-1 shrink-0 font-mono"
+                          >
+                            {copiedAccountId === acc.id ? (
+                              <>
+                                <Check className="w-3 h-3 stroke-[3]" style={{ color: storeAccent }} />
+                                Copiado!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3 text-gray-500" />
+                                {acc.accountNumber}
+                              </>
+                            )}
+                          </button>
                         </div>
-                        
-                        <button
-                          type="button"
-                          onClick={() => handleCopyAccountNumber(acc.accountNumber, acc.id)}
-                          className="py-1 px-2.5 bg-gray-900 border border-gray-850 hover:border-gray-700 text-gray-300 hover:text-white rounded-lg text-[10px] font-black transition flex items-center gap-1 shrink-0 font-mono"
-                        >
-                          {copiedAccountId === acc.id ? (
-                            <>
-                              <Check className="w-3 h-3 stroke-[3]" style={{ color: storeAccent }} />
-                              Copiado!
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3 text-gray-500" />
-                              {acc.accountNumber}
-                            </>
-                          )}
-                        </button>
+
+                        {acc.instructions && (
+                          <p className="text-[10px] text-gray-400 font-semibold bg-gray-900/35 border border-gray-900/50 p-2 rounded-lg leading-relaxed whitespace-pre-wrap text-left">
+                            {acc.instructions}
+                          </p>
+                        )}
+
+                        {acc.qrCodeURL && (
+                          <div className="flex flex-col items-center justify-center p-2.5 border border-gray-900 bg-[#0c101d]/50 rounded-xl gap-2">
+                            <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Escanear Código QR</span>
+                            <img 
+                              src={acc.qrCodeURL} 
+                              alt="QR de Pago" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedBankAccountId(acc.id);
+                                setExpandedQRUrl(acc.qrCodeURL);
+                              }}
+                              className="w-32 h-32 object-contain bg-white rounded-lg p-1.5 border border-gray-800 cursor-pointer hover:scale-105 transition"
+                              referrerPolicy="no-referrer"
+                              title="Haz clic para ampliar"
+                            />
+                            <span className="text-[8px] text-gray-500 font-medium font-sans">Haz clic para ampliar QR</span>
+                          </div>
+                        )}
                       </div>
-
-                      {acc.instructions && (
-                        <p className="text-[10px] text-gray-400 font-semibold bg-gray-900/35 border border-gray-900/50 p-2 rounded-lg leading-relaxed whitespace-pre-wrap text-left">
-                          {acc.instructions}
-                        </p>
-                      )}
-
-                      {acc.qrCodeURL && (
-                        <div className="flex flex-col items-center justify-center p-2.5 border border-gray-900 bg-[#0c101d]/50 rounded-xl gap-2">
-                          <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Escanear Código QR</span>
-                          <img 
-                            src={acc.qrCodeURL} 
-                            alt="QR de Pago" 
-                            onClick={() => setExpandedQRUrl(acc.qrCodeURL)}
-                            className="w-32 h-32 object-contain bg-white rounded-lg p-1.5 border border-gray-800 cursor-pointer hover:scale-105 transition"
-                            referrerPolicy="no-referrer"
-                            title="Haz clic para ampliar"
-                          />
-                          <span className="text-[8px] text-gray-500 font-medium font-sans">Haz clic para ampliar QR</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </motion.div>
             )}
@@ -3903,10 +3998,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <span className="font-mono">-{getStoreCurrency()}{Math.min(totalCartCost, rewardDiscountAmount).toLocaleString()}</span>
                 </div>
               )}
+              {payMethod === 'transfer' && activePaymentMethodFee > 0 && selectedBankAccount && (
+                <div className="flex justify-between items-center text-xs text-amber-300 font-bold">
+                  <span>Costo adicional por pagar con {selectedBankAccount.bankName}:</span>
+                  <span className="font-mono text-amber-400">
+                    {getStoreCurrency()}{activePaymentMethodFee.toLocaleString('es-CO')}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-gray-900 pt-2 text-white">
                 <span>Monto Total a Pagar:</span>
                 <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
-                  {getStoreCurrency()}{Math.max(0, totalCartCost + totalPackagingCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee) - Math.min(totalCartCost, rewardDiscountAmount)).toLocaleString()}
+                  {getStoreCurrency()}{(baseOrderAmountBeforePaymentFee + activePaymentMethodFee).toLocaleString('es-CO')}
                 </span>
               </div>
             </div>

@@ -4,6 +4,11 @@
  */
 
 import { isAndroidApp } from './capacitor';
+import {
+  normalizeBankAccount,
+  calculateBankAccountFee,
+  resolveSelectedBankAccount
+} from './paymentFeeUtils';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -1124,8 +1129,12 @@ export async function saveProfile(profile: UserProfile): Promise<void> {
   }
 
   try {
+    const normalizedAccounts = Array.isArray(profile.bankAccounts)
+      ? profile.bankAccounts.map(normalizeBankAccount)
+      : undefined;
     const rawProfile = {
       ...profile,
+      ...(normalizedAccounts ? { bankAccounts: normalizedAccounts } : {}),
       username: cleanUsername,
       role: profile.role || (profile.email && checkIsAdminEmail(profile.email) ? 'admin' : 'user')
     };
@@ -1716,8 +1725,93 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
         if (storeLng && !result.storeLng) {
           result.storeLng = storeLng;
         }
+
+        // Authoritative calculation and validation of payment method additional fee & order total
+        const itemsSubtotal = (result.items || []).reduce(
+          (sum, it) => sum + (Math.max(0, Number(it.price) || 0) * Math.max(1, Number(it.quantity) || 1)),
+          0
+        );
+        const orderDeliveryFee = Math.max(0, Number(result.deliveryFee ?? result.deliveryCost ?? 0) || 0);
+        const orderPackagingCost = Math.max(0, Number(result.packagingCost ?? 0) || 0);
+        const baseWithoutFee = itemsSubtotal + orderPackagingCost + orderDeliveryFee;
+
+        // Detect if a coupon discount was applied so we preserve it without double-charging the payment fee
+        const clientSubmittedFee = Math.max(0, Number(result.paymentMethodFee ?? 0) || 0);
+        const clientTotalBeforeFee = Math.max(0, (Number(result.totalAmount) || 0) - clientSubmittedFee);
+        const inferredDiscount = clientTotalBeforeFee > 0 && clientTotalBeforeFee < baseWithoutFee
+          ? Math.max(0, baseWithoutFee - clientTotalBeforeFee)
+          : 0;
+        const authoritativeBaseAmount = Math.max(0, baseWithoutFee - inferredDiscount);
+
+        if (result.paymentMethod === 'transfer' && Array.isArray(sData.bankAccounts) && sData.bankAccounts.length > 0) {
+          const normalizedStoreAccounts = sData.bankAccounts.map(normalizeBankAccount);
+          const matchedAcc = resolveSelectedBankAccount(
+            normalizedStoreAccounts,
+            result.paymentMethodAccountId,
+            result.paymentMethodBankName
+          );
+          if (matchedAcc) {
+            const verifiedFee = calculateBankAccountFee(matchedAcc, authoritativeBaseAmount);
+            result.paymentMethodBankName = matchedAcc.bankName;
+            result.paymentMethodAccountId = matchedAcc.id;
+            if (verifiedFee > 0) {
+              result.paymentMethodFee = verifiedFee;
+              result.paymentMethodFeeType = matchedAcc.additionalFeeType || 'fixed';
+              result.paymentMethodFeeValue = matchedAcc.additionalFeeValue || 0;
+            } else {
+              delete result.paymentMethodFee;
+              delete result.paymentMethodFeeType;
+              delete result.paymentMethodFeeValue;
+            }
+            result.totalAmount = Math.max(0, authoritativeBaseAmount + verifiedFee);
+          }
+        } else if (result.paymentMethod !== 'transfer') {
+          delete result.paymentMethodFee;
+          delete result.paymentMethodFeeType;
+          delete result.paymentMethodFeeValue;
+          delete result.paymentMethodBankName;
+          delete result.paymentMethodAccountId;
+          if (authoritativeBaseAmount > 0) {
+            result.totalAmount = authoritativeBaseAmount;
+          }
+        }
       }
     } catch (e) {}
+
+    // Backend validation check (/api/catalog/validate-order)
+    if (typeof window !== 'undefined' && typeof fetch === 'function') {
+      try {
+        const valRes = await fetch('/api/catalog/validate-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: result.items,
+            storeOwnerId: result.storeOwnerId,
+            paymentMethod: result.paymentMethod,
+            paymentMethodAccountId: result.paymentMethodAccountId,
+            paymentMethodBankName: result.paymentMethodBankName,
+            deliveryFee: result.deliveryFee ?? 0,
+            packagingCost: result.packagingCost ?? 0
+          })
+        });
+        if (valRes.ok) {
+          const valData = await valRes.json();
+          if (valData && typeof valData.validatedPaymentMethodFee === 'number' && result.paymentMethod === 'transfer') {
+            if (valData.validatedPaymentMethodFee > 0) {
+              result.paymentMethodFee = valData.validatedPaymentMethodFee;
+              result.paymentMethodFeeType = valData.validatedPaymentMethodFeeType;
+              result.paymentMethodFeeValue = valData.validatedPaymentMethodFeeValue;
+              if (valData.validatedPaymentMethodBankName) {
+                result.paymentMethodBankName = valData.validatedPaymentMethodBankName;
+              }
+              if (valData.validatedPaymentMethodAccountId) {
+                result.paymentMethodAccountId = valData.validatedPaymentMethodAccountId;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
   }
 
   // Check active referral code (valid for 3 days)

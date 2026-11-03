@@ -1,6 +1,7 @@
 import { doc, onSnapshot } from 'firebase/firestore';
 import CheckoutBankTransfer, { validTransferAccounts } from './CheckoutBankTransfer';
 import { balanceCatalog, resolveProductStore } from '../lib/catalogProducts';
+import { calculateBankAccountFee, resolveSelectedBankAccount } from '../lib/paymentFeeUtils';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -435,6 +436,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [paymentConnectionError, setPaymentConnectionError] = useState(false);
   const [paymentRetry, setPaymentRetry] = useState(0);
   const [transferProofs, setTransferProofs] = useState<Record<string, string>>({});
+  const [selectedTransferAccounts, setSelectedTransferAccounts] = useState<Record<string, string>>({});
   const [proofBusy, setProofBusy] = useState<Record<string, boolean>>({});
   const uploadingProof = Object.values(proofBusy).some(Boolean);
   useEffect(() => {
@@ -1305,7 +1307,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           return sum + (cost * (item.quantity || 1));
         }, 0);
         const deliveryFee = deliveryType === 'pickup' ? 0 : systemDeliveryFee;
-        const totalSum = subtotal + sellerPackagingCost + deliveryFee;
+        const baseSellerSubtotal = subtotal + sellerPackagingCost + deliveryFee;
+        const sellerAccounts = validTransferAccounts(paymentProfiles[sellerId]?.bankAccounts || profiles[sellerId]?.bankAccounts);
+        const effectivePayMethod: OrderItem['paymentMethod'] =
+          payMethod === 'transfer' && sellerAccounts.length > 0
+            ? 'transfer'
+            : payMethod === 'delivery_cash' && deliveryType === 'pickup'
+            ? 'delivery_cash'
+            : 'whatsapp';
+        const chosenAccount =
+          effectivePayMethod === 'transfer'
+            ? resolveSelectedBankAccount(sellerAccounts, selectedTransferAccounts[sellerId])
+            : undefined;
+        const sellerPaymentMethodFee =
+          effectivePayMethod === 'transfer' && chosenAccount
+            ? calculateBankAccountFee(chosenAccount, baseSellerSubtotal)
+            : 0;
+        const totalSum = baseSellerSubtotal + sellerPaymentMethodFee;
         const rNo = Math.floor(1000 + Math.random() * 9000);
 
         const sellerProfile = profiles[sellerId] || findStoreForProduct(sellerCart[0]?.product, profiles);
@@ -1353,9 +1371,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           totalAmount: totalSum,
           deliveryFee: deliveryFee,
           packagingCost: sellerPackagingCost > 0 ? sellerPackagingCost : undefined,
+          paymentMethodFee: sellerPaymentMethodFee > 0 ? sellerPaymentMethodFee : undefined,
+          paymentMethodFeeType: sellerPaymentMethodFee > 0 && chosenAccount ? chosenAccount.additionalFeeType : undefined,
+          paymentMethodFeeValue: sellerPaymentMethodFee > 0 && chosenAccount ? chosenAccount.additionalFeeValue : undefined,
+          paymentMethodBankName: effectivePayMethod === 'transfer' && chosenAccount ? chosenAccount.bankName : undefined,
+          paymentMethodAccountId: effectivePayMethod === 'transfer' && chosenAccount ? chosenAccount.id : undefined,
           orderType: deliveryType === 'pickup' ? 'pickup' : 'delivery',
-          paymentMethod: payMethod === 'transfer' && validTransferAccounts(paymentProfiles[sellerId]?.bankAccounts).length > 0 ? 'transfer' : payMethod === 'delivery_cash' && deliveryType === 'pickup' ? 'delivery_cash' : 'whatsapp',
-          proofImage: payMethod === 'transfer' && validTransferAccounts(paymentProfiles[sellerId]?.bankAccounts).length > 0 ? (transferProofs[sellerId] || undefined) : undefined,
+          paymentMethod: effectivePayMethod,
+          proofImage: effectivePayMethod === 'transfer' ? (transferProofs[sellerId] || undefined) : undefined,
           notes: custNotes.trim() || undefined,
           status: 'pending',
           createdAt: new Date().toISOString()
@@ -1367,6 +1390,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
       setSubmittedOrders(created);
       setTransferProofs({});
+      setSelectedTransferAccounts({});
       clearAllCart();
       setCart([]);
       setIsCartOpen(false);
@@ -1486,6 +1510,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       msg += `Domicilio: ${currency}${feeVal.toLocaleString('es-CO')}\n`;
     } else {
       msg += `Domicilio: *$0 (Recoger en Restaurante)*\n`;
+    }
+    if (order.paymentMethodFee && order.paymentMethodFee > 0) {
+      msg += `💳 Costo adicional por pagar con ${order.paymentMethodBankName || 'transferencia'}: ${currency}${order.paymentMethodFee.toLocaleString('es-CO')}\n`;
     }
     msg += `Total: *${currency}${order.totalAmount.toLocaleString()}*\n\n`;
     msg += `📞 Contacto: ${order.customerPhone}\n`;
@@ -3814,9 +3841,34 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 {paymentConnectionError && <p role="status" className="text-xs text-amber-300">No se pudieron consultar las cuentas de pago. <button type="button" className="underline" onClick={() => setPaymentRetry(v => v + 1)}>Reintentar</button></p>}
                 {payMethod === 'transfer' && <div className="space-y-3">
                   {checkoutSellerIds.map(id => {
-                    const accounts = validTransferAccounts(paymentProfiles[id]?.bankAccounts);
+                    const accounts = validTransferAccounts(paymentProfiles[id]?.bankAccounts || profiles[id]?.bankAccounts);
                     const name = paymentProfiles[id]?.displayName || profiles[id]?.displayName || 'Restaurante';
-                    return accounts.length ? <div key={id}><CheckoutBankTransfer name={name} accounts={accounts} proof={transferProofs[id]}
+                    const sellerCart = cart.filter(item => {
+                      const sProf = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
+                      const sId = sProf?.uid || item.product.userId || 'default_seller';
+                      return sId === id;
+                    });
+                    const sellerProdSubtotal = sellerCart.reduce((sum, item) => sum + getCartItemUnitPrice(item) * (item.quantity || 1), 0);
+                    const sellerPackCost = sellerCart.reduce((sum, item) => {
+                      const p = item?.product || (item as any) || {};
+                      const prodId = p.id || (item as any)?.productId;
+                      const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+                      const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+                        ? p.packagingCost
+                        : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+                        ? matchedProd.packagingCost
+                        : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+                      return sum + (cost * (item.quantity || 1));
+                    }, 0);
+                    const sellerBaseOrderAmount = sellerProdSubtotal + sellerPackCost + (deliveryType === 'pickup' ? 0 : systemDeliveryFee);
+
+                    return accounts.length ? <div key={id}><CheckoutBankTransfer
+                      name={name}
+                      accounts={accounts}
+                      proof={transferProofs[id]}
+                      selectedAccountId={selectedTransferAccounts[id]}
+                      onSelectAccount={account => setSelectedTransferAccounts(previous => ({ ...previous, [id]: account.id }))}
+                      baseOrderAmount={sellerBaseOrderAmount}
                       onProof={image => setTransferProofs(previous => ({ ...previous, [id]: image }))}
                       onBusy={busy => setProofBusy(previous => ({ ...previous, [id]: busy }))} /></div> :
                       <p key={id} className="text-xs text-gray-300">{name}: sin cuenta de transferencia disponible. El pago de este restaurante se coordinará por WhatsApp.</p>;
@@ -3839,7 +3891,45 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   }, 0);
                   const uniqueSellersCount = Math.max(1, new Set(cart.map(item => item?.product?.userId || (item as any)?.userId || 'store')).size);
                   const totalDeliveryFee = deliveryType === 'pickup' ? 0 : uniqueSellersCount * systemDeliveryFee;
-                  const total = subtotal + totalPackagingFee + totalDeliveryFee;
+
+                  const sellerFeeLines: Array<{ sellerId: string; bankName: string; fee: number }> = [];
+                  if (payMethod === 'transfer') {
+                    checkoutSellerIds.forEach(sId => {
+                      const accounts = validTransferAccounts(paymentProfiles[sId]?.bankAccounts || profiles[sId]?.bankAccounts);
+                      if (accounts.length === 0) return;
+                      const chosenAcc = resolveSelectedBankAccount(accounts, selectedTransferAccounts[sId]);
+                      if (!chosenAcc) return;
+                      const sellerItems = cart.filter(item => {
+                        const sProf = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
+                        const resolvedId = sProf?.uid || item.product.userId || 'default_seller';
+                        return resolvedId === sId;
+                      });
+                      const sSub = sellerItems.reduce((sum, item) => sum + getCartItemUnitPrice(item) * (item.quantity || 1), 0);
+                      const sPack = sellerItems.reduce((sum, item) => {
+                        const p = item?.product || (item as any) || {};
+                        const prodId = p.id || (item as any)?.productId;
+                        const matchedProd = products.find(pr => pr.id === prodId || (pr.name && pr.name.trim().toLowerCase() === String(p.name || '').trim().toLowerCase()));
+                        const cost = (typeof p.packagingCost === 'number' && !isNaN(p.packagingCost) && p.packagingCost > 0)
+                          ? p.packagingCost
+                          : (matchedProd && typeof matchedProd.packagingCost === 'number' && !isNaN(matchedProd.packagingCost))
+                          ? matchedProd.packagingCost
+                          : (typeof p.packagingCost === 'number' ? p.packagingCost : (parseFloat((p as any).packagingCost) || 0));
+                        return sum + (cost * (item.quantity || 1));
+                      }, 0);
+                      const sBase = sSub + sPack + (deliveryType === 'pickup' ? 0 : systemDeliveryFee);
+                      const fee = calculateBankAccountFee(chosenAcc, sBase);
+                      if (fee > 0) {
+                        sellerFeeLines.push({
+                          sellerId: sId,
+                          bankName: chosenAcc.bankName,
+                          fee
+                        });
+                      }
+                    });
+                  }
+
+                  const totalPaymentMethodFee = sellerFeeLines.reduce((sum, l) => sum + l.fee, 0);
+                  const total = subtotal + totalPackagingFee + totalDeliveryFee + totalPaymentMethodFee;
                   const firstUserId = cart[0]?.product?.userId || (cart[0] as any)?.userId;
                   const curr = (firstUserId ? profiles[firstUserId]?.currency : undefined) || '$';
 
@@ -3865,9 +3955,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           <span className="font-mono text-[#F4B400]">{curr}{totalDeliveryFee.toLocaleString()}</span>
                         )}
                       </div>
+                      {sellerFeeLines.map((line, idx) => (
+                        <div key={`${line.sellerId}-${idx}`} className="flex justify-between items-center text-xs text-amber-300 font-bold">
+                          <span>Costo adicional por pagar con {line.bankName}:</span>
+                          <span className="font-mono text-amber-400">{curr}{line.fee.toLocaleString('es-CO')}</span>
+                        </div>
+                      ))}
                       <div className="flex justify-between items-center text-sm font-extrabold border-t border-dashed border-[#232B3A] pt-2 text-white">
                         <span>Monto Total a Pagar:</span>
-                        <span className="text-[#E63946] text-base font-mono">{curr}{total.toLocaleString()}</span>
+                        <span className="text-[#E63946] text-base font-mono">{curr}{total.toLocaleString('es-CO')}</span>
                       </div>
                     </div>
                   );

@@ -549,23 +549,37 @@ export async function validateProductForCart(
 }
 
 /**
- * Real-time 4-Point Validation against Firestore before Order Confirmation / Creation
+ * Real-time 4-Point Validation & Server-Side Total Calculation against Firestore before Order Confirmation / Creation
  */
 export async function validateOrderPayload(
-  orderItems: Array<{ productId: string; quantity: number; price?: number; name?: string }>,
-  storeOwnerId?: string
+  orderItems: Array<{ productId: string; quantity: number; price?: number; name?: string; packagingCost?: number }>,
+  storeOwnerId?: string,
+  options?: {
+    paymentMethod?: string;
+    paymentMethodAccountId?: string;
+    paymentMethodBankName?: string;
+    deliveryFee?: number;
+    packagingCost?: number;
+    discountAmount?: number;
+  }
 ): Promise<{
   valid: boolean;
   reason?: string;
   errors?: string[];
+  validatedPaymentMethodFee?: number;
+  validatedPaymentMethodFeeType?: 'fixed' | 'percentage';
+  validatedPaymentMethodFeeValue?: number;
+  validatedPaymentMethodBankName?: string;
+  validatedPaymentMethodAccountId?: string;
+  validatedTotalAmount?: number;
 }> {
   try {
     const db = getBackendDb();
     const errors: string[] = [];
+    let storeData: any = null;
 
     // 1. Verify Store is NOT Closed
     if (storeOwnerId) {
-      let storeData: any = null;
       try {
         const sDoc = await getDoc(doc(db, 'profiles', storeOwnerId));
         if (sDoc && typeof sDoc.exists === 'function' && sDoc.exists()) {
@@ -588,7 +602,12 @@ export async function validateOrderPayload(
     }
 
     // 2. Verify all items are active, in stock, have valid prices, and belong to open stores
+    let itemsSubtotal = 0;
     for (const item of orderItems) {
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const unitPrice = Math.max(0, Number(item.price) || 0);
+      itemsSubtotal += unitPrice * qty;
+
       const check = await validateProductForCart(
         item.productId,
         storeOwnerId,
@@ -608,7 +627,66 @@ export async function validateOrderPayload(
       };
     }
 
-    return { valid: true };
+    // 3. Server-side calculation of payment method surcharge & definitive order total
+    const deliveryFee = Math.max(0, Number(options?.deliveryFee) || 0);
+    const packagingCost = Math.max(0, Number(options?.packagingCost) || 0);
+    const discountAmount = Math.min(itemsSubtotal, Math.max(0, Number(options?.discountAmount) || 0));
+    const baseOrderAmount = Math.max(0, itemsSubtotal + packagingCost + deliveryFee - discountAmount);
+
+    let validatedPaymentMethodFee = 0;
+    let validatedPaymentMethodFeeType: 'fixed' | 'percentage' | undefined = undefined;
+    let validatedPaymentMethodFeeValue: number | undefined = undefined;
+    let validatedPaymentMethodBankName: string | undefined = undefined;
+    let validatedPaymentMethodAccountId: string | undefined = undefined;
+
+    if (options?.paymentMethod === 'transfer' && storeData && Array.isArray(storeData.bankAccounts)) {
+      const validAccounts = storeData.bankAccounts.filter(
+        (a: any) => a && typeof a.bankName === 'string' && a.bankName.trim() && typeof a.accountNumber === 'string' && a.accountNumber.trim()
+      );
+      let matchedAcc = validAccounts.find((a: any) => options.paymentMethodAccountId && a.id === options.paymentMethodAccountId);
+      if (!matchedAcc && options.paymentMethodBankName) {
+        const targetName = options.paymentMethodBankName.trim().toLowerCase();
+        matchedAcc = validAccounts.find((a: any) => String(a.bankName || '').trim().toLowerCase() === targetName);
+      }
+      if (!matchedAcc && validAccounts.length > 0) {
+        matchedAcc = validAccounts[0];
+      }
+
+      if (matchedAcc) {
+        validatedPaymentMethodBankName = String(matchedAcc.bankName).trim();
+        validatedPaymentMethodAccountId = String(matchedAcc.id || '');
+        const feeEnabled = Boolean(matchedAcc.additionalFeeEnabled);
+        const feeType: 'fixed' | 'percentage' = matchedAcc.additionalFeeType === 'percentage' ? 'percentage' : 'fixed';
+        const feeVal = typeof matchedAcc.additionalFeeValue === 'number'
+          ? matchedAcc.additionalFeeValue
+          : parseFloat(String(matchedAcc.additionalFeeValue ?? '0'));
+
+        if (feeEnabled && !isNaN(feeVal) && feeVal > 0 && baseOrderAmount > 0) {
+          if (feeType === 'percentage') {
+            const clampedPct = Math.min(100, Math.max(0, feeVal));
+            validatedPaymentMethodFee = Math.round((baseOrderAmount * clampedPct) / 100);
+          } else {
+            validatedPaymentMethodFee = Math.round(feeVal);
+          }
+          if (validatedPaymentMethodFee > 0) {
+            validatedPaymentMethodFeeType = feeType;
+            validatedPaymentMethodFeeValue = feeVal;
+          }
+        }
+      }
+    }
+
+    const validatedTotalAmount = Math.max(0, baseOrderAmount + validatedPaymentMethodFee);
+
+    return {
+      valid: true,
+      validatedPaymentMethodFee,
+      validatedPaymentMethodFeeType,
+      validatedPaymentMethodFeeValue,
+      validatedPaymentMethodBankName,
+      validatedPaymentMethodAccountId,
+      validatedTotalAmount
+    };
   } catch (err: any) {
     return { valid: true };
   }

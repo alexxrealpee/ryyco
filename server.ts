@@ -614,8 +614,24 @@ Formatos válidos para:
   });
 
   app.post('/api/catalog/validate-order', async (req, res) => {
-    const { items = [], storeOwnerId } = req.body || {};
-    const result = await validateOrderPayload(items, storeOwnerId);
+    const {
+      items = [],
+      storeOwnerId,
+      paymentMethod,
+      paymentMethodAccountId,
+      paymentMethodBankName,
+      deliveryFee,
+      packagingCost,
+      discountAmount
+    } = req.body || {};
+    const result = await validateOrderPayload(items, storeOwnerId, {
+      paymentMethod,
+      paymentMethodAccountId,
+      paymentMethodBankName,
+      deliveryFee,
+      packagingCost,
+      discountAmount
+    });
     res.json(result);
   });
 

@@ -2335,7 +2335,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
     const intro = `Hola *${order.customerName}*, te contactamos de *${storeDisplayName}* respecto a tu compra #${order.orderNumber}.\n\n`;
     const statusMsg = `El estado actual de tu pedido es: *${statusLang[effectiveStatus] || effectiveStatus}*.\n\n`;
-    const total = `Total: *${formatPrice(order.totalAmount)}*\n\n`;
+    const feeBreakdown = order.paymentMethodFee && order.paymentMethodFee > 0
+      ? `Costo adicional por pagar con ${order.paymentMethodBankName || 'transferencia'}: ${formatPrice(order.paymentMethodFee)}\n`
+      : '';
+    const total = `${feeBreakdown}Total: *${formatPrice(order.totalAmount)}*\n\n`;
     const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.\n\n`;
     const footerLinks = `-----------------------------\n` +
       `🍔 *¿NECESITA AYUDA?*\n` +
@@ -5456,6 +5459,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                     ) : null}
                                   </div>
 
+                                  {order.paymentMethodFee && order.paymentMethodFee > 0 ? (
+                                    <div className="flex items-center justify-between gap-2 pt-1 text-[11px] text-amber-300 font-bold">
+                                      <span>Costo adicional ({order.paymentMethodBankName || 'Transferencia'}):</span>
+                                      <span className="font-mono">+{formatPrice(order.paymentMethodFee)}</span>
+                                    </div>
+                                  ) : null}
+
                                   <div className="flex items-center justify-between gap-2 pt-1">
                                     <span className="text-gray-500 text-[10px] font-bold uppercase">Total del Pedido:</span>
                                     <span className="text-sm font-extrabold text-emerald-400">{formatPrice(order.totalAmount)}</span>
@@ -7232,6 +7242,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               <div className="flex items-center justify-between text-xs text-amber-300 font-semibold border-t border-gray-900 pt-2.5">
                 <span>🥡 Recipientes para llevar:</span>
                 <span className="font-mono text-white font-bold">{formatPrice(viewingOrder.packagingCost)}</span>
+              </div>
+            ) : null}
+
+            {/* Payment method additional fee breakdown if present */}
+            {viewingOrder.paymentMethodFee && viewingOrder.paymentMethodFee > 0 ? (
+              <div className="flex items-center justify-between text-xs text-amber-300 font-semibold border-t border-gray-900 pt-2.5">
+                <span>💳 Costo adicional por pagar con {viewingOrder.paymentMethodBankName || 'transferencia'}:</span>
+                <span className="font-mono text-amber-400 font-bold">{formatPrice(viewingOrder.paymentMethodFee)}</span>
               </div>
             ) : null}
 
