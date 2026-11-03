@@ -246,6 +246,32 @@ export interface OrderStatusHistoryItem {
 
 export type OrderStatusHistoryRecord = OrderStatusHistoryItem;
 
+export interface OrderEventualityReport {
+  reason: string;
+  description?: string;
+  reportedAt: string;
+  driverId: string;
+  driverName: string;
+  driverPhone?: string;
+  stageAtReport?: 'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered';
+  resolved?: boolean;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+export interface OrderReassignmentRecord {
+  id: string;
+  previousDriverId: string;
+  previousDriverName: string;
+  previousDriverPhone?: string;
+  reason: string;
+  description?: string;
+  authorizedBy: string;
+  timestamp: string;
+  stageAtRelease?: 'accepted' | 'to_store' | 'at_store' | 'picked_up' | 'to_client' | 'at_destination' | 'delivered';
+  foodRecoveryCoordinated?: boolean;
+}
+
 export interface OrderItem {
   id: string;
   storeOwnerId: string;
@@ -338,6 +364,10 @@ export interface OrderItem {
   customerUnreadChatCount?: number;
   lastChatMessage?: string;
   lastChatAt?: string;
+
+  // Eventualidad y Reasignación Administrativa de Domiciliarios
+  eventualityReport?: OrderEventualityReport;
+  reassignmentHistory?: OrderReassignmentRecord[];
 }
 
 export type OrderChatSenderRole = 'driver' | 'customer' | 'system';

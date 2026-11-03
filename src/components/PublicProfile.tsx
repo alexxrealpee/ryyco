@@ -1297,7 +1297,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             }}
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full py-4 px-6 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black text-sm rounded-2xl transition-all shadow-xl hover:shadow-emerald-500/20 flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
+            className="w-full py-4 px-6 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm rounded-2xl transition-all shadow-xl hover:shadow-emerald-500/20 flex items-center justify-center gap-2.5 cursor-pointer transform hover:-translate-y-0.5 active:translate-y-0"
             title="Abrir WhatsApp Messenger Personal (3219730865)"
           >
             <MessageCircle className="w-5 h-5 fill-black stroke-none" />
@@ -1764,7 +1764,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
             <button 
               onClick={() => scrollToSection('store-category-row')}
-              className="px-9 py-4 bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 text-white font-black text-xs tracking-widest uppercase rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl shadow-purple-600/30 cursor-pointer flex items-center gap-2"
+              className="px-9 py-4 bg-[#E63946] hover:bg-[#d62839] text-white font-black text-xs tracking-widest uppercase rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl shadow-red-600/30 cursor-pointer flex items-center gap-2"
             >
               VER LICORES <Wine className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -1894,7 +1894,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
             <button 
               onClick={() => scrollToSection('store-category-row')}
-              className="px-9 py-4 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-black text-xs tracking-widest uppercase rounded-full hover:from-amber-400 hover:to-orange-400 hover:scale-105 active:scale-95 transition-all shadow-xl hover:shadow-orange-500/20 cursor-pointer flex items-center gap-2"
+              className="px-9 py-4 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs tracking-widest uppercase rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl hover:shadow-orange-500/20 cursor-pointer flex items-center gap-2"
             >
               EXPLORAR MENÚ <Utensils className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -1978,7 +1978,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
               <button
                 type="button"
-                className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shrink-0 transition text-center active:scale-98"
+                className="w-full sm:w-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shrink-0 transition text-center active:scale-98"
               >
                 Pedir desde Mesa
               </button>
@@ -3998,7 +3998,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                     setCustomerPortalTab('wheel');
                     setIsCustomerPortalOpen(true);
                   }}
-                  className="w-full py-2 bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-300 hover:to-orange-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
+                  className="w-full py-2 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer mt-1"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-black" />
                   ¡Girar Ruleta y Ver Mis Puntos Ryycos Ahora!
@@ -4221,7 +4221,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   setDeliveryType('table');
                   setIsTableModalOpen(false);
                 }}
-                className="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
               >
                 <span>Confirmar Mesa {tableNumber ? `#${tableNumber}` : ''}</span>
               </button>

@@ -142,6 +142,7 @@ import { DashboardTrialBanner } from './DashboardTrialBanner';
 import { getProductParsedVariants, getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
 import { generateRyycoImageName } from '../lib/seoImageRenamer';
 import { RestaurantSalesStats } from './RestaurantSalesStats';
+import { applyOrderTimeTransition } from '../lib/orderTimeTracking';
 
 export const RESTAURANT_CATEGORIES = [
   '🍔 Hamburguesas',
@@ -1881,14 +1882,54 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
   };
 
-  // Modify Order Status with transition validation
+  // Helper to normalize all internal states to the 5 official states matching Admin General:
+  // Pendiente -> Procesando -> Enviado -> Entregado / Cancelado
+  const getEffectiveOrderStatus = (order: OrderItem): 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled' => {
+    if (order.status === 'delivered') return 'delivered';
+    if (order.status === 'cancelled') return 'cancelled';
+    if (
+      order.status === 'shipped' ||
+      order.status === 'delivering' ||
+      order.status === 'picked_up' ||
+      order.deliveryStep === 'picked_up' ||
+      order.deliveryStep === 'to_client' ||
+      order.deliveryStep === 'at_destination'
+    ) {
+      return 'shipped';
+    }
+    if (
+      order.status === 'processing' ||
+      order.status === 'preparing' ||
+      order.status === 'confirmed' ||
+      order.status === 'ready' ||
+      Boolean(order.deliveryDriverName || order.deliveryDriverId || order.driverId)
+    ) {
+      return 'processing';
+    }
+    return 'pending';
+  };
+
+  // Modify Order Status with transition validation and lifecycle time tracking
   const handleUpdateStatus = async (orderId: string, status: OrderItem['status'], note?: string) => {
     try {
-      await updateOrderStatus(orderId, profile.uid, status, note);
+      const currentOrder = orders.find(o => o.id === orderId);
+      const timeUpdates = currentOrder 
+        ? applyOrderTimeTransition(currentOrder, status, {
+            userRole: 'restaurant',
+            restaurantId: profile.uid,
+            note: note || `Estado actualizado por el restaurante a ${status}`
+          })
+        : {};
+
+      await updateOrderStatus(orderId, profile.uid, status, {
+        note: note || `Estado actualizado por el restaurante a ${status}`,
+        updatedBy: 'restaurant'
+      });
+
       // Update local state
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status, ...timeUpdates } : o));
       if (viewingOrder && viewingOrder.id === orderId) {
-        setViewingOrder(prev => prev ? { ...prev, status } : null);
+        setViewingOrder(prev => prev ? { ...prev, status, ...timeUpdates } : null);
       }
     } catch(e: any) {
       console.error(e);
@@ -1922,12 +1963,24 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       const res = await cancelOrderTransaction(orderId, 'restaurant', finalReason);
       if (res.success) {
         const now = new Date().toISOString();
+        const currentOrder = orders.find(o => o.id === orderId);
+        const timeUpdates = currentOrder 
+          ? applyOrderTimeTransition(currentOrder, 'cancelled', {
+              userRole: 'restaurant',
+              cancelledBy: 'restaurant',
+              reason: finalReason,
+              restaurantId: profile.uid,
+              note: finalReason
+            })
+          : {};
+
         setOrders(prev => prev.map(o => o.id === orderId ? {
           ...o,
           status: 'cancelled',
           cancelledBy: 'restaurant',
           cancellationReason: finalReason,
-          cancelledAt: now
+          cancelledAt: now,
+          ...timeUpdates
         } : o));
         if (viewingOrder && viewingOrder.id === orderId) {
           setViewingOrder(prev => prev ? {
@@ -1935,7 +1988,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             status: 'cancelled',
             cancelledBy: 'restaurant',
             cancellationReason: finalReason,
-            cancelledAt: now
+            cancelledAt: now,
+            ...timeUpdates
           } : null);
         }
       } else {
@@ -1946,34 +2000,23 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     }
   };
 
-  // Helper for order status badge styling and display names
+  // Helper for order status badge styling and display names (Matching Admin General exactly: Pendiente, Procesando, Enviado, Entregado, Cancelado)
   const getOrderBadgeInfo = (order: OrderItem) => {
-    if (order.status === 'cancelled') {
-      return { bg: 'bg-red-500/10 text-red-400 border-red-500/20', text: 'text-red-400', name: 'Cancelado' };
+    const effective = getEffectiveOrderStatus(order);
+    if (effective === 'delivered') {
+      return { bg: 'bg-emerald-950/80 text-emerald-400 border-emerald-800/60', text: 'text-emerald-400', name: 'Entregado' };
     }
-    if (order.status === 'delivered') {
-      return { bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', text: 'text-emerald-400', name: 'Entregado' };
+    if (effective === 'cancelled') {
+      return { bg: 'bg-red-950/80 text-red-400 border-red-800/60', text: 'text-red-400', name: 'Cancelado' };
     }
-    if (order.status === 'delivering') {
-      return { bg: 'bg-sky-500/10 text-sky-400 border-sky-500/20', text: 'text-sky-400', name: 'En Camino' };
+    if (effective === 'shipped') {
+      return { bg: 'bg-purple-950/80 text-purple-400 border-purple-800/60', text: 'text-purple-400', name: 'Enviado' };
     }
-    if (order.status === 'picked_up' || order.status === 'shipped') {
-      return { bg: 'bg-purple-500/10 text-purple-400 border-purple-500/20', text: 'text-purple-400', name: 'Recogido' };
-    }
-    if (order.status === 'ready') {
-      return { bg: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20', text: 'text-indigo-400', name: 'Listo para Recoger' };
-    }
-    if (order.status === 'preparing' || order.status === 'processing') {
-      return { bg: 'bg-orange-500/10 text-orange-400 border-orange-500/20', text: 'text-orange-400', name: 'En Preparación' };
-    }
-    if (order.status === 'confirmed') {
-      if (order.deliveryType === 'restaurant') {
-        return { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Confirmado (Propio)' };
-      }
-      return { bg: 'bg-blue-500/10 text-blue-400 border-blue-500/20', text: 'text-blue-400', name: 'Domiciliario Asignado' };
+    if (effective === 'processing') {
+      return { bg: 'bg-sky-950/80 text-sky-400 border-sky-800/60', text: 'text-sky-400', name: 'Procesando' };
     }
     // pending
-    return { bg: 'bg-amber-500/10 text-amber-400 border-amber-500/20', text: 'text-amber-400', name: 'Nuevo Pedido' };
+    return { bg: 'bg-amber-950/80 text-amber-400 border-amber-800/60', text: 'text-amber-400', name: 'Pendiente' };
   };
 
   // Format Price Values
@@ -2150,12 +2193,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   // Generate WhatsApp Notification message
   const triggerWhatsAppMessage = (order: OrderItem) => {
+    const effectiveStatus = getEffectiveOrderStatus(order);
     const statusLang: Record<string, string> = {
-      'pending': 'Pendiente ⏳',
-      'processing': 'En Procesamiento 📦',
-      'shipped': 'Enviado 🚚',
-      'delivered': 'Entregado ✅',
-      'cancelled': 'Cancelado 🚫'
+      'pending': 'Pendiente',
+      'processing': 'Procesando',
+      'shipped': 'Enviado',
+      'delivered': 'Entregado',
+      'cancelled': 'Cancelado'
     };
     
     const baseUrl = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost') && !window.location.origin.includes('run.app')
@@ -2167,7 +2211,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     const storeDisplayName = (profile.displayName || profile.storeName || (profile.username ? `@${profile.username}` : 'nuestra tienda')).trim();
 
     const intro = `Hola *${order.customerName}*, te contactamos de *${storeDisplayName}* respecto a tu compra #${order.orderNumber}.\n\n`;
-    const statusMsg = `El estado actual de tu pedido es: *${statusLang[order.status] || order.status}*.\n\n`;
+    const statusMsg = `El estado actual de tu pedido es: *${statusLang[effectiveStatus] || effectiveStatus}*.\n\n`;
     const total = `Total: *${formatPrice(order.totalAmount)}*\n\n`;
     const out = `¡Muchas gracias por tu preferencia! Cualquier consulta nos puedes escribir por aquí.\n\n`;
     const footerLinks = `-----------------------------\n` +
@@ -2197,10 +2241,14 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     .filter(o => o.status === 'delivered')
     .reduce((sum, o) => sum + o.totalAmount, 0);
 
-  const pendingOrdersCount = orders.filter(o => o.status === 'pending' || o.status === 'processing').length;
+  const pendingOrdersCount = orders.filter(o => {
+    const eff = getEffectiveOrderStatus(o);
+    return eff === 'pending' || eff === 'processing';
+  }).length;
+
   const filteredOrders = orders.filter(o => {
     if (orderStatusFilter === 'all') return true;
-    return o.status === orderStatusFilter;
+    return getEffectiveOrderStatus(o) === orderStatusFilter;
   });
   const currentConversionRate = analyticsViews.length > 0 
     ? ((orders.length / analyticsViews.length) * 100).toFixed(1)
@@ -2537,7 +2585,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             <span className="text-[9px] font-black text-gray-650 uppercase tracking-widest block font-mono">Mi Suscripción</span>
             <div 
               onClick={() => setActiveTab('subscription')}
-              className="bg-gradient-to-tr from-indigo-550/10 to-emerald-555/10 border border-gray-850 p-3 rounded-xl cursor-pointer hover:border-gray-700 transition"
+              className="bg-gray-900 border border-gray-800 p-3 rounded-xl cursor-pointer hover:border-gray-700 transition"
             >
               <div className="flex items-center justify-between mb-1">
                 <span className="font-extrabold text-white">
@@ -3049,7 +3097,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <button
                           type="button"
                           onClick={() => setActiveTab('subscription')}
-                          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-extrabold px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
+                          className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
                         >
                           ⚡ Actualizar Plan
                         </button>
@@ -3072,7 +3120,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <button
                           type="button"
                           onClick={() => setActiveTab('subscription')}
-                          className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-extrabold px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
+                          className="bg-[#E63946] hover:bg-[#d62839] text-white font-extrabold px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
                         >
                           ⚡ Más Bebidas
                         </button>
@@ -4491,7 +4539,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                         <button
                           type="button"
                           onClick={() => setActiveTab('subscription')}
-                          className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 text-white font-black px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
+                          className="bg-[#E63946] hover:bg-[#d62839] text-white font-black px-4 py-2 rounded-xl transition shadow-md shrink-0 text-xs"
                         >
                           ⚡ Actualizar Plan
                         </button>
@@ -4852,7 +4900,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             type="button"
                             onClick={requestPushPermission}
                             disabled={isRequestingFCM}
-                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 active:scale-95 transition cursor-pointer disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase tracking-wider rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 active:scale-95 transition cursor-pointer disabled:opacity-50"
                             title="Haz clic para activar notificaciones push FCM y recibir pedidos en tiempo real"
                           >
                             <BellRing className={`w-3.5 h-3.5 text-amber-300 ${isRequestingFCM ? 'animate-spin' : 'animate-pulse'}`} />
@@ -5044,7 +5092,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             ].map((tab) => {
                               const count = tab.id === 'all' 
                                 ? orders.length 
-                                : orders.filter(o => o.status === tab.id).length;
+                                : orders.filter(o => getEffectiveOrderStatus(o) === tab.id).length;
                               const isActive = orderStatusFilter === tab.id;
 
                               return (
@@ -5154,44 +5202,45 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         {/* Status dropdown controller */}
                                         {checkIsTableOrder(order) ? (
                                           <select
-                                            value={order.status === 'shipped' || order.status === 'delivering' ? 'preparing' : order.status}
+                                            value={getEffectiveOrderStatus(order) === 'shipped' ? 'processing' : getEffectiveOrderStatus(order)}
                                             disabled={order.status === 'delivered' || order.status === 'cancelled'}
                                             onChange={(e) => {
                                               const val = e.target.value as OrderItem['status'];
                                               if (val === 'cancelled') handleCancelOrder(order.id);
                                               else handleUpdateStatus(order.id, val);
                                             }}
-                                            className="text-[9px] bg-amber-950/80 hover:bg-amber-900 border border-amber-500/40 text-amber-300 font-extrabold px-1.5 py-1 rounded cursor-pointer disabled:opacity-50"
+                                            className="text-[10px] bg-gray-900 hover:bg-gray-850 border border-gray-800 text-amber-300 font-extrabold px-2 py-1 rounded-xl cursor-pointer disabled:opacity-50"
                                           >
-                                            <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Nuevo</option>
-                                            <option value="preparing" className="bg-gray-950 text-orange-400 font-bold">En Preparación</option>
+                                            <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                                            <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
                                             <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
-                                            <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelar</option>
+                                            <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                                           </select>
                                         ) : (
                                           <select
-                                            value={order.status}
+                                            value={getEffectiveOrderStatus(order)}
                                             disabled={order.status === 'delivered' || order.status === 'cancelled'}
                                             onChange={(e) => {
                                               const val = e.target.value as OrderItem['status'];
-                                              if (val === 'confirmed' && order.status === 'pending') {
-                                                handleConfirmOrderRestaurant(order.id);
-                                              } else if (val === 'cancelled') {
+                                              if (val === 'cancelled') {
                                                 handleCancelOrder(order.id);
                                               } else {
                                                 handleUpdateStatus(order.id, val);
                                               }
                                             }}
-                                            className="text-[9px] bg-gray-900 hover:bg-gray-850 border border-gray-800 text-gray-300 px-1 py-1 rounded disabled:opacity-50 cursor-pointer"
+                                            className={`text-[10px] bg-gray-900 hover:bg-gray-850 border border-gray-800 font-extrabold px-2 py-1 rounded-xl disabled:opacity-50 cursor-pointer ${
+                                              getEffectiveOrderStatus(order) === 'delivered' ? 'text-emerald-400' :
+                                              getEffectiveOrderStatus(order) === 'processing' ? 'text-sky-400' :
+                                              getEffectiveOrderStatus(order) === 'shipped' ? 'text-purple-400' :
+                                              getEffectiveOrderStatus(order) === 'cancelled' ? 'text-red-400' :
+                                              'text-amber-400'
+                                            }`}
                                           >
-                                            <option value="pending">Nuevo Pedido</option>
-                                            <option value="confirmed">Confirmar (Propio)</option>
-                                            <option value="preparing">En Preparación</option>
-                                            <option value="ready">Listo para Recoger</option>
-                                            <option value="picked_up">Recogido</option>
-                                            <option value="delivering">En Camino</option>
-                                            <option value="delivered">Entregado</option>
-                                            <option value="cancelled">Cancelar</option>
+                                            <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                                            <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                                            <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Enviado</option>
+                                            <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                                            <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                                           </select>
                                         )}
 
@@ -5298,48 +5347,49 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                   )}
 
                                   <div className="flex flex-col gap-2 pt-2.5 border-t border-gray-900/50">
-                                    <div className="flex items-center gap-2 bg-gray-950 px-3 py-1.5 rounded-xl border border-gray-850">
-                                      <span className="text-[9px] font-black uppercase text-gray-500 whitespace-nowrap">Estado:</span>
+                                    <div className="flex items-center justify-between gap-2 bg-gray-950 px-3 py-2 rounded-xl border border-gray-850">
+                                      <span className="text-[10px] font-black uppercase text-gray-500 tracking-wider whitespace-nowrap">ESTADO:</span>
                                       {checkIsTableOrder(order) ? (
                                         <select
-                                          value={order.status === 'shipped' || order.status === 'delivering' ? 'preparing' : order.status}
+                                          value={getEffectiveOrderStatus(order) === 'shipped' ? 'processing' : getEffectiveOrderStatus(order)}
                                           disabled={order.status === 'delivered' || order.status === 'cancelled'}
                                           onChange={(e) => {
                                             const val = e.target.value as OrderItem['status'];
                                             if (val === 'cancelled') handleCancelOrder(order.id);
                                             else handleUpdateStatus(order.id, val);
                                           }}
-                                          className="text-xs bg-transparent text-amber-300 font-extrabold outline-none flex-grow cursor-pointer disabled:opacity-50"
+                                          className="text-xs bg-transparent text-amber-300 font-extrabold outline-none flex-grow text-right cursor-pointer disabled:opacity-50"
                                         >
-                                          <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Nuevo</option>
-                                          <option value="preparing" className="bg-gray-950 text-orange-400 font-bold">En Preparación</option>
+                                          <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                                          <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
                                           <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
-                                          <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelar</option>
+                                          <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                                         </select>
                                       ) : (
                                         <select
-                                          value={order.status}
+                                          value={getEffectiveOrderStatus(order)}
                                           disabled={order.status === 'delivered' || order.status === 'cancelled'}
                                           onChange={(e) => {
                                             const val = e.target.value as OrderItem['status'];
-                                            if (val === 'confirmed' && order.status === 'pending') {
-                                              handleConfirmOrderRestaurant(order.id);
-                                            } else if (val === 'cancelled') {
+                                            if (val === 'cancelled') {
                                               handleCancelOrder(order.id);
                                             } else {
                                               handleUpdateStatus(order.id, val);
                                             }
                                           }}
-                                          className="text-xs bg-transparent text-white font-extrabold outline-none flex-grow cursor-pointer disabled:opacity-50"
+                                          className={`text-xs bg-transparent font-extrabold outline-none flex-grow text-right cursor-pointer disabled:opacity-50 ${
+                                            getEffectiveOrderStatus(order) === 'delivered' ? 'text-emerald-400' :
+                                            getEffectiveOrderStatus(order) === 'processing' ? 'text-sky-400' :
+                                            getEffectiveOrderStatus(order) === 'shipped' ? 'text-purple-400' :
+                                            getEffectiveOrderStatus(order) === 'cancelled' ? 'text-red-400' :
+                                            'text-amber-400'
+                                          }`}
                                         >
-                                          <option value="pending" className="bg-gray-950 text-amber-400">Nuevo Pedido</option>
-                                          <option value="confirmed" className="bg-gray-950 text-blue-400">Confirmar (Propio)</option>
-                                          <option value="preparing" className="bg-gray-950 text-orange-400">En Preparación</option>
-                                          <option value="ready" className="bg-gray-950 text-indigo-400">Listo para Recoger</option>
-                                          <option value="picked_up" className="bg-gray-950 text-purple-400">Recogido</option>
-                                          <option value="delivering" className="bg-gray-950 text-sky-400">En Camino</option>
-                                          <option value="delivered" className="bg-gray-950 text-emerald-400">Entregado</option>
-                                          <option value="cancelled" className="bg-gray-950 text-red-400">Cancelar</option>
+                                          <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                                          <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                                          <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Enviado</option>
+                                          <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                                          <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                                         </select>
                                       )}
                                     </div>
@@ -6313,7 +6363,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 type="button"
                                 disabled={isSavingTheme}
                                 onClick={handleSaveCustomTheme}
-                                className="w-full py-3 px-3 bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
+                                className="w-full py-3 px-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs rounded-xl shadow-lg transition cursor-pointer flex items-center justify-center gap-2"
                               >
                                 {isSavingTheme ? (
                                   <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin rounded-full" />
@@ -6829,7 +6879,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             <div className="flex shrink-0 items-center justify-between border-b border-gray-900 mx-6 mt-6 pb-3">
               <div>
                 <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Detalles del Pedido</span>
-                <h4 id="restaurant-order-detail-title" className="text-sm font-extrabold text-white">Orden #{viewingOrder.orderNumber}</h4>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <h4 id="restaurant-order-detail-title" className="text-sm font-extrabold text-white">Orden #{viewingOrder.orderNumber}</h4>
+                  <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-lg border ${getOrderBadgeInfo(viewingOrder).bg}`}>
+                    {getOrderBadgeInfo(viewingOrder).name}
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
@@ -7081,48 +7136,49 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
             {/* Order state changer controls inside modal */}
             <div className="pt-4 border-t border-gray-900 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="flex-grow flex items-center gap-1.5">
-                <span className="text-[10.5px] font-bold text-gray-500 uppercase shrink-0">Estado:</span>
+              <div className="flex-grow flex items-center justify-between gap-2 bg-gray-900/80 px-3.5 py-2 rounded-xl border border-gray-800">
+                <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider shrink-0">ESTADO:</span>
                 {checkIsTableOrder(viewingOrder) ? (
                   <select
-                    value={viewingOrder.status === 'shipped' || viewingOrder.status === 'delivering' ? 'preparing' : viewingOrder.status}
+                    value={getEffectiveOrderStatus(viewingOrder) === 'shipped' ? 'processing' : getEffectiveOrderStatus(viewingOrder)}
                     disabled={viewingOrder.status === 'delivered' || viewingOrder.status === 'cancelled'}
                     onChange={(e) => {
                       const val = e.target.value as OrderItem['status'];
                       if (val === 'cancelled') handleCancelOrder(viewingOrder.id);
                       else handleUpdateStatus(viewingOrder.id, val);
                     }}
-                    className="text-xs bg-amber-950/90 border border-amber-500/40 text-amber-300 rounded p-1.5 flex-grow font-extrabold focus:outline-none cursor-pointer disabled:opacity-50"
+                    className="text-xs bg-transparent text-amber-300 flex-grow font-extrabold outline-none text-right cursor-pointer disabled:opacity-50"
                   >
-                    <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Nuevo</option>
-                    <option value="preparing" className="bg-gray-950 text-orange-400 font-bold">En Preparación</option>
+                    <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                    <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
                     <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
-                    <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelar</option>
+                    <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                   </select>
                 ) : (
                   <select
-                    value={viewingOrder.status}
+                    value={getEffectiveOrderStatus(viewingOrder)}
                     disabled={viewingOrder.status === 'delivered' || viewingOrder.status === 'cancelled'}
                     onChange={(e) => {
                       const val = e.target.value as OrderItem['status'];
-                      if (val === 'confirmed' && viewingOrder.status === 'pending') {
-                        handleConfirmOrderRestaurant(viewingOrder.id);
-                      } else if (val === 'cancelled') {
+                      if (val === 'cancelled') {
                         handleCancelOrder(viewingOrder.id);
                       } else {
                         handleUpdateStatus(viewingOrder.id, val);
                       }
                     }}
-                    className="text-xs bg-gray-900 border border-gray-800 text-white rounded p-1.5 flex-grow font-semibold focus:outline-none cursor-pointer disabled:opacity-50"
+                    className={`text-xs bg-transparent flex-grow font-extrabold outline-none text-right cursor-pointer disabled:opacity-50 ${
+                      getEffectiveOrderStatus(viewingOrder) === 'delivered' ? 'text-emerald-400' :
+                      getEffectiveOrderStatus(viewingOrder) === 'processing' ? 'text-sky-400' :
+                      getEffectiveOrderStatus(viewingOrder) === 'shipped' ? 'text-purple-400' :
+                      getEffectiveOrderStatus(viewingOrder) === 'cancelled' ? 'text-red-400' :
+                      'text-amber-400'
+                    }`}
                   >
-                    <option value="pending">Nuevo Pedido</option>
-                    <option value="confirmed">Confirmar (Propio)</option>
-                    <option value="preparing">En Preparación</option>
-                    <option value="ready">Listo para Recoger</option>
-                    <option value="picked_up">Recogido</option>
-                    <option value="delivering">En Camino</option>
-                    <option value="delivered">Entregado</option>
-                    <option value="cancelled">Cancelar</option>
+                    <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                    <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                    <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Enviado</option>
+                    <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                    <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                   </select>
                 )}
               </div>
@@ -7300,9 +7356,10 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           onChange={(e) => setNewOrderStatus(e.target.value as any)}
                           className="w-full bg-gray-900 border border-gray-800 focus:border-amber-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition font-bold"
                         >
-                          <option value="pending">Pendiente ⏳</option>
-                          <option value="processing">En Cocina / Preparando 📦</option>
-                          <option value="delivered">Entregado en Mesa ✅</option>
+                          <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                          <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                          <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                          <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                         </select>
                       </div>
                     </div>
@@ -7399,11 +7456,11 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                           onChange={(e) => setNewOrderStatus(e.target.value as any)}
                           className="w-full bg-gray-900 border border-gray-800 focus:border-emerald-500 rounded-xl px-3 py-2 text-xs text-white focus:outline-none transition font-bold"
                         >
-                          <option value="pending">Pendiente ⏳</option>
-                          <option value="processing">Procesando 📦</option>
-                          <option value="shipped">Despachado 🚚</option>
-                          <option value="delivered">Entregado ✅</option>
-                          <option value="cancelled">Cancelado 🚫</option>
+                          <option value="pending" className="bg-gray-950 text-amber-400 font-bold">Pendiente</option>
+                          <option value="processing" className="bg-gray-950 text-sky-400 font-bold">Procesando</option>
+                          <option value="shipped" className="bg-gray-950 text-purple-400 font-bold">Enviado</option>
+                          <option value="delivered" className="bg-gray-950 text-emerald-400 font-bold">Entregado</option>
+                          <option value="cancelled" className="bg-gray-950 text-red-400 font-bold">Cancelado</option>
                         </select>
                       </div>
                     </div>
@@ -7679,7 +7736,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
           <button
             type="submit"
             form={activeTab === 'restaurant' ? "restaurant-profile-form" : "store-profile-form"}
-            className="w-full py-3 bg-gradient-to-r from-emerald-400 via-emerald-450 to-emerald-500 hover:from-emerald-300 hover:to-emerald-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+            className="w-full py-3 bg-emerald-500 hover:bg-emerald-450 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
           >
             <Save className="w-4 h-4 stroke-[2.5]" /> {activeTab === 'restaurant' ? 'Guardar Datos del Restaurante' : 'Guardar Cambios de Tienda'}
           </button>
@@ -7995,7 +8052,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsAdminVoiceAssistantOpen(true)}
-        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 w-12 h-12 bg-gradient-to-tr from-indigo-600 via-purple-600 to-indigo-500 hover:from-indigo-500 hover:to-purple-400 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition"
+        className="fixed bottom-20 left-4 md:bottom-6 md:left-6 z-40 w-12 h-12 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full flex items-center justify-center shadow-xl shadow-indigo-900/60 border border-indigo-400/40 cursor-pointer backdrop-blur-md transition"
         title="Asesor IA (Solo Vendedor)"
       >
         <Bot className="w-5 h-5 text-white" />

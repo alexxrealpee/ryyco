@@ -432,7 +432,7 @@ export const BasicPlanTrialModal: React.FC<BasicPlanTrialModalProps> = ({
                     id="upload-receipt-now-btn"
                     type="button"
                     onClick={() => setShowDirectUpload(true)}
-                    className="w-full bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-black font-black text-xs py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 transition active:scale-[0.98] flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
+                    className="w-full bg-amber-500 hover:bg-amber-400 text-black font-black text-xs py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/20 transition active:scale-[0.98] flex items-center justify-center gap-2 uppercase tracking-wider cursor-pointer"
                   >
                     <UploadCloud className="w-4 h-4 stroke-[2.5]" />
                     <span>Realizar Pago y Subir Comprobante</span>

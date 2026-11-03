@@ -927,7 +927,7 @@ export default function DeliveryTrackingModal({
                 <button
                   type="button"
                   onClick={() => setIsRatingModalOpen(true)}
-                  className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 active:scale-95 text-gray-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                  className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 active:scale-95 text-gray-950 rounded-xl text-xs font-black shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition cursor-pointer shrink-0"
                 >
                   <Star className="w-3.5 h-3.5 fill-gray-950" />
                   <span>Calificar</span>
@@ -986,7 +986,7 @@ export default function DeliveryTrackingModal({
                   <>
                     <a
                       href={`tel:${driverPhone}`}
-                      className="flex-1 sm:flex-initial h-10 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-95 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition"
+                      className="flex-1 sm:flex-initial h-10 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition"
                     >
                       <Phone className="w-3.5 h-3.5 fill-current" />
                       <span>Llamar</span>

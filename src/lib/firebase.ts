@@ -48,7 +48,7 @@ import {
   onSnapshot,
   runTransaction
 } from 'firebase/firestore';
-import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, OrderStatus, OrderStatusHistoryItem, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData, RyycoMovement } from '../types';
+import { UserProfile, LinkItem, CustomTheme, SocialLinks, PageViewAnalytic, ClickAnalytic, LeadItem, ProductItem, OrderItem, OrderStatus, OrderStatusHistoryItem, OrderEventualityReport, OrderReassignmentRecord, SubscriptionPayment, DriverProfile, DriverStatus, DriverRating, SystemSettings, CreatorReferral, ReferralCommission, CustomerProfile, CustomerPrize, RedeemableFoodReward, PrizeCategory, StoreRecommendation, StoreRecommendationStats, ProductRecommendation, ProductRecommendationStats, WeeklySchedule, DeliveryTrackingData, RyycoMovement } from '../types';
 import { createDeliveryTrackingService } from './deliveryTrackingService';
 import { safeSetItem } from './safeStorage';
 import { extractCoordinates } from './coordinateUtils';
@@ -2652,10 +2652,14 @@ export async function fetchAdminStats() {
 // Fetch billing proof payments for a merchant
 export async function fetchMySubscriptionPayments(userId: string): Promise<SubscriptionPayment[]> {
   const result: SubscriptionPayment[] = [];
+  if (!userId || typeof userId !== 'string' || !userId.trim()) {
+    return result;
+  }
+
   try {
     const q = query(
       collection(db, 'subscription_payments'),
-      where('userId', '==', userId)
+      where('userId', '==', userId.trim())
     );
     const snapshot = await getDocs(q);
     snapshot.forEach(document => {
@@ -2663,8 +2667,8 @@ export async function fetchMySubscriptionPayments(userId: string): Promise<Subsc
     });
     // Sort in-memory to prevent missing composite index errors
     result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  } catch (e) {
-    console.error("Error fetching my payments from Firestore", e);
+  } catch (e: any) {
+    console.warn("Could not fetch my payments from Firestore, falling back to local cache:", e?.message || e);
   }
 
   // Dual sync / Fallback to local storage
@@ -4783,6 +4787,258 @@ export async function acceptDeliveryOrderTransaction(orderId: string, driver: Dr
 }
 
 /**
+ * Report an eventuality / issue with an assigned order by the delivery driver
+ */
+export async function reportOrderEventuality(
+  orderId: string, 
+  report: OrderEventualityReport
+): Promise<void> {
+  const orderRef = doc(db, 'orders', orderId);
+  const now = new Date().toISOString();
+
+  // Create status history log
+  const historyItem: OrderStatusHistoryItem = {
+    status: 'processing',
+    timestamp: now,
+    note: `⚠️ Solicitud de eventualidad por domiciliario: ${report.reason}. ${report.description ? `Detalles: "${report.description}"` : ''}`,
+    updatedBy: 'driver',
+    driverId: report.driverId,
+    userRole: 'driver'
+  };
+
+  try {
+    const snap = await getDoc(orderRef);
+    if (snap.exists()) {
+      const orderData = snap.data() as OrderItem;
+      const currentHistory = Array.isArray(orderData.orderStatusHistory) 
+        ? [...orderData.orderStatusHistory, historyItem] 
+        : [historyItem];
+
+      await updateDoc(orderRef, {
+        eventualityReport: report,
+        orderStatusHistory: currentHistory,
+        statusHistory: currentHistory
+      });
+    } else {
+      await updateDoc(orderRef, {
+        eventualityReport: report
+      });
+    }
+  } catch (err) {
+    console.warn("Could not update doc in firestore for eventuality report:", err);
+    try {
+      await updateDoc(orderRef, {
+        eventualityReport: report
+      });
+    } catch (e) {
+      console.error("Error setting eventuality report:", e);
+    }
+  }
+
+  // Local storage backup sync
+  try {
+    const allKey = 'linnk_orders_all';
+    const allOrders = JSON.parse(localStorage.getItem(allKey) || '[]');
+    const idxAll = allOrders.findIndex((o: any) => o.id === orderId);
+    if (idxAll > -1) {
+      allOrders[idxAll] = {
+        ...allOrders[idxAll],
+        eventualityReport: report
+      };
+      localStorage.setItem(allKey, JSON.stringify(allOrders));
+      const sKey = `linnk_orders_${allOrders[idxAll].storeOwnerId}`;
+      const sOrders = JSON.parse(localStorage.getItem(sKey) || '[]');
+      const sIdx = sOrders.findIndex((o: any) => o.id === orderId);
+      if (sIdx > -1) {
+        sOrders[sIdx] = { ...sOrders[sIdx], eventualityReport: report };
+        localStorage.setItem(sKey, JSON.stringify(sOrders));
+      }
+    }
+  } catch (e) {}
+}
+
+/**
+ * Atomic Firestore Transaction for General Administration to release a delivery driver
+ * and reassign the order back to available pending orders for other drivers.
+ * 
+ * Guarantees:
+ * 1. Checks if food was picked up; requires foodRecoveryCoordinated if stage >= 'picked_up'.
+ * 2. Unbinds driver info (deliveryDriverId, driverId, deliveryDriverName, etc.).
+ * 3. Resets status to 'pending' and deliveryStep to empty.
+ * 4. Preserves all order products, total amount, customer address, store coords, delivery fee, and notes.
+ * 5. Appends record to reassignmentHistory and orderStatusHistory.
+ * 6. Marks eventualityReport as resolved.
+ */
+export async function releaseDriverAndReassignOrderTransaction(
+  orderId: string,
+  adminEmail: string,
+  releaseDetails: {
+    reason: string;
+    description?: string;
+    foodRecoveryCoordinated?: boolean;
+  }
+): Promise<{ success: boolean; message: string }> {
+  const orderRef = doc(db, 'orders', orderId);
+  const now = new Date().toISOString();
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const orderDoc = await transaction.get(orderRef);
+      if (!orderDoc.exists()) {
+        throw new Error("El pedido ya no existe en el sistema.");
+      }
+
+      const orderData = orderDoc.data() as OrderItem;
+
+      if (orderData.status === 'delivered') {
+        return {
+          success: false,
+          message: "El pedido ya fue marcado como entregado y no puede ser reasignado."
+        };
+      }
+
+      if (orderData.status === 'cancelled') {
+        return {
+          success: false,
+          message: "El pedido se encuentra cancelado."
+        };
+      }
+
+      // Check if food was already picked up from restaurant
+      const isFoodPickedUp = orderData.status === 'shipped' ||
+        orderData.status === 'delivering' ||
+        orderData.deliveryStep === 'picked_up' ||
+        orderData.deliveryStep === 'to_client' ||
+        orderData.deliveryStep === 'at_destination';
+
+      if (isFoodPickedUp && !releaseDetails.foodRecoveryCoordinated) {
+        return {
+          success: false,
+          message: "El domiciliario ya recogió los productos del restaurante. Debes coordinar y confirmar la recuperación física de los productos antes de reasignar el pedido."
+        };
+      }
+
+      const prevDriverId = orderData.deliveryDriverId || orderData.driverId || '';
+      const prevDriverName = orderData.deliveryDriverName || 'Domiciliario no especificado';
+      const prevDriverPhone = orderData.deliveryDriverPhone || '';
+      const stageAtRelease = orderData.deliveryStep || 'accepted';
+
+      // Build reassignment record
+      const reassignmentRecord: OrderReassignmentRecord = {
+        id: `reassign_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        previousDriverId: prevDriverId,
+        previousDriverName: prevDriverName,
+        previousDriverPhone: prevDriverPhone,
+        reason: releaseDetails.reason,
+        description: releaseDetails.description || '',
+        authorizedBy: adminEmail,
+        timestamp: now,
+        stageAtRelease,
+        foodRecoveryCoordinated: Boolean(releaseDetails.foodRecoveryCoordinated)
+      };
+
+      const existingHistory: OrderReassignmentRecord[] = Array.isArray(orderData.reassignmentHistory)
+        ? [...orderData.reassignmentHistory, reassignmentRecord]
+        : [reassignmentRecord];
+
+      // Build history item
+      const historyItem: OrderStatusHistoryItem = {
+        status: 'pending',
+        timestamp: now,
+        note: `Liberación y reasignación autorizada por administración (${adminEmail}). Repartidor anterior: ${prevDriverName}. Motivo: ${releaseDetails.reason}. El pedido vuelve a estar disponible.`,
+        updatedBy: 'admin',
+        userId: adminEmail,
+        userRole: 'admin'
+      };
+
+      const currentStatusHistory = Array.isArray(orderData.orderStatusHistory)
+        ? [...orderData.orderStatusHistory, historyItem]
+        : [historyItem];
+
+      // Resolved eventuality report if present
+      const updatedEventuality = orderData.eventualityReport
+        ? {
+            ...orderData.eventualityReport,
+            resolved: true,
+            resolvedAt: now,
+            resolvedBy: adminEmail
+          }
+        : undefined;
+
+      const resetUpdates: any = {
+        status: 'pending',
+        deliveryType: 'ryyco',
+        deliveryDriverId: '',
+        driverId: '',
+        deliveryDriverName: '',
+        deliveryDriverPhone: '',
+        deliveryDriverPhoto: '',
+        deliveryVehicle: '',
+        deliveryVehiclePlate: '',
+        deliveryStep: deleteField(),
+        deliveryStepUpdatedAt: '',
+        restaurantPaymentStatus: 'unconfirmed',
+        customerCodConfirmed: false,
+        driverPaidToRestaurant: false,
+        driverPaidAmount: 0,
+        driverPaidAt: '',
+        reassignmentHistory: existingHistory,
+        orderStatusHistory: currentStatusHistory,
+        statusHistory: currentStatusHistory
+      };
+
+      if (updatedEventuality) {
+        resetUpdates.eventualityReport = updatedEventuality;
+      }
+
+      transaction.update(orderRef, resetUpdates);
+
+      // Local storage backup sync
+      try {
+        const storeKey = `linnk_orders_${orderData.storeOwnerId}`;
+        const storeOrders = JSON.parse(localStorage.getItem(storeKey) || '[]');
+        const idx = storeOrders.findIndex((o: any) => o.id === orderId);
+        if (idx > -1) {
+          storeOrders[idx] = {
+            ...storeOrders[idx],
+            ...resetUpdates,
+            deliveryStep: undefined
+          };
+          localStorage.setItem(storeKey, JSON.stringify(storeOrders));
+        }
+
+        const allKey = 'linnk_orders_all';
+        const allOrders = JSON.parse(localStorage.getItem(allKey) || '[]');
+        const idxAll = allOrders.findIndex((o: any) => o.id === orderId);
+        if (idxAll > -1) {
+          allOrders[idxAll] = {
+            ...allOrders[idxAll],
+            ...resetUpdates,
+            deliveryStep: undefined
+          };
+          localStorage.setItem(allKey, JSON.stringify(allOrders));
+        }
+      } catch (e) {}
+
+      return {
+        success: true,
+        message: `El pedido #${orderData.orderNumber || ''} fue liberado con éxito y ya está disponible en tiempo real para otros domiciliarios.`
+      };
+    });
+
+    return result;
+  } catch (err: any) {
+    console.error("Error in releaseDriverAndReassignOrderTransaction:", err);
+    return {
+      success: false,
+      message: err?.message || "Ocurrió un error al intentar liberar y reasignar el pedido."
+    };
+  }
+}
+
+
+
+/**
  * Progress order delivery step (accepted -> to_store -> at_store -> picked_up -> to_client -> at_destination -> delivered)
  */
 export async function updateOrderDeliveryStep(
@@ -4837,7 +5093,23 @@ export async function updateOrderDeliveryStep(
       throw new Error("Debes solicitar el código de 4 dígitos al cliente para confirmar la entrega del pedido.");
     }
 
-    // Build comprehensive set of valid verification codes for this order
+    // Explicitly reject order number if driver attempts to use it as PIN
+    const orderNumStr = currentOrder.orderNumber ? String(currentOrder.orderNumber).trim() : '';
+    const orderNumPadded = orderNumStr ? orderNumStr.padStart(4, '0').slice(-4) : '';
+    if (orderNumStr && (cleanedProvided === orderNumStr || cleanedProvided === orderNumPadded)) {
+      throw new Error(`El número de pedido #${orderNumStr} NO es el código de entrega. Solo puedes finalizar y liberar la entrega con el código PIN de 4 dígitos proporcionado por el cliente.`);
+    }
+
+    // Explicitly reject customer phone if driver attempts to use it as PIN
+    if (currentOrder.customerPhone) {
+      const cleanPhone = currentOrder.customerPhone.replace(/\D/g, '');
+      if (cleanPhone.length >= 4 && cleanedProvided === cleanPhone.slice(-4)) {
+        throw new Error("El número telefónico NO es el código de entrega. Solo puedes confirmar la entrega con el código PIN de 4 dígitos que el cliente ve en su pantalla.");
+      }
+    }
+
+    // Build strict set of valid verification codes for this order
+    // ONLY the genuine PIN code delivered to the customer is accepted!
     const validCodes = new Set<string>();
 
     if (expectedDeliveryCode) {
@@ -4848,35 +5120,13 @@ export async function updateOrderDeliveryStep(
       validCodes.add(String(currentOrder.deliveryCode).trim());
     }
 
-    if (currentOrder.orderNumber && Number(currentOrder.orderNumber) > 0) {
-      const seed = Math.abs(Number(currentOrder.orderNumber) * 37 + 1013);
-      validCodes.add((1000 + (seed % 9000)).toString());
-      validCodes.add(String(currentOrder.orderNumber).padStart(4, '0').slice(-4));
-    }
-
-    if (orderId) {
-      let hash = 0;
-      for (let i = 0; i < orderId.length; i++) {
-        hash = (hash * 31 + orderId.charCodeAt(i)) % 9000;
-      }
-      validCodes.add((1000 + hash).toString());
-    }
-
-    if (currentOrder.customerPhone) {
-      const cleanPhone = currentOrder.customerPhone.replace(/\D/g, '');
-      if (cleanPhone.length >= 4) {
-        validCodes.add(cleanPhone.slice(-4));
-      }
-    }
-
-    // Demo/QA master test bypass code for demo driver or test orders
-    if (driverId === 'driver_demo' || driverId?.includes('demo')) {
+    // Demo/QA master test bypass code ONLY for official demo driver accounts
+    if (driverId === 'driver_demo' || driverId === 'demo_driver') {
       validCodes.add('0000');
-      validCodes.add('1234');
     }
 
     if (!validCodes.has(cleanedProvided)) {
-      throw new Error("Código de entrega incorrecto. Verifica el código de 4 dígitos con el cliente.");
+      throw new Error("Código de entrega incorrecto. Solo el cliente tiene el código PIN de 4 dígitos para confirmar la entrega.");
     }
   }
 

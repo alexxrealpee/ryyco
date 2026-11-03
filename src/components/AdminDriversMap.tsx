@@ -93,7 +93,7 @@ function resolveStoreMapCoordinates(store: UserProfile, index: number): { lat: n
 }
 
 function buildDriverMarkerHtml(driver: DriverProfile, pos: PresenceRecord, isFollowed: boolean): string {
-  const fullName = ([driver.firstName, driver.lastName].filter(Boolean).join(' ') || driver.name || 'Domiciliario').trim();
+  const fullName = ([driver.firstName, driver.lastName].filter(Boolean).join(' ') || (driver as any).name || 'Domiciliario').trim();
   const shortName = fullName.split(/\s+/).slice(0, 2).join(' ');
   const emoji = getVehicleEmoji(driver.vehicleType);
   const speedKmh = typeof pos.speed === 'number' && Number.isFinite(pos.speed) && pos.speed >= 1 ? Math.round(pos.speed) : null;
@@ -176,7 +176,8 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   // Merge real-time positions from both driver_presence and active delivery_tracking (picking the freshest fix)
   const positions = useMemo<Record<string, PresenceRecord>>(() => {
     const merged: Record<string, PresenceRecord> = { ...presenceMap };
-    Object.entries(deliveryMap).forEach(([driverId, trackPos]) => {
+    Object.entries(deliveryMap).forEach(([driverId, trackPosRaw]) => {
+      const trackPos = trackPosRaw as any;
       const existing = merged[driverId];
       if (!existing || (trackPos.gpsTimestamp || 0) >= (existing.gpsTimestamp || 0)) {
         merged[driverId] = {

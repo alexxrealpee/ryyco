@@ -1228,7 +1228,7 @@ export default function AdminCustomersRanking({
             <button
               onClick={handleSendNextPendingCustomer}
               disabled={summaryStats.welcomePendingCount === 0}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-emerald-700/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-emerald-700/30 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-[0.98]"
               title="Abrir WhatsApp con el siguiente cliente pendiente de la lista"
             >
               <Send className="w-3.5 h-3.5" />
@@ -1718,7 +1718,7 @@ export default function AdminCustomersRanking({
                           ) : (
                             <button
                               onClick={(e) => handleSendWelcomeMessage(customer, e)}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition shadow-md shadow-emerald-700/30 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-700/30 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                               title="Enviar mensaje oficial de bienvenida por WhatsApp y marcar como En Visto ✓✓"
                             >
                               <Send className="w-3.5 h-3.5" />
@@ -1878,7 +1878,7 @@ export default function AdminCustomersRanking({
                               <button
                                 type="button"
                                 onClick={(e) => handleSendWelcomeMessage(customer, e)}
-                                className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition shadow-md shadow-emerald-700/30 flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-700/30 flex items-center gap-1.5 cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                               >
                                 <Send className="w-3.5 h-3.5" />
                                 <span>Enviar Bienvenida a WhatsApp</span>
@@ -2364,7 +2364,7 @@ export default function AdminCustomersRanking({
             <div className="space-y-2 pt-1">
               <button
                 onClick={() => handleSendWelcomeMessage(confirmResendCustomer)}
-                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-emerald-700/30 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-emerald-700/30 cursor-pointer"
               >
                 <Send className="w-4 h-4" />
                 <span>Reenviar Mensaje de Bienvenida de todos modos</span>

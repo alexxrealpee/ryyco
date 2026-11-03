@@ -640,7 +640,7 @@ export default function AdminProductImagesOptimizer({
               type="button"
               onClick={handleStartBatchOptimization}
               disabled={isBatchOptimizing || kpis.unoptimizedCount === 0}
-              className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-950/40 transition cursor-pointer flex items-center gap-2 disabled:opacity-50 active:scale-95"
+              className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-950/40 transition cursor-pointer flex items-center gap-2 disabled:opacity-50 active:scale-95"
               title="Optimizar todas las imágenes pesadas de una sola vez"
             >
               <Zap className="w-4 h-4 fill-white" />

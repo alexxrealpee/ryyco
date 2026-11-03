@@ -2249,7 +2249,7 @@ export default function AdminStoresManager({
                   <button
                     type="button"
                     onClick={() => setIsMapPickerOpen(true)}
-                    className="w-full py-2.5 px-3.5 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-sky-500/20 hover:from-emerald-500/30 hover:to-sky-500/30 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 hover:text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                    className="w-full py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all shadow-md active:scale-[0.98] cursor-pointer"
                     title="Abrir mapa interactivo para seleccionar la ubicación exacta del restaurante"
                   >
                     <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -2601,7 +2601,7 @@ export default function AdminStoresManager({
                   type="button"
                   onClick={handleSavePlanChange}
                   disabled={savingPlanChange || isSamePlan}
-                  className="flex-1 py-3 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95"
+                  className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95"
                 >
                   {savingPlanChange ? (
                     <>

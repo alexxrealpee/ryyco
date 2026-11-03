@@ -310,7 +310,7 @@ export default function CustomerOrderAuthPromptModal({
           <div className="p-6 sm:p-8 flex flex-col items-center justify-center text-center space-y-6 animate-fade-in my-auto">
             {/* Ambient Background Glow & Avatar */}
             <div className="relative">
-              <div className="absolute -inset-4 rounded-full bg-gradient-to-tr from-blue-500/20 via-emerald-500/20 to-amber-500/20 blur-lg animate-pulse" />
+              <div className="absolute -inset-4 rounded-full bg-blue-500/10 blur-lg" />
               
               <div className="relative w-20 h-20 rounded-full bg-[#1A2234] border-2 border-emerald-500/40 p-1 flex items-center justify-center shadow-xl">
                 {googleUserDetails?.avatarUrl ? (
@@ -321,7 +321,7 @@ export default function CustomerOrderAuthPromptModal({
                     className="w-full h-full rounded-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-black text-2xl">
+                  <div className="w-full h-full rounded-full bg-blue-600 flex items-center justify-center text-white font-black text-2xl">
                     {(googleUserDetails?.name || displayName || 'U').charAt(0).toUpperCase()}
                   </div>
                 )}
@@ -390,7 +390,7 @@ export default function CustomerOrderAuthPromptModal({
                 className={`h-full rounded-full transition-all duration-700 ${
                   googleAuthStage === 'profile_ready'
                     ? 'w-full bg-emerald-500'
-                    : 'w-3/4 bg-gradient-to-r from-blue-500 via-amber-400 to-emerald-400 animate-pulse'
+                    : 'w-3/4 bg-blue-500 animate-pulse'
                 }`} 
               />
             </div>
@@ -414,7 +414,7 @@ export default function CustomerOrderAuthPromptModal({
                 </p>
               </div>
             ) : isAndroid ? (
-              <div className="bg-gradient-to-r from-emerald-500/15 via-blue-500/15 to-emerald-500/15 border border-emerald-500/40 rounded-2xl p-3 text-emerald-300 space-y-1">
+              <div className="bg-emerald-500/15 border border-emerald-500/40 rounded-2xl p-3 text-emerald-300 space-y-1">
                 <div className="flex items-center gap-1.5 font-black text-[11px]">
                   <Sparkles className="w-4 h-4 text-emerald-400" />
                   <span>¡Crea tu cuenta para rastrear tu pedido en vivo! 📦</span>
@@ -424,7 +424,7 @@ export default function CustomerOrderAuthPromptModal({
                 </p>
               </div>
             ) : (
-              <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border border-amber-500/40 rounded-2xl p-3 text-amber-300 space-y-1">
+              <div className="bg-amber-500/15 border border-amber-500/40 rounded-2xl p-3 text-amber-300 space-y-1">
                 <div className="flex items-center gap-1.5 font-black text-[11px]">
                   <Sparkles className="w-4 h-4 text-amber-400 animate-bounce" />
                   <span>¡Gana 500 Puntos Ryycos ($500 COP) y 1 Giro Gratis! 🎁</span>

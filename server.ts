@@ -150,7 +150,9 @@ function getOpenAIClient(): OpenAI | null {
 async function startServer() {
   const app = express();
   // Port 3000 is required: Nginx listens on 8080 and proxies traffic to localhost:3000
-  const PORT = (process.env.PORT && process.env.PORT !== '8080') ? Number(process.env.PORT) : 3000;
+  const portArgIndex = process.argv.indexOf('--port');
+  const portArg = portArgIndex !== -1 ? Number(process.argv[portArgIndex + 1]) : null;
+  const PORT = portArg || ((process.env.PORT && process.env.PORT !== '8080') ? Number(process.env.PORT) : 3000);
   void startOrderPush();
   app.get('/api/push/status', (_req, res) => res.json(getOrderPushStatus()));
 

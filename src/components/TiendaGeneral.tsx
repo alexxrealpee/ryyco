@@ -1655,7 +1655,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           setCustomerPortalTab('rewards');
                           setIsCustomerPortalOpen(true);
                         }}
-                        className="w-full text-left p-2.5 rounded-xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/20 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
+                        className="w-full text-left p-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
                       >
                         <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
                           <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
@@ -1886,7 +1886,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <button 
                 id="navbar-my-points-btn"
                 onClick={() => { setCustomerPortalTab('rewards'); setIsCustomerPortalOpen(true); }}
-                className="hidden sm:flex px-3 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-orange-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+                className="hidden sm:flex px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 font-extrabold text-xs items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
                 title="Mis Puntos Ryycos acumulados, Billetera y Transferencias"
               >
                 <Crown className="w-3.5 h-3.5 text-amber-400 animate-pulse" />

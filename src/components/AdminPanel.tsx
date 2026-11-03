@@ -32,7 +32,8 @@ import {
   isSubscriptionExpiredOrSuspended,
   getPlanProductLimit,
   getPlanDrinkLimit,
-  getOrderDeliveryCode
+  getOrderDeliveryCode,
+  releaseDriverAndReassignOrderTransaction
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
 const AdminDriversMap = React.lazy(() => import('./AdminDriversMap'));
@@ -46,7 +47,7 @@ import AdminProductImagesOptimizer from './AdminProductImagesOptimizer';
 import OrderTimeTimeline from './OrderTimeTimeline';
 import { getActiveOrderElapsed, applyOrderTimeTransition } from '../lib/orderTimeTracking';
 import { checkIsTableOrder, checkIsPickupOrder } from '../lib/orderTypeUtils';
-import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile } from '../types';
+import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile, OrderReassignmentRecord } from '../types';
 import { subscribeToActiveDrivers } from '../lib/whatsappDriverNotifications';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 import { 
@@ -459,6 +460,98 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
   const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
   usePushOrderNavigation('admin', allOrders, setViewingOrder, () => handleSwitchTab('orders'));
+
+  // Eventualities & Driver Reassignment State in Admin Panel
+  const [reassigningOrder, setReassigningOrder] = useState<OrderItem | null>(null);
+  const [reassignReason, setReassignReason] = useState<string>('Llanta pinchada');
+  const [reassignDescription, setReassignDescription] = useState<string>('');
+  const [reassignFoodConfirmed, setReassignFoodConfirmed] = useState<boolean>(false);
+  const [isSubmittingReassignment, setIsSubmittingReassignment] = useState<boolean>(false);
+  const [reassignSuccessMsg, setReassignSuccessMsg] = useState<string>('');
+
+  const handleOpenReassignModal = (order: OrderItem) => {
+    setReassigningOrder(order);
+    if (order.eventualityReport && !order.eventualityReport.resolved) {
+      setReassignReason(order.eventualityReport.reason || 'Llanta pinchada');
+      setReassignDescription(order.eventualityReport.description || '');
+    } else {
+      setReassignReason('Llanta pinchada');
+      setReassignDescription('');
+    }
+    setReassignFoodConfirmed(false);
+    setReassignSuccessMsg('');
+  };
+
+  const handleConfirmReassignOrder = async () => {
+    if (!reassigningOrder) return;
+    setIsSubmittingReassignment(true);
+    setReassignSuccessMsg('');
+    try {
+      const adminEmail = systemSettings?.adminEmails?.[0] || PRIMARY_ADMIN_EMAIL || 'admin@ryyco.com';
+      const res = await releaseDriverAndReassignOrderTransaction(reassigningOrder.id, adminEmail, {
+        reason: reassignReason,
+        description: reassignDescription.trim(),
+        foodRecoveryCoordinated: reassignFoodConfirmed
+      });
+
+      if (!res.success) {
+        alert(res.message);
+        return;
+      }
+
+      setReassignSuccessMsg(res.message);
+
+      // Local state sync
+      setAllOrders(prev => prev.map(o => {
+        if (o.id !== reassigningOrder.id) return o;
+        return {
+          ...o,
+          status: 'pending',
+          deliveryDriverId: '',
+          driverId: '',
+          deliveryDriverName: '',
+          deliveryDriverPhone: '',
+          deliveryDriverPhoto: '',
+          deliveryVehicle: '',
+          deliveryVehiclePlate: '',
+          deliveryStep: undefined,
+          deliveryStepUpdatedAt: '',
+          eventualityReport: o.eventualityReport ? {
+            ...o.eventualityReport,
+            resolved: true,
+            resolvedAt: new Date().toISOString(),
+            resolvedBy: adminEmail
+          } : undefined
+        };
+      }));
+
+      if (viewingOrder && viewingOrder.id === reassigningOrder.id) {
+        setViewingOrder(prev => prev ? {
+          ...prev,
+          status: 'pending',
+          deliveryDriverId: '',
+          driverId: '',
+          deliveryDriverName: '',
+          deliveryDriverPhone: '',
+          deliveryDriverPhoto: '',
+          deliveryVehicle: '',
+          deliveryVehiclePlate: '',
+          deliveryStep: undefined,
+          deliveryStepUpdatedAt: '',
+          eventualityReport: prev.eventualityReport ? {
+            ...prev.eventualityReport,
+            resolved: true,
+            resolvedAt: new Date().toISOString(),
+            resolvedBy: adminEmail
+          } : undefined
+        } : null);
+      }
+    } catch (err: any) {
+      alert("Error al liberar pedido: " + (err.message || 'Error desconocido'));
+    } finally {
+      setIsSubmittingReassignment(false);
+    }
+  };
 
   // Orders progressive display pagination state (initial batch of 6)
   const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(6);
@@ -2594,7 +2687,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     onClick={() => handleSwitchTab('stores')}
                     className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'stores' 
-                        ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-lg shadow-pink-600/30 font-extrabold' 
+                        ? 'bg-rose-600 text-white shadow-lg shadow-pink-600/30 font-extrabold' 
                         : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
                     }`}
                   >
@@ -4064,7 +4157,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     type="button"
                     onClick={requestPushPermission}
                     disabled={isRequestingFCM}
-                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-orange-500/20 hover:from-amber-500/30 hover:to-orange-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-50"
                     title="Activar notificaciones PUSH con Firebase Cloud Messaging (FCM) para pedidos generales"
                   >
                     <Bell className={`w-3.5 h-3.5 text-amber-400 ${isRequestingFCM ? 'animate-spin' : 'animate-pulse'}`} />
@@ -4751,6 +4844,25 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               )}
                             </div>
                           )}
+
+                          {/* Eventuality Report Alert Banner in Mobile Card */}
+                          {order.eventualityReport && !order.eventualityReport.resolved && (
+                            <div className="mt-2 p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-200 text-xs space-y-1 animate-pulse">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="font-black text-amber-300 flex items-center gap-1.5 text-[11px]">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  🚨 Eventualidad Reportada
+                                </span>
+                                <span className="text-[9.5px] font-mono text-amber-300">
+                                  {new Date(order.eventualityReport.reportedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                </span>
+                              </div>
+                              <p className="text-[11px] leading-tight text-white">
+                                <strong>Motivo:</strong> {order.eventualityReport.reason}
+                                {order.eventualityReport.description ? ` (${order.eventualityReport.description})` : ''}
+                              </p>
+                            </div>
+                          )}
                         </div>
 
                         {/* Total Row */}
@@ -4812,11 +4924,28 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <MessageCircle className="w-4 h-4 text-emerald-400" />
                             <span>WhatsApp Cliente</span>
                           </button>
+
+                          {/* Release driver and reassign order button */}
+                          {Boolean(order.deliveryDriverId || order.driverId) && order.status !== 'delivered' && order.status !== 'cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReassignModal(order)}
+                              className={`col-span-2 py-2.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition active:scale-98 shadow-sm cursor-pointer border ${
+                                order.eventualityReport && !order.eventualityReport.resolved
+                                  ? 'bg-amber-500/25 hover:bg-amber-500/35 text-amber-200 border-amber-500/50 animate-pulse'
+                                  : 'bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border-amber-700/40'
+                              }`}
+                            >
+                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                              <span>Liberar Domiciliario y Reasignar Pedido</span>
+                            </button>
+                          )}
+
                           {!checkIsTableOrder(order) && !checkIsPickupOrder(order) && effectiveStatus === 'pending' && (
                             <button
                               type="button"
                               onClick={() => setWhatsAppDispatchOrder(order)}
-                              className="col-span-2 py-2 px-3 bg-gradient-to-r from-emerald-950/90 to-emerald-900/90 hover:from-emerald-900 hover:to-emerald-800 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-emerald-500/40 transition active:scale-98 shadow-sm cursor-pointer"
+                              className="col-span-2 py-2 px-3 bg-emerald-900 hover:bg-emerald-800 text-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-emerald-500/40 transition active:scale-98 shadow-sm cursor-pointer"
                               title="Avisar por WhatsApp a los domiciliarios activos"
                             >
                               <Bike className="w-4 h-4 text-emerald-400" />
@@ -5085,12 +5214,32 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                         <span>{activeElapsed.elapsedFormatted}</span>
                                       </span>
                                     )}
+                                    {order.eventualityReport && !order.eventualityReport.resolved && (
+                                      <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-300 bg-amber-500/20 border border-amber-500/50 rounded px-1.5 py-0.5 animate-pulse mt-0.5" title={`Eventualidad: ${order.eventualityReport.reason}`}>
+                                        <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                                        <span>Eventualidad</span>
+                                      </span>
+                                    )}
                                   </div>
                                 );
                               })()}
                             </td>
                             <td className="py-3.5 px-3 align-top text-right sticky right-0 bg-[#090b14] group-hover:bg-[#0f1424] z-10 border-l border-gray-800/80 shadow-[-4px_0_8px_rgba(0,0,0,0.35)] transition-colors">
                               <div className="flex items-center justify-end gap-1.5">
+                                {hasDriver && !isDeliveredOrCancelled && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenReassignModal(order)}
+                                    className={`p-1.5 rounded-lg border transition inline-flex items-center justify-center cursor-pointer active:scale-95 ${
+                                      order.eventualityReport && !order.eventualityReport.resolved
+                                        ? 'bg-amber-500/25 hover:bg-amber-500 text-amber-300 hover:text-gray-950 border-amber-400 animate-pulse'
+                                        : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/25'
+                                    }`}
+                                    title={order.eventualityReport && !order.eventualityReport.resolved ? `🚨 Eventualidad: ${order.eventualityReport.reason}. Clic para liberar domiciliario y reasignar` : "Liberar domiciliario y reasignar pedido"}
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                                 {!checkIsTableOrder(order) && !checkIsPickupOrder(order) && isPending && (
                                   <button
                                     type="button"
@@ -5413,7 +5562,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       type="button"
                       disabled={exportingCSV}
                       onClick={handleExportLiveCSV}
-                      className="px-4 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer disabled:opacity-50"
                       title="Descargar archivo CSV actualizado con todos los registros actuales de Firebase"
                     >
                       {exportingCSV ? (
@@ -5697,7 +5846,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <button
                     type="submit"
                     disabled={savingSettings}
-                    className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs uppercase tracking-wider rounded-xl transition shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                   >
                     {savingSettings ? (
                       <>
@@ -6119,9 +6268,41 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
                 </div>
 
+                {/* Eventuality Report Alert in Viewing Order Modal */}
+                {viewingOrder.eventualityReport && !viewingOrder.eventualityReport.resolved && (
+                  <div className="p-4 bg-gradient-to-r from-amber-950/70 to-amber-900/50 border-2 border-amber-500/70 rounded-2xl space-y-2.5 text-amber-200 shadow-xl">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+                        🚨 Eventualidad Reportada por el Domiciliario
+                      </span>
+                      <span className="text-[11px] font-mono text-amber-300 font-bold">
+                        {new Date(viewingOrder.eventualityReport.reportedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                      </span>
+                    </div>
+                    <div className="text-xs space-y-1 bg-[#090b14] p-3 rounded-xl border border-amber-500/30">
+                      <p><strong className="text-white">Motivo reportado:</strong> <span className="text-amber-300 font-black">{viewingOrder.eventualityReport.reason}</span></p>
+                      {viewingOrder.eventualityReport.description && (
+                        <p><strong className="text-white">Detalle:</strong> <span className="text-gray-300 italic">"{viewingOrder.eventualityReport.description}"</span></p>
+                      )}
+                      <p className="text-[11px] text-gray-400 pt-0.5">
+                        Repartidor: <strong className="text-gray-200">{viewingOrder.eventualityReport.driverName}</strong> ({viewingOrder.eventualityReport.driverPhone || 'Sin teléfono'})
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenReassignModal(viewingOrder)}
+                      className="w-full py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/25 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Liberar Domiciliario y Reasignar Pedido</span>
+                    </button>
+                  </div>
+                )}
+
                 {/* Delivery Driver Info */}
                 {viewingOrder.deliveryDriverName && (
-                  <div className="p-3.5 bg-emerald-950/30 border border-emerald-800/40 rounded-2xl space-y-1 text-emerald-300">
+                  <div className="p-3.5 bg-emerald-950/30 border border-emerald-800/40 rounded-2xl space-y-2 text-emerald-300">
                     <span className="text-[10px] uppercase font-black tracking-wider text-emerald-400 block">
                       Repartidor Asignado
                     </span>
@@ -6152,6 +6333,44 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     {viewingOrder.deliveryVehicle && (
                       <div className="text-xs text-gray-300">🚘 Vehículo: {viewingOrder.deliveryVehicle} {viewingOrder.deliveryVehiclePlate ? `(${viewingOrder.deliveryVehiclePlate})` : ''}</div>
                     )}
+
+                    {viewingOrder.status !== 'delivered' && viewingOrder.status !== 'cancelled' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReassignModal(viewingOrder)}
+                        className="mt-1 w-full py-2 px-3 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-95"
+                      >
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Liberar domiciliario y reasignar pedido</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Historic Reassignments Log */}
+                {viewingOrder.reassignmentHistory && viewingOrder.reassignmentHistory.length > 0 && (
+                  <div className="p-3.5 bg-gray-900/60 border border-amber-500/25 rounded-2xl space-y-2 text-xs">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-amber-400 flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5 text-amber-400" />
+                      Historial de Reasignaciones ({viewingOrder.reassignmentHistory.length})
+                    </span>
+                    <div className="divide-y divide-gray-800">
+                      {viewingOrder.reassignmentHistory.map((h, i) => (
+                        <div key={h.id || i} className="py-2 space-y-1">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="font-extrabold text-white">Repartidor anterior: {h.previousDriverName}</span>
+                            <span className="text-gray-400 font-mono text-[10px]">{new Date(h.timestamp).toLocaleString('es-CO')}</span>
+                          </div>
+                          <p className="text-amber-200 text-[11.5px]">
+                            <strong>Motivo:</strong> {h.reason} {h.description ? `— "${h.description}"` : ''}
+                          </p>
+                          <div className="flex items-center justify-between text-[10px] text-gray-400 pt-0.5">
+                            <span>Autorizado por: <strong className="text-gray-300">{h.authorizedBy}</strong></span>
+                            <span>{h.foodRecoveryCoordinated ? '✓ Comida coordinada' : 'Liberado en etapa previa'}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 
@@ -6322,7 +6541,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     <button
                       type="button"
                       onClick={() => setWhatsAppDispatchOrder(viewingOrder)}
-                      className="py-2.5 px-3.5 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/40 transition cursor-pointer"
+                      className="py-2.5 px-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-950/40 transition cursor-pointer"
                       title="Avisar a todos los domiciliarios activos por WhatsApp"
                     >
                       <Bike className="w-4 h-4" />
@@ -6372,6 +6591,252 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   referrerPolicy="no-referrer"
                   className="max-h-[70vh] object-contain mx-auto" 
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: LIBERAR DOMICILIARIO Y REASIGNAR PEDIDO */}
+        {reassigningOrder && (
+          <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-gray-950 border-2 border-amber-500/60 rounded-3xl w-full max-w-xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-4 sm:p-5 border-b border-gray-850 bg-gradient-to-r from-gray-950 via-gray-900 to-amber-950/30 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0 shadow-lg shadow-amber-500/10">
+                    <AlertTriangle className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white">
+                      Liberar Domiciliario y Reasignar Pedido
+                    </h3>
+                    <p className="text-xs text-amber-300 font-mono font-bold mt-0.5">
+                      Pedido #{reassigningOrder.orderNumber} • {getStoreNameForOrder(reassigningOrder)}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReassigningOrder(null);
+                    setReassignSuccessMsg('');
+                  }}
+                  className="p-1.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
+                {/* Success feedback and store WhatsApp notify CTA */}
+                {reassignSuccessMsg ? (
+                  <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 space-y-3 animate-fade-in">
+                    <div className="flex items-start gap-2.5">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-black text-white text-sm">¡Liberación Completada con Éxito!</p>
+                        <p className="text-xs text-emerald-300 mt-0.5 leading-relaxed">{reassignSuccessMsg}</p>
+                      </div>
+                    </div>
+
+                    {getStoreWhatsappForOrder(reassigningOrder) && (
+                      <div className="pt-2 border-t border-emerald-500/30">
+                        <a
+                          href={`https://wa.me/${getCleanWhatsappNumber(getStoreWhatsappForOrder(reassigningOrder)!)}?text=${encodeURIComponent(
+                            `Hola *${getStoreNameForOrder(reassigningOrder)}* 👋\n\nTe informamos desde Administración General RYYCO que el pedido *#${reassigningOrder.orderNumber || ''}* ha sido reasignado debido a una eventualidad técnica con el repartidor anterior (*${reassignReason}*).\n\n🔄 El pedido ya está disponible en tiempo real para que otro domiciliario lo tome de inmediato. Los productos y precios se mantienen intactos.`
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>Notificar al Restaurante por WhatsApp</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+
+                {/* Current Driver & Order Stage Card */}
+                <div className="p-3.5 bg-gray-900/80 border border-gray-800 rounded-2xl space-y-2">
+                  <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider block">
+                    Información del Servicio Actual
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-gray-400 text-[10.5px] block">Domiciliario Actual:</span>
+                      <strong className="text-white text-xs block truncate">
+                        {reassigningOrder.deliveryDriverName || reassigningOrder.driverId || 'Asignado'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 text-[10.5px] block">Celular:</span>
+                      <span className="font-mono text-indigo-300 text-xs">
+                        {reassigningOrder.deliveryDriverPhone || 'No registrado'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 text-[10.5px] block">Etapa Actual:</span>
+                      <span className="font-bold text-amber-300 capitalize text-xs">
+                        {reassigningOrder.deliveryStep === 'accepted' ? '1. Pedido Aceptado' :
+                         reassigningOrder.deliveryStep === 'to_store' ? '1. En camino a la tienda' :
+                         reassigningOrder.deliveryStep === 'at_store' ? '1. Esperando en tienda' :
+                         reassigningOrder.deliveryStep === 'picked_up' ? '2. Comida recogida' :
+                         reassigningOrder.deliveryStep === 'to_client' ? '2. En camino al cliente' :
+                         reassigningOrder.deliveryStep === 'at_destination' ? '2. En el cliente' :
+                         reassigningOrder.deliveryStep || reassigningOrder.status}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 text-[10.5px] block">Total del Pedido:</span>
+                      <strong className="text-emerald-400 font-mono text-xs">
+                        ${(reassigningOrder.totalAmount || 0).toLocaleString('es-CO')}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CASO ESPECIAL (SECCIÓN 4): Comida ya recogida de la tienda */}
+                {(() => {
+                  const isFoodPickedUp = Boolean(
+                    reassigningOrder.status === 'shipped' ||
+                    reassigningOrder.status === 'delivering' ||
+                    reassigningOrder.status === 'picked_up' ||
+                    reassigningOrder.deliveryStep === 'picked_up' ||
+                    reassigningOrder.deliveryStep === 'to_client' ||
+                    reassigningOrder.deliveryStep === 'at_destination'
+                  );
+
+                  if (!isFoodPickedUp) return null;
+
+                  return (
+                    <div className="p-4 rounded-2xl bg-rose-950/40 border-2 border-rose-500/60 text-rose-200 space-y-2.5">
+                      <div className="flex items-center gap-2 text-rose-300 font-black text-xs uppercase tracking-wide">
+                        <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                        <span>Caso Especial: Los productos ya fueron recogidos</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-gray-200">
+                        El domiciliario actual ya tiene los productos en su poder. Por control y para evitar pérdidas, Administración General debe coordinar la entrega o recuperación física de los productos con el restaurante antes de reasignar.
+                      </p>
+                      <label className="flex items-start gap-2.5 pt-1.5 cursor-pointer bg-gray-950/60 p-2.5 rounded-xl border border-rose-500/30">
+                        <input
+                          type="checkbox"
+                          checked={reassignFoodConfirmed}
+                          onChange={(e) => setReassignFoodConfirmed(e.target.checked)}
+                          className="mt-0.5 w-4 h-4 text-emerald-500 rounded bg-gray-900 border-gray-700 cursor-pointer shrink-0"
+                        />
+                        <span className="text-[11px] font-bold text-white select-none">
+                          Confirmo que la recuperación o traspaso de los productos ya fue coordinada y autorizo la reasignación del pedido a otro domiciliario.
+                        </span>
+                      </label>
+                    </div>
+                  );
+                })()}
+
+                {/* Reason Selection */}
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-wider text-gray-300 block mb-2">
+                    Motivo de la liberación y reasignación:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      { key: 'Llanta pinchada', icon: '🛞' },
+                      { key: 'Falla mecánica del vehículo', icon: '⚙️' },
+                      { key: 'Accidente de tránsito', icon: '🚑' },
+                      { key: 'Emergencia médica / personal', icon: '🏥' },
+                      { key: 'Inconveniente climático severo / vía cerrada', icon: '🌧️' },
+                      { key: 'Otro inconveniente importante', icon: '⚠️' }
+                    ].map((r) => {
+                      const isSelected = reassignReason === r.key;
+                      return (
+                        <button
+                          key={r.key}
+                          type="button"
+                          onClick={() => setReassignReason(r.key)}
+                          className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2 cursor-pointer ${
+                            isSelected
+                              ? 'bg-amber-500/20 border-amber-400 text-white font-black shadow-sm'
+                              : 'bg-gray-900/70 border-gray-800 text-gray-300 hover:bg-gray-850 hover:text-white'
+                          }`}
+                        >
+                          <span className="text-base shrink-0">{r.icon}</span>
+                          <span className="text-xs truncate">{r.key}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Description & Internal Audit Notes */}
+                <div>
+                  <label className="text-[11px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                    Observaciones administrativas para el historial de auditoría:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={reassignDescription}
+                    onChange={(e) => setReassignDescription(e.target.value)}
+                    placeholder="Detalles adicionales sobre la autorización de liberación y acuerdos de entrega..."
+                    className="w-full p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-white text-xs placeholder-gray-500 focus:border-amber-400 outline-none resize-none"
+                  />
+                </div>
+
+                {/* Action summary box */}
+                <div className="p-3 bg-gray-900/40 border border-gray-850 rounded-xl text-[11px] text-gray-300 space-y-1">
+                  <p className="font-bold text-white">Al confirmar esta acción el sistema:</p>
+                  <p>1. Desvinculará al domiciliario actual ({reassigningOrder.deliveryDriverName || 'repartidor'}).</p>
+                  <p>2. Devolverá el pedido al estado "Pendiente" en tiempo real para todos los demás domiciliarios disponibles.</p>
+                  <p>3. Conservará intactos todos los productos, precios, dirección y cliente.</p>
+                  <p>4. Registrará el historial con fecha, motivo y usuario administrador para auditoría.</p>
+                </div>
+              </div>
+
+              {/* Modal Actions Footer */}
+              <div className="p-4 sm:p-5 border-t border-gray-850 bg-gray-900/50 flex flex-col-reverse sm:flex-row gap-2.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReassigningOrder(null);
+                    setReassignSuccessMsg('');
+                  }}
+                  className="w-full sm:flex-1 py-2.5 px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl text-xs font-bold transition cursor-pointer text-center"
+                >
+                  Cerrar
+                </button>
+
+                {(() => {
+                  const isFoodPickedUp = Boolean(
+                    reassigningOrder.status === 'shipped' ||
+                    reassigningOrder.status === 'delivering' ||
+                    reassigningOrder.status === 'picked_up' ||
+                    reassigningOrder.deliveryStep === 'picked_up' ||
+                    reassigningOrder.deliveryStep === 'to_client' ||
+                    reassigningOrder.deliveryStep === 'at_destination'
+                  );
+                  const isBlocked = isFoodPickedUp && !reassignFoodConfirmed;
+
+                  return (
+                    <button
+                      type="button"
+                      disabled={isSubmittingReassignment || isBlocked}
+                      onClick={handleConfirmReassignOrder}
+                      className="w-full sm:flex-[2] py-2.5 px-4 bg-amber-500 hover:bg-amber-400 text-gray-950 rounded-xl text-xs font-black transition cursor-pointer shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isSubmittingReassignment ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin shrink-0" />
+                          <span>Liberando y reasignando pedido...</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          <span>Confirmar Liberación y Reasignar</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -6966,7 +7431,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     type="button"
                     onClick={handleConfirmPlanChange}
                     disabled={savingPlanChange || isSamePlan}
-                    className="flex-1 py-3 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-950/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-950/50 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {savingPlanChange ? (
                       <RefreshCw className="w-4 h-4 animate-spin text-gray-950" />
@@ -7194,7 +7659,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         <button
                           type="button"
                           onClick={() => openPersonalWhatsApp(fullDestinationNumber, cobroCustomMessage)}
-                          className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 active:scale-[0.98]"
+                          className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 active:scale-[0.98]"
                           title="Abrir directamente en WhatsApp Messenger Personal (no Business)"
                         >
                           <MessageCircle className="w-4 h-4 fill-current shrink-0" />

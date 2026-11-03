@@ -180,8 +180,9 @@ export function buildCompactAiCatalogPayload(
 
     const cleanDesc = sanitizeCatalogTextForAi(p.description || '', 140);
     const cleanCat = sanitizeCatalogTextForAi(p.category || 'General', 40);
-    const variantsList = Array.isArray(p.variants)
-      ? p.variants.map((v: any) => sanitizeCatalogTextForAi(typeof v === 'string' ? v : `${v.name || ''}${v.price ? ` (${v.price} COP)` : ''}`, 50)).filter(Boolean)
+    const rawVariants = (p as any).variants || p.variantsList;
+    const variantsList = Array.isArray(rawVariants)
+      ? rawVariants.map((v: any) => sanitizeCatalogTextForAi(typeof v === 'string' ? v : `${v.name || ''}${v.price ? ` (${v.price} COP)` : ''}`, 50)).filter(Boolean)
       : undefined;
 
     targetRest.platos.push({

@@ -235,7 +235,7 @@ export default function AdminWhatsAppDriversModal({
               onClick={handleSendAllSequential}
               className={`py-3 px-4 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg transition cursor-pointer ${
                 displayedDrivers.length > 0 && !isDispatchingAll
-                  ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-emerald-900/30'
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
                   : 'bg-gray-800 text-gray-500 cursor-not-allowed'
               }`}
             >

@@ -259,7 +259,7 @@ export default function AdminReferralsManager() {
           </button>
           <button
             onClick={() => handleOpenModal()}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white font-bold px-4 py-2.5 rounded-xl transition shadow-lg shadow-red-600/20 text-xs sm:text-sm"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 bg-[#E63946] hover:bg-[#d62839] text-white font-bold px-4 py-2.5 rounded-xl transition shadow-lg shadow-red-600/20 text-xs sm:text-sm"
           >
             <Plus className="w-4 h-4" />
             <span>Nuevo Creador</span>

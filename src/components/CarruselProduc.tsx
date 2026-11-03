@@ -576,7 +576,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
         </p>
         <button
           onClick={handleGoToTienda}
-          className="px-8 py-3.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl transition shadow-xl shadow-[#E63946]/30 cursor-pointer active:scale-95"
+          className="px-8 py-3.5 bg-[#E63946] hover:bg-[#d62839] text-white font-extrabold text-xs uppercase tracking-wider rounded-2xl transition shadow-xl shadow-[#E63946]/30 cursor-pointer active:scale-95"
         >
           Volver a la Tienda
         </button>
@@ -787,7 +787,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                           e.stopPropagation();
                           onNavigateToStore(profile.username);
                         }}
-                        className="w-12 h-12 rounded-full p-0.5 bg-gradient-to-tr from-[#E63946] via-[#F4B400] to-[#E63946] shadow-xl hover:scale-110 active:scale-95 transition cursor-pointer relative"
+                        className="w-12 h-12 rounded-full p-0.5 bg-[#E63946] shadow-xl hover:scale-110 active:scale-95 transition cursor-pointer relative"
                         title={`Visitar tienda @${profile.username}`}
                       >
                         {profile.photoURL ? (
@@ -948,8 +948,8 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       onClick={(e) => handleBuyClick(product, e)}
                       className={`flex-1 py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition active:scale-95 cursor-pointer font-black text-sm uppercase tracking-wider ${
                         addedProductId === product.id
-                          ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-600/40 animate-pulse'
-                          : 'bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 text-white shadow-[#E63946]/30'
+                          ? 'bg-emerald-600 text-white shadow-emerald-600/40 animate-pulse'
+                          : 'bg-[#E63946] hover:bg-[#d62839] text-white shadow-[#E63946]/30'
                       }`}
                     >
                       {addedProductId === product.id ? (
@@ -1141,7 +1141,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                       </button>
                       <button
                         onClick={handleProceedToCheckout}
-                        className="flex-2 py-3 px-4 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center justify-center gap-2 active:scale-95 transition cursor-pointer"
+                        className="flex-2 py-3 px-4 bg-[#E63946] hover:bg-[#d62839] text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center justify-center gap-2 active:scale-95 transition cursor-pointer"
                       >
                         <span>Finalizar Pedido</span>
                         <ArrowRight className="w-4 h-4" />
@@ -1320,7 +1320,7 @@ export default function CarruselProduc({ initialReelId, onNavigateHome, onNaviga
                         handleAddToCart(variantSheetProduct, sheetQuantity, selectedVariant);
                         setVariantSheetProduct(null);
                       }}
-                      className="py-2.5 sm:py-3 px-4 sm:px-6 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:opacity-90 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-1.5 sm:gap-2 active:scale-95 transition cursor-pointer shrink-0"
+                      className="py-2.5 sm:py-3 px-4 sm:px-6 bg-[#E63946] hover:bg-[#d62839] disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#E63946]/30 flex items-center gap-1.5 sm:gap-2 active:scale-95 transition cursor-pointer shrink-0"
                     >
                       <ShoppingCart className="w-4 h-4 shrink-0" />
                       <span className="whitespace-nowrap">Agregar al Carrito</span>

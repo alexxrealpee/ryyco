@@ -290,7 +290,7 @@ export default function RateDriverModal({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex-[2] py-3 bg-gradient-to-r from-amber-500 via-[#F4B400] to-amber-600 hover:opacity-95 text-gray-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-[2] py-3 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 transition active:scale-95 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {isSubmitting ? (
                   <span>Enviando...</span>

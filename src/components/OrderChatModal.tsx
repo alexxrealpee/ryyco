@@ -277,7 +277,7 @@ export default function OrderChatModal({
           <button
             type="submit"
             disabled={!inputText.trim() || isSending}
-            className="p-3 bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl shadow-lg transition active:scale-95 cursor-pointer shrink-0"
+            className="p-3 bg-[#E63946] hover:bg-[#d62839] disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl shadow-lg transition active:scale-95 cursor-pointer shrink-0"
             title="Enviar mensaje"
           >
             <Send className="w-4 h-4" />

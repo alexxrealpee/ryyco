@@ -297,7 +297,7 @@ export default function AdminDriversManager() {
               loadDriverTokens();
               setShowFcmModal(true);
             }}
-            className="px-4 py-2 bg-gradient-to-r from-amber-500/20 via-[#E63946]/20 to-emerald-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 text-white font-bold text-xs rounded-xl border border-[#E63946]/40 transition flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
+            className="px-4 py-2 bg-[#E63946]/20 hover:bg-[#E63946]/30 text-white font-bold text-xs rounded-xl border border-[#E63946]/40 transition flex items-center gap-2 cursor-pointer shadow-md active:scale-95"
             title="Administrar notificaciones Push con Firebase para domiciliarios"
           >
             <Bell className="w-3.5 h-3.5 text-[#E63946] animate-bounce" />

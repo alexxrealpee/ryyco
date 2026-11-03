@@ -403,7 +403,7 @@ export default function StoreQRModal({
               <button 
                 type="button"
                 onClick={handleShare}
-                className="py-2.5 px-3 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-lg shadow-red-950/40 cursor-pointer active:scale-98"
+                className="py-2.5 px-3 bg-[#E63946] hover:bg-[#d62839] text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow-lg shadow-red-950/40 cursor-pointer active:scale-98"
               >
                 <Share2 className="w-4 h-4" />
                 Compartir

@@ -1149,7 +1149,7 @@ export default function CustomerPortalModal({
         {customer ? (
           <div className="p-3 sm:p-5 border-b border-gray-800 flex items-center justify-between shrink-0 relative z-10 bg-[#0d1322]/95 backdrop-blur-md">
             <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 pr-2">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10 shrink-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-[#E63946] p-0.5 flex items-center justify-center shadow-lg shadow-[#E63946]/10 shrink-0">
                 <div className="w-full h-full bg-[#0b0f19] rounded-[14px] flex items-center justify-center overflow-hidden">
                   {customer.avatarUrl ? (
                     <img 
@@ -1231,7 +1231,7 @@ export default function CustomerPortalModal({
         {!customer ? (
           <div className="flex-1 min-h-0 flex flex-col lg:grid lg:grid-cols-12 overflow-hidden">
             {/* LEFT PANEL: Desktop Brand & Benefits Showcase (PC only) */}
-            <div className="hidden lg:flex lg:col-span-5 flex-col justify-between p-9 bg-gradient-to-br from-[#12192b] via-[#0d1322] to-[#080b14] border-r border-white/[0.08] relative overflow-hidden">
+            <div className="hidden lg:flex lg:col-span-5 flex-col justify-between p-9 bg-[#0d1322] border-r border-white/[0.08] relative overflow-hidden">
               <div className="absolute -top-24 -left-24 w-64 h-64 bg-[#E63946]/15 rounded-full blur-[80px] pointer-events-none" />
               <div className="absolute -bottom-24 -right-16 w-64 h-64 bg-amber-500/10 rounded-full blur-[80px] pointer-events-none" />
 
@@ -1909,9 +1909,9 @@ export default function CustomerPortalModal({
                                   <div className="relative pt-2 pb-1">
                                     {/* Connective background track */}
                                     <div className="absolute top-[17px] sm:top-[20px] left-[10%] right-[10%] h-1 bg-gray-800 -translate-y-1/2 z-0 rounded-full" />
-                                    {/* Active colored gradient fill */}
+                                    {/* Active solid track fill */}
                                     <div 
-                                      className="absolute top-[17px] sm:top-[20px] left-[10%] h-1 bg-gradient-to-r from-amber-400 via-blue-500 via-orange-500 via-[#E63946] to-emerald-400 -translate-y-1/2 z-0 rounded-full transition-all duration-500" 
+                                      className="absolute top-[17px] sm:top-[20px] left-[10%] h-1 bg-emerald-500 -translate-y-1/2 z-0 rounded-full transition-all duration-500" 
                                       style={{ width: `${Math.min(80, Math.max(0, ((step - 1) / 4) * 80))}%` }}
                                     />
 
@@ -2063,7 +2063,7 @@ export default function CustomerPortalModal({
                                   <button
                                     type="button"
                                     onClick={() => setChatOrder(order)}
-                                    className="px-3.5 py-2 bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer relative"
+                                    className="px-3.5 py-2 bg-[#E63946] hover:bg-[#d62839] text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer relative"
                                     title="Abrir chat interno en tiempo real con tu domiciliario"
                                   >
                                     <MessageCircle className="w-3.5 h-3.5" />
@@ -2080,7 +2080,7 @@ export default function CustomerPortalModal({
 
                             {/* Customer Delivery PIN Code Banner */}
                             {!isDelivered && !isCancelled && (
-                              <div className="p-3.5 bg-gradient-to-r from-emerald-950/40 via-[#0C1522] to-emerald-950/20 border border-emerald-500/40 rounded-xl flex items-center justify-between gap-3 shadow-md">
+                              <div className="p-3.5 bg-[#0C1522] border border-emerald-500/40 rounded-xl flex items-center justify-between gap-3 shadow-md">
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
                                     <Key className="w-4 h-4" />
@@ -2148,7 +2148,7 @@ export default function CustomerPortalModal({
 
                             {/* Calificar al Domiciliario (Si el pedido ya fue entregado y no ha sido calificado) */}
                             {isDelivered && (order.deliveryDriverName || order.deliveryDriverId || order.driverId) && !order.driverRatingGiven && (
-                              <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-[#151D2A] to-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                              <div className="p-3.5 bg-[#151D2A] border border-amber-500/30 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
                                     <Star className="w-5 h-5 fill-amber-400" />
@@ -2174,7 +2174,7 @@ export default function CustomerPortalModal({
                                 <button
                                   type="button"
                                   onClick={() => setRatingDriverOrder(order)}
-                                  className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer shrink-0"
+                                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer shrink-0"
                                 >
                                   <Star className="w-4 h-4 fill-gray-950" />
                                   <span>Calificar con Estrellas</span>
@@ -2324,7 +2324,7 @@ export default function CustomerPortalModal({
               {!isAndroid && activeTab === 'wheel' && (
                 <div className="space-y-5">
                   <div className="text-center space-y-1">
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/10 to-pink-500/10 border border-amber-500/20 text-amber-400 text-xs font-black uppercase tracking-wider">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-black uppercase tracking-wider">
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>Ruleta de la Suerte Ryyco</span>
                     </div>
@@ -2344,7 +2344,7 @@ export default function CustomerPortalModal({
                           <circle cx="17" cy="10" r="4" fill="#92400e" />
                         </svg>
                       </div>
-                      <div className="relative h-full w-full rounded-full bg-gradient-to-br from-amber-100 via-amber-500 to-amber-800 p-[10px] shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_0_0_1px_#fde68a]">
+                      <div className="relative h-full w-full rounded-full bg-amber-500 p-[10px] shadow-[0_12px_40px_rgba(0,0,0,0.4),inset_0_0_0_1px_#fde68a]">
                         <svg aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 h-full w-full" viewBox="0 0 360 360">
                           {Array.from({ length: 32 }, (_, index) => {
                             const angle = index * Math.PI / 16;
@@ -2388,7 +2388,7 @@ export default function CustomerPortalModal({
                             <circle cx="180" cy="180" r="179" fill="url(#reward-wheel-shine)" pointerEvents="none" />
                           </svg>
                         </div>
-                        <div aria-hidden="true" className="absolute left-1/2 top-1/2 z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gradient-to-br from-amber-100 via-amber-400 to-amber-700 p-[3px] shadow-[0_4px_16px_#0008]">
+                        <div aria-hidden="true" className="absolute left-1/2 top-1/2 z-20 flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-amber-400 p-[3px] shadow-[0_4px_16px_#0008]">
                           <div className="flex h-full w-full flex-col items-center justify-center rounded-full border border-amber-300/30 bg-[#19131e] text-amber-300">
                             <Star className="h-5 w-5 fill-amber-300" />
                             <span className="mt-0.5 text-[8px] font-black tracking-[1.5px]">RYYCO</span>
@@ -2441,7 +2441,7 @@ export default function CustomerPortalModal({
               {!isAndroid && activeTab === 'rewards' && (
                 <div className="space-y-5">
                   {/* VIP RYYCOS WALLET CARD */}
-                  <div className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-700 p-5 rounded-2xl text-black shadow-xl shadow-amber-500/10 flex flex-col justify-between relative overflow-hidden">
+                  <div className="bg-amber-400 p-5 rounded-2xl text-black shadow-xl shadow-amber-500/10 flex flex-col justify-between relative overflow-hidden">
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Billetera de Puntos Ryycos</span>
@@ -2481,7 +2481,7 @@ export default function CustomerPortalModal({
                       onClick={() => setRyycosView('catalog')}
                       className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
                         ryycosView === 'catalog'
-                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-md shadow-amber-500/20'
+                          ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -2495,7 +2495,7 @@ export default function CustomerPortalModal({
                       onClick={() => setRyycosView('transfer')}
                       className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
                         ryycosView === 'transfer'
-                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-md shadow-amber-500/20'
+                          ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -2509,7 +2509,7 @@ export default function CustomerPortalModal({
                       onClick={() => setRyycosView('history')}
                       className={`py-2.5 px-2 sm:px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
                         ryycosView === 'history'
-                          ? 'bg-gradient-to-r from-amber-400 to-orange-500 text-black shadow-md shadow-amber-500/20'
+                          ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'
                       }`}
                     >
@@ -2726,7 +2726,7 @@ export default function CustomerPortalModal({
                           parseInt(transferAmount, 10) > (customer.points || 0)
                         }
                         onClick={() => setShowTransferConfirmModal(true)}
-                        className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
+                        className="w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-lg mt-2 bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.99]"
                       >
                         <Send className="w-4 h-4" />
                         <span>Revisar y Enviar RYYCOS</span>
@@ -2844,7 +2844,7 @@ export default function CustomerPortalModal({
                             referrerPolicy="no-referrer"
                           />
                         ) : (
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white font-black text-base sm:text-lg shadow shrink-0 aspect-square">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#E63946] flex items-center justify-center text-white font-black text-base sm:text-lg shadow shrink-0 aspect-square">
                             {customer.name?.charAt(0)?.toUpperCase() || 'C'}
                           </div>
                         )}
@@ -3003,7 +3003,7 @@ export default function CustomerPortalModal({
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-[#E63946] to-amber-500 flex items-center justify-center text-white font-black text-lg shadow shrink-0">
+                <div className="w-12 h-12 rounded-2xl bg-[#E63946] flex items-center justify-center text-white font-black text-lg shadow shrink-0">
                   <User className="w-6 h-6" />
                 </div>
               )}
@@ -3178,7 +3178,7 @@ export default function CustomerPortalModal({
       {!isAndroid && tryAgainModal && (
         <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
           <div className="bg-[#0e1322] border border-blue-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 p-1 mx-auto flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-16 h-16 rounded-full bg-blue-600 p-1 mx-auto flex items-center justify-center shadow-lg shadow-blue-600/20">
               <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-3xl select-none">
                 {tryAgainModal.icon || '🍀'}
               </div>
@@ -3202,7 +3202,7 @@ export default function CustomerPortalModal({
             <button
               type="button"
               onClick={() => setTryAgainModal(null)}
-              className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:opacity-95 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-blue-500/20"
+              className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-blue-500/20"
             >
               ¡Entendido, Seguir Intentando! 🚀
             </button>
@@ -3214,7 +3214,7 @@ export default function CustomerPortalModal({
       {wonPrizeModal && (
         <div className="fixed inset-0 z-60 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4">
           <div className="bg-[#0e1322] border border-amber-500/40 rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl relative animate-fade-in">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-amber-400 to-pink-500 p-1 mx-auto flex items-center justify-center shadow-lg shadow-amber-500/20">
+            <div className="w-16 h-16 rounded-full bg-amber-400 p-1 mx-auto flex items-center justify-center shadow-lg shadow-amber-400/20">
               <div className="w-full h-full rounded-full bg-black flex items-center justify-center text-amber-300">
                 <Trophy className="w-8 h-8 animate-bounce" />
               </div>
@@ -3363,7 +3363,7 @@ export default function CustomerPortalModal({
                 type="button"
                 disabled={isTransferring}
                 onClick={handleExecuteTransfer}
-                className="flex-1 py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-[0.99]"
+                className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl transition cursor-pointer shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 active:scale-[0.99]"
               >
                 {isTransferring ? (
                   <RefreshCw className="w-4 h-4 animate-spin" />

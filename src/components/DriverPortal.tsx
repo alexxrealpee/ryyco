@@ -53,7 +53,8 @@ import {
   AlertCircle,
   Key,
   X,
-  MessageCircle
+  MessageCircle,
+  Send
 } from 'lucide-react';
 import OrderChatModal from './OrderChatModal';
 import { signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -76,9 +77,10 @@ import {
   updateDriverProfile,
   registerDriverProfile,
   fetchSystemSettings,
-  listenToSystemSettings
+  listenToSystemSettings,
+  reportOrderEventuality
 } from '../lib/firebase';
-import { DriverProfile, OrderItem, VehicleType, DriverRating } from '../types';
+import { DriverProfile, OrderItem, VehicleType, DriverRating, OrderEventualityReport } from '../types';
 import { useDriverPresence } from '../hooks/useDriverPresence';
 import { useDriverLiveTracking } from '../hooks/useDriverLiveTracking';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
@@ -184,6 +186,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [deliveryPinError, setDeliveryPinError] = useState<string>('');
   const [isVerifyingPin, setIsVerifyingPin] = useState<boolean>(false);
   const [deliveryPinSuccess, setDeliveryPinSuccess] = useState<boolean>(false);
+
+  // Eventualities & Order Release State
+  const [showEventualityModal, setShowEventualityModal] = useState<boolean>(false);
+  const [eventualityReason, setEventualityReason] = useState<string>('Llanta pinchada');
+  const [eventualityDescription, setEventualityDescription] = useState<string>('');
+  const [isSubmittingEventuality, setIsSubmittingEventuality] = useState<boolean>(false);
+  const [eventualitySuccessMsg, setEventualitySuccessMsg] = useState<string>('');
+  const [releasedNotice, setReleasedNotice] = useState<string | null>(null);
 
   // Hard guarantee: When active delivery exists, suppress and wipe all available unassigned orders & popups
   useEffect(() => {
@@ -629,7 +639,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     }
   };
 
-  // Real-time listener for active delivery progress/updates
+  // Real-time listener for active delivery progress/updates & eventualities release
   useEffect(() => {
     if (!activeDelivery?.id) return;
 
@@ -645,6 +655,27 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         return;
       }
       const data = { id: docSnap.id, ...docSnap.data() } as OrderItem;
+
+      // Check if order was released or reassigned by Administration
+      const wasAssignedToMe = Boolean(driver?.id);
+      const isNoLongerMine = wasAssignedToMe && (
+        (data.deliveryDriverId && data.deliveryDriverId !== driver.id) ||
+        (!data.deliveryDriverId && data.status === 'pending')
+      );
+
+      if (isNoLongerMine) {
+        setActiveDelivery(null);
+        if (driver?.id) {
+          try {
+            localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
+            localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
+          } catch (e) {}
+          setReleasedNotice(`Administración General ha liberado el pedido #${data.orderNumber || ''} y lo reasignó. Ya estás libre y disponible para tomar nuevos pedidos.`);
+          loadHistoryAndRatings(driver.id);
+        }
+        return;
+      }
+
       // If delivery is completed or cancelled, clear active delivery so driver can take new orders
       if (data.status === 'delivered' || data.deliveryStep === 'delivered' || data.status === 'cancelled') {
         setActiveDelivery(null);
@@ -666,7 +697,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     return () => {
       unsubscribe();
     };
-  }, [activeDelivery?.id]);
+  }, [activeDelivery?.id, driver?.id]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -791,6 +822,25 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         setDeliveryPinError('Debes solicitar e ingresar el código de 4 dígitos entregado por el cliente.');
         setShowDeliveryCodeModal(true);
         return;
+      }
+
+      // Explicit Check: Reject order number
+      const orderNumStr = activeDelivery.orderNumber ? String(activeDelivery.orderNumber).trim() : '';
+      const orderNumPadded = orderNumStr ? orderNumStr.padStart(4, '0').slice(-4) : '';
+      if (orderNumStr && (codeToVerify === orderNumStr || codeToVerify === orderNumPadded)) {
+        setDeliveryPinError(`El número de pedido #${orderNumStr} NO es el código de entrega. Solo puedes liberar la entrega con el código PIN de 4 dígitos que te proporcione el cliente.`);
+        setShowDeliveryCodeModal(true);
+        return;
+      }
+
+      // Explicit Check: Reject customer phone
+      if (activeDelivery.customerPhone) {
+        const cleanPhone = activeDelivery.customerPhone.replace(/\D/g, '');
+        if (cleanPhone.length >= 4 && codeToVerify === cleanPhone.slice(-4)) {
+          setDeliveryPinError('El número de teléfono NO es el código de entrega. Solicita el código PIN de 4 dígitos al cliente.');
+          setShowDeliveryCodeModal(true);
+          return;
+        }
       }
     }
 
@@ -941,6 +991,70 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     } finally {
       setSavingProfile(false);
     }
+  };
+
+  // Handler to submit eventuality report to Firestore
+  const handleReportEventuality = async () => {
+    if (!activeDelivery || !driver) return;
+    setIsSubmittingEventuality(true);
+    try {
+      const report: OrderEventualityReport = {
+        reason: eventualityReason,
+        description: eventualityDescription.trim(),
+        reportedAt: new Date().toISOString(),
+        driverId: driver.id,
+        driverName: `${driver.firstName} ${driver.lastName}`,
+        driverPhone: driver.phone,
+        stageAtReport: activeDelivery.deliveryStep,
+        resolved: false
+      };
+
+      await reportOrderEventuality(activeDelivery.id, report);
+      setEventualitySuccessMsg('¡Eventualidad reportada con éxito a Administración General!');
+      setTimeout(() => {
+        setShowEventualityModal(false);
+        setEventualitySuccessMsg('');
+      }, 1800);
+    } catch (err: any) {
+      alert("No se pudo registrar el reporte: " + (err.message || 'Error de conexión'));
+    } finally {
+      setIsSubmittingEventuality(false);
+    }
+  };
+
+  // Helper to build WhatsApp support message for eventuality
+  const getEventualityAdminWhatsAppUrl = () => {
+    const rawSupport = (() => {
+      try {
+        const raw = localStorage.getItem('linnk_system_settings');
+        return (raw ? JSON.parse(raw) : null)?.supportPhone || '3106502043';
+      } catch {
+        return '3106502043';
+      }
+    })();
+    const cleanPhone = rawSupport.replace(/[^0-9]/g, '');
+    const finalPhone = cleanPhone.startsWith('57') ? cleanPhone : `57${cleanPhone}`;
+
+    const currentStepLabel = getStepLabel(activeDelivery.deliveryStep);
+    const currentStepIdx = getStepIndex(activeDelivery.deliveryStep);
+    const isFoodPickedUp = currentStepIdx >= 2;
+
+    const text = `🚨 *SOLICITUD DE LIBERACIÓN DE PEDIDO POR EVENTUALIDAD - RYYCO* 🚨
+
+Hola Administración General, solicito por favor la liberación y reasignación de mi pedido activo debido a una eventualidad:
+
+📦 *Pedido:* #${activeDelivery.orderNumber || 'S/N'}
+🛵 *Domiciliario:* ${driver.firstName} ${driver.lastName}
+📱 *Celular Domiciliario:* ${driver.phone}
+🏪 *Restaurante:* ${activeDelivery.storeName || 'Restaurante'}
+⚠️ *Motivo:* ${eventualityReason}
+📝 *Descripción:* ${eventualityDescription.trim() || 'Sin detalles adicionales'}
+📍 *Etapa actual:* ${currentStepLabel}
+🍔 *¿Comida ya recogida?:* ${isFoodPickedUp ? '⚠️ SÍ, los productos ya fueron recogidos de la tienda' : '✅ NO, aún no se han recogido los productos'}
+
+Quedo atento a su autorización para que puedan reasignar el pedido a otro compañero. Muchas gracias.`;
+
+    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`;
   };
 
   // Helper to get step index (0-3)
@@ -1124,7 +1238,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                     onClick={handleEnablePushNotifications}
                     disabled={activatingPush}
                     title="Activar notificaciones PUSH con Firebase para recibir pedidos en tiempo real"
-                    className="px-3 py-2 bg-gradient-to-r from-amber-500 via-[#E63946] to-[#D62839] hover:brightness-110 text-white rounded-2xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95 animate-pulse"
+                    className="px-3 py-2 bg-[#E63946] hover:bg-[#d62839] text-white rounded-2xl font-black text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md active:scale-95 animate-pulse"
                   >
                     <Bell className="w-4 h-4" />
                     <span className="hidden sm:inline">{activatingPush ? 'Activando...' : 'Activar PUSH'}</span>
@@ -1337,7 +1451,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                   <button
                     onClick={handleEnablePushNotifications}
                     disabled={activatingPush}
-                    className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-[#E63946] to-[#D62839] hover:brightness-110 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/25 cursor-pointer active:scale-95"
+                    className="flex-1 sm:flex-none px-4 py-2.5 bg-[#E63946] hover:bg-[#d62839] text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-lg shadow-[#E63946]/25 cursor-pointer active:scale-95"
                   >
                     <Bell className="w-4 h-4" />
                     <span>{activatingPush ? 'Activando...' : 'Activar PUSH Ahora'}</span>
@@ -1407,6 +1521,27 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             {activeTab === 'deliveries' && (
               <div className="space-y-6">
 
+                {/* Banner when order is released and reassigned by Administration */}
+                {releasedNotice && (
+                  <div className="bg-emerald-500/15 border-2 border-emerald-500/50 rounded-2xl p-4 text-emerald-200 flex items-start justify-between gap-3 shadow-xl animate-fade-in">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-black text-white text-sm">Pedido Liberado y Reasignado</p>
+                        <p className="text-xs text-emerald-300 mt-0.5 leading-relaxed">{releasedNotice}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setReleasedNotice(null)}
+                      className="text-gray-400 hover:text-white p-1 rounded-lg cursor-pointer transition"
+                      title="Cerrar notificación"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
                 {/* ACTIVE DELIVERY IN PROGRESS TRACKER */}
                 {activeDelivery ? (
                   <div className="bg-[#111827] border-2 border-[#E63946]/40 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-5 sm:space-y-6">
@@ -1435,20 +1570,83 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                       })();
 
                       return (
-                        <div className="border-b border-[#232B3A] pb-4 space-y-2.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs sm:text-sm font-black font-mono text-gray-300">
-                              Pedido #{activeDelivery.orderNumber}
-                            </span>
-                            <div className="flex items-center gap-1.5 text-right">
-                              <span className="text-[10px] sm:text-xs font-bold text-[#A9B2C3] uppercase">
-                                Valor Domicilio:
+                        <div className="border-b border-[#232B3A] pb-4 space-y-3">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs sm:text-sm font-black font-mono text-gray-300">
+                                Pedido #{activeDelivery.orderNumber}
                               </span>
-                              <span className="text-xs sm:text-sm md:text-base font-black text-[#E63946]">
-                                ${deliveryFeeVal.toLocaleString('es-CO')}
-                              </span>
+                              {activeDelivery.eventualityReport && !activeDelivery.eventualityReport.resolved ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black animate-pulse">
+                                  <AlertTriangle className="w-3 h-3 text-amber-400" />
+                                  <span>Eventualidad en revisión</span>
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="flex items-center gap-2.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (activeDelivery.eventualityReport && !activeDelivery.eventualityReport.resolved) {
+                                    setEventualityReason(activeDelivery.eventualityReport.reason);
+                                    setEventualityDescription(activeDelivery.eventualityReport.description || '');
+                                  } else {
+                                    setEventualityReason('Llanta pinchada');
+                                    setEventualityDescription('');
+                                  }
+                                  setShowEventualityModal(true);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-[11px] font-black transition cursor-pointer active:scale-95 shadow-sm"
+                                title="Reportar una eventualidad o solicitar liberación a administración"
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Reportar eventualidad</span>
+                              </button>
+
+                              <div className="flex items-center gap-1.5 text-right">
+                                <span className="text-[10px] sm:text-xs font-bold text-[#A9B2C3] uppercase">
+                                  Valor Domicilio:
+                                </span>
+                                <span className="text-xs sm:text-sm md:text-base font-black text-[#E63946]">
+                                  ${deliveryFeeVal.toLocaleString('es-CO')}
+                                </span>
+                              </div>
                             </div>
                           </div>
+
+                          {/* Eventuality in progress alert banner */}
+                          {activeDelivery.eventualityReport && !activeDelivery.eventualityReport.resolved && (
+                            <div className="bg-gradient-to-r from-amber-950/60 to-amber-900/40 border border-amber-500/50 rounded-xl p-3 space-y-2 text-xs">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-black text-amber-300 flex items-center gap-1.5">
+                                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                                  Eventualidad Reportada a Administración General
+                                </span>
+                                <span className="text-[10px] text-amber-200 font-mono">
+                                  {new Date(activeDelivery.eventualityReport.reportedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                                </span>
+                              </div>
+                              <p className="text-gray-200 leading-relaxed">
+                                <strong>Motivo:</strong> <span className="text-amber-200 font-bold">{activeDelivery.eventualityReport.reason}</span>
+                                {activeDelivery.eventualityReport.description ? ` — "${activeDelivery.eventualityReport.description}"` : ''}
+                              </p>
+                              <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-amber-500/20 flex-wrap">
+                                <span className="text-[10.5px] text-amber-300/80">
+                                  Solo Administración General puede autorizar la liberación y reasignar el pedido.
+                                </span>
+                                <a
+                                  href={getEventualityAdminWhatsAppUrl()}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[11px] transition shadow cursor-pointer"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  <span>Contactar Soporte por WhatsApp</span>
+                                </a>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="grid grid-cols-3 gap-2 sm:gap-4 items-start pt-1">
                             {/* 1. Valor del Pedido */}
@@ -1760,7 +1958,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                           <button
                                             type="button"
                                             onClick={() => handleUpdatePaymentStatus('not_paid', true, false)}
-                                            className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
+                                            className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer shadow-md active:scale-95"
                                           >
                                             <Banknote className="w-4 h-4" />
                                             <span>✓ Cliente confirma: Paga Contra Entrega (${totalOrderAmount.toLocaleString('es-CO')})</span>
@@ -1813,7 +2011,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                                         <button
                                           type="button"
                                           onClick={() => handleUpdatePaymentStatus('not_paid', true, true)}
-                                          className="w-full py-3 px-3 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-gray-950 rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20 active:scale-95"
+                                          className="w-full py-3 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/40 active:scale-95"
                                         >
                                           <CreditCard className="w-4 h-4" />
                                           <span>Pagar Pedido en Restaurante (${foodCost.toLocaleString('es-CO')})</span>
@@ -1876,7 +2074,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                             <button
                               type="button"
                               onClick={() => setIsOrderChatOpen(true)}
-                              className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] bg-gradient-to-r from-[#D62839] to-[#E63946] hover:from-[#B51E2D] hover:to-[#D62839] text-white px-2 sm:px-2.5 py-1 rounded-lg font-bold transition shadow-sm active:scale-95 cursor-pointer relative shrink-0"
+                              className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] bg-[#E63946] hover:bg-[#d62839] text-white px-2 sm:px-2.5 py-1 rounded-lg font-bold transition shadow-sm active:scale-95 cursor-pointer relative shrink-0"
                               title="Abrir chat interno en tiempo real con el cliente"
                             >
                               <MessageCircle className="w-3 h-3 shrink-0" />
@@ -2639,7 +2837,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                     setDeliveryPinError('');
                     setShowDeliveryCodeModal(true);
                   }}
-                  className="w-full py-2.5 sm:py-3 px-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.99] text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition cursor-pointer"
+                  className="w-full py-2.5 sm:py-3 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 transition cursor-pointer"
                 >
                   <Key className="w-4 h-4 shrink-0" />
                   <span className="truncate">Confirmar Entrega (Ingresar PIN)</span>
@@ -3201,7 +3399,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
                 type="submit"
                 form="delivery-pin-form"
                 disabled={isVerifyingPin || deliveryPinInput.trim().length !== 4 || deliveryPinSuccess}
-                className="w-full sm:flex-[2] py-3 sm:py-3.5 px-4 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-black transition cursor-pointer shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed min-w-0"
+                className="w-full sm:flex-[2] py-3 sm:py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.99] text-white rounded-xl text-xs sm:text-sm font-black transition cursor-pointer shadow-lg shadow-emerald-950/40 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed min-w-0"
               >
                 {isVerifyingPin ? (
                   <>
@@ -3230,6 +3428,150 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
           currentUserId={driver?.id || driver?.uid || 'driver'}
           currentUserName={driver?.name || driver?.fullName || 'Domiciliario RYYCO'}
         />
+      )}
+
+      {/* MODAL: REPORTAR EVENTUALIDAD Y SOLICITAR LIBERACIÓN */}
+      {showEventualityModal && activeDelivery && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#111827] border-2 border-amber-500/50 rounded-2xl sm:rounded-3xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-[#232B3A] flex items-center justify-between bg-gradient-to-r from-[#141B2D] to-[#1C1622] shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-white">
+                    Reportar Eventualidad
+                  </h3>
+                  <p className="text-xs text-amber-300 font-mono font-bold">
+                    Pedido #{activeDelivery.orderNumber} • {activeDelivery.storeName || 'Restaurante'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowEventualityModal(false)}
+                className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+              {/* Important notice */}
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 space-y-1">
+                <p className="font-black text-amber-300 flex items-center gap-1.5 text-xs">
+                  <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                  Autorización de Administración Requerida
+                </p>
+                <p className="text-[11px] leading-relaxed text-gray-300">
+                  Por seguridad y control del pedido, el domiciliario <strong>no puede liberar directamente el pedido</strong>. Tu reporte llegará al panel de Administración General para que autoricen la liberación y reasignación inmediata.
+                </p>
+              </div>
+
+              {/* Success message */}
+              {eventualitySuccessMsg && (
+                <div className="p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-bold flex items-center gap-2 animate-fade-in">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <span>{eventualitySuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Reason Selector */}
+              <div>
+                <label className="text-[11px] font-black uppercase tracking-wider text-gray-300 block mb-2">
+                  Selecciona el motivo de la eventualidad:
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {[
+                    { key: 'Llanta pinchada', icon: '🛞', desc: 'Pinchazo en la rueda' },
+                    { key: 'Falla mecánica del vehículo', icon: '⚙️', desc: 'Motor, cadena o batería' },
+                    { key: 'Accidente de tránsito', icon: '🚑', desc: 'Choque o caída' },
+                    { key: 'Emergencia médica / personal', icon: '🏥', desc: 'Salud o familiar' },
+                    { key: 'Inconveniente climático severo / vía cerrada', icon: '🌧️', desc: 'Lluvia extrema o derrumbe' },
+                    { key: 'Otro inconveniente importante', icon: '⚠️', desc: 'Imprevisto grave' }
+                  ].map((r) => {
+                    const isSelected = eventualityReason === r.key;
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        onClick={() => setEventualityReason(r.key)}
+                        className={`p-2.5 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500/20 border-amber-400 text-white shadow-md shadow-amber-500/10'
+                            : 'bg-[#090B12] border-[#232B3A] text-gray-300 hover:bg-[#1A2333] hover:text-white'
+                        }`}
+                      >
+                        <span className="text-lg shrink-0">{r.icon}</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-xs truncate">{r.key}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{r.desc}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Description textarea */}
+              <div>
+                <label className="text-[11px] font-black uppercase tracking-wider text-gray-300 block mb-1.5">
+                  Describe brevemente lo ocurrido (Opcional pero recomendado):
+                </label>
+                <textarea
+                  rows={3}
+                  value={eventualityDescription}
+                  onChange={(e) => setEventualityDescription(e.target.value)}
+                  placeholder="Ej: Se me pinchó la llanta trasera en la Cra 6 con Calle 10. No podré llegar a tiempo al restaurante..."
+                  className="w-full p-3 bg-[#090B12] border border-[#232B3A] rounded-xl text-white text-xs placeholder-gray-500 focus:border-amber-400 outline-none resize-none"
+                />
+              </div>
+
+              {/* Current Stage Reminder */}
+              <div className="p-3 bg-[#090B12] border border-[#232B3A] rounded-xl flex items-center justify-between text-[11px]">
+                <span className="text-gray-400">Etapa actual del pedido:</span>
+                <span className="font-bold text-amber-300">
+                  {getStepLabel(activeDelivery.deliveryStep)}
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Actions Footer */}
+            <div className="p-4 sm:p-5 border-t border-[#232B3A] bg-[#0E1320] flex flex-col sm:flex-row gap-2.5 shrink-0">
+              <a
+                href={getEventualityAdminWhatsAppUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:flex-1 py-3 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/40"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Contactar Soporte por WhatsApp</span>
+              </a>
+
+              <button
+                type="button"
+                disabled={isSubmittingEventuality}
+                onClick={handleReportEventuality}
+                className="w-full sm:flex-1 py-3 px-3 bg-amber-500 hover:bg-amber-400 text-gray-950 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-950/40 disabled:opacity-50"
+              >
+                {isSubmittingEventuality ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Enviando reporte...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>Reportar a Administración</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

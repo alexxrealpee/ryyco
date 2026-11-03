@@ -903,7 +903,7 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsMapPickerOpen(true)}
-                      className="h-11 px-3 sm:px-4 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-blue-500/20 hover:from-emerald-500/30 hover:to-blue-500/30 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98] shrink-0 cursor-pointer shadow-sm"
+                      className="h-11 px-3 sm:px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all whitespace-nowrap active:scale-[0.98] shrink-0 cursor-pointer shadow-md"
                       title="Abrir selector interactivo de Google Maps"
                     >
                       <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -1323,7 +1323,7 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
           <button
             type="submit"
             disabled={isSaving}
-            className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 hover:from-amber-300 hover:to-amber-500 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer disabled:opacity-50"
+            className="w-full sm:w-auto px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer disabled:opacity-50"
           >
             {isSaving ? (
               <div className="w-4 h-4 border-2 border-black border-t-transparent animate-spin rounded-full" />
