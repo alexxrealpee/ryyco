@@ -455,7 +455,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }));
     return () => stops.forEach(stop => stop());
   }, [isCheckoutOpen, checkoutSellersKey, paymentRetry]);
-  const transferAvailable = checkoutSellerIds.some(id => validTransferAccounts(paymentProfiles[id]?.bankAccounts).length > 0);
+  const transferRequiredIds = checkoutSellerIds.filter(id => validTransferAccounts(paymentProfiles[id]?.bankAccounts).length > 0);
+  const transferAvailable = transferRequiredIds.length > 0;
+  const isMissingTransferProof = payMethod === 'transfer' && (
+    transferRequiredIds.length === 0 ||
+    transferRequiredIds.some(id => !transferProofs[id] || !transferProofs[id].trim())
+  );
   useEffect(() => {
     if (!transferAvailable && payMethod === 'transfer') setPayMethod('whatsapp');
   }, [transferAvailable, payMethod]);
@@ -723,6 +728,18 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // STRICT REQUIREMENT: Only stores that are currently OPEN (isClosed !== true, !suspended, !checkIsStoreClosed) are displayed.
   // When a store closes in Firestore, it is removed immediately; when it opens, it appears immediately.
   const uniqueStores = openRestaurants;
+
+  // Closed restaurants list (non-suspended stores that are currently closed)
+  const [isClosedRestaurantsModalOpen, setIsClosedRestaurantsModalOpen] = useState(false);
+  const closedRestaurants = useMemo(() => {
+    const uniqueByUid = new Map<string, UserProfile>();
+    (Object.values(profiles) as UserProfile[]).forEach(s => {
+      if (s && s.uid && (s.displayName || s.username) && !s.suspended && checkIsStoreClosed(s)) {
+        uniqueByUid.set(s.uid, s);
+      }
+    });
+    return Array.from(uniqueByUid.values()).sort((a, b) => Number(Boolean(b.photoURL)) - Number(Boolean(a.photoURL)));
+  }, [profiles]);
 
   // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
   // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
@@ -1257,6 +1274,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const executePlaceOrder = async (customer: CustomerProfile) => {
     if (uploadingProof) { alert('Espera a que termine de cargar el comprobante.'); return; }
     if (payMethod === 'transfer' && !transferAvailable) { alert('Revisa el método de pago: no hay cuentas disponibles.'); return; }
+    if (isMissingTransferProof) { alert('Debes subir el comprobante de pago de la transferencia bancaria para poder continuar.'); return; }
     setOrderSubmitting(true);
 
     // Group cart items by merchant userId
@@ -1393,6 +1411,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     setPhoneError("");
     if (!isPaymentStep) { setIsPaymentStep(true); return; }
     if (orderSubmitting || uploadingProof) return;
+    if (isMissingTransferProof) {
+      alert('Debes subir el comprobante de pago de la transferencia bancaria para poder avanzar.');
+      return;
+    }
 
     // If customer is already logged in, allow them to freely change data for this order form
     if (activeCustomer) {
@@ -2078,7 +2100,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     Restaurantes Abiertos Ahora ({uniqueStores.length})
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 ml-auto">
                   {selectedStore !== 'all' && (
                     <button
                       onClick={() => setSelectedStore('all')}
@@ -2089,7 +2111,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   )}
 
                   {/* Navigation Arrows for PC and Mobile */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 ml-auto">
                     <button
                       type="button"
                       onClick={() => scrollStores('left')}
@@ -2338,19 +2360,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
           ) : !isRestaurantsLoading ? (
             <div className="border-t border-slate-800 pt-4 transition-opacity duration-200">
-              <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3 shadow-lg">
-                <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 shrink-0 mt-0.5">
-                  <Store className="w-5 h-5" />
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 shrink-0 mt-0.5">
+                    <Store className="w-5 h-5" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
+                      <span>No hay restaurantes abiertos en este momento</span>
+                      <span className="w-2 h-2 rounded-full bg-rose-500" />
+                    </h4>
+                    <p className="text-[11px] sm:text-xs text-[#A9B2C3] leading-relaxed">
+                      Para asegurar pedidos frescos y entregas rápidas, Ryyco únicamente muestra los restaurantes que se encuentran abiertos y listos para atenderte en Ipiales.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-0.5">
-                  <h4 className="text-xs sm:text-sm font-black text-white flex items-center gap-2">
-                    <span>No hay restaurantes abiertos en este momento</span>
-                    <span className="w-2 h-2 rounded-full bg-rose-500" />
-                  </h4>
-                  <p className="text-[11px] sm:text-xs text-[#A9B2C3] leading-relaxed">
-                    Para asegurar pedidos frescos y entregas rápidas, Ryyco únicamente muestra los restaurantes que se encuentran abiertos y listos para atenderte en Ipiales. Te esperamos en sus horarios habituales de atención.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsClosedRestaurantsModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0"
+                >
+                  <Clock className="w-4 h-4 shrink-0" />
+                  <span>Restaurantes Cerrados ({closedRestaurants.length})</span>
+                </button>
               </div>
             </div>
           ) : null}
@@ -3841,9 +3873,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   );
                 })()}
 
-                <button type="submit" disabled={orderSubmitting || uploadingProof}
-                  className="w-full min-h-12 py-3 px-4 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-white text-sm font-bold disabled:opacity-50">
-                  {uploadingProof ? 'Preparando comprobante…' : orderSubmitting ? 'Procesando…' : 'Confirmar mi pedido'}
+                <button type="submit" disabled={orderSubmitting || uploadingProof || isMissingTransferProof}
+                  className="w-full min-h-12 py-3 px-4 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-white text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed">
+                  {uploadingProof ? 'Preparando comprobante…' : orderSubmitting ? 'Procesando…' : isMissingTransferProof ? 'Sube el comprobante de pago para continuar' : 'Confirmar mi pedido'}
                 </button>
               </form>
             </motion.div>
@@ -4053,6 +4085,99 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           />
         )}
       </React.Suspense>
+
+      {/* Modal: Restaurantes Cerrados */}
+      <AnimatePresence>
+        {isClosedRestaurantsModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setIsClosedRestaurantsModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#111827] border border-slate-800 rounded-3xl w-full max-w-2xl max-h-[82vh] flex flex-col overflow-hidden shadow-2xl"
+            >
+              <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3 bg-[#0F172A]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-white">
+                      Restaurantes Cerrados ({closedRestaurants.length})
+                    </h3>
+                    <p className="text-[11px] text-gray-400">
+                      Estos restaurantes se encuentran fuera de su horario de atención en este momento.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsClosedRestaurantsModalOpen(false)}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-4 sm:p-5 overflow-y-auto space-y-2.5 flex-1">
+                {closedRestaurants.length === 0 ? (
+                  <div className="py-12 text-center text-gray-400 text-xs">
+                    Todos los restaurantes activos se encuentran abiertos en este momento.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {closedRestaurants.map((store) => (
+                      <div
+                        key={store.uid}
+                        onClick={() => {
+                          if (store.username) {
+                            setIsClosedRestaurantsModalOpen(false);
+                            onNavigateToStore(store.username);
+                          }
+                        }}
+                        className="p-3 rounded-2xl bg-[#0B0F19] border border-slate-800 hover:border-amber-500/40 flex items-center justify-between gap-3 transition cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-slate-700 bg-slate-900 relative opacity-80 group-hover:opacity-100 transition">
+                            <RestaurantLogo
+                              src={store.photoURL}
+                              name={store.displayName || store.username || 'T'}
+                            />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-extrabold text-white truncate group-hover:text-amber-300 transition">
+                              {store.displayName || `@${store.username}`}
+                            </p>
+                            {store.username && (
+                              <p className="text-[10px] text-gray-400 font-mono truncate">
+                                @{store.username}
+                              </p>
+                            )}
+                            <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-[9px] font-bold text-amber-400">
+                              <Clock className="w-2.5 h-2.5" />
+                              Cerrado ahora
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400 group-hover:text-white px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
+                          Ver tienda
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Keep the cart accessible while browsing, without covering checkout. */}
       {cart.length > 0 && !isCartOpen && !isCheckoutOpen && (

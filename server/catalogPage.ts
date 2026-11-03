@@ -27,6 +27,13 @@ async function read(url: string, query?: object) {
   return response.json();
 }
 
+const historicalPackagingCosts: Record<string, number> = {
+  JnAZQN6aWNOx6jtZetnc: 1000,
+  BZjf4unO3zGX03I5S8v9: 1000,
+  zFVYV5NdYEqA8ojC7OU4: 2000,
+  '3wEsOLiHHJjC77OOsaYR': 500
+};
+
 export async function catalogPage(req: Request, res: Response) {
   res.setHeader('Cache-Control','no-store');
   const kind = req.query.kind ?? 'products';
@@ -49,7 +56,14 @@ export async function catalogPage(req: Request, res: Response) {
     const items = docs.map(document=>{
       const data = fields(document.fields || {});
       const id = document.name.split('/').pop();
-      if (kind === 'stores') data.uid ??= id; else data.id = id;
+      if (kind === 'stores') {
+        data.uid ??= id;
+      } else {
+        data.id = id;
+        if ((data.packagingCost === undefined || data.packagingCost === null) && id && historicalPackagingCosts[id] !== undefined) {
+          data.packagingCost = historicalPackagingCosts[id];
+        }
+      }
       data[kind === 'stores' ? 'photoURL' : 'imageURL'] = '/api/catalog-image.php?'+new URLSearchParams({kind:String(kind),id,v:document.updateTime || ''});
       return data;
     });

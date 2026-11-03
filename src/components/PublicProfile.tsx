@@ -909,6 +909,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   const executePlaceOrder = async (customer: CustomerProfile) => {
     if (!profile) return;
+    if (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim()) {
+      alert("Debes subir el comprobante de pago de la transferencia bancaria para poder avanzar.");
+      return;
+    }
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
     const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
@@ -1057,6 +1061,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
     if (deliveryType === 'table' && !tableNumber.trim()) {
       alert("Por favor, indica o selecciona el número de tu mesa (*)");
+      return;
+    }
+
+    if (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim()) {
+      alert("Debes subir el comprobante de pago de la transferencia bancaria para poder avanzar.");
       return;
     }
 
@@ -3789,14 +3798,22 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </motion.div>
             )}
 
-            {/* Optional purchase image proof / receipt upload (Omitido al pedir desde mesa) */}
+            {/* Purchase image proof / receipt upload (Obligatorio en transferencia, omitido al pedir desde mesa) */}
             {deliveryType !== 'table' && (
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase text-gray-500 block">
-                  Comprobante o Imagen de la Compra (Opcional)
+                  {payMethod === 'transfer' ? (
+                    <span className="text-amber-400">Comprobante de Transferencia Bancaria (Obligatorio *)</span>
+                  ) : (
+                    'Comprobante o Imagen de la Compra (Opcional)'
+                  )}
                 </label>
                 
-                <div className="relative border border-dashed border-gray-800 hover:border-indigo-500/50 rounded-2xl p-4 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[90px]">
+                <div className={`relative border border-dashed rounded-2xl p-4 text-center transition bg-[#0c101d] flex flex-col items-center justify-center min-h-[90px] ${
+                  payMethod === 'transfer' && !uploadedOrderProofBase64.trim()
+                    ? 'border-amber-500/60 hover:border-amber-400'
+                    : 'border-gray-800 hover:border-indigo-500/50'
+                }`}>
                   <input
                     type="file"
                     accept="image/*"
@@ -3934,11 +3951,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </button>
               <button
                 type="submit"
-                disabled={orderSubmitting}
-                className="flex-1 py-3 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50"
+                disabled={orderSubmitting || (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim())}
+                className="flex-1 py-3 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
               >
-                {orderSubmitting ? 'Procesando...' : 'Hacer Mi Pedido 🚀'}
+                {orderSubmitting
+                  ? 'Procesando...'
+                  : (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim())
+                  ? 'Sube el comprobante para continuar'
+                  : 'Hacer Mi Pedido 🚀'}
               </button>
             </div>
           </form>

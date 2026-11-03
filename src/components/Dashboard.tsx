@@ -119,8 +119,12 @@ import {
   checkIsAdminEmail,
   fetchSystemSettings,
   listenToSystemSettings,
-  auth
+  resolveProductPackagingCost,
+  persistProductPackagingCostLocally,
+  auth,
+  db
 } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { 
   UserProfile, 
   CustomTheme, 
@@ -1259,6 +1263,53 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
     };
   }, [profile.uid]);
 
+  // Recover and heal any product whose packagingCost was previously omitted in Firestore but exists in orders/history
+  useEffect(() => {
+    if (!products.length) return;
+    let changed = false;
+    const healedProducts = products.map(prod => {
+      if (prod.packagingCost !== undefined && prod.packagingCost !== null && !isNaN(Number(prod.packagingCost))) {
+        return prod;
+      }
+      let recovered = resolveProductPackagingCost(
+        prod.id,
+        prod.userId || profile.uid,
+        prod.name,
+        prod.packagingCost ?? (prod as any).containerCost ?? (prod as any).recipienteCost
+      );
+      if (recovered === undefined && orders.length > 0) {
+        const normProdName = (prod.name || '').trim().toLowerCase();
+        for (const ord of orders) {
+          if (!ord || !Array.isArray(ord.items)) continue;
+          const matchedItem = ord.items.find((it: any) =>
+            it && (
+              (it.productId && it.productId === prod.id) ||
+              (normProdName && it.name && String(it.name).trim().toLowerCase() === normProdName)
+            ) &&
+            it.packagingCost !== undefined &&
+            Number(it.packagingCost) > 0
+          );
+          if (matchedItem) {
+            recovered = Number(matchedItem.packagingCost);
+            break;
+          }
+        }
+      }
+      if (recovered !== undefined) {
+        changed = true;
+        persistProductPackagingCostLocally(prod.id, prod.userId || profile.uid, prod.name, recovered);
+        if (prod.id && !prod.id.startsWith('temp_') && recovered > 0) {
+          setDoc(doc(db, 'products', prod.id), { packagingCost: recovered }, { merge: true }).catch(() => {});
+        }
+        return { ...prod, packagingCost: recovered };
+      }
+      return prod;
+    });
+    if (changed) {
+      setProducts(healedProducts);
+    }
+  }, [products, orders, profile.uid]);
+
   // Handle Tab Switch
   useEffect(() => {
     if (activeTab === 'analytics') {
@@ -1576,12 +1627,83 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
 
   // Open Edit Form
   const triggerEditProductForm = (prod: ProductItem) => {
-    setEditingProd(prod);
-    setProdName(prod.name || '');
-    setProdDesc(prod.description || '');
-    setProdPrice(prod.price !== undefined && prod.price !== null ? prod.price.toString() : '');
-    setProdComparePrice(prod.compareAtPrice !== undefined && prod.compareAtPrice !== null ? prod.compareAtPrice.toString() : '');
-    setProdPackagingCost(prod.packagingCost !== undefined && prod.packagingCost !== null ? prod.packagingCost.toString() : '');
+    const rawDirectPack = prod.packagingCost ?? (prod as any).containerCost ?? (prod as any).recipienteCost;
+    let resolvedPackagingCost: number | undefined = resolveProductPackagingCost(
+      prod.id,
+      prod.userId || profile.uid,
+      prod.name,
+      rawDirectPack
+    );
+
+    if (resolvedPackagingCost === undefined) {
+      try {
+        const cleanU = (profile.username || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+        const candidateLists: any[][] = [];
+        const localProds = JSON.parse(localStorage.getItem(`linnk_products_${profile.uid}`) || '[]');
+        if (Array.isArray(localProds)) candidateLists.push(localProds);
+        const backupProds = JSON.parse(localStorage.getItem(`linnk_products_unsynced_backup_${profile.uid}`) || '[]');
+        if (Array.isArray(backupProds)) candidateLists.push(backupProds);
+        if (cleanU) {
+          const pkg = JSON.parse(localStorage.getItem(`linnk_profile_${cleanU}`) || '{}');
+          if (Array.isArray(pkg?.products)) candidateLists.push(pkg.products);
+        }
+        for (const list of candidateLists) {
+          const found = list.find((item: any) => item && (item.id === prod.id || (item.name && prod.name && String(item.name).trim().toLowerCase() === String(prod.name).trim().toLowerCase())));
+          const rawCachedPack = found?.packagingCost ?? found?.containerCost ?? found?.recipienteCost;
+          if (rawCachedPack !== undefined && rawCachedPack !== null && String(rawCachedPack).trim() !== '' && !isNaN(Number(rawCachedPack))) {
+            resolvedPackagingCost = Number(rawCachedPack);
+            break;
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (resolvedPackagingCost === undefined && orders.length > 0) {
+      const normProdName = (prod.name || '').trim().toLowerCase();
+      for (const ord of orders) {
+        if (!ord || !Array.isArray(ord.items)) continue;
+        const matchedItem = ord.items.find((it: any) =>
+          it && (
+            (it.productId && it.productId === prod.id) ||
+            (normProdName && it.name && String(it.name).trim().toLowerCase() === normProdName)
+          ) &&
+          it.packagingCost !== undefined &&
+          Number(it.packagingCost) > 0
+        );
+        if (matchedItem) {
+          resolvedPackagingCost = Number(matchedItem.packagingCost);
+          break;
+        }
+      }
+    }
+
+    const enrichedProd: ProductItem = resolvedPackagingCost !== undefined
+      ? { ...prod, packagingCost: resolvedPackagingCost }
+      : prod;
+
+    setEditingProd(enrichedProd);
+    setProdName(enrichedProd.name || '');
+    setProdDesc(enrichedProd.description || '');
+    setProdPrice(enrichedProd.price !== undefined && enrichedProd.price !== null ? enrichedProd.price.toString() : '');
+    setProdComparePrice(enrichedProd.compareAtPrice !== undefined && enrichedProd.compareAtPrice !== null ? enrichedProd.compareAtPrice.toString() : '');
+    setProdPackagingCost(resolvedPackagingCost !== undefined && resolvedPackagingCost > 0 ? resolvedPackagingCost.toString() : '');
+
+    if (resolvedPackagingCost === undefined && prod.id && !prod.id.startsWith('temp_')) {
+      getDoc(doc(db, 'products', prod.id))
+        .then(snap => {
+          if (snap.exists()) {
+            const d = snap.data() as any;
+            const rawRemotePack = d?.packagingCost ?? d?.containerCost ?? d?.recipienteCost;
+            const remoteResolved = resolveProductPackagingCost(prod.id, d?.userId || profile.uid, d?.name || prod.name, rawRemotePack);
+            if (remoteResolved !== undefined && remoteResolved > 0) {
+              setProdPackagingCost(prev => (prev === '' ? remoteResolved.toString() : prev));
+              setEditingProd(prev => (prev && prev.id === prod.id ? { ...prev, packagingCost: remoteResolved } : prev));
+              setProducts(prev => prev.map(p => (p.id === prod.id ? { ...p, packagingCost: remoteResolved } : p)));
+            }
+          }
+        })
+        .catch(() => {});
+    }
     setProdImage(prod.imageURL || '');
     setProdImageFileName(prod.imageFileName || (prod.imageURL ? generateRyycoImageName({
       productName: prod.name,
@@ -1760,7 +1882,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       }
     }
 
-    let cleanPackagingCost: number | undefined = undefined;
+    let cleanPackagingCost: number | undefined = editingProd ? 0 : undefined;
     if (prodPackagingCost && prodPackagingCost.trim() !== '') {
       const parsedPack = parsePriceInput(prodPackagingCost);
       if (!isNaN(parsedPack) && parsedPack >= 0) {
@@ -1834,7 +1956,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       flavorsText: prodHasFlavors ? (prodFlavorsList.length > 0 ? prodFlavorsList.join(', ') : prodFlavorsText.trim()) : '',
       allowSingleFlavor: prodHasFlavors ? (prodAllowsHalfAndHalf ? prodAllowSingleFlavor : true) : true,
       addons: prodAddons.length > 0 ? prodAddons : undefined,
-      active: prodActive
+      active: prodActive,
+      createdAt: editingProd?.createdAt
     };
 
     try {
@@ -3823,9 +3946,13 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                             </div>
 
                             <div>
-                              <label className="text-[10px] font-black uppercase text-amber-300 tracking-wider block mb-1 flex items-center justify-between">
-                                <span className="truncate">🥡 Recipiente para llevar</span>
-                                <span className="text-[8px] text-gray-500 font-mono">({profile.currency || '$'})</span>
+                              <label className="text-[10px] font-black uppercase text-amber-300 tracking-wider block mb-1 flex items-center justify-between gap-1">
+                                <span>🥡 Recipiente llevar ({profile.currency || '$'})</span>
+                                {prodPackagingCost && !isNaN(parsePriceInput(prodPackagingCost)) && parsePriceInput(prodPackagingCost) > 0 && (
+                                  <span className="text-[9px] text-emerald-400 font-mono font-bold shrink-0">
+                                    {formatPrice(parsePriceInput(prodPackagingCost))}
+                                  </span>
+                                )}
                               </label>
                               <input
                                 type="text"
@@ -3837,7 +3964,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                 className="w-full h-11 bg-gray-900 border border-amber-500/30 focus:border-amber-400 px-3.5 rounded-xl text-xs font-semibold outline-none text-white focus:ring-1 focus:ring-amber-500/20 placeholder-gray-600"
                               />
                               <p className="text-[8.5px] text-gray-400 mt-1 leading-tight">
-                                Solo aparece al finalizar compra.
+                                Costo de recipiente para llevar (se cobra al finalizar compra).
                               </p>
                             </div>
 

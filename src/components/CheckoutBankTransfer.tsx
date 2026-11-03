@@ -27,11 +27,15 @@ export default function CheckoutBankTransfer({ name, accounts, proof, onProof, o
       </div>
       {account.instructions && <p className="text-xs whitespace-pre-wrap text-gray-300">{account.instructions}</p>}
     </div>)}
-    <p className="text-xs leading-relaxed text-gray-300">Copia el número de cuenta, ve a la aplicación, haz el pago, toma una captura y sube el comprobante de pago.</p>
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-xs leading-relaxed text-gray-300">Copia el número de cuenta, ve a la aplicación, haz el pago, toma una captura y sube el comprobante de pago.</p>
+    </div>
     <div className="space-y-2">
       <button type="button" disabled={busy} onClick={() => fileInput.current?.click()}
-        className="w-full min-h-12 px-4 py-3 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-white text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-wait">
-        {busy ? 'Preparando comprobante…' : 'Subir comprobante de pago'}
+        className={`w-full min-h-12 px-4 py-3 rounded-xl text-white text-sm font-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait ${
+          proof ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-[#E63946] hover:bg-[#D62839]'
+        }`}>
+        {busy ? 'Preparando comprobante…' : proof ? '✓ Comprobante cargado (Cambiar imagen)' : 'Subir comprobante de pago (Obligatorio)'}
       </button>
       <input ref={fileInput} aria-label="Seleccionar comprobante de pago" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} className="hidden" onChange={async event => {
         const file = event.target.files?.[0];
@@ -44,14 +48,18 @@ export default function CheckoutBankTransfer({ name, accounts, proof, onProof, o
         try {
           const { compressPaymentReceipt } = await import('../lib/imageCompressor');
           const result = await compressPaymentReceipt(file);
-          onProof(result.dataUrl); setMessage(`Comprobante optimizado: ${Math.ceil(result.dataUrl.length / 1024)} KB. Se enviará con tu pedido para revisión del restaurante.`);
+          onProof(result.dataUrl); setMessage(`✓ Comprobante cargado (${Math.ceil(result.dataUrl.length / 1024)} KB). Ya puedes confirmar tu pedido.`);
         } catch { setMessage('No se pudo reducir el comprobante. Recorta la imagen para mostrar solo el pago y vuelve a intentarlo.'); }
         finally { setBusy(false); onBusy(false); }
       }} />
     </div>
-    <p className="text-xs text-gray-400">Imagen JPG, PNG o WebP. El restaurante verificará el pago.</p>
+    {!proof ? (
+      <p className="text-xs text-amber-400 font-semibold">⚠️ Obligatorio: Debes subir la captura o comprobante de la transferencia para poder avanzar.</p>
+    ) : (
+      <p className="text-xs text-emerald-400 font-semibold">✓ Comprobante adjuntado correctamente. El restaurante verificará el pago.</p>
+    )}
     {proof && <div className="flex items-center gap-3"><img src={proof} alt={`Comprobante para ${name}`} className="h-24 w-24 object-contain bg-white rounded-lg" />
-      <button type="button" disabled={busy} onClick={() => { onProof(''); setMessage('Comprobante eliminado.'); }} className="min-h-11 px-4 py-2 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-xs font-bold text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Quitar comprobante</button></div>}
-    <p role="status" className="text-xs text-gray-300">{message}</p>
+      <button type="button" disabled={busy} onClick={() => { onProof(''); setMessage('Comprobante eliminado. Debes subir uno para continuar.'); }} className="min-h-11 px-4 py-2 rounded-xl bg-[#E63946] hover:bg-[#D62839] text-xs font-bold text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Quitar comprobante</button></div>}
+    {message && <p role="status" className="text-xs text-gray-300">{message}</p>}
   </section>;
 }

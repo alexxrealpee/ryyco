@@ -495,6 +495,7 @@ export default function AdminStoresManager({
   const globalKpis = useMemo(() => {
     const total = storeList.length;
     let openCount = 0;
+    let closedCount = 0;
     let suspendedCount = 0;
     let withProductsCount = 0;
     let totalSalesPlatform = 0;
@@ -502,6 +503,7 @@ export default function AdminStoresManager({
     storeList.forEach(s => {
       if (s.suspended) suspendedCount++;
       else if (checkStoreIsOpen(s)) openCount++;
+      else closedCount++;
 
       if ((storeProductCounts[s.uid] || 0) > 0) withProductsCount++;
 
@@ -512,6 +514,7 @@ export default function AdminStoresManager({
     return {
       total,
       openCount,
+      closedCount,
       suspendedCount,
       withProductsCount,
       totalSalesPlatform,
@@ -1023,97 +1026,151 @@ export default function AdminStoresManager({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-[#0b101d] border border-gray-850 rounded-2xl p-4 space-y-3 shadow-xl">
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
-          {/* Main Search Input */}
-          <div className="relative flex-1 min-w-0">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-500">
-              <Search className="w-4 h-4" />
-            </span>
-            <input 
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Buscar por tienda, @usuario, WhatsApp, teléfono, correo, ciudad o dirección..."
-              className="w-full bg-gray-950 border border-gray-800 focus:border-pink-500 text-white font-medium text-xs rounded-xl py-3 pl-10 pr-9 outline-none transition placeholder:text-gray-600"
-            />
-            {searchTerm && (
-              <button
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+      <div className="bg-[#0b101d] border border-gray-800 rounded-2xl p-4 space-y-3 shadow-xl">
+        {/* Quick Status Filter Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedStatus('all')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer border ${
+              selectedStatus === 'all'
+                ? 'bg-pink-600 text-white border-pink-500 shadow-md'
+                : 'bg-gray-950 text-gray-300 border-gray-800 hover:border-gray-700 hover:text-white'
+            }`}
+          >
+            <Store className="w-3.5 h-3.5" />
+            <span>Todas las Tiendas ({globalKpis.total})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedStatus(selectedStatus === 'open' ? 'all' : 'open')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer border ${
+              selectedStatus === 'open'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                : 'bg-gray-950 text-emerald-400 border-emerald-500/30 hover:bg-emerald-950/40'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Restaurantes Abiertos ({globalKpis.openCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedStatus(selectedStatus === 'closed' ? 'all' : 'closed')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer border ${
+              selectedStatus === 'closed'
+                ? 'bg-amber-600 text-white border-amber-500 shadow-md'
+                : 'bg-gray-950 text-amber-400 border-amber-500/30 hover:bg-amber-950/40'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" />
+            <span>Restaurantes Cerrados ({globalKpis.closedCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedStatus(selectedStatus === 'suspended' ? 'all' : 'suspended')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer border ${
+              selectedStatus === 'suspended'
+                ? 'bg-red-600 text-white border-red-500 shadow-md'
+                : 'bg-gray-950 text-red-400 border-red-500/30 hover:bg-red-950/40'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Suspendidas ({globalKpis.suspendedCount})</span>
+          </button>
+        </div>
+
+        {/* Main Search Input - Full width row */}
+        <div className="relative w-full">
+          <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400 pointer-events-none">
+            <Search className="w-4 h-4" />
+          </span>
+          <input 
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por tienda, @usuario, WhatsApp, teléfono, correo, ciudad o dirección..."
+            className="w-full bg-gray-950 border border-gray-800 focus:border-pink-500 text-white font-medium text-xs sm:text-sm rounded-xl py-3 pl-10 pr-10 outline-none transition placeholder:text-gray-500"
+          />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-white cursor-pointer"
+              title="Limpiar búsqueda"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Quick Filter Selectors - Clean 4-column responsive grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 w-full">
+          {/* Operational Status */}
+          <div className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 flex flex-col min-w-0">
+            <span className="text-[9px] font-black text-gray-400 uppercase font-mono tracking-wider">Estado:</span>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as any)}
+              className="w-full bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
+            >
+              <option value="all" className="bg-gray-950">Todos los estados</option>
+              <option value="open" className="bg-gray-950 text-emerald-400">🟢 Abiertas ahora</option>
+              <option value="closed" className="bg-gray-950 text-amber-400">🔴 Cerradas</option>
+              <option value="suspended" className="bg-gray-950 text-red-400">⚠️ Suspendidas</option>
+            </select>
           </div>
 
-          {/* Quick Filter Selectors */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {/* Operational Status */}
-            <div className="bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1.5 flex flex-col">
-              <span className="text-[9px] font-black text-gray-400 uppercase font-mono">Estado:</span>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value as any)}
-                className="bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
-              >
-                <option value="all" className="bg-gray-950">Todos los estados</option>
-                <option value="open" className="bg-gray-950 text-emerald-400">🟢 Abiertas ahora</option>
-                <option value="closed" className="bg-gray-950 text-amber-400">🔴 Cerradas</option>
-                <option value="suspended" className="bg-gray-950 text-red-400">⚠️ Suspendidas</option>
-              </select>
-            </div>
+          {/* Plan filter */}
+          <div className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 flex flex-col min-w-0">
+            <span className="text-[9px] font-black text-gray-400 uppercase font-mono tracking-wider">Plan:</span>
+            <select
+              value={selectedPlan}
+              onChange={(e) => setSelectedPlan(e.target.value)}
+              className="w-full bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
+            >
+              <option value="all" className="bg-gray-950">Todos los planes</option>
+              <option value="basico" className="bg-gray-950 text-indigo-300">Básico ($49k)</option>
+              <option value="medio" className="bg-gray-950 text-purple-300">Medio ($98k)</option>
+              <option value="pro" className="bg-gray-950 text-amber-300">Pro ($147k)</option>
+              <option value="trial" className="bg-gray-950 text-cyan-300">🆓 Prueba (Trial)</option>
+            </select>
+          </div>
 
-            {/* Plan filter */}
-            <div className="bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1.5 flex flex-col">
-              <span className="text-[9px] font-black text-gray-400 uppercase font-mono">Plan:</span>
-              <select
-                value={selectedPlan}
-                onChange={(e) => setSelectedPlan(e.target.value)}
-                className="bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
-              >
-                <option value="all" className="bg-gray-950">Todos los planes</option>
-                <option value="basico" className="bg-gray-950 text-indigo-300">Básico ($49k)</option>
-                <option value="medio" className="bg-gray-950 text-purple-300">Medio ($98k)</option>
-                <option value="pro" className="bg-gray-950 text-amber-300">Pro ($147k)</option>
-                <option value="trial" className="bg-gray-950 text-cyan-300">🆓 Prueba (Trial)</option>
-              </select>
-            </div>
+          {/* City filter */}
+          <div className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 flex flex-col min-w-0">
+            <span className="text-[9px] font-black text-gray-400 uppercase font-mono tracking-wider">Ciudad:</span>
+            <select
+              value={selectedCity}
+              onChange={(e) => setSelectedCity(e.target.value)}
+              className="w-full bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
+            >
+              <option value="all" className="bg-gray-950">Todas ({uniqueCities.length})</option>
+              {uniqueCities.map(c => (
+                <option key={c} value={c} className="bg-gray-950">{c}</option>
+              ))}
+            </select>
+          </div>
 
-            {/* City filter */}
-            <div className="bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1.5 flex flex-col">
-              <span className="text-[9px] font-black text-gray-400 uppercase font-mono">Ciudad:</span>
-              <select
-                value={selectedCity}
-                onChange={(e) => setSelectedCity(e.target.value)}
-                className="bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
-              >
-                <option value="all" className="bg-gray-950">Todas ({uniqueCities.length})</option>
-                {uniqueCities.map(c => (
-                  <option key={c} value={c} className="bg-gray-950">{c}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Category / Layout filter */}
-            <div className="bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1.5 flex flex-col">
-              <span className="text-[9px] font-black text-gray-400 uppercase font-mono">Categoría:</span>
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
-              >
-                <option value="all" className="bg-gray-950">Todas</option>
-                <option value="food" className="bg-gray-950">🍽️ Restaurantes / Comidas</option>
-                <option value="liquor" className="bg-gray-950">🍾 Licores & Bebidas</option>
-                <option value="shoes" className="bg-gray-950">👟 Calzado & Moda</option>
-                <option value="tech" className="bg-gray-950">📱 Tecnología</option>
-                {uniqueCategories.filter(c => !['food','liquor','shoes','tech','default'].includes(c.toLowerCase())).map(c => (
-                  <option key={c} value={c} className="bg-gray-950">{c}</option>
-                ))}
-              </select>
-            </div>
+          {/* Category / Layout filter */}
+          <div className="bg-gray-950 border border-gray-800 rounded-xl px-3 py-2 flex flex-col min-w-0">
+            <span className="text-[9px] font-black text-gray-400 uppercase font-mono tracking-wider">Categoría:</span>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full bg-transparent text-white text-xs font-bold outline-none cursor-pointer pt-0.5 truncate"
+            >
+              <option value="all" className="bg-gray-950">Todas</option>
+              <option value="food" className="bg-gray-950">🍽️ Restaurantes / Comidas</option>
+              <option value="liquor" className="bg-gray-950">🍾 Licores & Bebidas</option>
+              <option value="shoes" className="bg-gray-950">👟 Calzado & Moda</option>
+              <option value="tech" className="bg-gray-950">📱 Tecnología</option>
+              {uniqueCategories.filter(c => !['food','liquor','shoes','tech','default'].includes(c.toLowerCase())).map(c => (
+                <option key={c} value={c} className="bg-gray-950">{c}</option>
+              ))}
+            </select>
           </div>
         </div>
 
