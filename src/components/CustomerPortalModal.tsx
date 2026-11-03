@@ -101,7 +101,7 @@ const WHEEL_SLICES: WheelSlice[] = [
   { title: '¡Sigue Intentando!', category: 'dish', description: '¡Casi! Tienes otra oportunidad en tu próximo pedido', discountAmount: 0, color: '#3B82F6', textColor: '#ffffff', icon: '🍀', isLose: true },
   { title: '¡Bebida Gratis!', category: 'drink', description: 'Gaseosa o jugo refrescante gratis ($4.000 COP)', discountAmount: 4000, color: '#10B981', textColor: '#ffffff', icon: '🥤', isLose: false },
   { title: '¡Sigue Intentando!', category: 'dish', description: '¡Estuviste a milímetros! Sigue acumulando pedidos', discountAmount: 0, color: '#8B5CF6', textColor: '#ffffff', icon: '🎯', isLose: true },
-  { title: '¡Boleta Halloween!', category: 'ticket', description: '¡Felicidades! Ganaste una boleta oficial para el evento de Halloween en Ryyco 🎃', discountAmount: 0, color: '#FF7518', textColor: '#ffffff', icon: '🎃', isLose: false },
+  { title: '¡Domicilio Gratis!', category: 'ticket', description: '¡Felicidades! Ganaste un cupón de domicilio gratis en Ryyco ($7.000 COP)', discountAmount: 7000, color: '#FF7518', textColor: '#ffffff', icon: '🛵', isLose: false },
   { title: '¡Sigue Intentando!', category: 'dish', description: '¡No te rindas! Acumula más giros con tus compras', discountAmount: 0, color: '#F59E0B', textColor: '#ffffff', icon: '💫', isLose: true },
   { title: '¡Postre de la Casa!', category: 'dessert', description: 'Postre artesanal delicioso gratis ($8.000 COP)', discountAmount: 8000, color: '#7209B7', textColor: '#ffffff', icon: '🍨', isLose: false },
   { title: '¡Sigue Intentando!', category: 'dish', description: '¡Estuvo a punto! Sigue ordenando en Ryyco', discountAmount: 0, color: '#06D6A0', textColor: '#ffffff', icon: '✨', isLose: true },
@@ -773,7 +773,7 @@ export default function CustomerPortalModal({
       try {
         if (!targetSlice.isLose) {
           // Winning prize! Register prize in Firestore
-          const prizeTitle = targetSlice.title === "¡Boleta Halloween!" ? "¡Ganaste una Boleta para Halloween!" : targetSlice.title;
+          const prizeTitle = targetSlice.title;
           const newPrize = await addCustomerWonPrize(customer.phone, {
             title: prizeTitle,
             category: (targetSlice.category || "ticket") as any,
@@ -2330,7 +2330,7 @@ export default function CustomerPortalModal({
                     </div>
                     <h4 className="text-lg font-black text-white">¡Gira y Gana Platos Gratis!</h4>
                     <p className="text-xs text-gray-400 max-w-md mx-auto">
-                      Cada compra o registro te otorga giros para ganar boletas para Halloween 🎃, platos fuertes, bebidas y postres gratis.
+                      Cada compra o registro te otorga giros para ganar domicilios gratis, platos fuertes, bebidas y postres gratis.
                     </p>
                   </div>
 
@@ -2355,7 +2355,7 @@ export default function CustomerPortalModal({
                           className="relative h-full w-full overflow-hidden rounded-full border-2 border-amber-950/50 transition-transform duration-[4000ms] ease-out"
                           style={{ transform: `rotate(${wheelRotation}deg)` }}
                         >
-                          <svg className="h-full w-full" viewBox="0 0 360 360" role="img" aria-label="Ruleta de premios: plato fuerte, bebida, boleta Halloween, postre y casillas de sigue intentando">
+                          <svg className="h-full w-full" viewBox="0 0 360 360" role="img" aria-label="Ruleta de premios: plato fuerte, bebida, domicilio gratis, postre y casillas de sigue intentando">
                             <defs>
                               <radialGradient id="reward-wheel-shine" cx="35%" cy="20%" r="85%">
                                 <stop offset="0" stopColor="#ffffff" stopOpacity="0.18" />
@@ -2372,7 +2372,7 @@ export default function CustomerPortalModal({
                               const labels = slice.isLose ? ['SIGUE', 'INTENTANDO']
                                 : slice.category === 'dish' ? ['PLATO FUERTE', 'GRATIS']
                                 : slice.category === 'drink' ? ['BEBIDA', 'GRATIS']
-                                : slice.category === 'ticket' ? ['BOLETA', 'HALLOWEEN'] : ['POSTRE', 'DE LA CASA'];
+                                : slice.category === 'ticket' ? ['DOMICILIO', 'GRATIS'] : ['POSTRE', 'DE LA CASA'];
                               return (
                                 <g key={index}>
                                   <path d={`M180 180 L${180 + 180 * Math.sin(start)} ${180 - 180 * Math.cos(start)} A180 180 0 0 1 ${180 + 180 * Math.sin(end)} ${180 - 180 * Math.cos(end)} Z`}

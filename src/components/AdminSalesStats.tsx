@@ -645,16 +645,16 @@ export default function AdminSalesStats({
 
       </div>
 
-      {/* 3. Sales Timeline Interactive Chart */}
+      {/* 3. Sales Timeline Interactive Line Chart */}
       <div className="bg-[#0b101d] border border-gray-800/80 rounded-3xl p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-800/80 pb-4">
           <div>
             <h3 className="font-extrabold text-white text-base flex items-center gap-2">
-              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              <TrendingUp className="w-5 h-5 text-cyan-400" />
               <span>Evolución de Ventas en el Tiempo</span>
             </h3>
             <p className="text-xs text-gray-400">
-              Distribución de ingresos día a día según el rango de fecha seleccionado.
+              Distribución lineal de ingresos día a día según el rango de fecha seleccionado.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -670,35 +670,173 @@ export default function AdminSalesStats({
             <p>No se registraron ventas en las fechas seleccionadas.</p>
           </div>
         ) : (
-          <div className="pt-4 space-y-4">
-            {/* Timeline Bars Container */}
-            <div className="h-56 flex items-end gap-2 sm:gap-3 overflow-x-auto pb-4 pt-6 px-2 no-scrollbar">
-              {dailyTimeline.days.map((day) => {
-                const heightPct = Math.max(Math.round((day.total / dailyTimeline.maxVal) * 100), 6);
+          <div className="pt-2 space-y-4">
+            {/* Scrollable Line Chart Container */}
+            <div className="overflow-x-auto pb-2 no-scrollbar">
+              {(() => {
+                const days = dailyTimeline.days;
+                const maxVal = dailyTimeline.maxVal || 1;
+                const colWidth = 64;
+                const chartWidth = Math.max(days.length * colWidth, 640);
+                const chartHeight = 230;
+                const padTop = 36;
+                const padBottom = 38;
+                const padX = 36;
+                const plotWidth = chartWidth - padX * 2;
+                const plotHeight = chartHeight - padTop - padBottom;
+
+                const points = days.map((day, idx) => {
+                  const x = days.length === 1
+                    ? chartWidth / 2
+                    : padX + (idx / (days.length - 1)) * plotWidth;
+                  const ratio = Math.min(Math.max(day.total / maxVal, 0), 1);
+                  const y = padTop + plotHeight - ratio * plotHeight;
+                  return { x, y, day };
+                });
+
+                const polylinePoints = points.map(p => `${p.x},${p.y}`).join(' ');
+                const areaPath = points.length > 1
+                  ? `M ${points[0].x},${padTop + plotHeight} ` +
+                    points.map(p => `L ${p.x},${p.y}`).join(' ') +
+                    ` L ${points[points.length - 1].x},${padTop + plotHeight} Z`
+                  : '';
+
+                const gridLevels = [0, 0.25, 0.5, 0.75, 1];
+
                 return (
-                  <div 
-                    key={day.dateStr} 
-                    className="flex flex-col items-center gap-2 h-full justify-end group min-w-[36px] sm:min-w-[48px] flex-1 relative"
-                  >
-                    {/* Hover Floating Tooltip */}
-                    <div className="absolute -top-12 z-20 hidden group-hover:flex flex-col items-center bg-gray-900 border border-cyan-500/40 text-white px-2.5 py-1.5 rounded-xl shadow-2xl text-[10px] whitespace-nowrap pointer-events-none">
-                      <span className="font-black text-cyan-400">{formatCOP(day.total)}</span>
-                      <span className="text-gray-400">{day.count} {day.count === 1 ? 'pedido' : 'pedidos'} ({day.dateStr})</span>
-                    </div>
+                  <div className="relative" style={{ minWidth: `${chartWidth}px`, height: `${chartHeight}px` }}>
+                    <svg
+                      viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+                      className="w-full h-full overflow-visible"
+                    >
+                      {/* Horizontal reference grid lines */}
+                      {gridLevels.map((lvl, idx) => {
+                        const y = padTop + plotHeight - lvl * plotHeight;
+                        return (
+                          <g key={idx}>
+                            <line
+                              x1={padX}
+                              y1={y}
+                              x2={chartWidth - padX}
+                              y2={y}
+                              stroke="#1e293b"
+                              strokeDasharray={lvl === 0 ? undefined : '4 4'}
+                              strokeWidth="1"
+                            />
+                          </g>
+                        );
+                      })}
 
-                    {/* Bar */}
-                    <div 
-                      className="w-full rounded-t-xl bg-gradient-to-t from-cyan-600/50 via-cyan-500 to-indigo-500 group-hover:from-cyan-400 group-hover:to-indigo-400 transition-all duration-300 shadow-lg shadow-cyan-500/10 cursor-pointer"
-                      style={{ height: `${heightPct}%` }}
-                    />
+                      {/* Subtle area fill under line */}
+                      {areaPath && (
+                        <path
+                          d={areaPath}
+                          fill="#06b6d4"
+                          fillOpacity="0.10"
+                        />
+                      )}
 
-                    {/* Date label */}
-                    <span className="text-[10px] font-mono text-gray-400 group-hover:text-white transition">
-                      {day.label}
-                    </span>
+                      {/* Main Line */}
+                      {points.length > 1 && (
+                        <polyline
+                          fill="none"
+                          stroke="#06b6d4"
+                          strokeWidth="3"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          points={polylinePoints}
+                        />
+                      )}
+
+                      {/* Data points, X-axis labels & vertical hover guides */}
+                      {points.map((pt) => (
+                        <g key={pt.day.dateStr} className="group cursor-pointer">
+                          {/* Vertical hover guide line */}
+                          <line
+                            x1={pt.x}
+                            y1={padTop}
+                            x2={pt.x}
+                            y2={padTop + plotHeight}
+                            stroke="#22d3ee"
+                            strokeWidth="1"
+                            strokeDasharray="3 3"
+                            className="opacity-0 group-hover:opacity-60 transition-opacity"
+                          />
+
+                          {/* Invisible wider hit area for easy hovering */}
+                          <rect
+                            x={pt.x - colWidth / 2}
+                            y={0}
+                            width={colWidth}
+                            height={chartHeight}
+                            fill="transparent"
+                          />
+
+                          {/* Outer pulse ring on hover */}
+                          <circle
+                            cx={pt.x}
+                            cy={pt.y}
+                            r="8"
+                            fill="#06b6d4"
+                            className="opacity-0 group-hover:opacity-25 transition-opacity"
+                          />
+
+                          {/* Point dot */}
+                          <circle
+                            cx={pt.x}
+                            cy={pt.y}
+                            r="4.5"
+                            fill="#0b101d"
+                            stroke="#22d3ee"
+                            strokeWidth="2.5"
+                            className="group-hover:r-6 group-hover:fill-cyan-400 transition-all"
+                          />
+
+                          {/* Date label on X-axis */}
+                          <text
+                            x={pt.x}
+                            y={chartHeight - 10}
+                            textAnchor="middle"
+                            className="fill-gray-400 group-hover:fill-white text-[10px] font-mono transition-colors select-none"
+                          >
+                            {pt.day.label}
+                          </text>
+
+                          {/* Floating Value Badge on Hover */}
+                          <g className="opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                            <rect
+                              x={Math.min(Math.max(pt.x - 68, 4), chartWidth - 140)}
+                              y={Math.max(pt.y - 44, 2)}
+                              width="136"
+                              height="34"
+                              rx="8"
+                              fill="#0f172a"
+                              stroke="#06b6d4"
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={Math.min(Math.max(pt.x, 72), chartWidth - 72)}
+                              y={Math.max(pt.y - 29, 17)}
+                              textAnchor="middle"
+                              className="fill-cyan-400 text-[10px] font-black font-mono"
+                            >
+                              {formatCOP(pt.day.total)}
+                            </text>
+                            <text
+                              x={Math.min(Math.max(pt.x, 72), chartWidth - 72)}
+                              y={Math.max(pt.y - 16, 30)}
+                              textAnchor="middle"
+                              className="fill-gray-300 text-[9px] font-mono"
+                            >
+                              {pt.day.count} {pt.day.count === 1 ? 'pedido' : 'pedidos'} ({pt.day.dateStr})
+                            </text>
+                          </g>
+                        </g>
+                      ))}
+                    </svg>
                   </div>
                 );
-              })}
+              })()}
             </div>
             
             <div className="flex items-center justify-between text-[11px] text-gray-500 px-2 pt-2 border-t border-gray-800/40 font-mono">

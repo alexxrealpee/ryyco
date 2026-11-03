@@ -1501,28 +1501,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   return (
     <div className="bg-[#090D16] min-h-screen font-sans text-[#C4CBD8] flex flex-col selection:bg-[#FF6B00] selection:text-black relative overflow-x-hidden">
-      
-      {/* Halloween Ambient Atmosphere (Only on home page) */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
-        {/* Glowing pumpkin orange radial glow */}
-        <div className="absolute -top-32 -left-32 w-96 h-96 bg-[#FF6B00]/10 rounded-full blur-[120px]" />
-        {/* Floating animated bats and ghosts */}
-        <div className="absolute top-28 left-[6%] animate-bat opacity-60 text-xl hidden md:block">🦇</div>
-        <div className="absolute top-52 right-[10%] animate-bat opacity-70 text-2xl hidden sm:block" style={{ animationDelay: '1.2s' }}>🦇</div>
-        <div className="absolute top-[680px] left-[4%] animate-ghost opacity-60 text-2xl hidden lg:block" style={{ animationDelay: '2.5s' }}>👻</div>
-        <div className="absolute top-[950px] right-[5%] animate-bat opacity-50 text-lg hidden md:block" style={{ animationDelay: '3.2s' }}>🦇</div>
-      </div>
-
-      {/* Top Festive Halloween Announcement Bar */}
-      <aside aria-label="Especial de Halloween" className="bg-[#E63946] text-white text-[11px] sm:text-xs font-black py-1.5 px-3 flex items-center justify-center gap-2 tracking-wide shadow-lg z-50 overflow-hidden relative">
-        <span className="animate-bounce select-none">🎃</span>
-        <span className="font-extrabold uppercase tracking-wider">¡Especial de Halloween en Ryyco!</span>
-        <span className="hidden sm:inline font-bold text-white/95">— Domicilios de miedo y antojos monstruosamente deliciosos en Ipiales</span>
-        <span className="animate-pulse select-none">👻</span>
-        <span className="text-[10px] bg-black/60 text-white px-2 py-0.5 rounded-full font-mono border border-white/20 hidden xs:inline select-none">Dulce o Truco 🍬</span>
-      </aside>
-
-      {/* 1. Navbar (Halloween Spooky Theme) */}
+      {/* 1. Navbar */}
       <header className="border-b border-[#1F2937] backdrop-blur-md sticky top-0 z-40 bg-[#0F172A]/95 relative shadow-md shadow-black/40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
           {/* Left: 3-Dots Menu Dropdown Button & Customer Session Status on Desktop */}
@@ -1879,7 +1858,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             />
           </div>
 
-          {/* Right: Action Buttons (Halloween Theme) */}
+          {/* Right: Action Buttons */}
           <div className="flex-1 flex items-center justify-end gap-1.5 sm:gap-2.5 z-10 min-w-0">
             {/* Mis Puntos Ryycos Button (Desktop & Tablet) */}
             {!isAndroid && (
@@ -1898,7 +1877,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             <button
               onClick={() => setIsCartOpen(true)}
               className="relative p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-700/80 rounded-xl text-white hover:border-[#D62839] transition cursor-pointer flex items-center gap-1.5 shrink-0"
-              title="Ver mi carrito de compras de Halloween"
+              title="Ver mi carrito de compras"
             >
               <ShoppingBag className="w-4.5 h-4.5 stroke-[2] text-white" />
               {cart.length > 0 && (
@@ -1922,10 +1901,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         </div>
       </header>
 
-      {/* 2. Hero Section (Halloween Edition) */}
+      {/* 2. Hero Section */}
       <section className="relative overflow-hidden pt-6 pb-2 sm:pt-10 sm:pb-4 px-3 sm:px-6 md:px-8 bg-transparent z-10">
-        <div className="absolute top-1/2 left-1/4 -translate-x-1/2 -translate-y-1/2 w-[260px] sm:w-[380px] h-[260px] sm:h-[380px] bg-[#FF6B00]/10 blur-[90px] rounded-full -z-10" />
-
         <div className="max-w-6xl mx-auto grid grid-cols-12 items-center gap-2 sm:gap-6">
           {/* Left Column: Stories tag, Social media & Text */}
           <div className="col-span-7 sm:col-span-7 flex flex-col items-start text-left space-y-2 z-10">
@@ -1936,16 +1913,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   window.dispatchEvent(new Event('popstate'));
                 }}
                 className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#D62839] hover:bg-[#C21829] text-white rounded-full transition cursor-pointer text-[10px] sm:text-xs font-black uppercase tracking-wider shadow-lg shadow-[#D62839]/30 active:scale-95 border border-[#D62839]"
-                title="Ver Reels de comida en Halloween"
+                title="Ver Reels de comida"
               >
-                <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-white text-white animate-bounce" />
-                <span>🎃 REELS DE TERROR</span>
+                <Flame className="w-3 h-3 sm:w-3.5 sm:h-3.5 fill-white text-white" />
+                <span>REELS DE COMIDA</span>
               </button>
-
-              {/* Halloween Tag */}
-              <span className="hidden xs:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-900 border border-slate-700/80 text-[10px] sm:text-[11px] font-black text-white">
-                👻 Dulce o Truco
-              </span>
 
               {/* Social Media Links */}
               <div className="flex items-center gap-1.5">
@@ -2012,33 +1984,23 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.08] font-sans">
-              <span className="block text-white">¿Qué antojo de</span>
-              <span className="block text-[#E63946]">miedo pedirás? 🎃</span>
+              <span className="block text-white">¿Qué se te</span>
+              <span className="block text-[#E63946]">antoja hoy?</span>
             </h1>
             <p className="text-xs sm:text-sm text-gray-300 max-w-md font-medium">
-              🦇 Pide a tus restaurantes favoritos de Ipiales con entrega rápida como escoba de bruja 🧹
+              Pide a tus restaurantes favoritos de Ipiales con entrega rápida a domicilio.
             </p>
           </div>
 
-          {/* Right Column: Food Image with Halloween Cauldron/Pumpkin Backdrop */}
+          {/* Right Column: Food Image */}
           <div className="col-span-5 sm:col-span-5 relative flex items-center justify-center sm:justify-end">
             <div className="relative w-full max-w-[170px] sm:max-w-[270px] md:max-w-[340px] flex items-center justify-center py-2">
               
-              {/* Glowing Backdrop Aura */}
+              {/* Backdrop Circle */}
               <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 w-[110px] h-[110px] sm:w-[180px] sm:h-[180px] md:w-[220px] md:h-[220px] bg-[#E63946] rounded-full opacity-90 shadow-2xl shadow-[#E63946]/40 -z-0" />
-              
-              {/* Top-Left Spiderweb / Bat Doodle */}
-              <span className="absolute -top-3 sm:-top-5 left-4 sm:left-10 text-lg sm:text-2xl z-20 animate-bat select-none pointer-events-none" title="Bat">
-                🦇
-              </span>
-
-              {/* Top-Right Glowing Pumpkin Doodle */}
-              <span className="absolute -top-1 sm:-top-3 right-0 sm:right-3 text-base sm:text-xl z-20 animate-bounce select-none pointer-events-none" title="Pumpkin">
-                🎃
-              </span>
 
               {/* Left Side Curved Doodle Aroma Lines */}
-              <svg className="absolute -left-3 sm:-left-6 top-1/2 -translate-y-1/2 w-4 sm:w-7 h-8 sm:h-12 text-[#FF6B00] z-20 pointer-events-none select-none" viewBox="0 0 24 36" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round">
+              <svg className="absolute -left-3 sm:-left-6 top-1/2 -translate-y-1/2 w-4 sm:w-7 h-8 sm:h-12 text-[#E63946] z-20 pointer-events-none select-none" viewBox="0 0 24 36" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round">
                 <path d="M 18 5 C 10 11, 10 25, 18 31" />
                 <path d="M 10 10 C 4 14, 4 22, 10 26" />
               </svg>
@@ -2049,7 +2011,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/hero_combo.webp';
                 }}
-                alt="Delicioso combo de hamburguesa, papas y bebida para Halloween" 
+                alt="Delicioso combo de hamburguesa, papas y bebida" 
                 width="400"
                 height="260"
                 loading="eager"
@@ -2066,16 +2028,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       {/* 3. Filtering & Dashboard Container */}
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
         
-        {/* Filter bar card (Halloween Edition) */}
+        {/* Filter bar card */}
         <div className="bg-[#111827] border border-slate-800 p-5 rounded-3xl space-y-5 shadow-2xl shadow-black/40 overflow-hidden relative">
-          
-          {/* Subtle Decorative Spiderweb in top-right corner */}
-          <div className="absolute -top-1 -right-1 w-24 h-24 opacity-20 pointer-events-none select-none overflow-hidden" aria-hidden="true">
-            <svg viewBox="0 0 100 100" fill="none" stroke="#FF6B00" strokeWidth="1.5">
-              <path d="M 0 0 L 100 100 M 0 0 L 100 40 M 0 0 L 40 100 M 0 0 L 100 70 M 0 0 L 70 100" />
-              <path d="M 25 10 C 20 20, 10 25, 0 25 M 50 20 C 40 40, 20 50, 0 50 M 75 30 C 60 60, 30 75, 0 75" />
-            </svg>
-          </div>
 
           {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
           <div 
@@ -2089,7 +2043,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               value={searchTerm}
               onClick={() => setIsFullScreenSearchOpen(true)}
               onFocus={() => setIsFullScreenSearchOpen(true)}
-              placeholder="🎃 Buscar restaurantes, platos de miedo, hamburguesas, pizzas a domicilio..."
+              placeholder="Buscar restaurantes, platos, hamburguesas, pizzas a domicilio..."
               className="w-full bg-white border-2 border-[#D62839] rounded-2xl py-3 pl-11 pr-10 text-xs sm:text-sm font-bold text-gray-900 placeholder:text-gray-500 focus:outline-none focus:border-[#D62839] focus:ring-4 focus:ring-[#D62839]/25 shadow-md shadow-black/10 transition cursor-pointer"
             />
             {searchTerm && (
@@ -2401,14 +2355,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
           ) : null}
 
-          {/* Quick Categories section (Halloween Edition) */}
+          {/* Quick Categories section */}
           {isCategoriesLoading ? (
             <CategoriesSkeleton />
           ) : (
             <div className="border-t border-slate-800 pt-3 space-y-2 transition-opacity duration-200">
               <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-red-300 tracking-wider px-0.5">
                 <Filter className="w-3.5 h-3.5 text-[#D62839]" />
-                <span>🎃 Categorías de Miedo:</span>
+                <span>Categorías:</span>
               </div>
               <div className="flex items-center gap-2 overflow-x-auto pb-1.5 hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-x pan-y' }}>
                 {categories.map((cat) => {
@@ -2426,7 +2380,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           : 'bg-slate-900 border border-slate-700/80 text-white hover:border-[#D62839]/60 hover:text-red-200'
                       }`}
                     >
-                      {isAll ? '🎃 VER TODO' : cat}
+                      {isAll ? 'VER TODO' : cat}
                     </button>
                   );
                 })}
@@ -2576,7 +2530,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     {isOnSale && !product.allowsHalfAndHalf && (
                       <div className="absolute top-3 right-3 z-10">
                         <span className="bg-[#D62839] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
-                          🍬 -{discountPercentage}%
+                          -{discountPercentage}%
                         </span>
                       </div>
                     )}
@@ -2593,7 +2547,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     {/* Quick overlay actions on hover */}
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2 pointer-events-none sm:pointer-events-auto">
                       <span className="p-2.5 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black rounded-xl transition shadow hover:scale-110 active:scale-95 cursor-pointer text-xs uppercase tracking-wider flex items-center gap-1">
-                        Ver Detalles 🎃
+                        Ver Detalles
                       </span>
                     </div>
                   </div>
@@ -2662,7 +2616,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                         className="px-3 py-1.5 bg-[#D62839] hover:bg-[#B51E2D] text-white font-black text-[10px] uppercase tracking-wider rounded-lg transition cursor-pointer flex items-center gap-1 shadow-md shadow-[#D62839]/30 active:scale-95"
                         title="Ver detalles y agregar al carrito"
                       >
-                        <ShoppingBag className="w-3.5 h-3.5 text-white stroke-[2.5]" /> Pedir 🎃
+                        <ShoppingBag className="w-3.5 h-3.5 text-white stroke-[2.5]" /> Pedir
                       </button>
                     </div>
                   </div>
