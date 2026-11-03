@@ -22,12 +22,13 @@ type PresenceRecord = {
   deliveryStatus?: string;
 };
 
-type LocatedOpenStore = {
+type LocatedStore = {
   store: UserProfile;
   lat: number;
   lng: number;
   hasExactGps: boolean;
   addressLabel: string;
+  isClosed: boolean;
 };
 
 function escapeHtml(value: string): string {
@@ -47,9 +48,9 @@ function getVehicleEmoji(vehicleType?: string): string {
 }
 
 /**
- * Resolves coordinates for an open restaurant.
+ * Resolves coordinates for a restaurant.
  * Uses exact stored GPS coordinates (`lat`/`lng` or `mapUrl` extraction) when available,
- * and falls back to a deterministic position in Ipiales urban center so all open restaurants
+ * and falls back to a deterministic position in Ipiales urban center so all restaurants
  * are visible on the map.
  */
 function resolveStoreMapCoordinates(store: UserProfile, index: number): { lat: number; lng: number; hasExactGps: boolean } {
@@ -75,7 +76,7 @@ function resolveStoreMapCoordinates(store: UserProfile, index: number): { lat: n
     }
   }
 
-  // Deterministic fallback in Ipiales urban area so open stores without saved GPS still appear on the map
+  // Deterministic fallback in Ipiales urban area so stores without saved GPS still appear on the map
   const seedStr = store.uid || store.username || store.displayName || String(index);
   let hash = 0;
   for (let i = 0; i < seedStr.length; i++) {
@@ -121,28 +122,30 @@ function buildDriverMarkerHtml(driver: DriverProfile, pos: PresenceRecord, isFol
   `;
 }
 
-function buildStoreMarkerHtml(store: UserProfile, isSelected: boolean): string {
+function buildStoreMarkerHtml(store: UserProfile, isSelected: boolean, isClosed = false): string {
   const rawName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
   const shortName = rawName.length > 20 ? `${rawName.slice(0, 18)}…` : rawName;
-  const borderColor = isSelected ? '#34d399' : '#f97316';
-  const badgeBg = isSelected ? '#7c2d12' : '#18181b';
+  const borderColor = isSelected ? '#34d399' : isClosed ? '#ef4444' : '#f97316';
+  const badgeBg = isSelected ? (isClosed ? '#7f1d1d' : '#7c2d12') : '#18181b';
+  const statusDotColor = isClosed ? '#ef4444' : '#10b981';
+  const avatarBg = isClosed ? '#dc2626' : '#ea580c';
   const photoUrl = (store.photoURL || '').trim();
 
   const avatarInner = photoUrl
-    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(rawName)}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px;display:block;" onerror="this.style.display='none';this.parentElement.textContent='🍽️';" />`
+    ? `<img src="${escapeHtml(photoUrl)}" alt="${escapeHtml(rawName)}" style="width:100%;height:100%;object-fit:cover;border-radius:9999px;display:block;${isClosed ? 'filter:grayscale(35%);' : ''}" onerror="this.style.display='none';this.parentElement.textContent='🍽️';" />`
     : `<span>🍽️</span>`;
 
   return `
     <div style="position:relative;display:flex;flex-direction:column;align-items:center;transform:translate(-50%,-50%);pointer-events:auto;">
       <div data-store-badge style="margin-bottom:4px;padding:2px 8px;border-radius:9999px;background:${badgeBg};border:1.5px solid ${borderColor};color:#fff;font-size:11px;font-weight:800;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.5);display:flex;align-items:center;gap:4px;">
-        <span style="width:6px;height:6px;border-radius:9999px;background:#10b981;display:inline-block;flex-shrink:0;"></span>
+        <span style="width:6px;height:6px;border-radius:9999px;background:${statusDotColor};display:inline-block;flex-shrink:0;"></span>
         <span>${escapeHtml(shortName)}</span>
       </div>
       <div style="position:relative;width:38px;height:38px;display:flex;align-items:center;justify-content:center;">
-        <div style="position:relative;width:34px;height:34px;border-radius:9999px;background:#ea580c;border:2.5px solid #ffffff;box-shadow:0 4px 14px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;">
+        <div style="position:relative;width:34px;height:34px;border-radius:9999px;background:${avatarBg};border:2.5px solid #ffffff;box-shadow:0 4px 14px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;">
           ${avatarInner}
         </div>
-        <span style="position:absolute;bottom:0;right:0;width:13px;height:13px;border-radius:9999px;background:#10b981;border:2px solid #090d18;display:flex;align-items:center;justify-content:center;font-size:8px;" title="Restaurante abierto"></span>
+        <span style="position:absolute;bottom:0;right:0;width:13px;height:13px;border-radius:9999px;background:${statusDotColor};border:2px solid #090d18;display:flex;align-items:center;justify-content:center;font-size:8px;" title="${isClosed ? 'Restaurante cerrado' : 'Restaurante abierto'}"></span>
       </div>
     </div>
   `;
@@ -153,6 +156,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const map = useRef<L.Map | null>(null);
   const markers = useRef(new Map<string, L.Marker>());
   const storeMarkers = useRef(new Map<string, L.Marker>());
+  const closedStoreMarkers = useRef(new Map<string, L.Marker>());
   const prevPoints = useRef(new Map<string, GpsPoint>());
   const cancelAnims = useRef(new Map<string, () => void>());
   const centered = useRef(false);
@@ -171,7 +175,8 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [showDriversLayer, setShowDriversLayer] = useState(true);
   const [showStoresLayer, setShowStoresLayer] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<'all' | 'drivers' | 'stores'>('all');
+  const [showClosedStoresLayer, setShowClosedStoresLayer] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<'all' | 'drivers' | 'stores' | 'closed'>('all');
 
   // Merge real-time positions from both driver_presence and active delivery_tracking (picking the freshest fix)
   const positions = useMemo<Record<string, PresenceRecord>>(() => {
@@ -211,15 +216,17 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     });
   }, [drivers, positions, now, live]);
 
-  // Filter and deduplicate currently open restaurants
-  const openStores = useMemo<LocatedOpenStore[]>(() => {
+  // Deduplicate all valid restaurants and split into open and closed
+  const { openStores, closedStores } = useMemo<{
+    openStores: LocatedStore[];
+    closedStores: LocatedStore[];
+  }>(() => {
     const byKey = new Map<string, UserProfile>();
     rawStores.forEach(s => {
       if (!s) return;
       if (s.role === 'driver') return;
       const name = (s.displayName || s.storeName || s.username || '').trim();
       if (!name) return;
-      if (checkIsStoreClosed(s)) return;
 
       const key = (s.username || s.uid || name).toLowerCase().trim();
       const prev = byKey.get(key);
@@ -244,17 +251,29 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       return nameA.localeCompare(nameB);
     });
 
-    return list.map((store, idx) => {
+    const open: LocatedStore[] = [];
+    const closed: LocatedStore[] = [];
+
+    list.forEach((store, idx) => {
       const coords = resolveStoreMapCoordinates(store, idx);
       const addressLabel = (store.restaurantAddress || store.address || store.restaurantCity || store.location || 'Ipiales').trim();
-      return {
+      const isClosed = checkIsStoreClosed(store);
+      const item: LocatedStore = {
         store,
         lat: coords.lat,
         lng: coords.lng,
         hasExactGps: coords.hasExactGps,
         addressLabel,
+        isClosed,
       };
+      if (isClosed) {
+        closed.push(item);
+      } else {
+        open.push(item);
+      }
     });
+
+    return { openStores: open, closedStores: closed };
   }, [rawStores, now]);
 
   // Sort drivers so those with live GPS appear first in the sidebar
@@ -276,6 +295,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     const allMarkers = [
       ...(showDriversLayer ? [...markers.current.values()] : []),
       ...(showStoresLayer ? [...storeMarkers.current.values()] : []),
+      ...(showClosedStoresLayer ? [...closedStoreMarkers.current.values()] : []),
     ];
     if (map.current && allMarkers.length) {
       map.current.fitBounds(
@@ -283,6 +303,18 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
         { padding: [50, 50], maxZoom: 16 }
       );
     }
+  };
+
+  const handleToggleClosedStores = () => {
+    setShowClosedStoresLayer(prev => {
+      const next = !prev;
+      if (next) {
+        setSidebarTab('closed');
+      } else if (sidebarTab === 'closed') {
+        setSidebarTab('all');
+      }
+      return next;
+    });
   };
 
   const handleAdminGoogleReauth = async () => {
@@ -411,7 +443,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
         }
       );
 
-      // Real-time stream of store profiles so open restaurants appear and update live on the map
+      // Real-time stream of store profiles so open and closed restaurants appear and update live on the map
       unsubStores = onSnapshot(
         collection(db, 'profiles'),
         { includeMetadataChanges: true },
@@ -471,6 +503,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       map.current = null;
       markers.current.clear();
       storeMarkers.current.clear();
+      closedStoreMarkers.current.clear();
     };
   }, []);
 
@@ -604,7 +637,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       if (!marker) {
         const icon = L.divIcon({
           className: 'ryyco-open-store-marker',
-          html: buildStoreMarkerHtml(store, isSelected),
+          html: buildStoreMarkerHtml(store, isSelected, false),
           iconSize: [40, 56],
           iconAnchor: [20, 28],
         });
@@ -638,11 +671,64 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     }
   }, [openStores, selectedStoreId, showStoresLayer]);
 
+  // Render closed restaurant markers on the map when enabled
+  useEffect(() => {
+    if (!map.current) return;
+    const visibleClosedStores = showClosedStoresLayer ? closedStores : [];
+    const activeClosedIds = new Set(visibleClosedStores.map(item => item.store.uid));
+
+    closedStoreMarkers.current.forEach((marker, id) => {
+      if (!activeClosedIds.has(id)) {
+        marker.remove();
+        closedStoreMarkers.current.delete(id);
+      }
+    });
+
+    visibleClosedStores.forEach(item => {
+      const { store, lat, lng, addressLabel } = item;
+      const storeId = store.uid;
+      const isSelected = selectedStoreId === storeId;
+      const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
+      const tooltipText = `🔒 ${storeName} · Cerrado${addressLabel ? ` · ${addressLabel}` : ''}`;
+
+      let marker = closedStoreMarkers.current.get(storeId);
+      if (!marker) {
+        const icon = L.divIcon({
+          className: 'ryyco-closed-store-marker',
+          html: buildStoreMarkerHtml(store, isSelected, true),
+          iconSize: [40, 56],
+          iconAnchor: [20, 28],
+        });
+        marker = L.marker([lat, lng], { icon, zIndexOffset: 150 }).addTo(map.current!);
+        marker.bindTooltip(tooltipText, { direction: 'top', offset: [0, -24] });
+        marker.on('click', () => {
+          setFollowedDriverId(null);
+          setSelectedStoreId(prev => (prev === storeId ? null : storeId));
+          if (map.current) {
+            map.current.setView([lat, lng], 16, { animate: true });
+          }
+        });
+        closedStoreMarkers.current.set(storeId, marker);
+      } else {
+        marker.setLatLng([lat, lng]);
+        marker.setTooltipContent(tooltipText);
+        const el = marker.getElement();
+        if (el) {
+          const badgeEl = el.querySelector<HTMLElement>('[data-store-badge]');
+          if (badgeEl) {
+            badgeEl.style.background = isSelected ? '#7f1d1d' : '#18181b';
+            badgeEl.style.borderColor = isSelected ? '#34d399' : '#ef4444';
+          }
+        }
+      }
+    });
+  }, [closedStores, selectedStoreId, showClosedStoresLayer]);
+
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Mapa de domiciliarios disponibles y restaurantes abiertos"
+      aria-label="Mapa de domiciliarios disponibles y restaurantes"
       className="fixed inset-0 z-[1000000] bg-[#0d1322] text-white flex flex-col h-[100dvh]"
     >
       <header className="p-4 border-b border-gray-800 bg-[#090d18] flex flex-wrap items-center gap-3">
@@ -655,12 +741,25 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           </div>
           <p className="text-xs text-gray-300 mt-0.5" aria-live="polite">
             {live
-              ? `${located.length} moviéndose con GPS en tiempo real · ${Math.max(0, drivers.length - located.length)} sin GPS reciente · ${openStores.length} restaurantes abiertos`
+              ? `${located.length} moviéndose con GPS en tiempo real · ${Math.max(0, drivers.length - located.length)} sin GPS reciente · ${openStores.length} restaurantes abiertos · ${closedStores.length} cerrados`
               : 'Conectando con Firebase…'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleToggleClosedStores}
+            className={`rounded-xl px-3 py-1.5 text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+              showClosedStoresLayer
+                ? 'bg-red-500/20 border-red-500/50 text-red-300'
+                : 'bg-gray-900 border-gray-800 text-gray-400 hover:border-red-500/40 hover:text-red-300'
+            }`}
+          >
+            <span>🔒</span>
+            <span>Restaurantes cerrados ({closedStores.length})</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowDriversLayer(v => !v)}
@@ -749,11 +848,11 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
 
         <aside className="md:w-80 max-h-[38dvh] md:max-h-none overflow-y-auto p-4 space-y-3 bg-[#0b101d] border-t md:border-t-0 md:border-l border-gray-800">
           {/* Sidebar Filter Tabs */}
-          <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-gray-900/90 border border-gray-800">
+          <div className="grid grid-cols-4 gap-1 p-1 rounded-xl bg-gray-900/90 border border-gray-800">
             <button
               type="button"
               onClick={() => setSidebarTab('all')}
-              className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
+              className={`py-1.5 px-1.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer ${
                 sidebarTab === 'all'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-gray-400 hover:text-white'
@@ -764,7 +863,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={() => setSidebarTab('drivers')}
-              className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
+              className={`py-1.5 px-1.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
                 sidebarTab === 'drivers'
                   ? 'bg-emerald-600 text-white shadow'
                   : 'text-gray-400 hover:text-white'
@@ -775,7 +874,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
             <button
               type="button"
               onClick={() => setSidebarTab('stores')}
-              className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
+              className={`py-1.5 px-1.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
                 sidebarTab === 'stores'
                   ? 'bg-orange-600 text-white shadow'
                   : 'text-gray-400 hover:text-white'
@@ -783,7 +882,90 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
             >
               🍽️ ({openStores.length})
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSidebarTab('closed');
+                if (!showClosedStoresLayer) setShowClosedStoresLayer(true);
+              }}
+              className={`py-1.5 px-1.5 rounded-lg text-[11px] font-extrabold transition cursor-pointer truncate ${
+                sidebarTab === 'closed'
+                  ? 'bg-red-600 text-white shadow'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🔒 ({closedStores.length})
+            </button>
           </div>
+
+          {/* Closed Restaurants Section */}
+          {(sidebarTab === 'closed' || (sidebarTab === 'all' && showClosedStoresLayer)) && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between pb-1 border-b border-gray-800/80">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-red-400">
+                  Restaurantes Cerrados ({closedStores.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowClosedStoresLayer(v => !v)}
+                  className="text-[11px] text-red-300 hover:text-red-200 font-bold underline cursor-pointer"
+                >
+                  {showClosedStoresLayer ? 'Ocultar en mapa' : 'Mostrar en mapa'}
+                </button>
+              </div>
+
+              {closedStores.length === 0 ? (
+                <p className="text-xs text-gray-400 py-2 text-center">
+                  No hay restaurantes cerrados en este momento.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {closedStores.map(({ store, lat, lng, hasExactGps, addressLabel }) => {
+                    const isSelected = selectedStoreId === store.uid;
+                    const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
+                    return (
+                      <button
+                        key={store.uid}
+                        type="button"
+                        className={`block text-left w-full rounded-xl p-2.5 border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-red-950/60 border-red-500/70 shadow-lg'
+                            : 'bg-gray-900/80 hover:bg-gray-800/90 border-red-500/25'
+                        }`}
+                        onClick={() => {
+                          setFollowedDriverId(null);
+                          setSelectedStoreId(prev => (prev === store.uid ? null : store.uid));
+                          if (!showClosedStoresLayer) setShowClosedStoresLayer(true);
+                          if (map.current) {
+                            map.current.setView([lat, lng], 16, { animate: true });
+                            setTimeout(() => {
+                              closedStoreMarkers.current.get(store.uid)?.openTooltip();
+                            }, 50);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-sm text-white truncate flex items-center gap-1.5">
+                            <span>🔒</span>
+                            <span className="truncate">{storeName}</span>
+                          </span>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30 shrink-0">
+                            Cerrado
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                          <span className="truncate">📍 {addressLabel}</span>
+                          <span className="text-[10px] font-bold text-red-300 shrink-0 underline">
+                            {hasExactGps ? 'Ver GPS' : 'Ver en mapa'}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Open Restaurants Section */}
           {(sidebarTab === 'all' || sidebarTab === 'stores') && (
@@ -940,7 +1122,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           )}
 
           <p className="text-[11px] text-gray-400 pt-2 leading-relaxed">
-            Los domiciliarios con GPS activo y los restaurantes abiertos se muestran en tiempo real sobre el mapa. Haz clic en cualquiera para ubicarlo en el mapa.
+            Los domiciliarios con GPS activo y los restaurantes se muestran en tiempo real sobre el mapa. Haz clic en cualquiera para ubicarlo en el mapa.
           </p>
         </aside>
       </div>
