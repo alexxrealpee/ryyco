@@ -568,6 +568,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }).length;
   }, [allOrders]);
 
+  // Orders from the last 30 days (for the 4 KPI summary cards in Pedidos de Tiendas)
+  const ordersLast30Days = useMemo(() => {
+    const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    return allOrders.filter(o => {
+      const rawDate = o.createdAt || o.pendingAt || o.updatedAt;
+      if (!rawDate) return false;
+      const orderMs = new Date(rawDate).getTime();
+      return !isNaN(orderMs) && orderMs >= thirtyDaysAgoMs;
+    });
+  }, [allOrders]);
+
+  const pendingOrdersLast30DaysCount = useMemo(() => {
+    return ordersLast30Days.filter(o => {
+      const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
+                        Boolean(o.driverId && o.driverId.trim() !== '') ||
+                        Boolean(o.deliveryStep);
+      const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
+      return o.status === 'pending' && !hasDriver && !isPickedUp;
+    }).length;
+  }, [ordersLast30Days]);
+
   // Push Notification & Sound Alert States (FCM Powered)
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
   const [newIncomingOrderAlert, setNewIncomingOrderAlert] = useState<{
@@ -4577,33 +4598,33 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             )}
 
-            {/* Metrics cards inside orders - calculated from ALL orders */}
+            {/* Metrics cards inside orders - calculated from the last 30 days */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-500 uppercase block">Total Pedidos</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase block">Total Pedidos (Últimos 30 días)</span>
                 <span className="text-xl font-black text-white">
-                  {allOrders.length}
-                  {filteredOrders.length !== allOrders.length && (
+                  {ordersLast30Days.length}
+                  {(selectedOrderStoreFilter !== 'all' || selectedOrderStatusFilter !== 'all' || Boolean(orderSearchQuery.trim())) && (
                     <span className="text-xs text-gray-500 font-normal"> ({filteredOrders.length} en vista)</span>
                   )}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-500 uppercase block">Venta Total Estimada</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase block">Venta Total Estimada (Últimos 30 días)</span>
                 <span className="text-xl font-black text-emerald-400">
-                  ${allOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString('es-CO')} COP
+                  ${ordersLast30Days.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString('es-CO')} COP
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-500 uppercase block">Pendientes</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase block">Pendientes (Últimos 30 días)</span>
                 <span className="text-xl font-black text-amber-400">
-                  {pendingOrdersCount}
+                  {pendingOrdersLast30DaysCount}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
-                <span className="text-[10px] font-bold text-gray-500 uppercase block">Entregados</span>
+                <span className="text-[10px] font-bold text-gray-500 uppercase block">Entregados (Últimos 30 días)</span>
                 <span className="text-xl font-black text-emerald-400">
-                  {allOrders.filter(o => o.status === 'delivered').length}
+                  {ordersLast30Days.filter(o => o.status === 'delivered').length}
                 </span>
               </div>
             </div>
