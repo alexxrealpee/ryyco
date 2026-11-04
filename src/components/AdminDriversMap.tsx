@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { auth, db, signInWithGoogleUniversal, checkIsStoreClosed, isSubscriptionExpiredOrSuspended } from '../lib/firebase';
+import { auth, db, signInWithGoogleUniversal, checkIsStoreClosed } from '../lib/firebase';
 import { lockBodyScroll } from '../lib/bodyScrollLock';
 import { animateGps, validCoordinates, GPS_FRESH_MS, type GpsPoint } from '../lib/deliveryTracking';
 import { extractCoordinates } from '../lib/coordinateUtils';
@@ -24,8 +24,8 @@ type PresenceRecord = {
 
 type LocatedStore = {
   store: UserProfile;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   hasExactGps: boolean;
   addressLabel: string;
   isClosed: boolean;
@@ -33,23 +33,16 @@ type LocatedStore = {
   closedCategory: 'open' | 'closed_active' | 'expired';
 };
 
-function getRestaurantSubscriptionState(profile?: UserProfile | null): 'active' | 'expired' | 'suspended' {
-  if (!profile) return 'suspended';
-  if (profile.suspended === true || profile.subscriptionStatus === 'suspended') {
-    return 'suspended';
-  }
-
-  const subCheck = isSubscriptionExpiredOrSuspended(profile);
-  if (subCheck.isSuspended || subCheck.effectiveStatus === 'suspended') {
-    return 'suspended';
-  }
-
-  if (
-    profile.subscriptionStatus === 'expired' ||
-    subCheck.isExpired ||
-    subCheck.effectiveStatus === 'expired'
-  ) {
-    return 'expired';
+/**
+ * Determines whether a store is closed specifically due to an expired subscription,
+ * using the exact same subscription criteria as `checkIsStoreClosed` in `src/lib/firebase.ts`.
+ * A store with `subscriptionStatus === 'active'` or `'under_review'` or a future `subscriptionPaidUntil`
+ * is never treated as expired.
+ */
+function isClosedByExpiredSubscription(profile?: UserProfile | null): boolean {
+  if (!profile) return false;
+  if (profile.subscriptionStatus === 'expired') {
+    return true;
   }
 
   const now = Date.now();
@@ -64,13 +57,13 @@ function getRestaurantSubscriptionState(profile?: UserProfile | null): 'active' 
       if (profile.subscriptionTrialExpires) {
         const trialExp = new Date(profile.subscriptionTrialExpires).getTime();
         if (!isNaN(trialExp) && trialExp < now) {
-          return 'expired';
+          return true;
         }
       }
     }
   }
 
-  return 'active';
+  return false;
 }
 
 function escapeHtml(value: string): string {
@@ -90,12 +83,12 @@ function getVehicleEmoji(vehicleType?: string): string {
 }
 
 /**
- * Resolves coordinates for a restaurant.
- * Uses exact stored GPS coordinates (`lat`/`lng` or `mapUrl` extraction) when available,
- * and falls back to a deterministic position in Ipiales urban center so all restaurants
- * are visible on the map.
+ * Resolves GPS coordinates for a restaurant.
+ * Uses exact stored GPS coordinates (`lat`/`lng` or `mapUrl`/address coordinate extraction) when available.
+ * If a restaurant does not have valid GPS coordinates, `hasExactGps` is `false` and `lat`/`lng` are `null`
+ * so the restaurant is still counted and listed with a pending location warning without placing an invalid marker.
  */
-function resolveStoreMapCoordinates(store: UserProfile, index: number): { lat: number; lng: number; hasExactGps: boolean } {
+function resolveStoreMapCoordinates(store: UserProfile): { lat: number | null; lng: number | null; hasExactGps: boolean } {
   const rawLat = typeof store.lat === 'number' ? store.lat : Number(store.lat);
   const rawLng = typeof store.lng === 'number' ? store.lng : Number(store.lng);
   if (validCoordinates(rawLat, rawLng)) {
@@ -118,19 +111,9 @@ function resolveStoreMapCoordinates(store: UserProfile, index: number): { lat: n
     }
   }
 
-  // Deterministic fallback in Ipiales urban area so stores without saved GPS still appear on the map
-  const seedStr = store.uid || store.username || store.displayName || String(index);
-  let hash = 0;
-  for (let i = 0; i < seedStr.length; i++) {
-    hash = (hash * 31 + seedStr.charCodeAt(i)) >>> 0;
-  }
-  const angle = ((index * 137.508 + (hash % 360)) * Math.PI) / 180;
-  const radius = 0.0022 + ((hash % 7) * 0.0009); // ~250m to 850m around central Ipiales
-  const baseLat = 0.8262;
-  const baseLng = -77.6412;
   return {
-    lat: Number((baseLat + Math.sin(angle) * radius).toFixed(6)),
-    lng: Number((baseLng + Math.cos(angle) * radius * 1.15).toFixed(6)),
+    lat: null,
+    lng: null,
     hasExactGps: false,
   };
 }
@@ -274,37 +257,58 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   }, [drivers, positions, now, live]);
 
   // Deduplicate restaurants and split into open, closed active, and expired restaurants
+  // Single source of truth: `checkIsStoreClosed(store)` from `src/lib/firebase.ts` (same as main RYYCO platform)
   const { openStores, closedActiveStores, expiredStores, closedStores } = useMemo<{
     openStores: LocatedStore[];
     closedActiveStores: LocatedStore[];
     expiredStores: LocatedStore[];
     closedStores: LocatedStore[];
   }>(() => {
-    const byKey = new Map<string, UserProfile>();
+    const byUid = new Map<string, UserProfile>();
+    const uidByUsername = new Map<string, string>();
+
     rawStores.forEach(s => {
       if (!s) return;
-      if (s.role === 'driver') return;
+      if (s.role === 'driver' || s.role === 'customer') return;
       const name = (s.displayName || s.storeName || s.username || '').trim();
       if (!name) return;
 
-      const key = (s.username || s.uid || name).toLowerCase().trim();
-      const prev = byKey.get(key);
+      const rawUid = (s.uid || '').trim();
+      const normUsername = (s.username || '').replace(/^@+/, '').toLowerCase().trim();
+      const canonicalKey =
+        (rawUid && byUid.has(rawUid) ? rawUid : null) ||
+        (normUsername && uidByUsername.has(normUsername) ? uidByUsername.get(normUsername)! : null) ||
+        rawUid ||
+        normUsername ||
+        name.toLowerCase();
+
+      const prev = byUid.get(canonicalKey);
       if (!prev) {
-        byKey.set(key, s);
+        const normalizedStore: UserProfile = {
+          ...s,
+          uid: rawUid || canonicalKey,
+        };
+        byUid.set(canonicalKey, normalizedStore);
+        if (normUsername) uidByUsername.set(normUsername, canonicalKey);
       } else {
-        byKey.set(key, {
+        const merged: UserProfile = {
           ...prev,
           ...s,
+          uid: prev.uid || rawUid || canonicalKey,
+          displayName: s.displayName || prev.displayName || s.storeName || prev.storeName,
+          username: s.username || prev.username,
           lat: s.lat ?? prev.lat,
           lng: s.lng ?? prev.lng,
           mapUrl: s.mapUrl || prev.mapUrl,
           photoURL: s.photoURL || prev.photoURL,
           restaurantAddress: s.restaurantAddress || prev.restaurantAddress || s.address || prev.address,
-        });
+        };
+        byUid.set(canonicalKey, merged);
+        if (normUsername) uidByUsername.set(normUsername, canonicalKey);
       }
     });
 
-    const list = Array.from(byKey.values()).sort((a, b) => {
+    const list = Array.from(byUid.values()).sort((a, b) => {
       const nameA = (a.displayName || a.storeName || a.username || '').toLowerCase();
       const nameB = (b.displayName || b.storeName || b.username || '').toLowerCase();
       return nameA.localeCompare(nameB);
@@ -314,14 +318,31 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     const closedActive: LocatedStore[] = [];
     const expired: LocatedStore[] = [];
 
-    list.forEach((store, idx) => {
-      const subState = getRestaurantSubscriptionState(store);
-      if (subState === 'suspended') return;
+    list.forEach(store => {
+      if (store.suspended === true || store.subscriptionStatus === 'suspended') return;
 
-      const coords = resolveStoreMapCoordinates(store, idx);
+      const coords = resolveStoreMapCoordinates(store);
       const addressLabel = (store.restaurantAddress || store.address || store.restaurantCity || store.location || 'Ipiales').trim();
 
-      if (subState === 'expired') {
+      // Use the exact same open/close function as the main RYYCO platform (`TiendaGeneral` / `useProgressiveStoreLoader`)
+      const isClosed = checkIsStoreClosed(store);
+
+      if (!isClosed) {
+        open.push({
+          store,
+          lat: coords.lat,
+          lng: coords.lng,
+          hasExactGps: coords.hasExactGps,
+          addressLabel,
+          isClosed: false,
+          isExpired: false,
+          closedCategory: 'open',
+        });
+        return;
+      }
+
+      const isExpired = isClosedByExpiredSubscription(store);
+      if (isExpired) {
         expired.push({
           store,
           lat: coords.lat,
@@ -332,11 +353,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           isExpired: true,
           closedCategory: 'expired',
         });
-        return;
-      }
-
-      const isClosed = checkIsStoreClosed(store);
-      if (isClosed) {
+      } else {
         closedActive.push({
           store,
           lat: coords.lat,
@@ -346,17 +363,6 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           isClosed: true,
           isExpired: false,
           closedCategory: 'closed_active',
-        });
-      } else {
-        open.push({
-          store,
-          lat: coords.lat,
-          lng: coords.lng,
-          hasExactGps: coords.hasExactGps,
-          addressLabel,
-          isClosed: false,
-          isExpired: false,
-          closedCategory: 'open',
         });
       }
     });
@@ -453,7 +459,29 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     let unsubPresence: (() => void) | undefined;
     let unsubTracking: (() => void) | undefined;
     let unsubStores: (() => void) | undefined;
+    let storesConfirmedFromServer = false;
     let cancelled = false;
+    const abortController = new AbortController();
+
+    // Immediate server-fresh bootstrap of store profiles so no stale cache or delayed listener omits open stores
+    fetch('/api/catalog-page.php?kind=stores', {
+      cache: 'no-store',
+      signal: abortController.signal,
+    })
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (cancelled || storesConfirmedFromServer) return;
+        if (data?.source === 'firestore-server' && data?.kind === 'stores' && Array.isArray(data.items)) {
+          const items: UserProfile[] = data.items.map((item: any) => ({
+            ...item,
+            uid: item.uid || item.id,
+          }));
+          setRawStores(items);
+        }
+      })
+      .catch(() => {
+        // Fallback handled by live Firestore onSnapshot listener below
+      });
 
     const attachListeners = () => {
       unsubDrivers?.();
@@ -548,6 +576,13 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
         { includeMetadataChanges: true },
         snapshot => {
           if (cancelled) return;
+          // Prevent stale local IndexedDB cache from overwriting confirmed server state
+          if (snapshot.metadata.fromCache && storesConfirmedFromServer) {
+            return;
+          }
+          if (!snapshot.metadata.fromCache) {
+            storesConfirmedFromServer = true;
+          }
           const profilesList: UserProfile[] = [];
           snapshot.forEach(docSnap => {
             const data = docSnap.data() as UserProfile;
@@ -573,6 +608,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
 
     return () => {
       cancelled = true;
+      abortController.abort();
       unsubAuth();
       unsubDrivers?.();
       unsubPresence?.();
@@ -712,10 +748,12 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     }
   }, [drivers, positions, now, live, followedDriverId, showDriversLayer]);
 
-  // Render open restaurant markers on the map
+  // Render open restaurant markers on the map (only for restaurants with valid GPS coordinates)
   useEffect(() => {
     if (!map.current) return;
-    const visibleStores = showStoresLayer ? openStores : [];
+    const visibleStores = showStoresLayer
+      ? openStores.filter(item => item.hasExactGps && item.lat !== null && item.lng !== null && validCoordinates(item.lat, item.lng))
+      : [];
     const activeStoreIds = new Set(visibleStores.map(item => item.store.uid));
 
     storeMarkers.current.forEach((marker, id) => {
@@ -727,6 +765,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
 
     visibleStores.forEach(item => {
       const { store, lat, lng, addressLabel } = item;
+      if (lat === null || lng === null) return;
       const storeId = store.uid;
       const isSelected = selectedStoreId === storeId;
       const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
@@ -770,10 +809,12 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     }
   }, [openStores, selectedStoreId, showStoresLayer]);
 
-  // Render closed & expired restaurant markers on the map when enabled
+  // Render closed & expired restaurant markers on the map when enabled (only for restaurants with valid GPS coordinates)
   useEffect(() => {
     if (!map.current) return;
-    const visibleClosedStores = showClosedStoresLayer ? filteredClosedStores : [];
+    const visibleClosedStores = showClosedStoresLayer
+      ? filteredClosedStores.filter(item => item.hasExactGps && item.lat !== null && item.lng !== null && validCoordinates(item.lat, item.lng))
+      : [];
     const activeClosedIds = new Set(visibleClosedStores.map(item => item.store.uid));
 
     closedStoreMarkers.current.forEach((marker, id) => {
@@ -785,6 +826,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
 
     visibleClosedStores.forEach(item => {
       const { store, lat, lng, addressLabel, isExpired } = item;
+      if (lat === null || lng === null) return;
       const storeId = store.uid;
       const isSelected = selectedStoreId === storeId;
       const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
@@ -1081,7 +1123,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
                           setFollowedDriverId(null);
                           setSelectedStoreId(prev => (prev === store.uid ? null : store.uid));
                           if (!showClosedStoresLayer) setShowClosedStoresLayer(true);
-                          if (map.current) {
+                          if (hasExactGps && lat !== null && lng !== null && map.current) {
                             map.current.setView([lat, lng], 16, { animate: true });
                             setTimeout(() => {
                               closedStoreMarkers.current.get(store.uid)?.openTooltip();
@@ -1106,13 +1148,19 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
                           <span className="truncate">📍 {addressLabel}</span>
-                          <span
-                            className={`text-[10px] font-bold shrink-0 underline ${
-                              isExpired ? 'text-purple-300' : 'text-red-300'
-                            }`}
-                          >
-                            {hasExactGps ? 'Ver GPS' : 'Ver en mapa'}
-                          </span>
+                          {hasExactGps ? (
+                            <span
+                              className={`text-[10px] font-bold shrink-0 underline ${
+                                isExpired ? 'text-purple-300' : 'text-red-300'
+                              }`}
+                            >
+                              Ver GPS
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-amber-400 shrink-0">
+                              ⚠️ Ubicación pendiente
+                            </span>
+                          )}
                         </div>
                       </button>
                     );
@@ -1156,8 +1204,8 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
                           setFollowedDriverId(null);
                           setSelectedStoreId(prev => (prev === store.uid ? null : store.uid));
                           if (!showStoresLayer) setShowStoresLayer(true);
-                          const marker = storeMarkers.current.get(store.uid);
-                          if (map.current) {
+                          if (hasExactGps && lat !== null && lng !== null && map.current) {
+                            const marker = storeMarkers.current.get(store.uid);
                             map.current.setView([lat, lng], 16, { animate: true });
                             marker?.openTooltip();
                           }
@@ -1174,9 +1222,15 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
                           <span className="truncate">📍 {addressLabel}</span>
-                          <span className="text-[10px] font-bold text-orange-300 shrink-0 underline">
-                            {hasExactGps ? 'Ver GPS' : 'Ver en mapa'}
-                          </span>
+                          {hasExactGps ? (
+                            <span className="text-[10px] font-bold text-orange-300 shrink-0 underline">
+                              Ver GPS
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-amber-400 shrink-0">
+                              ⚠️ Ubicación pendiente
+                            </span>
+                          )}
                         </div>
                       </button>
                     );
