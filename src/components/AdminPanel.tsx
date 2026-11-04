@@ -818,12 +818,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   activeDriversRef.current = activeDrivers;
   const systemSettingsRef = useRef(systemSettings);
   systemSettingsRef.current = systemSettings;
+  const alertedOrderIdsRef = useRef<Set<string>>(new Set());
 
   // Fire sound, vibration and FCM push notification when a new order arrives from ANY restaurant
   const triggerNewOrderAlert = (order: OrderItem) => {
     // STRICT RULE: Only orders that are pending and unassigned trigger notifications!
     if (!order || order.status !== 'pending') {
       return;
+    }
+
+    if (order.id && !order.id.startsWith('test_order_')) {
+      if (alertedOrderIdsRef.current.has(order.id)) {
+        return;
+      }
+      alertedOrderIdsRef.current.add(order.id);
     }
 
     const hasDriver = Boolean(order.deliveryDriverId && order.deliveryDriverId.trim() !== '') ||

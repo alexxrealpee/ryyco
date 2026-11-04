@@ -47,12 +47,14 @@ import {
   Compass,
   Crosshair,
   Zap,
-  ChevronDown
+  ChevronDown,
+  Landmark
 } from 'lucide-react';
 import { sendPasswordResetEmail } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
-import { auth, db, getStoreOperatingScheduleInfo, fetchAllActiveProductsAndStores, getPlanProductLimit, checkIsStoreClosed } from '../lib/firebase';
-import { UserProfile, OrderItem, WeeklySchedule } from '../types';
+import { collection, doc, getDoc, getDocs, updateDoc } from 'firebase/firestore';
+import { auth, db, getStoreOperatingScheduleInfo, fetchAllActiveProductsAndStores, getPlanProductLimit, checkIsStoreClosed, cleanUndefined } from '../lib/firebase';
+import { UserProfile, OrderItem, WeeklySchedule, BankAccount } from '../types';
+import { normalizeBankAccount } from '../lib/paymentFeeUtils';
 import { 
   extractCoordinates, 
   isValidCoordinate, 
@@ -61,6 +63,7 @@ import {
   buildNormalizedMapUrl 
 } from '../lib/coordinateUtils';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
+import BankSettings from './BankSettings';
 
 function formatWhatsAppDisplay(raw?: string): string {
   if (!raw) return '';
@@ -123,6 +126,11 @@ export default function AdminStoresManager({
   const [planModalStore, setPlanModalStore] = useState<UserProfile | null>(null);
   const [selectedNewPlan, setSelectedNewPlan] = useState<'basico' | 'medio' | 'pro'>('basico');
   const [savingPlanChange, setSavingPlanChange] = useState(false);
+
+  // Bank Accounts Modal states
+  const [bankModalStore, setBankModalStore] = useState<UserProfile | null>(null);
+  const [storeBankAccountsMap, setStoreBankAccountsMap] = useState<Record<string, BankAccount[]>>({});
+  const [selectedBankStatus, setSelectedBankStatus] = useState<'all' | 'registered' | 'pending'>('all');
   
   // Feedback states
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
@@ -134,13 +142,16 @@ export default function AdminStoresManager({
   const [storeProductCounts, setStoreProductCounts] = useState<Record<string, number>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
 
-  // Load product counts
+  // Load product counts and bank accounts from Firestore profiles
   useEffect(() => {
     let isMounted = true;
-    async function loadProductsCount() {
+    async function loadProductsAndBankData() {
       try {
         setLoadingProducts(true);
-        const { products } = await fetchAllActiveProductsAndStores();
+        const [{ products, profiles }, profilesSnap] = await Promise.all([
+          fetchAllActiveProductsAndStores(),
+          getDocs(collection(db, 'profiles')).catch(() => null)
+        ]);
         if (!isMounted) return;
         
         const counts: Record<string, number> = {};
@@ -150,13 +161,39 @@ export default function AdminStoresManager({
           }
         });
         setStoreProductCounts(counts);
+
+        const bankMap: Record<string, BankAccount[]> = {};
+        if (profiles && typeof profiles === 'object') {
+          Object.values(profiles).forEach((prof: any) => {
+            if (prof && prof.uid && Array.isArray(prof.bankAccounts)) {
+              const valid = prof.bankAccounts
+                .map(normalizeBankAccount)
+                .filter((b: BankAccount) => b.bankName && b.accountNumber);
+              bankMap[prof.uid] = valid;
+            }
+          });
+        }
+        if (profilesSnap) {
+          profilesSnap.forEach(docSnap => {
+            const d = docSnap.data() as any;
+            const uid = d?.uid || docSnap.id;
+            if (uid && Array.isArray(d?.bankAccounts)) {
+              const valid = d.bankAccounts
+                .map(normalizeBankAccount)
+                .filter((b: BankAccount) => b.bankName && b.accountNumber);
+              bankMap[uid] = valid;
+              bankMap[docSnap.id] = valid;
+            }
+          });
+        }
+        setStoreBankAccountsMap(prev => ({ ...bankMap, ...prev }));
       } catch (e) {
         console.error("Error loading products count for stores:", e);
       } finally {
         if (isMounted) setLoadingProducts(false);
       }
     }
-    loadProductsCount();
+    loadProductsAndBankData();
     return () => { isMounted = false; };
   }, []);
 
@@ -268,6 +305,9 @@ export default function AdminStoresManager({
           role: current.role || item.role || 'user',
           plan: (item.plan as any) || current.plan || 'free',
           subscriptionPlan: (item.subscriptionPlan as any) || (current.subscriptionPlan as any) || undefined,
+          bankAccounts: (Array.isArray(item.bankAccounts) && item.bankAccounts.length > 0)
+            ? item.bankAccounts
+            : (current.bankAccounts || item.bankAccounts || []),
           isClosed: current.isClosed === true || item.isClosed === true,
           suspended: current.suspended === true || item.suspended === true
         };
@@ -487,9 +527,92 @@ export default function AdminStoresManager({
         }
       }
 
+      // Bank accounts status filter
+      if (selectedBankStatus !== 'all') {
+        const hasAccounts = getStoreBankAccounts(s).length > 0;
+        if (selectedBankStatus === 'registered' && !hasAccounts) return false;
+        if (selectedBankStatus === 'pending' && hasAccounts) return false;
+      }
+
       return true;
     });
-  }, [storeList, searchTerm, selectedStatus, selectedCategory, selectedPlan, selectedCity]);
+  }, [storeList, searchTerm, selectedStatus, selectedCategory, selectedPlan, selectedCity, selectedBankStatus, storeBankAccountsMap]);
+
+  // Helper to resolve normalized bank accounts for a store
+  function getStoreBankAccounts(store: UserProfile): BankAccount[] {
+    if (!store) return [];
+    const mapped = storeBankAccountsMap[store.uid];
+    const source = mapped !== undefined ? mapped : (store.bankAccounts || []);
+    if (!Array.isArray(source)) return [];
+    return source
+      .map(normalizeBankAccount)
+      .filter(b => b && b.bankName && b.accountNumber);
+  }
+
+  // Open Bank Accounts Modal for a store and fetch latest from Firestore
+  const handleOpenBankModal = async (store: UserProfile) => {
+    setBankModalStore(store);
+    try {
+      const snap = await getDoc(doc(db, 'profiles', store.uid));
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
+        if (Array.isArray(data.bankAccounts)) {
+          const valid = data.bankAccounts
+            .map(normalizeBankAccount)
+            .filter(b => b.bankName && b.accountNumber);
+          setStoreBankAccountsMap(prev => ({ ...prev, [store.uid]: valid }));
+          store.bankAccounts = valid;
+          setBankModalStore(prev => (prev && prev.uid === store.uid ? { ...prev, bankAccounts: valid } : prev));
+        }
+      }
+    } catch (e) {
+      // Keep local/cached bankAccounts if offline
+    }
+  };
+
+  // Save Bank Accounts for the selected store to Firestore
+  const handleSaveStoreBankAccounts = async (updatedAccounts: BankAccount[]) => {
+    if (!bankModalStore) return;
+    const targetUid = bankModalStore.uid;
+    const storeTitle = bankModalStore.displayName || bankModalStore.storeName || bankModalStore.username || 'Restaurante';
+    const normalizedList = (updatedAccounts || [])
+      .map(normalizeBankAccount)
+      .filter(b => b.bankName && b.accountNumber);
+    const cleanedList = cleanUndefined(normalizedList);
+
+    const payload = {
+      bankAccounts: cleanedList,
+      updatedAt: new Date().toISOString()
+    };
+
+    await updateDoc(doc(db, 'profiles', targetUid), payload);
+    try {
+      await updateDoc(doc(db, 'users', targetUid), payload);
+    } catch (e) {}
+
+    try {
+      localStorage.removeItem('linnk_all_active_data_cache');
+      fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+    } catch (e) {}
+
+    setStoreBankAccountsMap(prev => ({ ...prev, [targetUid]: normalizedList }));
+    bankModalStore.bankAccounts = normalizedList;
+    setBankModalStore(prev => (prev && prev.uid === targetUid ? { ...prev, bankAccounts: normalizedList } : prev));
+
+    if (storesMap && storesMap[targetUid]) {
+      storesMap[targetUid].bankAccounts = normalizedList;
+    }
+    if (detailStore && detailStore.uid === targetUid) {
+      setDetailStore(prev => (prev ? { ...prev, bankAccounts: normalizedList } : null));
+    }
+
+    showNotif(
+      normalizedList.length > 0
+        ? `✓ Datos bancarios de "${storeTitle}" guardados (${normalizedList.length} ${normalizedList.length === 1 ? 'cuenta' : 'cuentas'}).`
+        : `✓ Datos bancarios de "${storeTitle}" actualizados (sin cuentas registradas).`
+    );
+    if (onRefreshData) onRefreshData();
+  };
 
   // Global KPIs
   const globalKpis = useMemo(() => {
@@ -498,6 +621,8 @@ export default function AdminStoresManager({
     let closedCount = 0;
     let suspendedCount = 0;
     let withProductsCount = 0;
+    let withBankAccountsCount = 0;
+    let pendingBankAccountsCount = 0;
     let totalSalesPlatform = 0;
 
     storeList.forEach(s => {
@@ -506,6 +631,12 @@ export default function AdminStoresManager({
       else closedCount++;
 
       if ((storeProductCounts[s.uid] || 0) > 0) withProductsCount++;
+
+      if (getStoreBankAccounts(s).length > 0) {
+        withBankAccountsCount++;
+      } else {
+        pendingBankAccountsCount++;
+      }
 
       const stats = storeOrderStats[s.uid];
       if (stats) totalSalesPlatform += stats.totalSales;
@@ -517,10 +648,12 @@ export default function AdminStoresManager({
       closedCount,
       suspendedCount,
       withProductsCount,
+      withBankAccountsCount,
+      pendingBankAccountsCount,
       totalSalesPlatform,
       citiesCount: uniqueCities.length
     };
-  }, [storeList, storeProductCounts, storeOrderStats, uniqueCities]);
+  }, [storeList, storeProductCounts, storeOrderStats, uniqueCities, storeBankAccountsMap]);
 
   // Copy Store Link
   const handleCopyStoreLink = (username: string, uid: string) => {
@@ -1080,6 +1213,34 @@ export default function AdminStoresManager({
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Suspendidas ({globalKpis.suspendedCount})</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedBankStatus(selectedBankStatus === 'registered' ? 'all' : 'registered')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer border ${
+              selectedBankStatus === 'registered'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                : 'bg-gray-950 text-emerald-400 border-emerald-500/30 hover:bg-emerald-950/40'
+            }`}
+            title="Filtrar tiendas con datos bancarios registrados"
+          >
+            <Landmark className="w-3.5 h-3.5" />
+            <span>Bancos Registrados ({globalKpis.withBankAccountsCount})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSelectedBankStatus(selectedBankStatus === 'pending' ? 'all' : 'pending')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-extrabold transition flex items-center gap-2 cursor-pointer border ${
+              selectedBankStatus === 'pending'
+                ? 'bg-amber-600 text-white border-amber-500 shadow-md'
+                : 'bg-gray-950 text-amber-400 border-amber-500/30 hover:bg-amber-950/40'
+            }`}
+            title="Filtrar tiendas con datos bancarios pendientes por registrar"
+          >
+            <Landmark className="w-3.5 h-3.5" />
+            <span>Bancos Pendientes ({globalKpis.pendingBankAccountsCount})</span>
+          </button>
         </div>
 
         {/* Main Search Input - Full width row */}
@@ -1179,7 +1340,7 @@ export default function AdminStoresManager({
           <span>
             Mostrando <strong className="text-white font-bold">{filteredStores.length}</strong> de <strong className="text-white font-bold">{storeList.length}</strong> tiendas
           </span>
-          {(searchTerm || selectedStatus !== 'all' || selectedPlan !== 'all' || selectedCity !== 'all' || selectedCategory !== 'all') && (
+          {(searchTerm || selectedStatus !== 'all' || selectedPlan !== 'all' || selectedCity !== 'all' || selectedCategory !== 'all' || selectedBankStatus !== 'all') && (
             <button
               type="button"
               onClick={() => {
@@ -1188,6 +1349,7 @@ export default function AdminStoresManager({
                 setSelectedPlan('all');
                 setSelectedCity('all');
                 setSelectedCategory('all');
+                setSelectedBankStatus('all');
               }}
               className="text-pink-400 hover:text-pink-300 font-bold underline cursor-pointer"
             >
@@ -1220,6 +1382,8 @@ export default function AdminStoresManager({
             const addressDisplay = store.restaurantAddress || store.address || '';
             const cityDisplay = store.restaurantCity || (store.location && store.location !== addressDisplay ? store.location : '');
             const finalAddress = addressDisplay || (store.location && store.location !== cityDisplay ? store.location : '');
+            const storeBanks = getStoreBankAccounts(store);
+            const hasBankAccounts = storeBanks.length > 0;
 
             return (
               <div 
@@ -1465,6 +1629,35 @@ export default function AdminStoresManager({
                         )}
                       </div>
                     </div>
+
+                    {/* Bank Accounts Status Indicator */}
+                    <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-gray-900">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                        <Landmark className={`w-3.5 h-3.5 ${hasBankAccounts ? 'text-emerald-400' : 'text-amber-400'}`} />
+                        Datos Bancarios:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenBankModal(store)}
+                        className={`px-2 py-0.5 rounded-md border text-[10.5px] font-bold flex items-center gap-1.5 transition cursor-pointer truncate max-w-[185px] ${
+                          hasBankAccounts
+                            ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                            : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}
+                        title={
+                          hasBankAccounts
+                            ? `Cuentas registradas: ${storeBanks.map(b => b.bankName).join(', ')}. Clic para administrar.`
+                            : 'Datos bancarios pendientes por registrar. Clic para registrar.'
+                        }
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${hasBankAccounts ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                        <span className="truncate">
+                          {hasBankAccounts
+                            ? `Registrados (${storeBanks.length}) • ${storeBanks.map(b => b.bankName).join(', ')}`
+                            : 'Pendientes'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Schedule & Operational Details */}
@@ -1547,6 +1740,33 @@ export default function AdminStoresManager({
                         <span>Ver Pedidos ({orderStats.orderCount})</span>
                       </button>
                     </div>
+
+                    {/* Botón Datos Bancarios con Indicador de Estado */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenBankModal(store)}
+                      className={`w-full py-2.5 px-3 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-between gap-2 transition cursor-pointer shadow-sm active:scale-95 border ${
+                        hasBankAccounts
+                          ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                          : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      }`}
+                      title="Registrar, consultar, editar y administrar los datos bancarios de este restaurante"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Landmark className="w-3.5 h-3.5 shrink-0" />
+                        <span>Datos Bancarios</span>
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded-lg text-[9.5px] font-mono font-black uppercase flex items-center gap-1 border ${
+                          hasBankAccounts
+                            ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40'
+                            : 'bg-amber-950/90 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${hasBankAccounts ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                        {hasBankAccounts ? `Registrados (${storeBanks.length})` : 'Pendientes'}
+                      </span>
+                    </button>
 
                     {/* Secondary Utilities Row */}
                     <div className="flex items-center justify-between gap-1.5 pt-1">
@@ -1795,6 +2015,25 @@ export default function AdminStoresManager({
                             title="Ver pedidos de esta tienda"
                           >
                             <ShoppingBag className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenBankModal(store)}
+                            className={`px-2.5 py-1.5 rounded-xl border text-[10px] font-black uppercase transition cursor-pointer flex items-center gap-1.5 active:scale-95 shadow-sm ${
+                              getStoreBankAccounts(store).length > 0
+                                ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/30'
+                                : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30'
+                            }`}
+                            title={
+                              getStoreBankAccounts(store).length > 0
+                                ? `Datos Bancarios Registrados (${getStoreBankAccounts(store).length})`
+                                : 'Datos Bancarios Pendientes — Clic para registrar'
+                            }
+                          >
+                            <Landmark className="w-3.5 h-3.5" />
+                            <span className="hidden xl:inline">Datos Bancarios</span>
+                            <span className={`w-1.5 h-1.5 rounded-full ${getStoreBankAccounts(store).length > 0 ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
                           </button>
 
                           <button
@@ -2066,12 +2305,27 @@ export default function AdminStoresManager({
               </div>
 
               {/* Social Networks & Bank Accounts */}
-              {(detailStore.instagram || detailStore.facebook || detailStore.tiktok || (detailStore.bankAccounts && detailStore.bankAccounts.length > 0)) && (
-                <div className="bg-gray-900/60 p-4 rounded-2xl border border-gray-850 space-y-2.5">
-                  <h4 className="text-[11px] font-black uppercase text-blue-400 tracking-wider font-mono">
-                    Redes Sociales & Cuentas Bancarias
+              <div className="bg-gray-900/60 p-4 rounded-2xl border border-gray-850 space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h4 className="text-[11px] font-black uppercase text-emerald-400 tracking-wider font-mono flex items-center gap-1.5">
+                    <Landmark className="w-3.5 h-3.5 text-emerald-400" />
+                    Datos Bancarios & Redes Sociales
                   </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = detailStore;
+                      setDetailStore(null);
+                      handleOpenBankModal(target);
+                    }}
+                    className="px-3 py-1 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Landmark className="w-3.5 h-3.5" />
+                    <span>Administrar Datos Bancarios</span>
+                  </button>
+                </div>
 
+                {(detailStore.instagram || detailStore.facebook || detailStore.tiktok) && (
                   <div className="flex flex-wrap gap-2">
                     {detailStore.instagram && (
                       <a 
@@ -2094,23 +2348,42 @@ export default function AdminStoresManager({
                       </span>
                     )}
                   </div>
+                )}
 
-                  {detailStore.bankAccounts && detailStore.bankAccounts.length > 0 && (
-                    <div className="pt-2 border-t border-gray-850 space-y-1">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase font-mono block">Cuentas Registradas para Pagos:</span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {detailStore.bankAccounts.map((b, idx) => (
-                          <div key={idx} className="bg-gray-950 p-2 rounded-xl border border-gray-800 text-[11px]">
-                            <span className="text-white font-bold block">{b.bankName} ({b.accountType})</span>
-                            <span className="text-emerald-400 font-mono">{b.accountNumber}</span>
-                            {b.holderName && <span className="text-gray-400 block text-[10px]">{b.holderName}</span>}
-                          </div>
-                        ))}
-                      </div>
+                {getStoreBankAccounts(detailStore).length > 0 ? (
+                  <div className="pt-2 border-t border-gray-850 space-y-1.5">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase font-mono block">
+                      ✓ Cuentas Bancarias Registradas ({getStoreBankAccounts(detailStore).length}):
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {getStoreBankAccounts(detailStore).map((b, idx) => (
+                        <div key={idx} className="bg-gray-950 p-2.5 rounded-xl border border-gray-800 text-[11px]">
+                          <span className="text-white font-bold block">{b.bankName} ({b.accountType})</span>
+                          <span className="text-emerald-400 font-mono font-bold">{b.accountNumber}</span>
+                          {(b.instructions || (b as any).holderName) && (
+                            <span className="text-gray-400 block text-[10px] truncate">{b.instructions || (b as any).holderName}</span>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-500/10 border border-amber-500/25 rounded-xl flex items-center justify-between gap-2 text-amber-300 text-xs">
+                    <span>⏳ Este restaurante aún tiene sus datos bancarios pendientes por registrar.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = detailStore;
+                        setDetailStore(null);
+                        handleOpenBankModal(target);
+                      }}
+                      className="underline font-bold text-amber-200 hover:text-white shrink-0 cursor-pointer"
+                    >
+                      Registrar ahora
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Modal Footer Actions */}
@@ -2671,6 +2944,97 @@ export default function AdminStoresManager({
                       <span>{isSamePlan ? 'Plan Ya Asignado' : 'Guardar Nuevo Plan'}</span>
                     </>
                   )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Modal para Administrar Datos Bancarios del Restaurante */}
+      {bankModalStore && (() => {
+        const currentStoreBanks = getStoreBankAccounts(bankModalStore);
+        const hasRegisteredBanks = currentStoreBanks.length > 0;
+
+        return (
+          <div
+            className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-start sm:items-center justify-center p-2 sm:p-4 z-50 animate-fade-in text-left overflow-y-auto overscroll-contain"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setBankModalStore(null);
+              }
+            }}
+          >
+            <div className="relative max-w-4xl w-full max-h-[92dvh] sm:max-h-[90dvh] my-auto bg-[#0b101d] border border-gray-800 rounded-2xl sm:rounded-3xl shadow-2xl flex flex-col overflow-hidden text-gray-200">
+              {/* Encabezado Fijo del Modal */}
+              <div className="flex items-center justify-between gap-3 border-b border-gray-850 p-4 sm:px-6 sm:py-4 shrink-0 bg-[#0b101d]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 overflow-hidden">
+                    {bankModalStore.photoURL ? (
+                      <img
+                        src={bankModalStore.photoURL}
+                        alt={bankModalStore.displayName || bankModalStore.username}
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Landmark className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-black text-white text-sm sm:text-base truncate">
+                        Datos Bancarios — {bankModalStore.displayName || bankModalStore.storeName || bankModalStore.username}
+                      </h3>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border ${
+                          hasRegisteredBanks
+                            ? 'bg-emerald-950/90 text-emerald-300 border-emerald-500/40'
+                            : 'bg-amber-950/90 text-amber-300 border-amber-500/40'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${hasRegisteredBanks ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'}`} />
+                        {hasRegisteredBanks ? `Registrados (${currentStoreBanks.length})` : 'Pendientes'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-400 font-mono truncate mt-0.5">
+                      @{bankModalStore.username || 'sin-usuario'} • Registra, consulta, edita o elimina las cuentas bancarias y billeteras digitales del restaurante
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setBankModalStore(null)}
+                  className="p-2 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl border border-gray-800 transition cursor-pointer shrink-0"
+                  title="Cerrar ventana"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Cuerpo Desplazable con el Gestor Completo de Datos Bancarios */}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+                <BankSettings
+                  profile={{
+                    ...bankModalStore,
+                    bankAccounts: currentStoreBanks,
+                  }}
+                  onSave={handleSaveStoreBankAccounts}
+                />
+              </div>
+
+              {/* Pie de Modal */}
+              <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6 border-t border-gray-850 bg-[#0b101d] shrink-0">
+                <span className="text-[11px] text-gray-400">
+                  Los cambios guardados se sincronizan inmediatamente con el restaurante y el checkout de clientes.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBankModalStore(null)}
+                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-gray-200 border border-gray-800 rounded-xl text-xs font-bold transition cursor-pointer shrink-0"
+                >
+                  Cerrar
                 </button>
               </div>
             </div>

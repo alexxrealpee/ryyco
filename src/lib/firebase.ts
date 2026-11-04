@@ -1639,8 +1639,39 @@ export function getOrderDeliveryCode(
   return '1234';
 }
 
+// In-memory idempotency guards to prevent duplicate order creation from double taps or race conditions
+const inFlightOrderSaves = new Map<string, Promise<OrderItem>>();
+const recentSavedOrders = new Map<string, { order: OrderItem; timestamp: number }>();
+
+function buildOrderIdempotencyKey(order: OrderItem): string {
+  const storeKey = (order.storeOwnerId || order.storeName || '').trim().toLowerCase();
+  const phoneKey = sanitizeCustomerPhone(order.customerPhone || '') || (order.customerName || '').trim().toLowerCase();
+  const totalKey = Math.round(Number(order.totalAmount) || 0);
+  const itemsKey = (order.items || [])
+    .map(i => `${(i.productId || i.name || '').trim().toLowerCase()}:${i.quantity || 1}:${Math.round(Number(i.price) || 0)}:${(i.selectedVariant || '').trim().toLowerCase()}`)
+    .sort()
+    .join('|');
+  return `${storeKey}__${phoneKey}__${totalKey}__${itemsKey}`;
+}
+
 // CREATE CUSTOMER ORDER
 export async function saveOrder(order: OrderItem): Promise<OrderItem> {
+  const idempotencyKey = buildOrderIdempotencyKey(order);
+  const nowMs = Date.now();
+
+  // 0a. If an identical order save is currently in flight, return the same promise
+  const existingInFlight = inFlightOrderSaves.get(idempotencyKey);
+  if (existingInFlight) {
+    return existingInFlight;
+  }
+
+  // 0b. If an identical order was already saved within the last 20 seconds, return that saved order
+  const recentlySaved = recentSavedOrders.get(idempotencyKey);
+  if (recentlySaved && nowMs - recentlySaved.timestamp < 20000) {
+    return recentlySaved.order;
+  }
+
+  const savePromise = (async (): Promise<OrderItem> => {
   // 1. Strict Live Validation against Firestore: Verify store is open (isClosed === false)
   if (order.storeOwnerId && order.storeOwnerId !== 'store_general') {
     try {
@@ -1979,7 +2010,16 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
     }
   } catch (e) {}
 
+  recentSavedOrders.set(idempotencyKey, { order: result, timestamp: Date.now() });
   return result;
+  })();
+
+  inFlightOrderSaves.set(idempotencyKey, savePromise);
+  try {
+    return await savePromise;
+  } finally {
+    inFlightOrderSaves.delete(idempotencyKey);
+  }
 }
 
 // DEDUPLICATE ORDERS HELPER
@@ -1987,14 +2027,35 @@ export function deduplicateOrders(ordersList: OrderItem[]): OrderItem[] {
   if (!ordersList || !Array.isArray(ordersList)) return [];
   const seenIds = new Set<string>();
   const seenSignatures = new Set<string>();
+  const seenContentBuckets: Array<{ contentSig: string; timeMs: number }> = [];
+
   return ordersList.filter(o => {
     if (!o || !o.id) return false;
     if (seenIds.has(o.id)) return false;
 
-    // Create a signature to catch duplicate submissions created within the same minute
+    // 1. Exact orderNumber + minute signature
     const dateMinute = o.createdAt ? o.createdAt.substring(0, 16) : '';
     const sig = `${o.storeOwnerId || ''}_${o.orderNumber || ''}_${o.customerName || ''}_${o.totalAmount || 0}_${dateMinute}`;
     if (seenSignatures.has(sig)) return false;
+
+    // 2. Content signature to catch duplicate submissions created within 45 seconds even if random orderNumber differs
+    const phoneOrName = sanitizeCustomerPhone(o.customerPhone || '') || (o.customerName || '').trim().toLowerCase();
+    const itemsSig = (o.items || [])
+      .map(i => `${(i.productId || i.name || '').trim().toLowerCase()}:${i.quantity || 1}:${Math.round(Number(i.price) || 0)}`)
+      .sort()
+      .join('|');
+    const contentSig = `${(o.storeOwnerId || '').trim()}__${phoneOrName}__${Math.round(Number(o.totalAmount) || 0)}__${itemsSig}`;
+    const orderTimeMs = o.createdAt ? new Date(o.createdAt).getTime() : 0;
+
+    if (orderTimeMs > 0 && itemsSig) {
+      const isDuplicateWithinWindow = seenContentBuckets.some(
+        prev => prev.contentSig === contentSig && Math.abs(prev.timeMs - orderTimeMs) <= 45000
+      );
+      if (isDuplicateWithinWindow) {
+        return false;
+      }
+      seenContentBuckets.push({ contentSig, timeMs: orderTimeMs });
+    }
 
     seenIds.add(o.id);
     seenSignatures.add(sig);
@@ -6891,7 +6952,7 @@ export function listenToCustomerOrders(
       });
     } catch (e) {}
 
-    const list = Array.from(ordersMap.values());
+    const list = deduplicateOrders(Array.from(ordersMap.values()));
     list.sort((a, b) => {
       const timeA = new Date(a.createdAt || 0).getTime();
       const timeB = new Date(b.createdAt || 0).getTime();
@@ -6986,7 +7047,7 @@ export async function fetchCustomerOrders(rawPhone: string, customerEmail?: stri
     });
   } catch (e) {}
 
-  const ordersList = Array.from(ordersMap.values());
+  const ordersList = deduplicateOrders(Array.from(ordersMap.values()));
   ordersList.sort((a, b) => {
     const timeA = new Date(a.createdAt || 0).getTime();
     const timeB = new Date(b.createdAt || 0).getTime();

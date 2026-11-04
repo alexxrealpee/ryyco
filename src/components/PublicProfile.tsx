@@ -375,6 +375,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const [directTrackingOrder, setDirectTrackingOrder] = useState<OrderItem | null>(null);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const orderSubmittingRef = useRef(false);
+  const placingOrderLockRef = useRef(false);
 
   // Catalogue Active category tag
   const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -944,11 +945,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   };
 
   const executePlaceOrder = async (customer: CustomerProfile) => {
-    if (!profile) return;
+    if (!profile || placingOrderLockRef.current) return;
     if (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim()) {
       alert("Debes subir el comprobante de pago de la transferencia bancaria para poder avanzar.");
       return;
     }
+    placingOrderLockRef.current = true;
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
     const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
@@ -1063,23 +1065,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       setIsCartOpen(false);
       setIsCheckoutOpen(false);
       setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
-
-      // Auto-trigger WhatsApp message instantly to ensure delivery to the merchant
-      try {
-        triggerShopperWhatsAppMessage(savedOrder);
-      } catch (e) {
-        console.warn("Auto-redirect blocked by browser, manual fallback remains available", e);
-      }
     } catch(err) {
       console.error(err);
       alert("Ocurrió un error al registrar el pedido. Intenta nuevamente.");
     } finally {
+      placingOrderLockRef.current = false;
       orderSubmittingRef.current = false;
       setOrderSubmitting(false);
     }
   };
 
   const handleAuthPromptSuccess = async (authenticatedCustomer: CustomerProfile) => {
+    if (placingOrderLockRef.current) return;
     setActiveCustomer(authenticatedCustomer);
     setActiveCustomerSession(authenticatedCustomer);
     setCustName(authenticatedCustomer.name);
@@ -1129,6 +1126,10 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
     setPhoneError("");
 
+    if (orderSubmittingRef.current || placingOrderLockRef.current || orderSubmitting) return;
+    orderSubmittingRef.current = true;
+    setOrderSubmitting(true);
+
     // If customer is already logged in, allow them to freely change data for this order form
     if (activeCustomer) {
       if (updateProfileWithOrderDetails) {
@@ -1148,7 +1149,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       return;
     }
 
-    setOrderSubmitting(true);
     try {
       const existing = await fetchCustomerProfileByPhone(cleanedPhone);
       setOrderAuthPromptData({
@@ -1166,6 +1166,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         existingProfile: null
       });
     } finally {
+      orderSubmittingRef.current = false;
       setOrderSubmitting(false);
     }
   };
@@ -4130,10 +4131,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </div>
             )}
 
-            <p className="text-xs text-gray-400 leading-relaxed font-semibold bg-gray-900 border border-gray-900 p-3 rounded-lg text-left">
-              Para validar el despacho, te facilitamos un botón que redactará los artículos de tu carrito directamente hacia nuestro canal oficial de WhatsApp. Así podremos coordinar el envío de inmediato.
-            </p>
-
             <div className="flex flex-col gap-2.5 pt-2">
               <button
                 type="button"
@@ -4161,16 +4158,6 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               >
                 <Truck className="w-4 h-4" />
                 Ver y Rastrear Estado de mi Pedido en Vivo
-              </button>
-
-              <button
-                type="button"
-                onClick={() => triggerShopperWhatsAppMessage(submittedOrder)}
-                className="w-full py-3.5 font-black text-xs rounded-xl flex items-center justify-center gap-2 transition shadow active:scale-95 cursor-pointer hover:opacity-90"
-                style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
-              >
-                <MessageCircle className="w-5 h-5 stroke-[2.5]" style={{ color: getContrastText(storeAccent) }} />
-                Enviar Pedido por WhatsApp
               </button>
 
               <button

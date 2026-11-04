@@ -488,6 +488,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   isCheckoutOpenRef.current = isCheckoutOpen;
   const activeListeningPhoneRef = useRef('');
   const userHasEditedFormRef = useRef(false);
+  const orderSubmittingRef = useRef(false);
+  const placingOrderLockRef = useRef(false);
 
   // Customer Checkout Verification Prompt State
   const [orderAuthPromptData, setOrderAuthPromptData] = useState<{
@@ -1274,16 +1276,34 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   };
 
   const executePlaceOrder = async (customer: CustomerProfile) => {
+    if (placingOrderLockRef.current) return;
     if (uploadingProof) { alert('Espera a que termine de cargar el comprobante.'); return; }
     if (payMethod === 'transfer' && !transferAvailable) { alert('Revisa el método de pago: no hay cuentas disponibles.'); return; }
     if (isMissingTransferProof) { alert('Debes subir el comprobante de pago de la transferencia bancaria para poder continuar.'); return; }
+    placingOrderLockRef.current = true;
+    orderSubmittingRef.current = true;
     setOrderSubmitting(true);
 
-    // Group cart items by merchant userId
+    // Group cart items by merchant userId (normalizing by store profile or store name to avoid splitting one store's items)
     const itemsBySeller: Record<string, typeof cart> = {};
+    const storeNameKeyToSellerId: Record<string, string> = {};
     cart.forEach(item => {
       const sellerProfile = profiles[item.product.userId] || findStoreForProduct(item.product, profiles);
-      const sellerId = sellerProfile?.uid || item.product.userId || 'default_seller';
+      let sellerId = sellerProfile?.uid || item.product.userId || 'default_seller';
+      const storeNameKey = (
+        sellerProfile?.username ||
+        item.product.storeUsername ||
+        sellerProfile?.displayName ||
+        item.product.storeName ||
+        ''
+      ).trim().toLowerCase();
+
+      if (storeNameKey && storeNameKeyToSellerId[storeNameKey]) {
+        sellerId = storeNameKeyToSellerId[storeNameKey];
+      } else if (storeNameKey) {
+        storeNameKeyToSellerId[storeNameKey] = sellerId;
+      }
+
       if (!itemsBySeller[sellerId]) {
         itemsBySeller[sellerId] = [];
       }
@@ -1401,11 +1421,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       console.error(err);
       alert("Ocurrió un error al registrar el pedido. Intenta nuevamente.");
     } finally {
+      placingOrderLockRef.current = false;
+      orderSubmittingRef.current = false;
       setOrderSubmitting(false);
     }
   };
 
   const handleAuthPromptSuccess = async (authenticatedCustomer: CustomerProfile) => {
+    if (placingOrderLockRef.current) return;
     setActiveCustomer(authenticatedCustomer);
     setActiveCustomerSession(authenticatedCustomer);
     setCustName(authenticatedCustomer.name);
@@ -1434,11 +1457,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
     setPhoneError("");
     if (!isPaymentStep) { setIsPaymentStep(true); return; }
-    if (orderSubmitting || uploadingProof) return;
+    if (orderSubmittingRef.current || placingOrderLockRef.current || orderSubmitting || uploadingProof) return;
     if (isMissingTransferProof) {
       alert('Debes subir el comprobante de pago de la transferencia bancaria para poder avanzar.');
       return;
     }
+
+    orderSubmittingRef.current = true;
+    setOrderSubmitting(true);
 
     // If customer is already logged in, allow them to freely change data for this order form
     if (activeCustomer) {
@@ -1459,7 +1485,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return;
     }
 
-    setOrderSubmitting(true);
     try {
       const existing = await fetchCustomerProfileByPhone(cleanedPhone);
       setOrderAuthPromptData({
@@ -1477,6 +1502,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         existingProfile: null
       });
     } finally {
+      orderSubmittingRef.current = false;
       setOrderSubmitting(false);
     }
   };
@@ -4031,7 +4057,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   const currency = profile?.currency || '$';
 
                   return (
-                    <div key={order.id} className="bg-[#182231] border border-[#334155] p-4 rounded-2xl flex flex-col items-stretch text-left space-y-3">
+                    <div key={order.id} className="bg-[#182231] border border-[#334155] p-4 rounded-2xl flex flex-col items-stretch text-left">
                       <div className="flex justify-between items-start gap-3">
                         <div className="min-w-0">
                           <span className="text-[10px] font-black uppercase text-[#A9B2C3] block leading-none">TIENDA</span>
@@ -4043,14 +4069,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           <span className="text-base font-black text-white font-mono">{currency}{order.totalAmount.toLocaleString('es-CO')}</span>
                         </div>
                       </div>
-
-                      <button
-                        onClick={() => triggerShopperWhatsAppMessage(order)}
-                        className="w-full min-h-11 px-3 py-2.5 bg-[#16803D] hover:bg-[#166534] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-colors"
-                      >
-                        <MessageCircle className="w-4 h-4 text-white" />
-                        Enviar Orden por WhatsApp
-                      </button>
                     </div>
                   );
                 })}

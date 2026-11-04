@@ -153,7 +153,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   }, []);
 
   // Active view tab inside portal
-  const [activeTab, setActiveTab] = useState<'deliveries' | 'history' | 'profile'>('deliveries');
+  const [activeTab, setActiveTab] = useState<'deliveries' | 'history' | 'ratings' | 'profile'>('deliveries');
 
   // Real-time Availability & Orders
   const [isAvailable, setIsAvailable] = useState<boolean>(() => {
@@ -1213,9 +1213,14 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
             </div>
             <div>
               <h1 className="text-sm sm:text-base font-extrabold text-white tracking-tight">{driver.firstName} {driver.lastName}</h1>
-              <div className="flex items-center gap-1 text-xs text-[#F4B400] font-extrabold mt-0.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab('ratings')}
+                title="Ver mis calificaciones y comentarios"
+                className="flex items-center gap-1 text-xs text-[#F4B400] hover:text-amber-300 font-extrabold mt-0.5 cursor-pointer transition"
+              >
                 <Star className="w-3.5 h-3.5 fill-[#F4B400] text-[#F4B400]" /> {driver.rating?.toFixed(1) || '5.0'}
-              </div>
+              </button>
             </div>
           </div>
 
@@ -2487,7 +2492,7 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
             {activeTab === 'history' && (
               <div className="space-y-6">
                 {/* Stats Summary */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-2xl">
                     <span className="text-xs font-bold text-[#A9B2C3] uppercase block">Total Entregas</span>
                     <span className="text-2xl font-black text-white mt-1 block">{driver.completedDeliveriesCount || 0}</span>
@@ -2498,15 +2503,6 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
                     <span className="text-2xl font-black text-[#E63946] mt-1 block">
                       ${(driver.totalEarnings || 0).toLocaleString('es-CO')} COP
                     </span>
-                  </div>
-
-                  <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-2xl">
-                    <span className="text-xs font-bold text-[#A9B2C3] uppercase block">Calificación Promedio</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Star className="w-6 h-6 fill-[#F4B400] text-[#F4B400]" />
-                      <span className="text-2xl font-black text-white">{driver.rating?.toFixed(1) || '5.0'}</span>
-                      <span className="text-xs text-[#A9B2C3]">({driver.ratingCount || 0} opiniones)</span>
-                    </div>
                   </div>
                 </div>
 
@@ -2542,15 +2538,34 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
                     </div>
                   )}
                 </div>
+              </div>
+            )}
 
-                {/* Customer Ratings Section */}
-                {driverRatings.length > 0 && (
-                  <div className="bg-[#111827] border border-[#232B3A] rounded-2xl p-6 space-y-4">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Star className="w-4 h-4 text-[#F4B400] fill-[#F4B400]" />
-                      <span>Calificaciones y Comentarios de Clientes</span>
-                    </h3>
+            {/* TAB 3: RATINGS AND COMMENTS */}
+            {activeTab === 'ratings' && (
+              <div className="space-y-6">
+                {/* Average Rating Card */}
+                <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-2xl">
+                  <span className="text-xs font-bold text-[#A9B2C3] uppercase block">Calificación Promedio</span>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Star className="w-6 h-6 fill-[#F4B400] text-[#F4B400]" />
+                    <span className="text-2xl font-black text-white">{driver.rating?.toFixed(1) || '5.0'}</span>
+                    <span className="text-xs text-[#A9B2C3]">({driver.ratingCount || driverRatings.length || 0} opiniones)</span>
+                  </div>
+                </div>
 
+                {/* Customer Ratings & Comments Section */}
+                <div className="bg-[#111827] border border-[#232B3A] rounded-2xl p-6 space-y-4">
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Star className="w-4 h-4 text-[#F4B400] fill-[#F4B400]" />
+                    <span>Calificaciones y Comentarios de Clientes</span>
+                  </h3>
+
+                  {driverRatings.length === 0 ? (
+                    <p className="text-xs text-[#A9B2C3] py-6 text-center">
+                      Aún no tienes calificaciones ni comentarios registrados por clientes.
+                    </p>
+                  ) : (
                     <div className="space-y-3">
                       {driverRatings.map((rating) => (
                         <div key={rating.id} className="bg-[#090B12] border border-[#232B3A] p-4 rounded-xl space-y-2">
@@ -2574,8 +2589,8 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             )}
 
@@ -2884,11 +2899,11 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
 
       {/* Bottom Sticky Mobile Navigation Bar */}
       {driver.status === 'approved' && (
-        <nav className="fixed bottom-0 left-0 right-0 h-[58px] z-40 bg-[#111827]/95 backdrop-blur-xl border-t border-[#232B3A] shadow-2xl px-6 py-2">
+        <nav className="fixed bottom-0 left-0 right-0 h-[58px] z-40 bg-[#111827]/95 backdrop-blur-xl border-t border-[#232B3A] shadow-2xl px-3 sm:px-6 py-2">
           <div className="max-w-md mx-auto h-full flex items-center justify-between">
             <button
               onClick={() => setActiveTab('deliveries')}
-              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-3 ${
+              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-2 ${
                 activeTab === 'deliveries' 
                   ? 'text-[#E63946] font-extrabold' 
                   : 'text-[#A9B2C3] hover:text-white font-medium'
@@ -2902,7 +2917,7 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
                   </span>
                 )}
               </div>
-              <span className="text-[11px]">Entregas</span>
+              <span className="text-[10px] sm:text-[11px] leading-tight">Entregas</span>
               {activeTab === 'deliveries' && (
                 <span className="absolute bottom-0 w-8 h-0.5 bg-[#E63946] rounded-full" />
               )}
@@ -2910,29 +2925,51 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
 
             <button
               onClick={() => setActiveTab('history')}
-              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-3 ${
+              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-2 ${
                 activeTab === 'history' 
                   ? 'text-[#E63946] font-extrabold' 
                   : 'text-[#A9B2C3] hover:text-white font-medium'
               }`}
             >
               <FileText className={`w-5 h-5 ${activeTab === 'history' ? 'scale-110 text-[#E63946]' : ''}`} />
-              <span className="text-[11px]">Historial y Ganancias</span>
+              <span className="text-[10px] sm:text-[11px] leading-tight text-center">Historial y Ganancias</span>
               {activeTab === 'history' && (
                 <span className="absolute bottom-0 w-8 h-0.5 bg-[#E63946] rounded-full" />
               )}
             </button>
 
             <button
+              onClick={() => setActiveTab('ratings')}
+              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-2 ${
+                activeTab === 'ratings' 
+                  ? 'text-[#E63946] font-extrabold' 
+                  : 'text-[#A9B2C3] hover:text-white font-medium'
+              }`}
+            >
+              <div className="relative">
+                <Star className={`w-5 h-5 ${activeTab === 'ratings' ? 'scale-110 text-[#E63946] fill-[#E63946]' : ''}`} />
+                {(driver.ratingCount || driverRatings.length) > 0 && (
+                  <span className="absolute -top-1 -right-2.5 bg-[#F4B400] text-gray-950 font-black text-[8.5px] min-w-[15px] h-[15px] px-0.5 rounded-full flex items-center justify-center shadow-sm">
+                    {driver.ratingCount || driverRatings.length}
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] sm:text-[11px] leading-tight text-center">Calificaciones</span>
+              {activeTab === 'ratings' && (
+                <span className="absolute bottom-0 w-8 h-0.5 bg-[#E63946] rounded-full" />
+              )}
+            </button>
+
+            <button
               onClick={() => setActiveTab('profile')}
-              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-3 ${
+              className={`flex flex-col items-center gap-1 transition cursor-pointer relative py-1 px-2 ${
                 activeTab === 'profile' 
                   ? 'text-[#E63946] font-extrabold' 
                   : 'text-[#A9B2C3] hover:text-white font-medium'
               }`}
             >
               <User className={`w-5 h-5 ${activeTab === 'profile' ? 'scale-110 text-[#E63946]' : ''}`} />
-              <span className="text-[11px]">Mi Perfil</span>
+              <span className="text-[10px] sm:text-[11px] leading-tight">Mi Perfil</span>
               {activeTab === 'profile' && (
                 <span className="absolute bottom-0 w-8 h-0.5 bg-[#E63946] rounded-full" />
               )}

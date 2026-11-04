@@ -11,7 +11,8 @@ import {
   FileText,
   DollarSign,
   Percent,
-  ShieldAlert
+  ShieldAlert,
+  Copy
 } from 'lucide-react';
 import { BankAccount, UserProfile } from '../types';
 import {
@@ -81,6 +82,7 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [copiedAccId, setCopiedAccId] = useState<string | null>(null);
 
   // Sync when profile.bankAccounts updates from Firestore
   useEffect(() => {
@@ -744,9 +746,33 @@ export default function BankSettings({ profile, onSave }: BankSettingsProps) {
                         <div className="h-[1px] bg-gray-900/50" />
 
                         <div className="space-y-2.5">
-                          <div>
-                            <span className="text-[8px] font-black text-gray-550 uppercase block tracking-wider">Número de Cuenta</span>
-                            <span className="font-mono text-sm font-extrabold text-white">{acc.accountNumber}</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[8px] font-black text-gray-550 uppercase block tracking-wider">Número de Cuenta</span>
+                              <span className="font-mono text-sm font-extrabold text-white">{acc.accountNumber}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(acc.accountNumber);
+                                setCopiedAccId(acc.id);
+                                setTimeout(() => setCopiedAccId(null), 2000);
+                              }}
+                              className="px-2 py-1 bg-gray-900 hover:bg-gray-800 border border-gray-800 rounded-lg text-[10px] font-bold text-gray-300 hover:text-white flex items-center gap-1 transition cursor-pointer shrink-0"
+                              title="Copiar número de cuenta"
+                            >
+                              {copiedAccId === acc.id ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span className="text-emerald-400">Copiado</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>Copiar</span>
+                                </>
+                              )}
+                            </button>
                           </div>
 
                           {/* Costo adicional configurado para este método */}

@@ -869,6 +869,8 @@ Formatos válidos para:
     });
   });
 
+  const recentAdminOrderBroadcasts = new Map<string, number>();
+
   // Firebase Cloud Messaging (FCM) Order Notification Broadcast Endpoint
   app.post('/api/fcm/broadcast-order', async (req, res) => {
     try {
@@ -877,6 +879,15 @@ Formatos válidos para:
       // STRICT REQUIREMENT: Only pending orders trigger notifications
       if (status && status !== 'pending') {
         return res.json({ success: true, message: 'Non-pending order ignored for notifications' });
+      }
+
+      const broadcastKey = String(orderId || orderNumber || '').trim();
+      if (broadcastKey && !broadcastKey.startsWith('test_order_')) {
+        const lastBroadcast = recentAdminOrderBroadcasts.get(broadcastKey) || 0;
+        if (Date.now() - lastBroadcast < 30000) {
+          return res.json({ status: 'ok', deduplicated: true, orderId, orderNumber });
+        }
+        recentAdminOrderBroadcasts.set(broadcastKey, Date.now());
       }
 
       console.log(`[FCM-SERVER] 🚨 Nuevo pedido para administración general: #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" por ${customerName || 'Cliente'} ($${totalAmount || 0})`);

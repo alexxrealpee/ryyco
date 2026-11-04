@@ -107,6 +107,7 @@ export default function CustomerOrderAuthPromptModal({
   const [acceptedBuyerTerms, setAcceptedBuyerTerms] = useState(true);
   const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
   const [showForgotNotice, setShowForgotNotice] = useState(false);
+  const submittingLockRef = React.useRef(false);
 
   if (!isOpen) return null;
 
@@ -116,12 +117,14 @@ export default function CustomerOrderAuthPromptModal({
   // 1. Submit (Login or Registration without password)
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingLockRef.current || isSubmitting || isGoogleLoading) return;
 
     if (!isExistingCustomer && !acceptedBuyerTerms) {
       setAuthError("Debes aceptar los Términos y Condiciones para registrarte.");
       return;
     }
 
+    submittingLockRef.current = true;
     setIsSubmitting(true);
     setAuthError('');
 
@@ -136,7 +139,7 @@ export default function CustomerOrderAuthPromptModal({
 
         const saved = await saveCustomerProfile(updatedProfile);
         setActiveCustomerSession(saved);
-        onAuthenticated(saved);
+        await onAuthenticated(saved);
       } else {
         // Register new customer profile!
         const newProfile = await saveCustomerProfile({
@@ -150,17 +153,20 @@ export default function CustomerOrderAuthPromptModal({
         });
 
         setActiveCustomerSession(newProfile);
-        onAuthenticated(newProfile);
+        await onAuthenticated(newProfile);
       }
     } catch (err: any) {
       console.error("Auth error in checkout prompt:", err);
       setAuthError(err.message || "Ocurrió un error al verificar tu cuenta. Intenta de nuevo.");
+      submittingLockRef.current = false;
       setIsSubmitting(false);
     }
   };
 
   // 2. Google OAuth 1-click submit with profile loading state
   const handleGoogleSignIn = async () => {
+    if (submittingLockRef.current || isGoogleLoading || isSubmitting) return;
+    submittingLockRef.current = true;
     setIsGoogleLoading(true);
     setGoogleAuthStage('popup');
     setLoadingProfileStatusText('Abriendo ventana segura de Google...');
@@ -222,8 +228,9 @@ export default function CustomerOrderAuthPromptModal({
       // Brief delay to let the user see the confirmation before finishing
       await new Promise(res => setTimeout(res, 900));
 
-      onAuthenticated(saved);
+      await onAuthenticated(saved);
     } catch (err: any) {
+      submittingLockRef.current = false;
       console.warn("Google sign in error in order auth prompt:", err);
       setGoogleAuthStage('idle');
       setGoogleUserDetails(null);
