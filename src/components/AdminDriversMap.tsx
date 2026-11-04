@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { auth, db, signInWithGoogleUniversal, checkIsStoreClosed } from '../lib/firebase';
+import { auth, db, signInWithGoogleUniversal, checkIsStoreClosed, isSubscriptionExpiredOrSuspended } from '../lib/firebase';
 import { lockBodyScroll } from '../lib/bodyScrollLock';
 import { animateGps, validCoordinates, GPS_FRESH_MS, type GpsPoint } from '../lib/deliveryTracking';
 import { extractCoordinates } from '../lib/coordinateUtils';
@@ -30,6 +30,42 @@ type LocatedStore = {
   addressLabel: string;
   isClosed: boolean;
 };
+
+function isActiveRestaurantAccount(profile?: UserProfile | null): boolean {
+  if (!profile) return false;
+  if (
+    profile.suspended === true ||
+    profile.subscriptionStatus === 'suspended' ||
+    profile.subscriptionStatus === 'expired'
+  ) {
+    return false;
+  }
+
+  const subCheck = isSubscriptionExpiredOrSuspended(profile);
+  if (subCheck.isSuspended || subCheck.isExpired) {
+    return false;
+  }
+
+  const now = Date.now();
+  const hasValidPaidUntil = !!(
+    profile.subscriptionPaidUntil &&
+    !isNaN(new Date(profile.subscriptionPaidUntil).getTime()) &&
+    new Date(profile.subscriptionPaidUntil).getTime() >= now
+  );
+
+  if (!hasValidPaidUntil) {
+    if (profile.subscriptionStatus !== 'active' && profile.subscriptionStatus !== 'under_review') {
+      if (profile.subscriptionTrialExpires) {
+        const trialExp = new Date(profile.subscriptionTrialExpires).getTime();
+        if (!isNaN(trialExp) && trialExp < now) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -145,7 +181,7 @@ function buildStoreMarkerHtml(store: UserProfile, isSelected: boolean, isClosed 
         <div style="position:relative;width:34px;height:34px;border-radius:9999px;background:${avatarBg};border:2.5px solid #ffffff;box-shadow:0 4px 14px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;">
           ${avatarInner}
         </div>
-        <span style="position:absolute;bottom:0;right:0;width:13px;height:13px;border-radius:9999px;background:${statusDotColor};border:2px solid #090d18;display:flex;align-items:center;justify-content:center;font-size:8px;" title="${isClosed ? 'Restaurante cerrado' : 'Restaurante abierto'}"></span>
+        <span style="position:absolute;bottom:0;right:0;width:13px;height:13px;border-radius:9999px;background:${statusDotColor};border:2px solid #090d18;display:flex;align-items:center;justify-content:center;font-size:8px;" title="${isClosed ? 'Restaurante cerrado activo' : 'Restaurante abierto'}"></span>
       </div>
     </div>
   `;
@@ -216,7 +252,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
     });
   }, [drivers, positions, now, live]);
 
-  // Deduplicate all valid restaurants and split into open and closed
+  // Deduplicate active restaurants and split into currently open vs. currently closed active restaurants
   const { openStores, closedStores } = useMemo<{
     openStores: LocatedStore[];
     closedStores: LocatedStore[];
@@ -245,11 +281,13 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       }
     });
 
-    const list = Array.from(byKey.values()).sort((a, b) => {
-      const nameA = (a.displayName || a.storeName || a.username || '').toLowerCase();
-      const nameB = (b.displayName || b.storeName || b.username || '').toLowerCase();
-      return nameA.localeCompare(nameB);
-    });
+    const list = Array.from(byKey.values())
+      .filter(store => isActiveRestaurantAccount(store))
+      .sort((a, b) => {
+        const nameA = (a.displayName || a.storeName || a.username || '').toLowerCase();
+        const nameB = (b.displayName || b.storeName || b.username || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
 
     const open: LocatedStore[] = [];
     const closed: LocatedStore[] = [];
@@ -689,7 +727,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       const storeId = store.uid;
       const isSelected = selectedStoreId === storeId;
       const storeName = (store.displayName || store.storeName || store.username || 'Restaurante').trim();
-      const tooltipText = `🔒 ${storeName} · Cerrado${addressLabel ? ` · ${addressLabel}` : ''}`;
+      const tooltipText = `🔒 ${storeName} · Cerrado activo${addressLabel ? ` · ${addressLabel}` : ''}`;
 
       let marker = closedStoreMarkers.current.get(storeId);
       if (!marker) {
@@ -741,7 +779,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
           </div>
           <p className="text-xs text-gray-300 mt-0.5" aria-live="polite">
             {live
-              ? `${located.length} moviéndose con GPS en tiempo real · ${Math.max(0, drivers.length - located.length)} sin GPS reciente · ${openStores.length} restaurantes abiertos · ${closedStores.length} cerrados`
+              ? `${located.length} moviéndose con GPS en tiempo real · ${Math.max(0, drivers.length - located.length)} sin GPS reciente · ${openStores.length} restaurantes abiertos · ${closedStores.length} cerrados activos`
               : 'Conectando con Firebase…'}
           </p>
         </div>
@@ -757,7 +795,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
             }`}
           >
             <span>🔒</span>
-            <span>Restaurantes cerrados ({closedStores.length})</span>
+            <span>Restaurantes cerrados activos ({closedStores.length})</span>
           </button>
 
           <button
@@ -893,17 +931,18 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
                   ? 'bg-red-600 text-white shadow'
                   : 'text-gray-400 hover:text-white'
               }`}
+              title="Restaurantes cerrados activos"
             >
               🔒 ({closedStores.length})
             </button>
           </div>
 
-          {/* Closed Restaurants Section */}
+          {/* Closed Active Restaurants Section */}
           {(sidebarTab === 'closed' || (sidebarTab === 'all' && showClosedStoresLayer)) && (
             <div className="space-y-2">
               <div className="flex items-center justify-between pb-1 border-b border-gray-800/80">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-red-400">
-                  Restaurantes Cerrados ({closedStores.length})
+                  Restaurantes Cerrados Activos ({closedStores.length})
                 </span>
                 <button
                   type="button"
@@ -916,7 +955,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
 
               {closedStores.length === 0 ? (
                 <p className="text-xs text-gray-400 py-2 text-center">
-                  No hay restaurantes cerrados en este momento.
+                  No hay restaurantes cerrados activos en este momento.
                 </p>
               ) : (
                 <div className="space-y-2">
@@ -950,7 +989,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
                             <span className="truncate">{storeName}</span>
                           </span>
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-500/15 text-red-300 border border-red-500/30 shrink-0">
-                            Cerrado
+                            Cerrado · Activo
                           </span>
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
