@@ -165,8 +165,17 @@ function unprojectFromPixel(x: number, y: number, zoom: number): { lat: number; 
 }
 
 /**
- * Builds zoom-aware clusters when zoomed out (`zoom < 17`) and applies a subtle circular
- * separation (spiderfy) when multiple restaurants share identical/near-identical coordinates at high zoom.
+ * Checks whether a coordinate is inside the Ipiales metropolitan area
+ * so outlier ISP locations (e.g. Pasto/Cali) do not pull the camera out of Ipiales.
+ */
+function isWithinIpialesArea(lat: number, lng: number): boolean {
+  return lat >= 0.76 && lat <= 0.90 && lng >= -77.72 && lng <= -77.56;
+}
+
+/**
+ * Builds zoom-aware clusters when zoomed out (`zoom <= 14`) and shows individual circular
+ * logo markers at city zoom (`zoom >= 15`) with automatic circular separation (spiderfy)
+ * when multiple restaurants share identical/near-identical coordinates.
  */
 function computeStoreRenderNodes(
   storesWithGps: LocatedStore[],
@@ -175,8 +184,8 @@ function computeStoreRenderNodes(
 ): StoreRenderNode[] {
   if (storesWithGps.length === 0) return [];
 
-  // At high zoom (>= 17), show every restaurant individually and separate any near-identical coordinates
-  if (zoom >= 17) {
+  // At city zoom (>= 15), show every restaurant individually and separate any near-identical coordinates
+  if (zoom >= 15) {
     const projected = storesWithGps.map(item => ({
       item,
       pt: projectToPixel(item.lat!, item.lng!, zoom),
@@ -184,7 +193,7 @@ function computeStoreRenderNodes(
 
     const visited = new Set<number>();
     const result: StoreRenderNode[] = [];
-    const minSeparationPx = 34;
+    const minSeparationPx = 30;
 
     for (let i = 0; i < projected.length; i++) {
       if (visited.has(i)) continue;
@@ -213,7 +222,7 @@ function computeStoreRenderNodes(
       } else {
         const centerX = groupIndices.reduce((acc, idx) => acc + projected[idx].pt.x, 0) / groupIndices.length;
         const centerY = groupIndices.reduce((acc, idx) => acc + projected[idx].pt.y, 0) / groupIndices.length;
-        const radiusPx = Math.max(22, groupIndices.length * 6.5);
+        const radiusPx = Math.max(20, groupIndices.length * 6);
 
         groupIndices.forEach((idx, k) => {
           const entry = projected[idx].item;
@@ -237,13 +246,13 @@ function computeStoreRenderNodes(
     return result;
   }
 
-  // Zoom < 17: intelligent pixel-distance marker clustering
-  const clusterRadiusPx = zoom <= 13 ? 58 : zoom === 14 ? 46 : zoom === 15 ? 38 : 28;
+  // Zoom <= 14: anchor-based pixel-distance clustering so nearby buckets never chain-merge across the whole city
+  const clusterRadiusPx = zoom <= 12 ? 42 : zoom === 13 ? 34 : 26;
 
   type ClusterBucket = {
+    anchorX: number;
+    anchorY: number;
     items: LocatedStore[];
-    sumX: number;
-    sumY: number;
     sumLat: number;
     sumLng: number;
   };
@@ -263,9 +272,7 @@ function computeStoreRenderNodes(
     let bestDist = Infinity;
 
     for (const b of buckets) {
-      const cx = b.sumX / b.items.length;
-      const cy = b.sumY / b.items.length;
-      const dist = Math.hypot(pt.x - cx, pt.y - cy);
+      const dist = Math.hypot(pt.x - b.anchorX, pt.y - b.anchorY);
       if (dist <= clusterRadiusPx && dist < bestDist) {
         bestDist = dist;
         bestBucket = b;
@@ -274,15 +281,13 @@ function computeStoreRenderNodes(
 
     if (bestBucket) {
       bestBucket.items.push(item);
-      bestBucket.sumX += pt.x;
-      bestBucket.sumY += pt.y;
       bestBucket.sumLat += item.lat!;
       bestBucket.sumLng += item.lng!;
     } else {
       buckets.push({
+        anchorX: pt.x,
+        anchorY: pt.y,
         items: [item],
-        sumX: pt.x,
-        sumY: pt.y,
         sumLat: item.lat!,
         sumLng: item.lng!,
       });
@@ -489,6 +494,7 @@ function buildClusterTooltipHtml(items: LocatedStore[], openCount: number, close
 export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markers = useRef(new Map<string, L.Marker>());
   const storeLayerMarkers = useRef(new Map<string, { marker: L.Marker; signature: string }>());
   const prevPoints = useRef(new Map<string, GpsPoint>());
@@ -505,7 +511,8 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const [attempt, setAttempt] = useState(0);
   const [now, setNow] = useState(Date.now());
   const [waiting, setWaiting] = useState(false);
-  const [mapZoom, setMapZoom] = useState(14);
+  const [mapZoom, setMapZoom] = useState(15);
+  const [mapType, setMapType] = useState<'roadmap' | 'hybrid'>('roadmap');
   const [followedDriverId, setFollowedDriverId] = useState<string | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [showDriversLayer, setShowDriversLayer] = useState(true);
@@ -735,15 +742,36 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
   const center = () => {
     setFollowedDriverId(null);
     setSelectedStoreId(null);
-    const allMarkers = [
-      ...(showDriversLayer ? [...markers.current.values()] : []),
-      ...[...storeLayerMarkers.current.values()].map(entry => entry.marker),
-    ];
-    if (map.current && allMarkers.length) {
-      map.current.fitBounds(
-        L.featureGroup(allMarkers).getBounds(),
-        { padding: [50, 50], maxZoom: 16 }
-      );
+    if (!map.current) return;
+
+    const candidatePoints: [number, number][] = [];
+    visibleMapStores.forEach(s => {
+      if (s.lat !== null && s.lng !== null && validCoordinates(s.lat, s.lng)) {
+        candidatePoints.push([s.lat, s.lng]);
+      }
+    });
+    if (showDriversLayer) {
+      located.forEach(d => {
+        const p = positions[d.id];
+        if (p && validCoordinates(p.lat, p.lng)) {
+          candidatePoints.push([p.lat, p.lng]);
+        }
+      });
+    }
+
+    // Prioritize points within the Ipiales operational area so an outlier ISP coordinate
+    // in Pasto/Cali never pulls the Google Maps viewport out to the regional/department scale
+    const ipialesPoints = candidatePoints.filter(([lat, lng]) => isWithinIpialesArea(lat, lng));
+    const targetPoints = ipialesPoints.length > 0 ? ipialesPoints : candidatePoints;
+
+    if (targetPoints.length > 0) {
+      const bounds = L.latLngBounds(targetPoints);
+      map.current.fitBounds(bounds, { padding: [45, 45], maxZoom: 16 });
+      if (ipialesPoints.length > 0 && map.current.getZoom() < 14) {
+        map.current.setView([0.8285, -77.6415], 15);
+      }
+    } else {
+      map.current.setView([0.8285, -77.6415], 15);
     }
   };
 
@@ -972,14 +1000,17 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (!container.current) return;
-    const instance = L.map(container.current, { zoomControl: true }).setView([0.825, -77.64], 14);
+    const instance = L.map(container.current, { zoomControl: true }).setView([0.8285, -77.6415], 15);
     map.current = instance;
     setMapZoom(instance.getZoom());
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19,
+    // Base cartography: Google Maps tiles (Spanish labels, street detail up to zoom 21)
+    const googleLayer = L.tileLayer('https://mt{s}.google.com/vt/lyrs=m&hl=es&x={x}&y={y}&z={z}', {
+      subdomains: ['0', '1', '2', '3'],
+      attribution: '&copy; Google Maps',
+      maxZoom: 21,
     }).addTo(instance);
+    tileLayerRef.current = googleLayer;
 
     const handleZoomEnd = () => {
       setMapZoom(instance.getZoom());
@@ -1003,10 +1034,18 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       resize.disconnect();
       instance.remove();
       map.current = null;
+      tileLayerRef.current = null;
       markers.current.clear();
       storeLayerMarkers.current.clear();
     };
   }, []);
+
+  // Switch between Google Maps Roadmap ('m') and Hybrid Satellite ('y')
+  useEffect(() => {
+    if (!tileLayerRef.current) return;
+    const lyrs = mapType === 'hybrid' ? 'y' : 'm';
+    tileLayerRef.current.setUrl(`https://mt{s}.google.com/vt/lyrs=${lyrs}&hl=es&x={x}&y={y}&z={z}`);
+  }, [mapType]);
 
   // Render & animate live delivery driver markers
   useEffect(() => {
@@ -1113,7 +1152,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       }
     });
 
-    if (!centered.current && (visibleDrivers.length || storeRenderNodes.length)) {
+    if (!centered.current && visibleMapStores.length > 0) {
       center();
       centered.current = true;
     }
@@ -1212,7 +1251,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
             L.DomEvent.stopPropagation(e);
             if (map.current) {
               const currentZoom = map.current.getZoom();
-              map.current.setView([lat, lng], Math.min(18, currentZoom + 2), { animate: true });
+              map.current.setView([lat, lng], Math.min(18, Math.max(currentZoom + 2, 16)), { animate: true });
             }
           });
           storeLayerMarkers.current.set(id, { marker, signature });
@@ -1232,11 +1271,11 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       }
     });
 
-    if (!centered.current && storeRenderNodes.length) {
+    if (!centered.current && visibleMapStores.length > 0) {
       center();
       centered.current = true;
     }
-  }, [storeRenderNodes, selectedStoreId]);
+  }, [storeRenderNodes, selectedStoreId, visibleMapStores]);
 
   return createPortal(
     <div
@@ -1377,13 +1416,39 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       )}
 
       <div className="flex-1 min-h-0 flex flex-col md:flex-row">
-        {/* Map Viewport Wrapper with Legend & Single Active Floating Restaurant Card */}
+        {/* Map Viewport Wrapper with Google Maps Mode Selector, Legend & Single Active Floating Restaurant Card */}
         <div className="flex-1 min-h-0 relative z-0">
           <div
             ref={container}
             className="w-full h-full"
             style={{ touchAction: 'none' }}
           />
+
+          {/* Google Maps Layer Selector (Mapa / Satélite) */}
+          <div className="absolute top-3 left-14 z-[500] inline-flex items-center rounded-xl bg-[#090B12]/90 border border-gray-800/90 p-1 shadow-lg">
+            <button
+              type="button"
+              onClick={() => setMapType('roadmap')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                mapType === 'roadmap'
+                  ? 'bg-white text-[#090B12] shadow-sm'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              Mapa
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapType('hybrid')}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                mapType === 'hybrid'
+                  ? 'bg-white text-[#090B12] shadow-sm'
+                  : 'text-gray-300 hover:text-white'
+              }`}
+            >
+              Satélite
+            </button>
+          </div>
 
           {/* Compact Visual Legend (Top-Right over Map) */}
           <div className="pointer-events-none absolute top-3 right-3 z-[500] hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-xl bg-[#090B12]/90 border border-gray-800/90 shadow-lg text-[11px] font-bold text-white">
