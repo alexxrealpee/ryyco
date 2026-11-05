@@ -41,7 +41,9 @@ import {
   ChevronRight,
   Film,
   Play,
-  Check
+  Check,
+  Truck,
+  CheckCircle2
 } from 'lucide-react';
 import { ProductItem, ProductAddon, UserProfile, OrderItem, CustomerProfile } from '../types';
 import { getVariantPrice, getProductPriceRange, splitVariantsText } from '../lib/variantHelper';
@@ -54,6 +56,8 @@ import {
   findStoreForProduct, 
   fetchCustomerProfileByPhone, 
   listenToCustomerProfile, 
+  listenToCustomerOrders,
+  getActiveCustomerSession,
   fetchProductsForStoreOnDemand, 
   logoutCustomerSession,
   sanitizeCustomerPhone,
@@ -68,6 +72,7 @@ const CustomerPortalModal = React.lazy(() => import('./CustomerPortalModal'));
 const CustomerOrderAuthPromptModal = React.lazy(() => import('./CustomerOrderAuthPromptModal'));
 const FullScreenSearchModal = React.lazy(() => import('./FullScreenSearchModal'));
 const MapLocationPickerModal = React.lazy(() => import('./MapLocationPickerModal'));
+const DeliveryTrackingModal = React.lazy(() => import('./DeliveryTrackingModal'));
 import { DeliveryAddressCard, isPickupOrInvalidAddress } from './DeliveryAddressCard';
 import { RecommendationHeartButton } from './RecommendationHeartButton';
 import { ProductRecommendationHeartButton } from './ProductRecommendationHeartButton';
@@ -472,8 +477,26 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [isCustomerPortalOpen, setIsCustomerPortalOpen] = useState(false);
   const [customerPortalTab, setCustomerPortalTab] = useState<'orders' | 'wheel' | 'rewards' | 'profile'>('orders');
   const [isCustomerRegisterMode, setIsCustomerRegisterMode] = useState(false);
-  const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(() => {
+    try {
+      return getActiveCustomerSession();
+    } catch {
+      return null;
+    }
+  });
   const [updateProfileWithOrderDetails, setUpdateProfileWithOrderDetails] = useState(true);
+  const [customerOrders, setCustomerOrders] = useState<OrderItem[]>([]);
+  const [directTrackingOrder, setDirectTrackingOrder] = useState<OrderItem | null>(null);
+  const [selectedTrackingOrderId, setSelectedTrackingOrderId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem('ryyco_selected_tracking_order_id');
+    } catch {
+      return null;
+    }
+  });
+  const [recentlyDeliveredUntil, setRecentlyDeliveredUntil] = useState<Record<string, number>>({});
+  const seenActiveOrderIdsRef = useRef<Set<string>>(new Set());
+  const dismissedDeliveredIdsRef = useRef<Set<string>>(new Set());
 
   // Refs for current field values to avoid stale closures in background listeners
   const custNameRef = useRef(custName);
@@ -622,6 +645,225 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       window.removeEventListener('ryyco:customer-profile-updated', handleProfileUpdated);
     };
   }, []);
+
+  // Real-time customer orders listener for the home page tracking bar & CustomerPortalModal
+  const trackingCustomerPhone = useMemo(() => {
+    const raw =
+      activeCustomer?.phone ||
+      custPhone ||
+      (typeof window !== 'undefined' ? localStorage.getItem('ryyco_active_customer_phone') || '' : '');
+    return sanitizeCustomerPhone(raw);
+  }, [activeCustomer?.phone, custPhone]);
+
+  useEffect(() => {
+    if (!trackingCustomerPhone || trackingCustomerPhone.length < 7) {
+      setCustomerOrders([]);
+      return;
+    }
+
+    const unsubscribe = listenToCustomerOrders(
+      trackingCustomerPhone,
+      (realtimeOrders) => {
+        setCustomerOrders(realtimeOrders);
+      },
+      activeCustomer?.email
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [trackingCustomerPhone, activeCustomer?.email]);
+
+  // 5-Stage status mapping (matches CustomerPortalModal)
+  const getHomeOrderStatusStep = useCallback((ord: OrderItem) => {
+    if (ord.status === 'cancelled') return 0;
+    if (ord.status === 'delivered' || ord.deliveryStep === 'delivered') return 5;
+    if (
+      ord.deliveryStep === 'to_client' ||
+      ord.deliveryStep === 'at_destination' ||
+      ord.status === 'delivering' ||
+      (ord.status === 'shipped' && ord.deliveryStep !== 'picked_up' && ord.deliveryStep !== 'at_store')
+    ) return 4;
+    if (
+      ord.deliveryStep === 'picked_up' ||
+      ord.deliveryStep === 'at_store' ||
+      ord.status === 'picked_up' ||
+      ord.status === 'ready' ||
+      ord.status === 'preparing'
+    ) return 3;
+    if (
+      ord.status === 'confirmed' ||
+      ord.status === 'processing' ||
+      ord.deliveryStep === 'accepted' ||
+      ord.deliveryStep === 'to_store' ||
+      ord.deliveryStep === 'at_store' ||
+      ord.deliveryType === 'restaurant' ||
+      Boolean(ord.deliveryDriverId) ||
+      Boolean(ord.deliveryDriverName) ||
+      Boolean(ord.driverId)
+    ) return 2;
+    return 1;
+  }, []);
+
+  const getHomeOrderStepperInfo = useCallback((ord: OrderItem, step: number) => {
+    switch (step) {
+      case 1:
+        return {
+          stageTitle: 'Paso 1 de 5 • Recepción',
+          headline: 'Pedido Recibido en Ryyco',
+          percentageLabel: '15%',
+          icon: <Clock className="w-4 h-4 text-amber-400" />,
+          iconBadge: 'bg-amber-400/20 text-amber-400 border border-amber-400/30',
+          tagBadge: 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+        };
+      case 2: {
+        const isStoreOwn = ord.deliveryType === 'restaurant';
+        const driverName = ord.deliveryDriverName;
+        return {
+          stageTitle: 'Paso 2 de 5 • Confirmación',
+          headline: isStoreOwn
+            ? 'Confirmado por Restaurante (Entrega Propia)'
+            : (driverName ? `Pedido Confirmado • ${driverName}` : 'Pedido Confirmado'),
+          percentageLabel: '35%',
+          icon: <CheckCircle2 className="w-4 h-4 text-blue-400" />,
+          iconBadge: 'bg-blue-400/20 text-blue-400 border border-blue-400/30',
+          tagBadge: 'bg-blue-500/20 text-blue-300 border-blue-500/30'
+        };
+      }
+      case 3: {
+        const isReady = ord.status === 'ready';
+        const driverNameStep3 = ord.deliveryDriverName;
+        return {
+          stageTitle: isReady ? 'Paso 3 de 5 • Empacado y Listo' : 'Paso 3 de 5 • En restaurante',
+          headline: isReady
+            ? '¡Pedido Listo y Empacado!'
+            : (driverNameStep3 ? `Pedido En Restaurante • ${driverNameStep3}` : 'Pedido En Restaurante'),
+          percentageLabel: isReady ? '65%' : '60%',
+          icon: <Utensils className="w-4 h-4 text-orange-400" />,
+          iconBadge: 'bg-orange-400/20 text-orange-400 border border-orange-400/30',
+          tagBadge: 'bg-orange-500/20 text-orange-300 border-orange-500/30'
+        };
+      }
+      case 4:
+        return {
+          stageTitle: 'Paso 4 de 5 • En Ruta',
+          headline: '¡En camino a tu ubicación!',
+          percentageLabel: '85%',
+          icon: <Truck className="w-4 h-4 text-[#E63946] animate-pulse" />,
+          iconBadge: 'bg-[#E63946]/20 text-[#E63946] border border-[#E63946]/30',
+          tagBadge: 'bg-[#E63946]/20 text-[#E63946] border-[#E63946]/30'
+        };
+      case 5:
+      default:
+        return {
+          stageTitle: 'Paso 5 de 5 • Entregado',
+          headline: '¡Pedido Entregado con Éxito!',
+          percentageLabel: '100%',
+          icon: <Check className="w-4 h-4 text-emerald-400" />,
+          iconBadge: 'bg-emerald-400/20 text-emerald-400 border border-emerald-400/30',
+          tagBadge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+        };
+    }
+  }, []);
+
+  // Track active orders & briefly keep "Entregado" visible for 8 seconds before hiding the bar
+  useEffect(() => {
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
+    const now = Date.now();
+
+    customerOrders.forEach((ord) => {
+      const step = getHomeOrderStatusStep(ord);
+      if (step >= 1 && step <= 4) {
+        seenActiveOrderIdsRef.current.add(ord.id);
+      } else if (step === 5 && !dismissedDeliveredIdsRef.current.has(ord.id)) {
+        const deliveredTime = new Date(
+          (ord as any).deliveredAt || (ord as any).completedAt || (ord as any).updatedAt || 0
+        ).getTime();
+        const isJustDelivered =
+          seenActiveOrderIdsRef.current.has(ord.id) ||
+          (deliveredTime > 0 && now - deliveredTime < 15000);
+
+        if (isJustDelivered && !recentlyDeliveredUntil[ord.id]) {
+          const expireAt = now + 8000;
+          setRecentlyDeliveredUntil((prev) => ({ ...prev, [ord.id]: expireAt }));
+          const t = setTimeout(() => {
+            dismissedDeliveredIdsRef.current.add(ord.id);
+            setRecentlyDeliveredUntil((prev) => {
+              const next = { ...prev };
+              delete next[ord.id];
+              return next;
+            });
+          }, 8000);
+          timers.push(t);
+        }
+      }
+    });
+
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+    };
+  }, [customerOrders, getHomeOrderStatusStep, recentlyDeliveredUntil]);
+
+  // Keep directTrackingOrder synchronized in real time when customerOrders updates
+  useEffect(() => {
+    if (!directTrackingOrder) return;
+    const liveMatch = customerOrders.find((o) => o.id === directTrackingOrder.id);
+    if (liveMatch) {
+      setDirectTrackingOrder(liveMatch);
+    }
+  }, [customerOrders, directTrackingOrder?.id]);
+
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [submittedOrders, setSubmittedOrders] = useState<OrderItem[]>([]);
+  const [isSuccessOpen, setIsSuccessOpen] = useState(false);
+  const [systemDeliveryFee, setSystemDeliveryFee] = useState(7000);
+
+  // Compute list of currently trackable orders (active Steps 1-4 within 24h, or Step 5 briefly shown)
+  const activeTrackableOrders = useMemo(() => {
+    const now = Date.now();
+    const maxAgeMs = 24 * 60 * 60 * 1000;
+    const mergedMap = new Map<string, OrderItem>();
+
+    customerOrders.forEach((o) => mergedMap.set(o.id, o));
+    submittedOrders.forEach((o) => {
+      if (!mergedMap.has(o.id)) mergedMap.set(o.id, o);
+    });
+
+    return Array.from(mergedMap.values()).filter((ord) => {
+      const step = getHomeOrderStatusStep(ord);
+      if (step === 0) return false;
+      if (step >= 1 && step <= 4) {
+        const createdMs = new Date(ord.createdAt || 0).getTime();
+        return !createdMs || now - createdMs <= maxAgeMs;
+      }
+      if (step === 5) {
+        const until = recentlyDeliveredUntil[ord.id];
+        return Boolean(until && until > now && !dismissedDeliveredIdsRef.current.has(ord.id));
+      }
+      return false;
+    });
+  }, [customerOrders, submittedOrders, getHomeOrderStatusStep, recentlyDeliveredUntil]);
+
+  const currentTrackedOrder = useMemo(() => {
+    if (activeTrackableOrders.length === 0) return null;
+    if (selectedTrackingOrderId) {
+      const found = activeTrackableOrders.find((o) => o.id === selectedTrackingOrderId);
+      if (found) return found;
+    }
+    return activeTrackableOrders[0];
+  }, [activeTrackableOrders, selectedTrackingOrderId]);
+
+  const handleSelectTrackingOrder = useCallback((orderId: string) => {
+    setSelectedTrackingOrderId(orderId);
+    try {
+      sessionStorage.setItem('ryyco_selected_tracking_order_id', orderId);
+    } catch {}
+  }, []);
+
+  const handleOpenLiveOrderTracking = useCallback((order: OrderItem) => {
+    handleSelectTrackingOrder(order.id);
+    setDirectTrackingOrder(order);
+  }, [handleSelectTrackingOrder]);
   
   // Mobile 3-Dots Menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -643,11 +885,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       document.removeEventListener('touchstart', handleClickOutside);
     };
   }, []);
-  
-  const [orderSubmitting, setOrderSubmitting] = useState(false);
-  const [submittedOrders, setSubmittedOrders] = useState<OrderItem[]>([]);
-  const [isSuccessOpen, setIsSuccessOpen] = useState(false);
-  const [systemDeliveryFee, setSystemDeliveryFee] = useState(7000);
 
   const [buyQuantity, setBuyQuantity] = useState(1);
   const [chosenVariant, setChosenVariant] = useState('');
@@ -1408,6 +1645,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         created.push(saved);
       }
 
+      const cleanOrderPhone = sanitizeCustomerPhone(custPhone.trim() || customer.phone);
+      if (cleanOrderPhone) {
+        try {
+          localStorage.setItem('ryyco_active_customer_phone', cleanOrderPhone);
+        } catch {}
+      }
+      created.forEach((ord) => seenActiveOrderIdsRef.current.add(ord.id));
+      if (created.length > 0) {
+        handleSelectTrackingOrder(created[0].id);
+        setCustomerOrders((prev) => {
+          const existingIds = new Set(prev.map((o) => o.id));
+          const fresh = created.filter((o) => !existingIds.has(o.id));
+          return [...fresh, ...prev];
+        });
+      }
       setSubmittedOrders(created);
       setTransferProofs({});
       setSelectedTransferAccounts({});
@@ -2102,9 +2354,223 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
       {/* 3. Filtering & Dashboard Container */}
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
-        
-        {/* Filter bar card */}
-        <div className="bg-[#111827] border border-slate-800 p-5 rounded-3xl space-y-5 shadow-2xl shadow-black/40 overflow-hidden relative">
+        <div className="space-y-3">
+          {/* BARRA DE SEGUIMIENTO PULSABLE (5 ETAPAS) - ENCIMA DEL BUSCADOR */}
+          <AnimatePresence>
+            {currentTrackedOrder && (() => {
+              const step = getHomeOrderStatusStep(currentTrackedOrder);
+              const stepperInfo = getHomeOrderStepperInfo(currentTrackedOrder, step);
+              const storeProfile = profiles[currentTrackedOrder.storeOwnerId];
+              const displayStoreName =
+                currentTrackedOrder.storeName ||
+                storeProfile?.displayName ||
+                storeProfile?.username ||
+                'Restaurante RYYCO';
+
+              return (
+                <motion.div
+                  key="home-live-order-tracker-bar"
+                  initial={{ opacity: 0, y: -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  whileTap={{ scale: 0.985 }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleOpenLiveOrderTracking(currentTrackedOrder)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenLiveOrderTracking(currentTrackedOrder);
+                    }
+                  }}
+                  aria-label={`Rastrear pedido #${currentTrackedOrder.orderNumber} de ${displayStoreName}`}
+                  className="bg-[#111827] hover:bg-[#141d2f] border border-[#232E42] hover:border-[#E63946]/70 rounded-3xl px-4 py-3.5 sm:px-5 sm:py-4 shadow-2xl shadow-black/50 transition-all duration-200 cursor-pointer select-none group relative overflow-hidden"
+                >
+                  {/* Multi-order selector if the customer has more than 1 active order */}
+                  {activeTrackableOrders.length > 1 && (
+                    <div
+                      className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2.5 mb-2.5 border-b border-slate-800/90"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 shrink-0 mr-1">
+                        Pedidos activos ({activeTrackableOrders.length}):
+                      </span>
+                      {activeTrackableOrders.map((ord) => {
+                        const isSelected = ord.id === currentTrackedOrder.id;
+                        const ordStore =
+                          ord.storeName ||
+                          profiles[ord.storeOwnerId]?.displayName ||
+                          'Pedido';
+                        return (
+                          <button
+                            key={ord.id}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isSelected) {
+                                handleOpenLiveOrderTracking(ord);
+                              } else {
+                                handleSelectTrackingOrder(ord.id);
+                              }
+                            }}
+                            className={`px-2.5 py-1 rounded-xl text-[10px] sm:text-[11px] font-black transition flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-95 ${
+                              isSelected
+                                ? 'bg-[#E63946] text-white shadow-md shadow-[#E63946]/30 border border-[#E63946]'
+                                : 'bg-[#090D16] text-gray-300 hover:text-white border border-slate-700/80'
+                            }`}
+                          >
+                            <span className="font-mono">#{ord.orderNumber}</span>
+                            <span className="truncate max-w-[110px]">{ordStore}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Top Row: Stage Icon + Stage Title & Headline + Percentage & Arrow Indicator */}
+                  <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shrink-0 ${stepperInfo.iconBadge}`}>
+                        {stepperInfo.icon}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] sm:text-xs font-black uppercase tracking-wider text-gray-300">
+                            {stepperInfo.stageTitle}
+                          </span>
+                          {step < 5 && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                          )}
+                          <span className="text-[10px] font-mono font-bold text-[#E63946] bg-[#E63946]/15 px-1.5 py-0.2 rounded border border-[#E63946]/30">
+                            #{currentTrackedOrder.orderNumber}
+                          </span>
+                        </div>
+                        <p className="text-xs sm:text-sm font-black text-white truncate mt-0.5">
+                          {stepperInfo.headline}
+                        </p>
+                        <p className="text-[10px] sm:text-[11px] text-gray-400 font-semibold truncate">
+                          {displayStoreName} • Toca para rastrear tu domicilio en vivo
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                      <span className={`text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full border ${stepperInfo.tagBadge}`}>
+                        {stepperInfo.percentageLabel}
+                      </span>
+                      <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-[#E63946]/15 group-hover:bg-[#E63946] border border-[#E63946]/40 group-hover:border-[#E63946] flex items-center justify-center text-[#E63946] group-hover:text-white transition-all shadow-sm">
+                        <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5-Stage Horizontal Progress Stepper */}
+                  <div className="relative pt-3 pb-0.5 mt-1">
+                    {/* Connective background track */}
+                    <div className="absolute top-[21px] sm:top-[23px] left-[10%] right-[10%] h-1 bg-gray-800 -translate-y-1/2 z-0 rounded-full" />
+                    {/* Active solid track fill */}
+                    <div
+                      className="absolute top-[21px] sm:top-[23px] left-[10%] h-1 bg-emerald-500 -translate-y-1/2 z-0 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(80, Math.max(0, ((step - 1) / 4) * 80))}%` }}
+                    />
+
+                    <div className="grid grid-cols-5 gap-0.5 relative z-10">
+                      {/* Node 1: Recibido */}
+                      <div className="flex flex-col items-center text-center">
+                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                          step > 1
+                            ? 'bg-amber-400 text-black shadow-sm'
+                            : step === 1
+                              ? 'bg-amber-400 text-black ring-4 ring-amber-400/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black'
+                              : 'bg-gray-800 text-gray-500'
+                        }`}>
+                          {step > 1 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '1'}
+                        </div>
+                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
+                          step >= 1 ? 'text-amber-400' : 'text-gray-500'
+                        }`}>
+                          Recibido
+                        </span>
+                      </div>
+
+                      {/* Node 2: Confirmado */}
+                      <div className="flex flex-col items-center text-center">
+                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                          step > 2
+                            ? 'bg-blue-500 text-white shadow-sm'
+                            : step === 2
+                              ? 'bg-blue-500 text-white ring-4 ring-blue-500/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black'
+                              : 'bg-gray-800 text-gray-500'
+                        }`}>
+                          {step > 2 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '2'}
+                        </div>
+                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
+                          step >= 2 ? 'text-blue-400' : 'text-gray-500'
+                        }`}>
+                          Confirmado
+                        </span>
+                      </div>
+
+                      {/* Node 3: En restaurante / Listo */}
+                      <div className="flex flex-col items-center text-center">
+                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                          step > 3
+                            ? 'bg-orange-500 text-white shadow-sm'
+                            : step === 3
+                              ? 'bg-orange-500 text-white ring-4 ring-orange-500/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black'
+                              : 'bg-gray-800 text-gray-500'
+                        }`}>
+                          {step > 3 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '3'}
+                        </div>
+                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
+                          step >= 3 ? 'text-orange-400' : 'text-gray-500'
+                        }`}>
+                          {currentTrackedOrder.status === 'ready' ? 'Listo' : 'En restaurante'}
+                        </span>
+                      </div>
+
+                      {/* Node 4: En Camino */}
+                      <div className="flex flex-col items-center text-center">
+                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                          step > 4
+                            ? 'bg-[#E63946] text-white shadow-sm'
+                            : step === 4
+                              ? 'bg-[#E63946] text-white ring-4 ring-[#E63946]/25 ring-offset-2 ring-offset-[#111827] animate-pulse font-black'
+                              : 'bg-gray-800 text-gray-500'
+                        }`}>
+                          {step > 4 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '4'}
+                        </div>
+                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
+                          step >= 4 ? 'text-[#E63946]' : 'text-gray-500'
+                        }`}>
+                          En Camino
+                        </span>
+                      </div>
+
+                      {/* Node 5: Entregado */}
+                      <div className="flex flex-col items-center text-center">
+                        <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-black transition ${
+                          step >= 5
+                            ? 'bg-emerald-400 text-black ring-4 ring-emerald-400/25 ring-offset-2 ring-offset-[#111827] shadow-sm font-black'
+                            : 'bg-gray-800 text-gray-500'
+                        }`}>
+                          {step >= 5 ? <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" /> : '5'}
+                        </div>
+                        <span className={`text-[8.5px] sm:text-[10px] font-bold mt-1 leading-tight text-center px-0.5 ${
+                          step >= 5 ? 'text-emerald-400' : 'text-gray-500'
+                        }`}>
+                          Entregado
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
+
+          {/* Filter bar card */}
+          <div className="bg-[#111827] border border-slate-800 p-5 rounded-3xl space-y-5 shadow-2xl shadow-black/40 overflow-hidden relative">
 
           {/* Search Input - Clicking/tapping opens FullScreenSearchModal */}
           <div 
@@ -2472,6 +2938,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
             </div>
           )}
+          </div>
         </div>
 
         {/* 4. Products Display */}
@@ -4143,6 +4610,25 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             initialTab={customerPortalTab}
             initialRegisterMode={isCustomerRegisterMode}
             onCustomerUpdate={setActiveCustomer}
+            preloadedOrders={trackingCustomerPhone ? customerOrders : undefined}
+          />
+        )}
+
+        {directTrackingOrder && (
+          <DeliveryTrackingModal
+            isOpen={!!directTrackingOrder}
+            onClose={() => setDirectTrackingOrder(null)}
+            order={directTrackingOrder}
+            disableOrderDocListener={true}
+            storeLocationCoords={
+              profiles[directTrackingOrder.storeOwnerId]?.latitude && profiles[directTrackingOrder.storeOwnerId]?.longitude
+                ? {
+                    lat: profiles[directTrackingOrder.storeOwnerId].latitude,
+                    lng: profiles[directTrackingOrder.storeOwnerId].longitude,
+                    address: profiles[directTrackingOrder.storeOwnerId].address || profiles[directTrackingOrder.storeOwnerId].location
+                  }
+                : null
+            }
           />
         )}
 

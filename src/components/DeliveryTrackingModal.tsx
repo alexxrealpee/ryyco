@@ -117,6 +117,7 @@ interface DeliveryTrackingModalProps {
   showDeliveryCode?: boolean;
   driverLiveCoords?: { latitude: number; longitude: number; timestamp?: number; accuracy?: number; heading?: number } | null;
   storeLocationCoords?: { lat?: number; lng?: number; address?: string } | null;
+  disableOrderDocListener?: boolean;
 }
 
 /**
@@ -220,7 +221,8 @@ export default function DeliveryTrackingModal({
   order,
   driverLiveCoords,
   storeLocationCoords,
-  showDeliveryCode = true
+  showDeliveryCode = true,
+  disableOrderDocListener = false
 }: DeliveryTrackingModalProps) {
   const [verifyingAccount, setVerifyingAccount] = useState(false);
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -315,7 +317,7 @@ export default function DeliveryTrackingModal({
 
   // Real-time Firestore order subscription to track status / driver assignment instantaneously
   useEffect(() => {
-    if (!isOpen || !order?.id) return;
+    if (!isOpen || !order?.id || disableOrderDocListener) return;
     const docRef = doc(db, 'orders', order.id);
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -328,7 +330,7 @@ export default function DeliveryTrackingModal({
     return () => {
       unsubscribe();
     };
-  }, [isOpen, order?.id]);
+  }, [isOpen, order?.id, disableOrderDocListener]);
 
   // Leaflet references (for seamless fallback)
   const leafletContainerRef = useRef<HTMLDivElement | null>(null);
@@ -854,6 +856,20 @@ export default function DeliveryTrackingModal({
         {/* BOTTOM HUD CARD: DRIVER INFO, PIN & CONTACT BUTTONS */}
         <div ref={bottomPanelRef} className="pointer-events-auto w-full min-w-0 max-w-xl mx-auto max-h-[48%] overflow-y-auto overscroll-contain shrink-0 rounded-3xl">
           <div className="bg-[#090D16]/95 border border-gray-800/90 rounded-3xl p-4 sm:p-5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl text-white space-y-3.5 transition-all">
+
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-mono text-xs font-black text-[#E63946] bg-[#E63946]/15 px-2 py-0.5 rounded-md border border-[#E63946]/30 shrink-0">
+                  #{activeOrder.orderNumber}
+                </span>
+                <span className="text-xs font-extrabold text-white truncate">
+                  {activeOrder.storeName || 'Restaurante'}
+                </span>
+              </div>
+              <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border shrink-0 ${statusInfo.badgeColor}`}>
+                {statusInfo.label}
+              </span>
+            </div>
 
             <p className="text-[11px] text-gray-400 truncate" title={activeOrder.customerAddress}>
               {activeOrder.storeName || 'Restaurante'} ➔ {activeOrder.customerAddress || 'Dirección registrada en el pedido'}

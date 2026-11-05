@@ -82,6 +82,7 @@ interface CustomerPortalModalProps {
   storeCurrency?: string;
   onSelectRewardCode?: (code: string, discount?: number) => void;
   onCustomerUpdate?: (customer: CustomerProfile | null) => void;
+  preloadedOrders?: OrderItem[];
 }
 
 // Roulette Wheel items definition
@@ -115,10 +116,11 @@ export default function CustomerPortalModal({
   initialRegisterMode = false,
   storeCurrency = '$',
   onSelectRewardCode,
-  onCustomerUpdate
+  onCustomerUpdate,
+  preloadedOrders
 }: CustomerPortalModalProps) {
   const [customer, setCustomer] = useState<CustomerProfile | null>(null);
-  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [orders, setOrders] = useState<OrderItem[]>(preloadedOrders || []);
   const [trackingOrder, setTrackingOrder] = useState<OrderItem | null>(null);
   useEffect(() => {
     if (!isOpen) { setTrackingOrder(null); return; }
@@ -347,6 +349,11 @@ export default function CustomerPortalModal({
   };
 
   const loadCustomerOrders = async (phone: string) => {
+    if (preloadedOrders && preloadedOrders.length > 0) {
+      setOrders(preloadedOrders);
+      setOrdersLoading(false);
+      return;
+    }
     setOrdersLoading(true);
     try {
       const orderList = await fetchCustomerOrders(phone, customer?.email);
@@ -358,9 +365,16 @@ export default function CustomerPortalModal({
     }
   };
 
-  // Real-time live orders subscription for active customer
   useEffect(() => {
-    if (!isOpen || !customer?.phone) return;
+    if (preloadedOrders) {
+      setOrders(preloadedOrders);
+      setOrdersLoading(false);
+    }
+  }, [preloadedOrders]);
+
+  // Real-time live orders subscription for active customer (skipped if parent already streams preloadedOrders)
+  useEffect(() => {
+    if (!isOpen || !customer?.phone || preloadedOrders !== undefined) return;
 
     setOrdersLoading(true);
     const unsubscribe = listenToCustomerOrders(
@@ -375,7 +389,7 @@ export default function CustomerPortalModal({
     return () => {
       unsubscribe();
     };
-  }, [isOpen, customer?.phone, customer?.email]);
+  }, [isOpen, customer?.phone, customer?.email, preloadedOrders !== undefined]);
 
   // Real-time live customer profile & RYYCOS balance listener
   // Automatically synchronizes when transfers are received, without reloading the page
@@ -1865,12 +1879,24 @@ export default function CustomerPortalModal({
                               </div>
                             </div>
 
-                            {/* STEPPER PROGRESS BAR / ORDER STATUS TRACKER (5 PHASES) */}
+                            {/* STEPPER PROGRESS BAR / ORDER STATUS TRACKER (5 PHASES - PULSABLE) */}
                             {!isCancelled && (() => {
                               const stepperInfo = getOrderStepperInfo(order, step);
                               return (
-                                <div className="space-y-3 py-1">
-                                  {/* Dynamic Status Callout Info (Sin contenedor encapsulado) */}
+                                <div
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => setTrackingOrder(order)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      setTrackingOrder(order);
+                                    }
+                                  }}
+                                  title="Toca para abrir Rastrear mi domicilio"
+                                  className="space-y-3 py-2 px-3 -mx-1 rounded-2xl border border-transparent hover:border-[#E63946]/40 hover:bg-[#111827]/80 active:scale-[0.985] transition-all duration-200 cursor-pointer select-none group"
+                                >
+                                  {/* Dynamic Status Callout Info */}
                                   <div className="flex items-center justify-between gap-2.5 py-1">
                                     <div className="flex items-center gap-2.5 min-w-0">
                                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${stepperInfo.iconBadge}`}>
@@ -1898,9 +1924,12 @@ export default function CustomerPortalModal({
                                         </div>
                                       </div>
                                     </div>
-                                    <div className="text-right shrink-0">
+                                    <div className="flex items-center gap-1.5 shrink-0">
                                       <span className={`text-[10px] sm:text-xs font-black px-2.5 py-0.5 rounded-full border ${stepperInfo.tagBadge}`}>
                                         {stepperInfo.percentageLabel}
+                                      </span>
+                                      <span className="w-6 h-6 rounded-full bg-white/[0.06] group-hover:bg-[#E63946] border border-white/10 group-hover:border-[#E63946] flex items-center justify-center text-gray-300 group-hover:text-white transition-all">
+                                        <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                                       </span>
                                     </div>
                                   </div>
@@ -3289,6 +3318,7 @@ export default function CustomerPortalModal({
         isOpen={!!trackingOrder}
         onClose={() => setTrackingOrder(null)}
         order={trackingOrder}
+        disableOrderDocListener={true}
       />
 
       {/* MODAL PARA CALIFICAR AL DOMICILIARIO */}
