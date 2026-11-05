@@ -99,6 +99,7 @@ export interface UserProfile {
   location?: string;
   currency?: string; // Currency symbol/code (e.g., "$", "COP", "EUR", "MXN", "USD")
   suspended?: boolean;
+  archived?: boolean;
   googleAnalyticsId?: string;
   whatsappMessageTemplate?: string; // Custom WhatsApp order message template
   // Subscription plans & status fields (COP pricing plans)

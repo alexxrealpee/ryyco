@@ -494,9 +494,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return null;
     }
   });
-  const [recentlyDeliveredUntil, setRecentlyDeliveredUntil] = useState<Record<string, number>>({});
-  const seenActiveOrderIdsRef = useRef<Set<string>>(new Set());
-  const dismissedDeliveredIdsRef = useRef<Set<string>>(new Set());
 
   // Refs for current field values to avoid stale closures in background listeners
   const custNameRef = useRef(custName);
@@ -766,44 +763,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
   }, []);
 
-  // Track active orders & briefly keep "Entregado" visible for 8 seconds before hiding the bar
-  useEffect(() => {
-    const timers: Array<ReturnType<typeof setTimeout>> = [];
-    const now = Date.now();
-
-    customerOrders.forEach((ord) => {
-      const step = getHomeOrderStatusStep(ord);
-      if (step >= 1 && step <= 4) {
-        seenActiveOrderIdsRef.current.add(ord.id);
-      } else if (step === 5 && !dismissedDeliveredIdsRef.current.has(ord.id)) {
-        const deliveredTime = new Date(
-          (ord as any).deliveredAt || (ord as any).completedAt || (ord as any).updatedAt || 0
-        ).getTime();
-        const isJustDelivered =
-          seenActiveOrderIdsRef.current.has(ord.id) ||
-          (deliveredTime > 0 && now - deliveredTime < 15000);
-
-        if (isJustDelivered && !recentlyDeliveredUntil[ord.id]) {
-          const expireAt = now + 8000;
-          setRecentlyDeliveredUntil((prev) => ({ ...prev, [ord.id]: expireAt }));
-          const t = setTimeout(() => {
-            dismissedDeliveredIdsRef.current.add(ord.id);
-            setRecentlyDeliveredUntil((prev) => {
-              const next = { ...prev };
-              delete next[ord.id];
-              return next;
-            });
-          }, 8000);
-          timers.push(t);
-        }
-      }
-    });
-
-    return () => {
-      timers.forEach((t) => clearTimeout(t));
-    };
-  }, [customerOrders, getHomeOrderStatusStep, recentlyDeliveredUntil]);
-
   // Keep directTrackingOrder synchronized in real time when customerOrders updates
   useEffect(() => {
     if (!directTrackingOrder) return;
@@ -818,31 +777,50 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
   const [systemDeliveryFee, setSystemDeliveryFee] = useState(7000);
 
-  // Compute list of currently trackable orders (active Steps 1-4 within 24h, or Step 5 briefly shown)
+  // Compute list of currently trackable orders on the home page (strictly active Steps 1-4; disappear as soon as delivered)
   const activeTrackableOrders = useMemo(() => {
     const now = Date.now();
     const maxAgeMs = 24 * 60 * 60 * 1000;
     const mergedMap = new Map<string, OrderItem>();
+    const deliveredOrCancelledNumbers = new Set<number>();
 
-    customerOrders.forEach((o) => mergedMap.set(o.id, o));
+    customerOrders.forEach((o) => {
+      mergedMap.set(o.id, o);
+      if (o.status === 'delivered' || o.deliveryStep === 'delivered' || o.status === 'cancelled') {
+        if (typeof o.orderNumber === 'number') {
+          deliveredOrCancelledNumbers.add(o.orderNumber);
+        }
+      }
+    });
+
     submittedOrders.forEach((o) => {
-      if (!mergedMap.has(o.id)) mergedMap.set(o.id, o);
+      if (!mergedMap.has(o.id) && !(typeof o.orderNumber === 'number' && deliveredOrCancelledNumbers.has(o.orderNumber))) {
+        mergedMap.set(o.id, o);
+      }
     });
 
     return Array.from(mergedMap.values()).filter((ord) => {
+      if (ord.status === 'delivered' || ord.deliveryStep === 'delivered' || ord.status === 'cancelled') {
+        return false;
+      }
       const step = getHomeOrderStatusStep(ord);
-      if (step === 0) return false;
-      if (step >= 1 && step <= 4) {
-        const createdMs = new Date(ord.createdAt || 0).getTime();
-        return !createdMs || now - createdMs <= maxAgeMs;
-      }
-      if (step === 5) {
-        const until = recentlyDeliveredUntil[ord.id];
-        return Boolean(until && until > now && !dismissedDeliveredIdsRef.current.has(ord.id));
-      }
-      return false;
+      if (step < 1 || step >= 5) return false;
+      const createdMs = new Date(ord.createdAt || 0).getTime();
+      return !createdMs || now - createdMs <= maxAgeMs;
     });
-  }, [customerOrders, submittedOrders, getHomeOrderStatusStep, recentlyDeliveredUntil]);
+  }, [customerOrders, submittedOrders, getHomeOrderStatusStep]);
+
+  // Clear selectedTrackingOrderId from sessionStorage if that order has already been delivered or is no longer active
+  useEffect(() => {
+    if (!selectedTrackingOrderId) return;
+    const stillActive = activeTrackableOrders.some((o) => o.id === selectedTrackingOrderId);
+    if (!stillActive) {
+      setSelectedTrackingOrderId(null);
+      try {
+        sessionStorage.removeItem('ryyco_selected_tracking_order_id');
+      } catch {}
+    }
+  }, [activeTrackableOrders, selectedTrackingOrderId]);
 
   const currentTrackedOrder = useMemo(() => {
     if (activeTrackableOrders.length === 0) return null;
@@ -1651,7 +1629,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           localStorage.setItem('ryyco_active_customer_phone', cleanOrderPhone);
         } catch {}
       }
-      created.forEach((ord) => seenActiveOrderIdsRef.current.add(ord.id));
       if (created.length > 0) {
         handleSelectTrackingOrder(created[0].id);
         setCustomerOrders((prev) => {
@@ -2615,7 +2592,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               <div className="flex items-center justify-between px-1 flex-wrap gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
                   <Store className="w-4 h-4 text-[#D62839]" />
-                  <span className="text-xs font-black uppercase text-red-200 tracking-wider flex items-center gap-1.5">
+                  <span className="text-[9px] font-black uppercase text-red-200 tracking-wider flex items-center gap-1.5">
                     Restaurantes Abiertos Ahora ({uniqueStores.length})
                   </span>
                 </div>

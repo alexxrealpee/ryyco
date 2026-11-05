@@ -10,9 +10,9 @@ try {
     $limit = min(24, max(1, (int)($_GET['limit'] ?? 12)));
     $after = (string)($_GET['after'] ?? '');
     if ($after !== '' && !preg_match('/^[A-Za-z0-9_.@ -]{1,150}$/D', $after)) throw new InvalidArgumentException('cursor');
-    $profileFields = ['uid','username','displayName','storeName','currency','category','layout','isClosed','suspended',
+    $profileFields = ['uid','email','createdAt','role','plan','subscriptionPlan','subscriptionAnchorDay','username','displayName','storeName','bio','currency','category','layout','isClosed','suspended','archived',
         'subscriptionStatus','subscriptionTrialExpires','subscriptionPaidUntil','scheduleEnabled','openTime','closeTime',
-        'restaurantDaysOpen','weeklySchedule','phone','whatsapp','customerServiceWhatsapp','ownerWhatsapp','address',
+        'restaurantDaysOpen','weeklySchedule','phone','whatsapp','customerServiceWhatsapp','ownerWhatsapp','address','mapUrl','restaurantReference',
         'lat','lng','restaurantAcceptsDelivery','restaurantAcceptsTakeaway','restaurantPaymentMethods','restaurantDeliveryTime',
         'restaurantAddress','restaurantCity','rating','ratingCount'];
     $productFields = ['userId','name','description','price','compareAtPrice','packagingCost','category','stock',

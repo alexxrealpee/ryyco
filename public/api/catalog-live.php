@@ -70,10 +70,10 @@ function catalogReadLive(int $productLimit = 0): array {
         foreach (['profiles', 'products'] as $collection) {
             $query = ['from' => [['collectionId' => $collection]]];
             if ($collection === 'profiles') {
-                $fields = ['uid', 'username', 'displayName', 'storeName', 'photoURL', 'currency', 'category', 'layout',
-                    'isClosed', 'suspended', 'subscriptionStatus', 'subscriptionTrialExpires', 'subscriptionPaidUntil',
+                $fields = ['uid', 'email', 'createdAt', 'role', 'plan', 'subscriptionPlan', 'subscriptionAnchorDay', 'username', 'displayName', 'storeName', 'bio', 'photoURL', 'currency', 'category', 'layout',
+                    'isClosed', 'suspended', 'archived', 'subscriptionStatus', 'subscriptionTrialExpires', 'subscriptionPaidUntil',
                     'scheduleEnabled', 'openTime', 'closeTime', 'restaurantDaysOpen', 'weeklySchedule',
-                    'phone', 'whatsapp', 'customerServiceWhatsapp', 'ownerWhatsapp', 'address', 'lat', 'lng',
+                    'phone', 'whatsapp', 'customerServiceWhatsapp', 'ownerWhatsapp', 'address', 'mapUrl', 'restaurantReference', 'lat', 'lng',
                     'restaurantAcceptsDelivery', 'restaurantAcceptsTakeaway', 'restaurantPaymentMethods',
                     'restaurantDeliveryTime', 'restaurantAddress', 'restaurantCity', 'rating', 'ratingCount'];
                 $query['select'] = ['fields' => array_map(fn($field) => ['fieldPath' => $field], $fields)];

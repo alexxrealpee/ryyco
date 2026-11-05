@@ -2860,32 +2860,62 @@ export async function fetchAnalyticsReports(userId: string) {
 // Global accounts summary for Admin
 export async function fetchAdminStats() {
   try {
-    const uS = await getDocs(collection(db, 'users'));
-    const pS = await getDocs(collection(db, 'profiles'));
+    const [uS, pS, serverStoresRes] = await Promise.all([
+      getDocs(collection(db, 'users')).catch(() => null),
+      getDocs(collection(db, 'profiles')).catch(() => null),
+      fetch('/api/catalog-page.php?kind=stores', { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null)
+    ]);
     
-    const profiles: UserProfile[] = [];
-    pS.forEach(docSnap => {
-      const d = docSnap.data() as any;
-      let createdAtStr = '';
-      if (d.createdAt) {
-        if (typeof d.createdAt === 'string') {
-          createdAtStr = d.createdAt;
-        } else if (typeof d.createdAt?.toDate === 'function') {
-          createdAtStr = d.createdAt.toDate().toISOString();
-        } else if (typeof d.createdAt?.seconds === 'number') {
-          createdAtStr = new Date(d.createdAt.seconds * 1000).toISOString();
-        }
-      }
-      profiles.push({
-        ...d,
-        uid: docSnap.id,
-        createdAt: createdAtStr || d.createdAt || '',
-        subscriptionStatus: d.subscriptionStatus,
-        suspended: d.suspended || false
-      } as UserProfile);
-    });
+    const profileByUid = new Map<string, UserProfile>();
 
-    const userCount = Math.max(uS.size, profiles.length);
+    if (serverStoresRes && Array.isArray(serverStoresRes.items)) {
+      serverStoresRes.items.forEach((d: any) => {
+        if (!d) return;
+        const uid = String(d.uid || d.id || '').trim();
+        if (!uid) return;
+        profileByUid.set(uid, {
+          ...d,
+          uid,
+          createdAt: typeof d.createdAt === 'string' ? d.createdAt : '',
+          subscriptionStatus: d.subscriptionStatus,
+          suspended: d.suspended || false
+        } as UserProfile);
+      });
+    }
+
+    if (pS) {
+      pS.forEach(docSnap => {
+        const d = docSnap.data() as any;
+        let createdAtStr = '';
+        if (d.createdAt) {
+          if (typeof d.createdAt === 'string') {
+            createdAtStr = d.createdAt;
+          } else if (typeof d.createdAt?.toDate === 'function') {
+            createdAtStr = d.createdAt.toDate().toISOString();
+          } else if (typeof d.createdAt?.seconds === 'number') {
+            createdAtStr = new Date(d.createdAt.seconds * 1000).toISOString();
+          }
+        }
+        const existing = profileByUid.get(docSnap.id) || ({} as UserProfile);
+        profileByUid.set(docSnap.id, {
+          ...existing,
+          ...d,
+          uid: docSnap.id,
+          createdAt: createdAtStr || d.createdAt || existing.createdAt || '',
+          subscriptionStatus: d.subscriptionStatus ?? existing.subscriptionStatus,
+          suspended: d.suspended || false
+        } as UserProfile);
+      });
+    }
+
+    const profiles: UserProfile[] = Array.from(profileByUid.values());
+    if (profiles.length === 0) {
+      throw new Error('No profiles loaded');
+    }
+
+    const userCount = Math.max(uS ? uS.size : 0, profiles.length);
 
     // Count active stores, trial stores, expired stores, and suspended stores accurately
     const activePaidStores = profiles.filter(p => {
@@ -4248,12 +4278,39 @@ export async function fetchProductsForStoreOnDemand(
 export async function fetchAllStoresMap(): Promise<Record<string, UserProfile>> {
   const map: Record<string, UserProfile> = {};
 
-  // 1. Fetch remote profiles
-  try {
-    const snap = await getDocs(collection(db, 'profiles'));
+  // 0. Fast lightweight server catalog-page bootstrap so all stores (even before 5.7MB base64 download) are present
+  const [serverRes, snap] = await Promise.all([
+    fetch('/api/catalog-page.php?kind=stores', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .catch(() => null),
+    getDocs(collection(db, 'profiles')).catch(e => {
+      console.warn("Could not fetch remote profiles map via SDK:", e);
+      return null;
+    })
+  ]);
+
+  if (serverRes && Array.isArray(serverRes.items)) {
+    serverRes.items.forEach((data: any) => {
+      if (!data) return;
+      const uid = String(data.uid || data.id || '').trim();
+      if (!uid) return;
+      const prof: UserProfile = {
+        ...data,
+        uid,
+        isClosed: data.isClosed === true
+      };
+      map[uid] = prof;
+      if (prof.username) map[prof.username.toLowerCase()] = prof;
+    });
+  }
+
+  // 1. Merge full remote profiles from Firestore SDK
+  if (snap) {
     snap.forEach(docSnap => {
       const data = docSnap.data() as UserProfile;
+      const existing = map[docSnap.id] || ({} as UserProfile);
       const prof: UserProfile = {
+        ...existing,
         ...data,
         uid: data.uid || docSnap.id,
         isClosed: data.isClosed === true
@@ -4262,8 +4319,6 @@ export async function fetchAllStoresMap(): Promise<Record<string, UserProfile>> 
       if (prof.uid) map[prof.uid] = prof;
       if (prof.username) map[prof.username.toLowerCase()] = prof;
     });
-  } catch (e) {
-    console.warn("Could not fetch remote profiles map:", e);
   }
 
   // 2. Fetch local storage cached profiles
@@ -4581,9 +4636,11 @@ export interface PaginatedSubscriptionsResult {
     customerServiceWhatsapp?: string;
     phone?: string;
     subscriptionPaidUntil?: string;
+    subscriptionTrialExpires?: string;
     subscriptionAnchorDay?: number;
     createdAt?: string;
     suspended?: boolean;
+    archived?: boolean;
     isClosed?: boolean;
     openTime?: string;
     closeTime?: string;
@@ -4596,17 +4653,40 @@ export interface PaginatedSubscriptionsResult {
 }
 
 export async function fetchAdminSubscriptionsBatch(
-  pageSize: number = 20,
+  pageSize: number = 500,
   lastDocSnapshot: QueryDocumentSnapshot | null = null,
   offset: number = 0
 ): Promise<PaginatedSubscriptionsResult> {
   try {
-    const snapshot = await getDocs(collection(db, 'profiles'));
+    const [serverRes, snapshot] = await Promise.all([
+      fetch('/api/catalog-page.php?kind=stores', { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .catch(() => null),
+      getDocs(collection(db, 'profiles')).catch(err => {
+        console.warn("Firestore profiles SDK query failed, using server catalog fallback:", err);
+        return null;
+      })
+    ]);
+
+    const rawDocsMap = new Map<string, any>();
+
+    if (serverRes && Array.isArray(serverRes.items)) {
+      serverRes.items.forEach((item: any) => {
+        const id = String(item?.uid || item?.id || '').trim();
+        if (id) rawDocsMap.set(id, item);
+      });
+    }
+
+    if (snapshot) {
+      snapshot.forEach(docSnap => {
+        const existing = rawDocsMap.get(docSnap.id) || {};
+        rawDocsMap.set(docSnap.id, { ...existing, ...docSnap.data(), uid: docSnap.id });
+      });
+    }
+
     const usersList: PaginatedSubscriptionsResult['users'] = [];
 
-    snapshot.forEach(docSnap => {
-      const d = docSnap.data() as any;
-      
+    rawDocsMap.forEach((d, docId) => {
       let createdAtStr = '';
       if (d.createdAt) {
         if (typeof d.createdAt === 'string') {
@@ -4625,22 +4705,24 @@ export async function fetchAdminSubscriptionsBatch(
       }
 
       usersList.push({ 
-        uid: docSnap.id, 
+        uid: docId, 
         email: d.email || '', 
         username: d.username || d.displayName || '', 
         role: d.role || 'user', 
         plan: d.plan || 'free', 
         subscriptionPlan: d.subscriptionPlan || 'basico',
         subscriptionStatus: d.subscriptionStatus || 'active',
-        storeName: d.displayName || d.storeName || '',
+        storeName: (d.displayName || d.storeName || '').trim(),
         whatsapp: d.customerServiceWhatsapp || d.whatsapp || d.ownerWhatsapp || d.phone || '',
         ownerWhatsapp: d.ownerWhatsapp || d.phone || d.whatsapp || '',
         customerServiceWhatsapp: d.customerServiceWhatsapp || '',
         phone: d.phone || d.ownerWhatsapp || d.whatsapp || '',
         subscriptionPaidUntil: d.subscriptionPaidUntil || '',
+        subscriptionTrialExpires: d.subscriptionTrialExpires || '',
         subscriptionAnchorDay: typeof d.subscriptionAnchorDay === 'number' ? d.subscriptionAnchorDay : getSubscriptionAnchorDay(d),
         createdAt: createdAtStr,
         suspended: d.suspended || false,
+        archived: d.archived === true,
         isClosed: d.isClosed || false,
         openTime: d.openTime || '',
         closeTime: d.closeTime || '',

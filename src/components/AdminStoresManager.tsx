@@ -142,15 +142,20 @@ export default function AdminStoresManager({
   const [storeProductCounts, setStoreProductCounts] = useState<Record<string, number>>({});
   const [loadingProducts, setLoadingProducts] = useState(false);
 
-  // Load product counts and bank accounts from Firestore profiles
+  const [directProfilesMap, setDirectProfilesMap] = useState<Record<string, UserProfile>>({});
+
+  // Load product counts, direct profiles, and bank accounts from Firestore profiles
   useEffect(() => {
     let isMounted = true;
     async function loadProductsAndBankData() {
       try {
         setLoadingProducts(true);
-        const [{ products, profiles }, profilesSnap] = await Promise.all([
+        const [{ products, profiles }, profilesSnap, serverStoresRes] = await Promise.all([
           fetchAllActiveProductsAndStores(),
-          getDocs(collection(db, 'profiles')).catch(() => null)
+          getDocs(collection(db, 'profiles')).catch(() => null),
+          fetch('/api/catalog-page.php?kind=stores', { cache: 'no-store' })
+            .then(r => (r.ok ? r.json() : null))
+            .catch(() => null)
         ]);
         if (!isMounted) return;
         
@@ -163,13 +168,27 @@ export default function AdminStoresManager({
         setStoreProductCounts(counts);
 
         const bankMap: Record<string, BankAccount[]> = {};
+        const loadedProfiles: Record<string, UserProfile> = {};
+
+        if (serverStoresRes && Array.isArray(serverStoresRes.items)) {
+          serverStoresRes.items.forEach((prof: any) => {
+            const uid = String(prof?.uid || prof?.id || '').trim();
+            if (uid) {
+              loadedProfiles[uid] = { ...prof, uid };
+            }
+          });
+        }
+
         if (profiles && typeof profiles === 'object') {
           Object.values(profiles).forEach((prof: any) => {
-            if (prof && prof.uid && Array.isArray(prof.bankAccounts)) {
-              const valid = prof.bankAccounts
-                .map(normalizeBankAccount)
-                .filter((b: BankAccount) => b.bankName && b.accountNumber);
-              bankMap[prof.uid] = valid;
+            if (prof && prof.uid) {
+              loadedProfiles[prof.uid] = { ...(loadedProfiles[prof.uid] || {}), ...prof };
+              if (Array.isArray(prof.bankAccounts)) {
+                const valid = prof.bankAccounts
+                  .map(normalizeBankAccount)
+                  .filter((b: BankAccount) => b.bankName && b.accountNumber);
+                bankMap[prof.uid] = valid;
+              }
             }
           });
         }
@@ -177,6 +196,9 @@ export default function AdminStoresManager({
           profilesSnap.forEach(docSnap => {
             const d = docSnap.data() as any;
             const uid = d?.uid || docSnap.id;
+            if (uid) {
+              loadedProfiles[uid] = { ...(loadedProfiles[uid] || {}), ...d, uid };
+            }
             if (uid && Array.isArray(d?.bankAccounts)) {
               const valid = d.bankAccounts
                 .map(normalizeBankAccount)
@@ -186,6 +208,7 @@ export default function AdminStoresManager({
             }
           });
         }
+        setDirectProfilesMap(loadedProfiles);
         setStoreBankAccountsMap(prev => ({ ...bankMap, ...prev }));
       } catch (e) {
         console.error("Error loading products count for stores:", e);
@@ -388,6 +411,13 @@ export default function AdminStoresManager({
       }
     };
 
+    // 0. Process from directProfilesMap (loaded directly from /api/catalog-page.php?kind=stores + profiles collection)
+    if (directProfilesMap && typeof directProfilesMap === 'object') {
+      Object.values(directProfilesMap).forEach((store) => {
+        if (store) upsertStore(store);
+      });
+    }
+
     // 1. Process from storesMap (Note: storesMap maps doc.id, uid and username to profile)
     if (storesMap && typeof storesMap === 'object') {
       Object.values(storesMap).forEach((store) => {
@@ -423,7 +453,7 @@ export default function AdminStoresManager({
       const nameB = (b.displayName || b.storeName || b.username || '').toLowerCase();
       return nameA.localeCompare(nameB);
     });
-  }, [storesMap, allStores, users]);
+  }, [directProfilesMap, storesMap, allStores, users]);
 
   // Unique cities list
   const uniqueCities = useMemo(() => {
@@ -476,18 +506,28 @@ export default function AdminStoresManager({
 
   // Filtered stores
   const filteredStores = useMemo(() => {
+    const normSearch = (val?: string | null): string => {
+      if (!val) return '';
+      return val
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    };
+
     return storeList.filter(s => {
       // Search term
       if (searchTerm.trim()) {
-        const q = searchTerm.toLowerCase().trim();
-        const matchesName = (s.displayName || s.storeName || '').toLowerCase().includes(q);
-        const matchesUser = (s.username || '').toLowerCase().includes(q);
-        const matchesEmail = (s.email || '').toLowerCase().includes(q);
-        const matchesPhone = (s.phone || s.whatsapp || s.ownerWhatsapp || s.customerServiceWhatsapp || '').toLowerCase().includes(q);
-        const matchesCity = (s.restaurantCity || s.location || '').toLowerCase().includes(q);
-        const matchesAddress = (s.address || s.restaurantAddress || s.restaurantReference || '').toLowerCase().includes(q);
-        const matchesBio = (s.bio || '').toLowerCase().includes(q);
-        if (!matchesName && !matchesUser && !matchesEmail && !matchesPhone && !matchesCity && !matchesAddress && !matchesBio) {
+        const q = normSearch(searchTerm);
+        const matchesName = normSearch(s.displayName || s.storeName).includes(q);
+        const matchesUser = normSearch(s.username).includes(q);
+        const matchesEmail = normSearch(s.email).includes(q);
+        const matchesPhone = normSearch(s.phone || s.whatsapp || s.ownerWhatsapp || s.customerServiceWhatsapp).includes(q);
+        const matchesCity = normSearch(s.restaurantCity || s.location).includes(q);
+        const matchesAddress = normSearch(s.address || s.restaurantAddress || s.restaurantReference).includes(q);
+        const matchesBio = normSearch(s.bio).includes(q);
+        const matchesUid = normSearch(s.uid).includes(q);
+        if (!matchesName && !matchesUser && !matchesEmail && !matchesPhone && !matchesCity && !matchesAddress && !matchesBio && !matchesUid) {
           return false;
         }
       }

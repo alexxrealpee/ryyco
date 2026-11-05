@@ -103,7 +103,9 @@ import {
   Package,
   Info,
   Key,
-  MapPin
+  MapPin,
+  Archive,
+  RotateCcw
 } from 'lucide-react';
 import { smartApiFetch } from '../lib/apiConfig';
 import {
@@ -124,6 +126,7 @@ import {
 import { 
   collection, 
   getDocs, 
+  onSnapshot,
   doc, 
   setDoc,
   updateDoc,
@@ -164,9 +167,11 @@ interface AdminUser {
   customerServiceWhatsapp?: string;
   phone?: string;
   subscriptionPaidUntil?: string;
+  subscriptionTrialExpires?: string;
   subscriptionAnchorDay?: number;
   createdAt?: string;
   suspended?: boolean;
+  archived?: boolean;
   isClosed?: boolean;
   openTime?: string;
   closeTime?: string;
@@ -454,6 +459,88 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   // Filter by subscription status for historical payments & subscriptions ledger
   const [selectedSubscriptionStatusFilter, setSelectedSubscriptionStatusFilter] = useState<string>('all');
   const [subscriptionSearchQuery, setSubscriptionSearchQuery] = useState<string>('');
+  const [subscriptionArchiveView, setSubscriptionArchiveView] = useState<'general' | 'archived'>('general');
+  const [showArchivedCollapsible, setShowArchivedCollapsible] = useState<boolean>(false);
+  const [archivingUserId, setArchivingUserId] = useState<string | null>(null);
+  const [localArchivedUids, setLocalArchivedUids] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('ryyco_archived_store_uids');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return new Set(parsed.map(String));
+      }
+    } catch {}
+    return new Set();
+  });
+  const [localUnarchivedUids, setLocalUnarchivedUids] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem('ryyco_unarchived_store_uids');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return new Set(parsed.map(String));
+      }
+    } catch {}
+    return new Set();
+  });
+
+  const isStoreArchived = (user?: AdminUser | null): boolean => {
+    if (!user) return false;
+    if (localArchivedUids.has(user.uid)) return true;
+    if (localUnarchivedUids.has(user.uid)) return false;
+    return user.archived === true;
+  };
+
+  const handleToggleArchiveStore = async (user: AdminUser) => {
+    const currentlyArchived = isStoreArchived(user);
+    const nextArchived = !currentlyArchived;
+    setArchivingUserId(user.uid);
+
+    // Optimistic local state + localStorage update
+    setLocalArchivedUids(prev => {
+      const next = new Set(prev);
+      if (nextArchived) next.add(user.uid);
+      else next.delete(user.uid);
+      try {
+        localStorage.setItem('ryyco_archived_store_uids', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+
+    setLocalUnarchivedUids(prev => {
+      const next = new Set(prev);
+      if (!nextArchived) next.add(user.uid);
+      else next.delete(user.uid);
+      try {
+        localStorage.setItem('ryyco_unarchived_store_uids', JSON.stringify(Array.from(next)));
+      } catch {}
+      return next;
+    });
+
+    setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, archived: nextArchived } : u));
+    setStoresMap(prev => {
+      if (!prev[user.uid]) return prev;
+      return {
+        ...prev,
+        [user.uid]: { ...prev[user.uid], archived: nextArchived }
+      };
+    });
+
+    try {
+      await setDoc(doc(db, 'profiles', user.uid), { archived: nextArchived }, { merge: true });
+      fetch('/api/catalog/refresh', { method: 'POST' }).catch(() => {});
+    } catch (err) {
+      console.warn("Could not persist archived flag to Firestore, kept in local archive:", err);
+    } finally {
+      setArchivingUserId(null);
+      const label = user.storeName || `@${user.username}` || user.email;
+      setNotif(
+        nextArchived
+          ? `📦 Tienda "${label}" movida a la sección de Archivados (oculta de la lista general).`
+          : `✨ Tienda "${label}" restaurada a la lista general de Suscripciones.`
+      );
+      setTimeout(() => setNotif(''), 4500);
+    }
+  };
   // Order specific filters and lazy loading / progressive pagination state
   const [selectedOrderStoreFilter, setSelectedOrderStoreFilter] = useState<string>('all');
   const [selectedOrderStatusFilter, setSelectedOrderStatusFilter] = useState<string>('all');
@@ -1063,9 +1150,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const systemStats = await fetchAdminStats();
       setStats(systemStats);
 
-      // 2. Load initial 50 subscription records (Lazy loading / Infinite scroll)
+      // 2. Load all subscription records so no restaurant is hidden behind pagination
       try {
-        const initialSubsBatch = await fetchAdminSubscriptionsBatch(50, null, 0);
+        const initialSubsBatch = await fetchAdminSubscriptionsBatch(500, null, 0);
         setUsers(initialSubsBatch.users as AdminUser[]);
         setLastSubDoc(initialSubsBatch.lastDoc);
         setHasMoreSubs(initialSubsBatch.hasMore);
@@ -1188,6 +1275,106 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   useEffect(() => {
     loadAdminData();
+  }, []);
+
+  // Real-time listener on Firestore `profiles` so newly registered or updated restaurants (e.g. altamontanagastrobar@gmail.com)
+  // appear immediately in Suscripciones, Cuentas de Usuarios, Datos de las Tiendas, and Pedidos filters
+  useEffect(() => {
+    let isMounted = true;
+    const mapProfileDocToAdminUser = (docId: string, d: any): AdminUser => {
+      let createdAtStr = '';
+      if (d?.createdAt) {
+        if (typeof d.createdAt === 'string') {
+          createdAtStr = d.createdAt;
+        } else if (typeof d.createdAt?.toDate === 'function') {
+          createdAtStr = d.createdAt.toDate().toISOString();
+        } else if (typeof d.createdAt?.seconds === 'number') {
+          createdAtStr = new Date(d.createdAt.seconds * 1000).toISOString();
+        }
+      } else if (d?.created_at && typeof d.created_at === 'string') {
+        createdAtStr = d.created_at;
+      }
+
+      return {
+        uid: docId,
+        email: d?.email || '',
+        username: d?.username || d?.displayName || '',
+        role: d?.role || 'user',
+        plan: d?.plan || 'free',
+        subscriptionPlan: d?.subscriptionPlan || 'basico',
+        subscriptionStatus: d?.subscriptionStatus || 'active',
+        storeName: (d?.displayName || d?.storeName || '').trim(),
+        whatsapp: d?.customerServiceWhatsapp || d?.whatsapp || d?.ownerWhatsapp || d?.phone || '',
+        ownerWhatsapp: d?.ownerWhatsapp || d?.phone || d?.whatsapp || '',
+        customerServiceWhatsapp: d?.customerServiceWhatsapp || '',
+        phone: d?.phone || d?.ownerWhatsapp || d?.whatsapp || '',
+        subscriptionPaidUntil: d?.subscriptionPaidUntil || '',
+        subscriptionTrialExpires: d?.subscriptionTrialExpires || '',
+        subscriptionAnchorDay: typeof d?.subscriptionAnchorDay === 'number' ? d.subscriptionAnchorDay : getSubscriptionAnchorDay(d),
+        createdAt: createdAtStr,
+        suspended: d?.suspended || false,
+        archived: d?.archived === true,
+        isClosed: d?.isClosed || false,
+        openTime: d?.openTime || '',
+        closeTime: d?.closeTime || '',
+        scheduleEnabled: d?.scheduleEnabled || false,
+        weeklySchedule: d?.weeklySchedule || null,
+        restaurantDaysOpen: d?.restaurantDaysOpen || []
+      };
+    };
+
+    const unsub = onSnapshot(
+      collection(db, 'profiles'),
+      (snap) => {
+        if (!isMounted || snap.empty) return;
+        const liveUsers: AdminUser[] = [];
+        const liveStoresPatch: Record<string, UserProfile> = {};
+
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as any;
+          const uid = data?.uid || docSnap.id;
+          liveUsers.push(mapProfileDocToAdminUser(docSnap.id, data));
+          const prof: UserProfile = {
+            ...data,
+            uid,
+            isClosed: data?.isClosed === true
+          };
+          liveStoresPatch[docSnap.id] = prof;
+          if (uid) liveStoresPatch[uid] = prof;
+          if (prof.username) liveStoresPatch[prof.username.toLowerCase()] = prof;
+        });
+
+        liveUsers.sort((a, b) => {
+          const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return timeB - timeA;
+        });
+
+        setUsers((prev) => {
+          const byUid = new Map<string, AdminUser>();
+          prev.forEach((u) => byUid.set(u.uid, u));
+          liveUsers.forEach((u) => {
+            const existing = byUid.get(u.uid);
+            byUid.set(u.uid, existing ? { ...existing, ...u } : u);
+          });
+          return Array.from(byUid.values()).sort((a, b) => {
+            const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return timeB - timeA;
+          });
+        });
+
+        setStoresMap((prev) => ({ ...prev, ...liveStoresPatch }));
+      },
+      (err) => {
+        console.warn("AdminPanel profiles real-time listener error:", err);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   // Infinite scroll trigger when reaching bottom of subscriptions table
@@ -2509,10 +2696,43 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     });
   };
 
-  const displayedSubscriptions = useMemo(() => {
-    let list = sortUsersNewestFirst(users);
+  const normalizeAdminSearch = (val?: string | null): string => {
+    if (!val) return '';
+    return val
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim();
+  };
 
-    if (selectedSubscriptionStatusFilter && selectedSubscriptionStatusFilter !== 'all') {
+  const nonArchivedUsers = useMemo(() => {
+    return sortUsersNewestFirst(users).filter(u => !isStoreArchived(u));
+  }, [users, localArchivedUids, localUnarchivedUids]);
+
+  const archivedUsers = useMemo(() => {
+    return sortUsersNewestFirst(users).filter(u => isStoreArchived(u));
+  }, [users, localArchivedUids, localUnarchivedUids]);
+
+  const filteredArchivedSubscriptions = useMemo(() => {
+    if (!subscriptionSearchQuery.trim()) return archivedUsers;
+    const q = normalizeAdminSearch(subscriptionSearchQuery);
+    return archivedUsers.filter(u => {
+      const storeName = normalizeAdminSearch(u.storeName);
+      const username = normalizeAdminSearch(u.username);
+      const email = normalizeAdminSearch(u.email);
+      const phone = normalizeAdminSearch(u.phone || u.ownerWhatsapp || u.whatsapp || u.customerServiceWhatsapp);
+      const uid = normalizeAdminSearch(u.uid);
+      return storeName.includes(q) || username.includes(q) || email.includes(q) || phone.includes(q) || uid.includes(q);
+    });
+  }, [archivedUsers, subscriptionSearchQuery]);
+
+  const generalFilteredSubscriptions = useMemo(() => {
+    let list = nonArchivedUsers;
+    const hasSearchQuery = Boolean(subscriptionSearchQuery.trim());
+
+    // When the admin types a search query (e.g. email or restaurant name), search across all non-archived stores
+    // so a status filter never hides the searched restaurant.
+    if (!hasSearchQuery && selectedSubscriptionStatusFilter && selectedSubscriptionStatusFilter !== 'all' && selectedSubscriptionStatusFilter !== 'archived') {
       list = list.filter(u => {
         const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
         if (selectedSubscriptionStatusFilter === 'expired') {
@@ -2522,7 +2742,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           return effectiveStatus === 'suspended' || isSuspended;
         }
         if (selectedSubscriptionStatusFilter === 'active') {
-          return !isExpired && !isSuspended && effectiveStatus === 'active';
+          return !isExpired && !isSuspended && (effectiveStatus === 'active' || effectiveStatus === 'trial');
         }
         if (selectedSubscriptionStatusFilter === 'trial') {
           return !isExpired && !isSuspended && effectiveStatus === 'trial';
@@ -2531,51 +2751,66 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       });
     }
 
-    if (subscriptionSearchQuery.trim()) {
-      const q = subscriptionSearchQuery.toLowerCase().trim();
+    if (hasSearchQuery) {
+      const q = normalizeAdminSearch(subscriptionSearchQuery);
       list = list.filter(u => {
-        const storeName = (u.storeName || '').toLowerCase();
-        const username = (u.username || '').toLowerCase();
-        const email = (u.email || '').toLowerCase();
-        const phone = (u.phone || u.ownerWhatsapp || u.whatsapp || u.customerServiceWhatsapp || '').toLowerCase();
-        const uid = (u.uid || '').toLowerCase();
+        const storeName = normalizeAdminSearch(u.storeName);
+        const username = normalizeAdminSearch(u.username);
+        const email = normalizeAdminSearch(u.email);
+        const phone = normalizeAdminSearch(u.phone || u.ownerWhatsapp || u.whatsapp || u.customerServiceWhatsapp);
+        const uid = normalizeAdminSearch(u.uid);
         return storeName.includes(q) || username.includes(q) || email.includes(q) || phone.includes(q) || uid.includes(q);
       });
     }
 
     return list;
-  }, [users, selectedSubscriptionStatusFilter, subscriptionSearchQuery]);
+  }, [nonArchivedUsers, selectedSubscriptionStatusFilter, subscriptionSearchQuery]);
+
+  const isViewingArchivedList = subscriptionArchiveView === 'archived' || selectedSubscriptionStatusFilter === 'archived';
+
+  const displayedSubscriptions = useMemo(() => {
+    return isViewingArchivedList ? filteredArchivedSubscriptions : generalFilteredSubscriptions;
+  }, [isViewingArchivedList, filteredArchivedSubscriptions, generalFilteredSubscriptions]);
 
   const expiredSubscriptionsCount = useMemo(() => {
-    return users.filter(u => {
+    return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isExpired } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'expired' || isExpired;
     }).length;
-  }, [users]);
+  }, [nonArchivedUsers]);
 
   const suspendedSubscriptionsCount = useMemo(() => {
-    return users.filter(u => {
+    return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isSuspended } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'suspended' || isSuspended;
     }).length;
-  }, [users]);
+  }, [nonArchivedUsers]);
 
   const activeSubscriptionsCount = useMemo(() => {
-    return users.filter(u => {
+    return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
-      return !isExpired && !isSuspended && effectiveStatus === 'active';
+      return !isExpired && !isSuspended && (effectiveStatus === 'active' || effectiveStatus === 'trial');
     }).length;
-  }, [users]);
+  }, [nonArchivedUsers]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
     if (!search.trim()) return sorted;
-    const query = search.toLowerCase();
-    return sorted.filter(u => 
-      u.email.toLowerCase().includes(query) || 
-      u.username.toLowerCase().includes(query) ||
-      (u.storeName && u.storeName.toLowerCase().includes(query))
-    );
+    const query = normalizeAdminSearch(search);
+    return sorted.filter(u => {
+      const email = normalizeAdminSearch(u.email);
+      const username = normalizeAdminSearch(u.username);
+      const storeName = normalizeAdminSearch(u.storeName);
+      const phone = normalizeAdminSearch(u.phone || u.ownerWhatsapp || u.whatsapp || u.customerServiceWhatsapp);
+      const uid = normalizeAdminSearch(u.uid);
+      return (
+        email.includes(query) ||
+        username.includes(query) ||
+        storeName.includes(query) ||
+        phone.includes(query) ||
+        uid.includes(query)
+      );
+    });
   }, [users, search]);
 
   return (
@@ -3168,18 +3403,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
 
                   <div className="mt-1.5 pt-1.5 border-t border-gray-800/80 flex items-center justify-between text-[10.5px] font-mono">
-                    <span className="text-gray-400 font-bold">Total Tiendas:</span>
+                    <span className="text-gray-400 font-bold">Total Lista General:</span>
                     <button
                       type="button"
-                      onClick={() => setSelectedSubscriptionStatusFilter('all')}
+                      onClick={() => {
+                        setSubscriptionArchiveView('general');
+                        setSelectedSubscriptionStatusFilter('all');
+                      }}
                       className={`text-white font-black px-2 py-0.5 rounded-md border text-[11px] transition cursor-pointer ${
-                        selectedSubscriptionStatusFilter === 'all'
+                        selectedSubscriptionStatusFilter === 'all' && !isViewingArchivedList
                           ? 'bg-indigo-600 border-indigo-400'
                           : 'bg-gray-900 hover:bg-gray-800 border-gray-800'
                       }`}
-                      title="Ver todas las tiendas registradas"
+                      title="Ver todas las tiendas de la lista general"
                     >
-                      {users.length > 0 ? users.length : Math.max(stats.totalProfiles, allStoresList.length)} tiendas
+                      {users.length > 0 ? nonArchivedUsers.length : Math.max(stats.totalProfiles, allStoresList.length)} tiendas
                     </button>
                   </div>
                 </div>
@@ -3324,30 +3562,94 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   <div className="flex items-center gap-1.5 bg-gray-950 border border-gray-800 rounded-xl px-2.5 py-1">
                     <span className="text-[11px] text-gray-400 font-semibold font-mono">Estado:</span>
                     <select 
-                      value={selectedSubscriptionStatusFilter}
-                      onChange={(e) => setSelectedSubscriptionStatusFilter(e.target.value)}
+                      value={isViewingArchivedList ? 'archived' : selectedSubscriptionStatusFilter}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'archived') {
+                          setSubscriptionArchiveView('archived');
+                          setSelectedSubscriptionStatusFilter('archived');
+                        } else {
+                          setSubscriptionArchiveView('general');
+                          setSelectedSubscriptionStatusFilter(val);
+                        }
+                      }}
                       className="bg-transparent text-white text-xs outline-none cursor-pointer focus:text-amber-300 font-medium py-1"
                     >
-                      <option value="all" className="bg-gray-950 text-white">Todos los Estados</option>
+                      <option value="all" className="bg-gray-950 text-white">Todos los Estados (Lista General)</option>
                       <option value="active" className="bg-gray-950 text-emerald-400">🟢 Activas</option>
                       <option value="trial" className="bg-gray-950 text-cyan-300">🆓 Estado Gratuito (7 Días)</option>
                       <option value="expired" className="bg-gray-950 text-red-400">🔴 Expiradas</option>
                       <option value="suspended" className="bg-gray-950 text-amber-300">⚠️ Suspendidas</option>
                       <option value="pending_payment" className="bg-gray-950 text-amber-400">🟡 Pendiente de Pago</option>
+                      <option value="archived" className="bg-gray-950 text-slate-300">📦 Archivadas ({archivedUsers.length})</option>
                     </select>
                   </div>
                 </div>
               </div>
 
-              {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR */}
+              {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR & ARCHIVED STORES SWITCHER */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                  <h4 className="text-xs font-black uppercase text-amber-400 tracking-wider flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" /> Estado de Suscripciones Activas
-                    <span className="px-2 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 rounded-full font-mono text-[10px] font-bold">
-                      {displayedSubscriptions.length} {displayedSubscriptions.length === 1 ? 'tienda' : 'tiendas'}
-                    </span>
-                  </h4>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubscriptionArchiveView('general');
+                        if (selectedSubscriptionStatusFilter === 'archived') {
+                          setSelectedSubscriptionStatusFilter('all');
+                        }
+                      }}
+                      className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+                        !isViewingArchivedList
+                          ? 'bg-amber-500/15 text-amber-400 border-amber-500/35 shadow-sm'
+                          : 'bg-gray-950/70 text-gray-400 hover:text-gray-200 border-gray-800'
+                      }`}
+                      title="Ver lista general de tiendas activas y registradas"
+                    >
+                      <Sparkles className={`w-4 h-4 ${!isViewingArchivedList ? 'text-amber-400 animate-pulse' : 'text-gray-500'}`} />
+                      <span>Estado de Suscripciones Activas</span>
+                      <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border ${
+                        !isViewingArchivedList
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-gray-900 text-gray-400 border-gray-800'
+                      }`}>
+                        {generalFilteredSubscriptions.length} {generalFilteredSubscriptions.length === 1 ? 'tienda' : 'tiendas'}
+                      </span>
+                    </button>
+
+                    {/* Botón / Pestaña de Tiendas Archivadas (ubicado junto al contador de tiendas) */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isViewingArchivedList) {
+                          setSubscriptionArchiveView('general');
+                          if (selectedSubscriptionStatusFilter === 'archived') {
+                            setSelectedSubscriptionStatusFilter('all');
+                          }
+                        } else {
+                          setSubscriptionArchiveView('archived');
+                        }
+                      }}
+                      className={`text-xs font-black uppercase tracking-wider flex items-center gap-2 px-3 py-1.5 rounded-xl border transition cursor-pointer ${
+                        isViewingArchivedList
+                          ? 'bg-slate-800 text-white border-slate-500 shadow-md ring-1 ring-slate-400/30'
+                          : 'bg-gray-950/90 hover:bg-gray-900 text-slate-300 hover:text-white border-gray-800 hover:border-slate-700'
+                      }`}
+                      title="Ver sección de tiendas archivadas (ocultas de la lista general)"
+                    >
+                      <Archive className={`w-3.5 h-3.5 ${isViewingArchivedList ? 'text-amber-400' : 'text-slate-400'}`} />
+                      <span>Archivados</span>
+                      <span className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold border ${
+                        isViewingArchivedList
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : archivedUsers.length > 0
+                          ? 'bg-slate-800 text-slate-200 border-slate-700'
+                          : 'bg-gray-900 text-gray-500 border-gray-800'
+                      }`}>
+                        {archivedUsers.length} {archivedUsers.length === 1 ? 'tienda' : 'tiendas'}
+                      </span>
+                    </button>
+                  </div>
 
                   {subscriptionSearchQuery.trim() && (
                     <div className="flex items-center gap-2 text-xs bg-amber-500/10 text-amber-300 border border-amber-500/25 px-3 py-1 rounded-xl">
@@ -3365,6 +3667,36 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </div>
                   )}
                 </div>
+
+                {isViewingArchivedList && (
+                  <div className="bg-slate-900/70 border border-slate-700/70 rounded-2xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-600/60 flex items-center justify-center shrink-0">
+                        <Archive className="w-4 h-4 text-amber-400" />
+                      </div>
+                      <div>
+                        <p className="font-extrabold text-white text-xs">
+                          Sección de Tiendas Archivadas ({archivedUsers.length})
+                        </p>
+                        <p className="text-[11px] text-slate-400">
+                          Estas tiendas están ocultas de la lista general de Suscripciones. Puedes restaurarlas en cualquier momento con el botón «Restaurar».
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSubscriptionArchiveView('general');
+                        if (selectedSubscriptionStatusFilter === 'archived') {
+                          setSelectedSubscriptionStatusFilter('all');
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 rounded-xl text-[11px] font-black uppercase tracking-wider transition cursor-pointer shrink-0 self-start sm:self-center"
+                    >
+                      ← Volver a Lista General ({nonArchivedUsers.length})
+                    </button>
+                  </div>
+                )}
                 
                 {/* Mobile view: beautiful cards for cell phones */}
                 <div className="block md:hidden space-y-4">
@@ -3642,7 +3974,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-3 gap-1.5 pt-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-2">
                             <button
                               type="button"
                               onClick={() => {
@@ -3666,6 +3998,26 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             >
                               <Calendar className="w-3.5 h-3.5 shrink-0" />
                               <span>Ajustar Mes</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleArchiveStore(user)}
+                              disabled={archivingUserId === user.uid}
+                              title={isStoreArchived(user) ? 'Restaurar tienda a la lista general' : 'Mover tienda a Archivados (ocultar de la lista general)'}
+                              className={`py-2.5 px-1.5 font-black text-[9.5px] tracking-wider uppercase rounded-xl border transition cursor-pointer flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm active:scale-95 ${
+                                isStoreArchived(user)
+                                  ? 'bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-white border-emerald-500/30'
+                                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border-slate-700'
+                              }`}
+                            >
+                              {archivingUserId === user.uid ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                              ) : isStoreArchived(user) ? (
+                                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                              ) : (
+                                <Archive className="w-3.5 h-3.5 shrink-0" />
+                              )}
+                              <span>{isStoreArchived(user) ? 'Restaurar' : 'Archivar'}</span>
                             </button>
                             <button
                               type="button"
@@ -3968,6 +4320,26 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   </div>
                                   <button
                                     type="button"
+                                    onClick={() => handleToggleArchiveStore(user)}
+                                    disabled={archivingUserId === user.uid}
+                                    title={isStoreArchived(user) ? 'Restaurar esta tienda a la lista general' : 'Archivar esta tienda para que no aparezca en la lista general'}
+                                    className={`h-[52px] px-2.5 font-black text-[9.5px] tracking-wider uppercase rounded-lg border transition cursor-pointer flex flex-col items-center justify-center gap-0.5 disabled:opacity-50 ${
+                                      isStoreArchived(user)
+                                        ? 'bg-emerald-500/15 hover:bg-emerald-500 hover:text-white text-emerald-300 border-emerald-500/30'
+                                        : 'bg-slate-800/80 hover:bg-slate-700 hover:text-white text-slate-300 border-slate-700'
+                                    }`}
+                                  >
+                                    {archivingUserId === user.uid ? (
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                    ) : isStoreArchived(user) ? (
+                                      <RotateCcw className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <Archive className="w-3.5 h-3.5" />
+                                    )}
+                                    <span className="text-[8.5px]">{isStoreArchived(user) ? 'Restaurar' : 'Archivar'}</span>
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleDeletePage(user)}
                                     disabled={deletingUserId === user.uid}
                                     title="Eliminar permanentemente esta página"
@@ -3989,6 +4361,71 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Collapsible bottom section for Archived Stores when viewing the General List */}
+                {!isViewingArchivedList && archivedUsers.length > 0 && (
+                  <div className="pt-3 border-t border-gray-800/80">
+                    <div className="bg-slate-950/90 border border-slate-800/90 rounded-2xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setShowArchivedCollapsible(prev => !prev)}
+                        className="w-full px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-900/70 transition cursor-pointer text-left"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center">
+                            <Archive className="w-3.5 h-3.5 text-amber-400" />
+                          </div>
+                          <div>
+                            <span className="text-xs font-black uppercase tracking-wider text-slate-200">
+                              Tiendas Archivadas ({archivedUsers.length})
+                            </span>
+                            <p className="text-[10.5px] text-slate-400">
+                              Tiendas que retiraste de la lista general. Haz clic para {showArchivedCollapsible ? 'ocultar' : 'desplegar'} o restaurar.
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1">
+                          <span>{showArchivedCollapsible ? 'Ocultar' : 'Ver archivadas'}</span>
+                          <ChevronDown className={`w-4 h-4 transition-transform ${showArchivedCollapsible ? 'rotate-180' : ''}`} />
+                        </span>
+                      </button>
+
+                      {showArchivedCollapsible && (
+                        <div className="p-4 pt-2 border-t border-slate-800/80 space-y-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                            {archivedUsers.map((archUser) => (
+                              <div
+                                key={archUser.uid}
+                                className="flex items-center justify-between gap-2.5 bg-gray-950 border border-gray-800/90 rounded-xl px-3 py-2.5 text-xs"
+                              >
+                                <div className="min-w-0">
+                                  <div className="font-extrabold text-white truncate">
+                                    {archUser.storeName || archUser.username || 'Tienda'}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 font-mono truncate">
+                                    @{archUser.username} {archUser.email ? `• ${archUser.email}` : ''}
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleArchiveStore(archUser)}
+                                    disabled={archivingUserId === archUser.uid}
+                                    title="Restaurar a la lista general"
+                                    className="px-2.5 py-1.5 bg-emerald-500/15 hover:bg-emerald-500 text-emerald-300 hover:text-white font-black text-[10px] uppercase rounded-lg border border-emerald-500/30 transition cursor-pointer flex items-center gap-1"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                    <span>Restaurar</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Lazy loading / Infinite scroll controls & sentinel for Subscriptions (7 items per batch) */}
                 <div className="pt-2 pb-1 space-y-2">
