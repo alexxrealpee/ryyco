@@ -2347,23 +2347,23 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       >
                         {/* Discount or promo tag */}
                         {isDiscounted && (
-                          <span className="absolute top-3 left-3 bg-red-600 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-widest z-10 shadow-md">
+                          <span className="absolute top-2.5 left-2.5 bg-red-600 text-white font-black text-[8.5px] sm:text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-widest z-10 shadow-md">
                             OFERTA MENÚ
-                          </span>
-                        )}
-                        {((p.flavorsText && p.flavorsText.trim().length > 0) || (p.flavorsList && p.flavorsList.length > 0) || p.hasFlavors || p.allowsHalfAndHalf) && (
-                          <span className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[9px] px-2.5 py-1 rounded-full uppercase tracking-wider z-10 shadow-md border border-white/20 flex items-center gap-1">
-                            <span>
-                              {p.allowsHalfAndHalf
-                                ? (p.name?.toLowerCase().includes('pizza') || p.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Combina Sabores')
-                                : (p.name?.toLowerCase().includes('jugo') || p.category?.toLowerCase().includes('bebida') ? '🥤 Elige Sabor' : '✨ Con Sabores')}
-                            </span>
                           </span>
                         )}
 
                         <div>
                           {/* Full-bleed large gastronomy image */}
                           <div className="w-full aspect-square bg-black/40 overflow-hidden flex items-center justify-center text-3xl font-bold relative border-b border-white/5">
+                            {((p.flavorsText && p.flavorsText.trim().length > 0) || (p.flavorsList && p.flavorsList.length > 0) || p.hasFlavors || p.allowsHalfAndHalf) && (
+                              <span className="absolute bottom-2.5 left-2.5 bg-gradient-to-r from-amber-500 to-red-500 text-white font-black text-[8.5px] sm:text-[9px] px-2.5 py-0.5 rounded-full uppercase tracking-wider z-10 shadow-md border border-white/20 flex items-center gap-1 max-w-[calc(100%-1.25rem)] truncate">
+                                <span className="truncate">
+                                  {p.allowsHalfAndHalf
+                                    ? (p.name?.toLowerCase().includes('pizza') || p.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Combina Sabores')
+                                    : (p.name?.toLowerCase().includes('jugo') || p.category?.toLowerCase().includes('bebida') ? '🥤 Elige Sabor' : '✨ Con Sabores')}
+                                </span>
+                              </span>
+                            )}
                             {p.imageURL ? (
                               <img 
                                 src={p.imageURL} 

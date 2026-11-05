@@ -3020,7 +3020,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                   className="bg-[#111827] border border-slate-800 hover:border-[#D62839]/70 hover:shadow-xl hover:shadow-[#D62839]/15 rounded-2xl overflow-hidden flex flex-col group transition duration-300 relative cursor-pointer"
                 >
                   {/* Store source badge on top left with open indicator */}
-                  <div className="absolute top-3 left-3 z-10 max-w-[85%]">
+                  <div className="absolute top-2.5 left-2.5 right-2.5 z-10 flex items-center justify-start pointer-events-none">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -3028,11 +3028,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           onNavigateToStore(profile.username);
                         }
                       }}
-                      className="flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-950/90 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/60 rounded-full transition text-[8px] sm:text-[8.5px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full"
+                      className="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 bg-slate-950/90 hover:bg-slate-900 border border-slate-800 hover:border-emerald-500/60 rounded-full transition text-[8.5px] sm:text-[9px] font-bold text-white cursor-pointer backdrop-blur-md max-w-full shadow-md"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" title="Restaurante abierto" />
                       <Store className="w-2.5 h-2.5 text-[#D62839] shrink-0" />
-                      <span className="truncate">{profile?.displayName || 'Tienda'}</span>
+                      <span className="truncate">{profile?.displayName || profile?.storeName || product.storeName || 'Tienda'}</span>
                     </button>
                   </div>
 
@@ -3044,23 +3044,24 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     }}
                     className="relative aspect-square w-full bg-[#0B0F19] overflow-hidden shrink-0 cursor-pointer"
                   >
-                    {((product.flavorsText && product.flavorsText.trim().length > 0) || (product.flavorsList && product.flavorsList.length > 0) || product.hasFlavors || product.allowsHalfAndHalf) && (
-                      <div className="absolute top-3 right-3 z-10">
-                        <span className="bg-[#D62839] text-white font-black text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-red-600 flex items-center gap-1">
-                          <span>
-                            {product.allowsHalfAndHalf
-                              ? (product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Combina Sabores')
-                              : (product.name?.toLowerCase().includes('jugo') || product.category?.toLowerCase().includes('bebida') ? '🥤 Elige Sabor' : '✨ Con Sabores')}
+                    {/* Bottom badges inside image: Combina Sabores / Mitad y Mitad & Sale badge (never overlaps top restaurant name) */}
+                    {(((product.flavorsText && product.flavorsText.trim().length > 0) || (product.flavorsList && product.flavorsList.length > 0) || product.hasFlavors || product.allowsHalfAndHalf) || isOnSale) && (
+                      <div className="absolute bottom-2.5 left-2.5 right-2.5 z-10 flex flex-wrap items-center justify-between gap-1 pointer-events-none">
+                        {((product.flavorsText && product.flavorsText.trim().length > 0) || (product.flavorsList && product.flavorsList.length > 0) || product.hasFlavors || product.allowsHalfAndHalf) ? (
+                          <span className="bg-[#D62839]/95 text-white font-black text-[8.5px] sm:text-[9px] uppercase px-2.5 py-0.5 rounded-full shadow-lg tracking-wider border border-red-400/40 flex items-center gap-1 backdrop-blur-sm max-w-full truncate">
+                            <span className="truncate">
+                              {product.allowsHalfAndHalf
+                                ? (product.name?.toLowerCase().includes('pizza') || product.category?.toLowerCase().includes('pizza') ? '🍕 Mitad y Mitad' : '✨ Combina Sabores')
+                                : (product.name?.toLowerCase().includes('jugo') || product.category?.toLowerCase().includes('bebida') ? '🥤 Elige Sabor' : '✨ Con Sabores')}
+                            </span>
                           </span>
-                        </span>
-                      </div>
-                    )}
-                    {/* Top right badges: Sale badge */}
-                    {isOnSale && !product.allowsHalfAndHalf && (
-                      <div className="absolute top-3 right-3 z-10">
-                        <span className="bg-[#D62839] text-white font-black text-[9px] uppercase px-2 py-0.5 rounded shadow tracking-wider">
-                          -{discountPercentage}%
-                        </span>
+                        ) : <span />}
+
+                        {isOnSale && (
+                          <span className="bg-[#D62839] text-white font-black text-[8.5px] sm:text-[9px] uppercase px-2 py-0.5 rounded-full shadow-lg tracking-wider border border-red-400/40 shrink-0">
+                            -{discountPercentage}%
+                          </span>
+                        )}
                       </div>
                     )}
 
