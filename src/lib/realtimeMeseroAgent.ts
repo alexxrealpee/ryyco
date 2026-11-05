@@ -29,6 +29,9 @@ import {
 import { OrderItem } from '../types';
 import { smartApiFetch } from './apiConfig';
 
+export const IAMESERO_WELCOME_MESSAGE =
+  '¡Hola! Bienvenido a Rico. Qué gusto tenerte por aquí. Cuéntame, ¿qué se te antoja comer hoy?';
+
 export interface RealtimeMeseroCallbacks {
   onStateChange: (state: 'idle' | 'listening' | 'processing' | 'speaking') => void;
   onTranscriptDelta: (text: string, isFinal: boolean, sender: 'user' | 'assistant') => void;
@@ -47,6 +50,10 @@ export class RealtimeMeseroManager {
   private callbacks: RealtimeMeseroCallbacks;
   private isConnected: boolean = false;
   private currentAssistantTranscript: string = '';
+  private lastEmittedFinalTranscript: string = '';
+  private hasTriggeredGreeting: boolean = false;
+  private isGeneratingResponse: boolean = false;
+  private greetingTimer: any = null;
   private preprocessorCleanup: (() => void) | null = null;
   private processingWatchdogTimer: any = null;
   private unsubscribeCatalog: (() => void) | null = null;
@@ -63,14 +70,19 @@ export class RealtimeMeseroManager {
         ? `\nALERTA EN TIEMPO REAL: Los siguientes restaurantes acaban de CERRAR durante la conversación: ${catalog.recentlyClosedStores.join(', ')}. DEJA DE RECOMENDAR inmediatamente sus productos y ofrece alternativas disponibles de los restaurantes abiertos.`
         : '';
 
-    return `Eres el Mesero Virtual Oficial de RYYCO. Tu responsabilidad es ayudar al cliente a descubrir qué comer, recomendar exclusivamente productos disponibles de restaurantes abiertos y acompañarlo durante su experiencia gastronómica. No inventes información ni abandones tu función de mesero virtual. Toda recomendación debe estar respaldada por información actualizada y validada de RYYCO.
+    return `Eres iAmesero, el Mesero Virtual Oficial de RYYCO (pronunciado "Rico"). Tu responsabilidad es ayudar al cliente a descubrir qué comer, recomendar exclusivamente productos disponibles de restaurantes abiertos en RYYCO y acompañarlo durante su experiencia gastronómica. No inventes información ni abandones tu función de mesero virtual. Toda recomendación debe estar respaldada por el catálogo en tiempo real de RYYCO.
+
+PERSONALIDAD Y SALUDO INICIAL:
+- Utiliza siempre una voz amable, alegre, cálida, colombiana y natural, como un mesero profesional que recibe con entusiasmo a un cliente en un restaurante.
+- Cuando inicies la conversación con el saludo de bienvenida, di exactamente: "${IAMESERO_WELCOME_MESSAGE}"
+- Después del saludo, queda atento para escuchar al cliente y responder de manera fluida.
 
 FUNCIÓN PRINCIPAL COMO MESERO VIRTUAL DE RYYCO:
-- Recibir al cliente de manera amable, cercana, dinámica y natural en español colombiano suave.
-- Preguntarle qué le gustaría comer hoy.
+- Recibir al cliente de manera amable, cercana, alegre y natural en español colombiano.
+- Preguntarle qué se le antoja comer hoy.
 - Recomendar platos según sus gustos, presupuesto y preferencias.
-- Explicar los ingredientes, precios y características de los productos utilizando EXCLUSIVAMENTE los datos disponibles en el JSON autorizado.
-- Recomendar únicamente restaurantes abiertos en este momento.
+- Explicar los ingredientes, precios y características de los productos utilizando EXCLUSIVAMENTE los datos disponibles en el JSON autorizado en tiempo real.
+- Recomendar únicamente restaurantes abiertos y disponibles en este momento en RYYCO.
 - Ayudar al cliente a elegir sus platos y orientarlo para agregar productos al carrito ('agregarAlCarrito') y realizar su pedido ('crearPedido') mediante las funciones existentes de RYYCO.
 
 RESTRICCIÓN ESTRICTA DEL CONTEXTO Y SEGURIDAD (OBLIGATORIO):
@@ -806,8 +818,71 @@ ${catalog.compactAiJson}`;
     ];
   }
 
-  public async start(): Promise<void> {
+  public triggerInitialGreeting(): void {
+    if (!this.isConnected || !this.session || this.hasTriggeredGreeting || this.isGeneratingResponse) {
+      return;
+    }
+    this.hasTriggeredGreeting = true;
+    this.isGeneratingResponse = true;
+    if (this.greetingTimer) {
+      clearTimeout(this.greetingTimer);
+      this.greetingTimer = null;
+    }
+
+    try {
+      if (this.remoteAudioElement && this.remoteAudioElement.paused) {
+        this.remoteAudioElement.play().catch(() => {});
+      }
+    } catch (e) {}
+
+    const greetingPrompt = `Saluda ahora mismo al cliente diciendo exactamente esta frase, con voz amable, alegre, colombiana y natural como un mesero profesional que recibe a un cliente en un restaurante: "${IAMESERO_WELCOME_MESSAGE}". No agregues nada más en este saludo inicial y queda listo para escuchar al cliente.`;
+
+    try {
+      const sessionTransport = (this.session as any)?.transport;
+      if (sessionTransport && typeof sessionTransport.requestResponse === 'function') {
+        sessionTransport.requestResponse({
+          instructions: greetingPrompt
+        });
+      } else if (sessionTransport && typeof sessionTransport.sendEvent === 'function') {
+        sessionTransport.sendEvent({
+          type: 'response.create',
+          response: {
+            instructions: greetingPrompt
+          }
+        });
+      } else if (typeof (this.session as any).requestResponse === 'function') {
+        (this.session as any).requestResponse({
+          instructions: greetingPrompt
+        });
+      } else if (typeof (this.session as any).sendEvent === 'function') {
+        (this.session as any).sendEvent({
+          type: 'response.create',
+          response: {
+            instructions: greetingPrompt
+          }
+        });
+      }
+    } catch (err) {
+      this.isGeneratingResponse = false;
+      console.warn('Initial Realtime greeting trigger notice:', err);
+    }
+  }
+
+  public interrupt(): void {
+    try {
+      if (this.session) {
+        (this.session as any).interrupt?.();
+      }
+    } catch (e) {}
+  }
+
+  public async start(options?: { shouldGreet?: boolean }): Promise<void> {
     if (this.isConnected) return;
+    const shouldGreet = Boolean(options?.shouldGreet);
+    this.hasTriggeredGreeting = false;
+    this.isGeneratingResponse = false;
+    this.currentAssistantTranscript = '';
+    this.lastEmittedFinalTranscript = '';
 
     this.callbacks.onStateChange('processing');
 
@@ -981,14 +1056,18 @@ ${catalog.compactAiJson}`;
           clearTimeout(this.processingWatchdogTimer);
           this.processingWatchdogTimer = null;
         }
-        if (output && output.trim()) {
-          this.callbacks.onTranscriptDelta(output.trim(), true, 'assistant');
+        this.isGeneratingResponse = false;
+        const cleanOutput = (output || '').trim();
+        if (cleanOutput && cleanOutput !== this.lastEmittedFinalTranscript) {
+          this.lastEmittedFinalTranscript = cleanOutput;
+          this.callbacks.onTranscriptDelta(cleanOutput, true, 'assistant');
         }
         this.callbacks.onStateChange('listening');
       });
 
       this.session.on('error', (err: any) => {
         console.warn("Realtime session error:", err);
+        this.isGeneratingResponse = false;
         if (this.processingWatchdogTimer) {
           clearTimeout(this.processingWatchdogTimer);
           this.processingWatchdogTimer = null;
@@ -1003,13 +1082,15 @@ ${catalog.compactAiJson}`;
 
         switch (ev.type) {
           case 'response.created': {
+            this.isGeneratingResponse = true;
             if (this.processingWatchdogTimer) {
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
             }
             break;
           }
-          case 'response.audio_transcript.delta': {
+          case 'response.audio_transcript.delta':
+          case 'response.output_audio_transcript.delta': {
             if (this.processingWatchdogTimer) {
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
@@ -1020,13 +1101,15 @@ ${catalog.compactAiJson}`;
             this.callbacks.onStateChange('speaking');
             break;
           }
-          case 'response.audio_transcript.done': {
+          case 'response.audio_transcript.done':
+          case 'response.output_audio_transcript.done': {
             if (this.processingWatchdogTimer) {
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
             }
-            const finalTranscript = ev.transcript || this.currentAssistantTranscript;
-            if (finalTranscript) {
+            const finalTranscript = (ev.transcript || this.currentAssistantTranscript || '').trim();
+            if (finalTranscript && finalTranscript !== this.lastEmittedFinalTranscript) {
+              this.lastEmittedFinalTranscript = finalTranscript;
               this.callbacks.onTranscriptDelta(finalTranscript, true, 'assistant');
             }
             this.currentAssistantTranscript = '';
@@ -1072,6 +1155,7 @@ ${catalog.compactAiJson}`;
             break;
           }
           case 'response.done': {
+            this.isGeneratingResponse = false;
             if (this.processingWatchdogTimer) {
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
@@ -1085,9 +1169,13 @@ ${catalog.compactAiJson}`;
           }
           case 'session.updated': {
             console.log("Realtime session.updated confirmed by server:", ev.session || ev);
+            if (shouldGreet && this.isConnected && !this.hasTriggeredGreeting) {
+              this.triggerInitialGreeting();
+            }
             break;
           }
           case 'error': {
+            this.isGeneratingResponse = false;
             console.warn("Realtime transport error:", ev.error);
             break;
           }
@@ -1104,6 +1192,9 @@ ${catalog.compactAiJson}`;
       });
       transport?.on?.('session.updated', (event: any) => {
         console.log("Realtime server confirmed session.updated event:", event);
+        if (shouldGreet && this.isConnected && !this.hasTriggeredGreeting) {
+          this.triggerInitialGreeting();
+        }
       });
 
       // Connect session with WebRTC media stream and remote audio element
@@ -1168,6 +1259,15 @@ ${catalog.compactAiJson}`;
       this.isConnected = true;
       this.callbacks.onStateChange('listening');
 
+      // Trigger automatic welcome greeting once the session is fully established
+      if (shouldGreet && !this.hasTriggeredGreeting) {
+        this.greetingTimer = setTimeout(() => {
+          if (this.isConnected && !this.hasTriggeredGreeting) {
+            this.triggerInitialGreeting();
+          }
+        }, 160);
+      }
+
       // Subscribe to real-time catalog changes during the conversation and update instructions in-place without restarting the call
       if (this.unsubscribeCatalog) {
         this.unsubscribeCatalog();
@@ -1201,6 +1301,10 @@ ${catalog.compactAiJson}`;
   }
 
   public stop(): void {
+    if (this.greetingTimer) {
+      clearTimeout(this.greetingTimer);
+      this.greetingTimer = null;
+    }
     if (this.unsubscribeCatalog) {
       try {
         this.unsubscribeCatalog();
@@ -1220,6 +1324,9 @@ ${catalog.compactAiJson}`;
 
     try {
       if (this.session) {
+        try {
+          (this.session as any).interrupt?.();
+        } catch (e) {}
         (this.session as any).close?.();
         this.session = null;
       }
@@ -1238,6 +1345,7 @@ ${catalog.compactAiJson}`;
     } catch (e) {}
 
     this.isConnected = false;
+    this.isGeneratingResponse = false;
     try {
       this.callbacks.onUserSpeechChange?.(false);
     } catch (e) {}

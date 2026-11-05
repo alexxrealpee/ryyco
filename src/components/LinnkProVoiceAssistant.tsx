@@ -160,12 +160,15 @@ export default function LinnkProVoiceAssistant({
     }, intervalMs);
   };
 
-  // Chat stream messages with exact wording from design image
+  const IAMESERO_WELCOME_TEXT =
+    '¡Hola! Bienvenido a Rico. Qué gusto tenerte por aquí. Cuéntame, ¿qué se te antoja comer hoy?';
+
+  // Chat stream messages initialized with the official automatic welcome message
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
       sender: 'assistant',
-      text: '¡Hola! Soy tu mesero IA 👋\n¿En qué puedo ayudarte hoy?',
+      text: IAMESERO_WELCOME_TEXT,
       timestamp: new Date()
     }
   ]);
@@ -204,6 +207,7 @@ export default function LinnkProVoiceAssistant({
   const latestTranscriptRef = useRef<string>('');
   const isSpeakingRef = useRef<boolean>(false);
   const isMicMutedRef = useRef<boolean>(false);
+  const hasGreetedVoiceInSessionRef = useRef<boolean>(false);
   const realtimeManagerRef = useRef<RealtimeMeseroManager | null>(null);
   const recognitionRef = useRef<any>(null);
   const localSpeechStreamRef = useRef<MediaStream | null>(null);
@@ -484,6 +488,9 @@ export default function LinnkProVoiceAssistant({
   const stopAudioPlayback = () => {
     cancelAiTextStreaming();
     isSpeakingRef.current = false;
+    try {
+      realtimeManagerRef.current?.interrupt();
+    } catch (e) {}
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel();
@@ -499,7 +506,7 @@ export default function LinnkProVoiceAssistant({
   };
 
   // 6.5. Speech Recognition Voice Mode Fallback (For static hosting like Hostinger or when Realtime WebRTC token is unavailable)
-  const startSpeechRecognitionVoiceMode = async () => {
+  const startSpeechRecognitionVoiceMode = async (shouldGreet = false) => {
     const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
       setIsInVoiceCall(false);
@@ -614,6 +621,11 @@ export default function LinnkProVoiceAssistant({
       isInVoiceCallRef.current = true;
       setAssistantState('listening');
       setMicPermissionError(null);
+
+      if (shouldGreet && !hasGreetedVoiceInSessionRef.current && isInVoiceCallRef.current) {
+        hasGreetedVoiceInSessionRef.current = true;
+        playVoiceResponse(IAMESERO_WELCOME_TEXT);
+      }
     } catch (micErr: any) {
       console.warn("Speech recognition voice mode notice:", micErr);
       setIsInVoiceCall(false);
@@ -697,6 +709,7 @@ export default function LinnkProVoiceAssistant({
         },
         onTranscriptDelta: (text, isFinal, sender) => {
           if (sender === 'user') {
+            hasGreetedVoiceInSessionRef.current = true;
             cancelAiTextStreaming();
             setActiveSpeaker('user');
             setActiveTranscriptText(text);
@@ -725,10 +738,16 @@ export default function LinnkProVoiceAssistant({
             setActiveTranscriptText(text);
             setTranscript(text);
             if (isFinal) {
-              setMessages(prev => [
-                ...prev,
-                { id: 'asst_' + Date.now(), sender: 'assistant', text, timestamp: new Date() }
-              ]);
+              setMessages(prev => {
+                // Avoid duplicating the initial welcome message if it is the very first greeting of the session
+                if (prev.length === 1 && prev[0].id === 'welcome') {
+                  return [{ ...prev[0], text, timestamp: new Date() }];
+                }
+                return [
+                  ...prev,
+                  { id: 'asst_' + Date.now(), sender: 'assistant', text, timestamp: new Date() }
+                ];
+              });
             }
           }
         },
@@ -741,7 +760,15 @@ export default function LinnkProVoiceAssistant({
         }
       });
 
-      await realtimeManagerRef.current.start();
+      const shouldGreet = !hasGreetedVoiceInSessionRef.current;
+      await realtimeManagerRef.current.start({ shouldGreet });
+      if (!isInVoiceCallRef.current) {
+        realtimeManagerRef.current?.stop();
+        return;
+      }
+      if (shouldGreet) {
+        hasGreetedVoiceInSessionRef.current = true;
+      }
       const activeStream = realtimeManagerRef.current.getLocalStream();
       if (activeStream) {
         startAudioVolumeDetection(activeStream);
@@ -785,7 +812,7 @@ export default function LinnkProVoiceAssistant({
       } else {
         // Clear any prior temporary notice and activate voice mode fallback smoothly
         setMicPermissionError(null);
-        await startSpeechRecognitionVoiceMode();
+        await startSpeechRecognitionVoiceMode(!hasGreetedVoiceInSessionRef.current);
       }
     }
   };
@@ -1179,6 +1206,7 @@ export default function LinnkProVoiceAssistant({
   const handleSendMessage = async (textToSend: string) => {
     if (!textToSend || !textToSend.trim()) return;
 
+    hasGreetedVoiceInSessionRef.current = true;
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     stopAudioPlayback();
     setTranscript('');

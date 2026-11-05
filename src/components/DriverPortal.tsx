@@ -5,7 +5,7 @@ import { isNativePush, nativePushPermission } from '../lib/nativePush';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Bike, 
   Car, 
@@ -23,6 +23,7 @@ import {
   LogOut, 
   RefreshCw, 
   ChevronRight, 
+  ChevronLeft,
   Navigation, 
   ShoppingBag, 
   Lock, 
@@ -54,7 +55,9 @@ import {
   Key,
   X,
   MessageCircle,
-  Send
+  Send,
+  Calendar,
+  TrendingUp
 } from 'lucide-react';
 import OrderChatModal from './OrderChatModal';
 import { signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
@@ -123,6 +126,79 @@ interface DriverPortalProps {
   onNavigateRegister: () => void;
   initialDriver?: DriverProfile | null;
   onDriverSessionChange?: (driver: DriverProfile | null) => void;
+}
+
+const MONTH_NAMES_ES = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
+
+const SHORT_DAY_NAMES_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+function parseDriverOrderDate(order: OrderItem): Date {
+  const raw: any =
+    order.deliveredAt ||
+    order.deliveryCodeVerifiedAt ||
+    order.deliveryStepUpdatedAt ||
+    order.createdAt;
+  if (!raw) return new Date();
+  if (typeof raw === 'object' && typeof raw.toDate === 'function') {
+    const d = raw.toDate();
+    if (d instanceof Date && !isNaN(d.getTime())) return d;
+  }
+  if (typeof raw === 'object' && typeof raw.seconds === 'number') {
+    const d = new Date(raw.seconds * 1000);
+    if (!isNaN(d.getTime())) return d;
+  }
+  const parsed = new Date(raw);
+  if (!isNaN(parsed.getTime())) return parsed;
+  const fallback = new Date(order.createdAt);
+  return isNaN(fallback.getTime()) ? new Date() : fallback;
+}
+
+function getOrderDriverFee(order: OrderItem, fallbackFee = 7000): number {
+  const explicit = Number(order.deliveryFee ?? order.deliveryCost);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  return Number(fallbackFee) || 7000;
+}
+
+function toMonthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatMonthKeyEs(monthKey: string): string {
+  const [yearStr, monthStr] = monthKey.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  if (!year || !month || month < 1 || month > 12) return monthKey;
+  return `${MONTH_NAMES_ES[month - 1]} ${year}`;
+}
+
+function getStartOfMondayWeek(baseDate: Date): Date {
+  const d = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate());
+  const day = d.getDay(); // 0 = Sunday, 1 = Monday, ...
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diffToMonday);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 export default function DriverPortal({ onNavigateHome, onNavigateRegister, initialDriver, onDriverSessionChange }: DriverPortalProps) {
@@ -365,6 +441,211 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [orderHistory, setOrderHistory] = useState<OrderItem[]>([]);
   const [driverRatings, setDriverRatings] = useState<DriverRating[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+  const [historyPeriodFilter, setHistoryPeriodFilter] = useState<'all' | 'day' | 'week' | 'month'>('all');
+  const [selectedDayOffset, setSelectedDayOffset] = useState<number>(0); // 0 = Hoy, -1 = Ayer, etc.
+  const [selectedWeekOffset, setSelectedWeekOffset] = useState<number>(0); // 0 = Esta semana, -1 = Semana pasada, etc.
+  const [selectedMonthKey, setSelectedMonthKey] = useState<string>(() => toMonthKey(new Date()));
+
+  // Compute completed orders and earnings breakdown by Day, Week, Month, and Month-by-Month
+  const earningsAnalytics = useMemo(() => {
+    const nowDate = new Date();
+    const currentMonthKey = toMonthKey(nowDate);
+
+    // Filter only completed deliveries and sort newest first
+    const completed = orderHistory
+      .filter(o => o.status === 'delivered' || o.deliveryStep === 'delivered')
+      .map(order => {
+        const completedDate = parseDriverOrderDate(order);
+        const fee = getOrderDriverFee(order, systemDeliveryFee);
+        const monthKey = toMonthKey(completedDate);
+        return {
+          order,
+          completedDate,
+          fee,
+          monthKey,
+        };
+      })
+      .sort((a, b) => b.completedDate.getTime() - a.completedDate.getTime());
+
+    // Target Day (based on selectedDayOffset; 0 = Today)
+    const targetDayDate = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+    targetDayDate.setDate(targetDayDate.getDate() + selectedDayOffset);
+
+    // Today's fixed stats (for the top summary card when offset is 0, or selected day when browsing days)
+    const todayEntries = completed.filter(item => isSameCalendarDay(item.completedDate, nowDate));
+    const todayEarnings = todayEntries.reduce((sum, item) => sum + item.fee, 0);
+
+    const selectedDayEntries = completed.filter(item => isSameCalendarDay(item.completedDate, targetDayDate));
+    const selectedDayEarnings = selectedDayEntries.reduce((sum, item) => sum + item.fee, 0);
+
+    // Current Week & Target Week (Monday 00:00:00 to Sunday 23:59:59)
+    const currentWeekStart = getStartOfMondayWeek(nowDate);
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+    currentWeekEnd.setHours(23, 59, 59, 999);
+
+    const currentWeekEntries = completed.filter(
+      item => item.completedDate >= currentWeekStart && item.completedDate <= currentWeekEnd
+    );
+    const currentWeekEarnings = currentWeekEntries.reduce((sum, item) => sum + item.fee, 0);
+
+    const targetWeekStart = new Date(currentWeekStart);
+    targetWeekStart.setDate(currentWeekStart.getDate() + selectedWeekOffset * 7);
+    const targetWeekEnd = new Date(targetWeekStart);
+    targetWeekEnd.setDate(targetWeekStart.getDate() + 6);
+    targetWeekEnd.setHours(23, 59, 59, 999);
+
+    const selectedWeekEntries = completed.filter(
+      item => item.completedDate >= targetWeekStart && item.completedDate <= targetWeekEnd
+    );
+    const selectedWeekEarnings = selectedWeekEntries.reduce((sum, item) => sum + item.fee, 0);
+
+    // Day-by-day breakdown inside the selected week (Lun -> Dom)
+    const weekDaysBreakdown = SHORT_DAY_NAMES_ES.map((dayLabel, idx) => {
+      const dayDate = new Date(targetWeekStart);
+      dayDate.setDate(targetWeekStart.getDate() + idx);
+      const dayItems = selectedWeekEntries.filter(item => isSameCalendarDay(item.completedDate, dayDate));
+      const dayTotal = dayItems.reduce((sum, item) => sum + item.fee, 0);
+      return {
+        dayLabel,
+        dateNum: dayDate.getDate(),
+        fullDate: dayDate,
+        isToday: isSameCalendarDay(dayDate, nowDate),
+        count: dayItems.length,
+        earnings: dayTotal,
+      };
+    });
+
+    // Month-by-Month aggregation (always include currentMonthKey plus all months with deliveries)
+    const monthMap = new Map<
+      string,
+      {
+        monthKey: string;
+        label: string;
+        count: number;
+        earnings: number;
+        entries: typeof completed;
+      }
+    >();
+
+    monthMap.set(currentMonthKey, {
+      monthKey: currentMonthKey,
+      label: formatMonthKeyEs(currentMonthKey),
+      count: 0,
+      earnings: 0,
+      entries: [],
+    });
+
+    completed.forEach(item => {
+      const existing = monthMap.get(item.monthKey);
+      if (existing) {
+        existing.count += 1;
+        existing.earnings += item.fee;
+        existing.entries.push(item);
+      } else {
+        monthMap.set(item.monthKey, {
+          monthKey: item.monthKey,
+          label: formatMonthKeyEs(item.monthKey),
+          count: 1,
+          earnings: item.fee,
+          entries: [item],
+        });
+      }
+    });
+
+    const monthlyBreakdown = Array.from(monthMap.values()).sort((a, b) =>
+      b.monthKey.localeCompare(a.monthKey)
+    );
+
+    const maxMonthEarnings = monthlyBreakdown.reduce(
+      (max, m) => (m.earnings > max ? m.earnings : max),
+      0
+    );
+
+    const activeMonthKey = monthMap.has(selectedMonthKey) ? selectedMonthKey : currentMonthKey;
+    const currentMonthStats = monthMap.get(currentMonthKey) || {
+      monthKey: currentMonthKey,
+      label: formatMonthKeyEs(currentMonthKey),
+      count: 0,
+      earnings: 0,
+      entries: [],
+    };
+    const selectedMonthStats = monthMap.get(activeMonthKey) || currentMonthStats;
+
+    // Filtered entries for the history list below
+    let filteredEntries = completed;
+    let periodSummaryTitle = 'Todas las entregas realizadas';
+    let periodSummaryEarnings = completed.reduce((sum, item) => sum + item.fee, 0);
+
+    if (historyPeriodFilter === 'day') {
+      filteredEntries = selectedDayEntries;
+      periodSummaryEarnings = selectedDayEarnings;
+      periodSummaryTitle =
+        selectedDayOffset === 0
+          ? `Hoy · ${targetDayDate.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}`
+          : selectedDayOffset === -1
+            ? `Ayer · ${targetDayDate.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}`
+            : targetDayDate.toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    } else if (historyPeriodFilter === 'week') {
+      filteredEntries = selectedWeekEntries;
+      periodSummaryEarnings = selectedWeekEarnings;
+      const startStr = targetWeekStart.toLocaleDateString('es-CO', { day: 'numeric', month: 'short' });
+      const endStr = targetWeekEnd.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' });
+      periodSummaryTitle =
+        selectedWeekOffset === 0
+          ? `Esta Semana (${startStr} – ${endStr})`
+          : `Semana del ${startStr} al ${endStr}`;
+    } else if (historyPeriodFilter === 'month') {
+      filteredEntries = selectedMonthStats.entries;
+      periodSummaryEarnings = selectedMonthStats.earnings;
+      periodSummaryTitle = `Mes de ${selectedMonthStats.label}`;
+    }
+
+    const totalCompletedCount =
+      completed.length > 0 ? completed.length : driver?.completedDeliveriesCount || 0;
+    const totalAllTimeEarnings =
+      completed.length > 0
+        ? completed.reduce((sum, item) => sum + item.fee, 0)
+        : driver?.totalEarnings || 0;
+
+    return {
+      completed,
+      totalCompletedCount,
+      totalAllTimeEarnings,
+      todayCount: todayEntries.length,
+      todayEarnings,
+      targetDayDate,
+      selectedDayCount: selectedDayEntries.length,
+      selectedDayEarnings,
+      currentWeekStart,
+      currentWeekEnd,
+      currentWeekCount: currentWeekEntries.length,
+      currentWeekEarnings,
+      targetWeekStart,
+      targetWeekEnd,
+      selectedWeekCount: selectedWeekEntries.length,
+      selectedWeekEarnings,
+      weekDaysBreakdown,
+      currentMonthKey,
+      activeMonthKey,
+      currentMonthStats,
+      selectedMonthStats,
+      monthlyBreakdown,
+      maxMonthEarnings,
+      filteredEntries,
+      periodSummaryTitle,
+      periodSummaryEarnings,
+    };
+  }, [
+    orderHistory,
+    systemDeliveryFee,
+    selectedDayOffset,
+    selectedWeekOffset,
+    selectedMonthKey,
+    historyPeriodFilter,
+    driver?.completedDeliveriesCount,
+    driver?.totalEarnings,
+  ]);
 
   // Active Order Live Chat with Customer
   const [isOrderChatOpen, setIsOrderChatOpen] = useState<boolean>(false);
@@ -1484,41 +1765,311 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
             )}
 
             {/* Official RYYCO Driver Welcome Guide (Collapsible) */}
-            {!activeDelivery && (
-              <details className="group bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/40 rounded-2xl overflow-hidden transition shadow-md">
-                <summary className="list-none cursor-pointer p-4 flex items-center justify-between gap-3 select-none">
-                  <div className="flex items-center gap-2.5 text-xs sm:text-sm font-black text-white">
-                    <span>🚀 ¡Bienvenido a RYYCO! 🛵</span>
-                    <span className="text-[11px] font-semibold text-[#A9B2C3] hidden sm:inline">
-                      — Conoce cómo funciona nuestra plataforma ($7.000 100% para ti)
-                    </span>
-                  </div>
-                  <span className="text-[11px] font-bold text-[#E63946] flex items-center gap-1 shrink-0">
-                    <span className="group-open:hidden">Ver guía</span>
-                    <span className="hidden group-open:inline">Ocultar</span>
-                    <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+            <details className="group bg-[#111827] border border-[#232B3A] hover:border-[#E63946]/40 rounded-2xl overflow-hidden transition shadow-md">
+              <summary className="list-none cursor-pointer p-4 flex items-center justify-between gap-3 select-none">
+                <div className="flex items-center gap-2.5 text-xs sm:text-sm font-black text-white">
+                  <span>🚀 ¡Bienvenido a RYYCO! 🛵</span>
+                  <span className="text-[11px] font-semibold text-[#A9B2C3] hidden sm:inline">
+                    — Manual Oficial del Domiciliario ($7.000 100% para ti)
                   </span>
-                </summary>
-                <div className="px-4 pb-5 pt-2 border-t border-[#232B3A] space-y-3 text-xs text-gray-200 leading-relaxed">
-                  <p className="text-gray-300">
-                    Nos alegra que quieras formar parte de nuestro equipo de domiciliarios. Queremos explicarte cómo funciona nuestra plataforma:
+                </div>
+                <span className="text-[11px] font-bold text-[#E63946] flex items-center gap-1 shrink-0">
+                  <span className="group-open:hidden">Ver guía</span>
+                  <span className="hidden group-open:inline">Ocultar</span>
+                  <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180" />
+                </span>
+              </summary>
+
+              <div className="px-4 sm:px-6 pb-6 pt-4 border-t border-[#232B3A] space-y-5 text-xs sm:text-sm text-gray-200 leading-relaxed max-h-[75vh] overflow-y-auto">
+                {/* Encabezado Principal */}
+                <div className="bg-[#090B12] border border-[#E63946]/30 rounded-2xl p-4 sm:p-5 space-y-2.5 shadow-inner">
+                  <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                    🛵 MANUAL OFICIAL DEL DOMICILIARIO RYYCO
+                  </h3>
+                  <p className="text-xs sm:text-sm font-bold text-[#F4B400]">
+                    Guía de servicio, entrega de pedidos y atención al cliente
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                    <p>✅ <strong className="text-white">Tú decides cuándo trabajar:</strong> Puedes activarte y desactivarte en la aplicación cuando quieras, sin horarios establecidos.</p>
-                    <p>💰 <strong className="text-white">El 100% del domicilio es para ti:</strong> En la zona urbana de Ipiales, el servicio tiene un valor de <strong className="text-emerald-400">$7.000</strong>, y ese dinero es completamente tuyo. RYYCO no te cobra comisión.</p>
-                    <p>🎒 <strong className="text-white">Pedidos según tu maletín:</strong> Por el tipo de maletín que tienes, lo único que no debes aceptar son pedidos de pizza. Puedes tomar los demás pedidos que desees.</p>
-                    <p>📍 <strong className="text-white">Toda la información en tu aplicación:</strong> Cada pedido te mostrará la dirección del restaurante, la dirección de entrega y los datos necesarios para realizar el servicio.</p>
-                    <p>⭐ <strong className="text-white">Tu buen servicio te abrirá más oportunidades:</strong> Al principio es posible que recibas pocos pedidos, pero a medida que los clientes te califiquen positivamente y aumenten tus estrellas, tendrás más oportunidades de recibir domicilios.</p>
-                    <p>🤝 <strong className="text-white">Siempre tendrás nuestro apoyo:</strong> En la aplicación encontrarás un botón de soporte para comunicarte con nosotros ante cualquier inconveniente. Estaremos atentos para acompañarte cuando lo necesites.</p>
+                  <p className="text-white font-bold pt-1">
+                    ¡Bienvenido al equipo RYYCO! ❤️
+                  </p>
+                  <p className="text-gray-300">
+                    En RYYCO, tú decides cuándo conectarte y trabajar. Recuerda que <strong className="text-emerald-400">recibes el 100% del valor del domicilio</strong>.
+                  </p>
+                  <p className="text-gray-300">
+                    Nuestro compromiso es ofrecer un servicio rápido, seguro, responsable y amable a todos nuestros clientes.
+                  </p>
+                </div>
+
+                {/* Secciones 1 a 3 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 1. Aceptar un nuevo pedido */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">1. 📲 Aceptar un nuevo pedido</h4>
+                    <p className="text-gray-300">Cuando recibas una notificación de un domicilio disponible:</p>
+                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                      <li>Ingresa a tu aplicación de domiciliario RYYCO.</li>
+                      <li>Revisa el restaurante, la dirección de recogida y los detalles del pedido.</li>
+                      <li>Acepta el servicio únicamente si puedes realizarlo correctamente.</li>
+                      <li>Verifica que cuentas con el maletín adecuado para transportar los productos.</li>
+                    </ul>
+                    <p className="text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2.5 text-xs">
+                      <strong className="text-amber-200">Importante:</strong> Una vez aceptado, eres responsable de gestionar el servicio hasta su entrega o comunicar cualquier eventualidad a soporte.
+                    </p>
                   </div>
-                  <p>❤️ <strong className="text-white">¿Qué esperamos de ti?</strong> Únicamente responsabilidad, amabilidad, puntualidad y un excelente servicio al cliente.</p>
-                  <div className="pt-2.5 border-t border-[#232B3A] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
-                    <span className="font-bold text-white">En RYYCO tú manejas tu tiempo, decides qué pedidos aceptar y recibes el 100% del valor de tus domicilios.</span>
-                    <span className="text-[#F4B400] font-extrabold shrink-0">¡Bienvenido a esta nueva experiencia! 🚀❤️💛 — Equipo RYYCO</span>
+
+                  {/* 2. Llamar al restaurante */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">2. 📞 Llamar al restaurante</h4>
+                    <p className="font-bold text-white">Antes de desplazarte, llama siempre al restaurante.</p>
+                    <p className="text-gray-300">Debes confirmar:</p>
+                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                      <li>Que el restaurante recibió el pedido del cliente.</li>
+                      <li>Que el cliente realizó el pago directamente al restaurante.</li>
+                      <li>Que el restaurante está preparando el pedido.</li>
+                      <li>El tiempo aproximado en que estará listo.</li>
+                    </ul>
+                    <p className="text-[#E63946] font-bold text-xs pt-1">
+                      No te desplaces sin confirmar previamente la recepción del pedido.
+                    </p>
                   </div>
                 </div>
-              </details>
-            )}
+
+                {/* 3. Llegar al restaurante y recoger el pedido */}
+                <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                  <h4 className="text-sm font-black text-white">3. 🏪 Llegar al restaurante y recoger el pedido</h4>
+                  <p className="text-gray-300">Al llegar al establecimiento:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                    <li>Ingresa a la aplicación RYYCO.</li>
+                    <li>Actualiza el estado del pedido a <strong className="text-white">«En restaurante»</strong>.</li>
+                    <li>Confirma nuevamente con el restaurante que el cliente realizó el pago.</li>
+                    <li>Verifica que el pedido esté completo y corresponda al solicitado.</li>
+                    <li>Solicita al restaurante los <strong className="text-emerald-400">$7.000 correspondientes al domicilio urbano</strong>.</li>
+                    <li>Recoge el pedido y verifica que esté correctamente empacado.</li>
+                  </ol>
+                  <p className="text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg p-2.5 text-xs">
+                    <strong className="text-emerald-200">Recuerda:</strong> El restaurante recibe el pago de los productos y te entrega a ti el valor del servicio de domicilio.
+                  </p>
+                </div>
+
+                {/* 4. Transporte adecuado de pizzas y alimentos */}
+                <div className="bg-[#090B12] border border-[#E63946]/35 rounded-xl p-4 space-y-3">
+                  <h4 className="text-sm font-black text-white">4. 🍕 Transporte adecuado de pizzas y alimentos</h4>
+                  <p className="font-bold text-[#E63946]">
+                    ¡Atención! No aceptes pedidos que no puedas transportar correctamente.
+                  </p>
+                  <p className="text-gray-300">
+                    Si recibes una solicitud de domicilio que incluye una pizza y no cuentas con un maletín adecuado para transportarla, <strong className="text-white">debes abstenerte de aceptar ese servicio</strong>.
+                  </p>
+                  <p className="text-gray-300">
+                    Las pizzas necesitan transportarse en un maletín apropiado, con espacio suficiente para mantener la caja completamente horizontal, evitando que se incline, se aplaste o se deforme durante el recorrido.
+                  </p>
+
+                  <div className="bg-[#111827] border border-[#232B3A] rounded-lg p-3 space-y-2">
+                    <h5 className="font-black text-white text-xs uppercase tracking-wider">Reglas obligatorias</h5>
+                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                      <li>No aceptar pedidos de pizza si no tienes un maletín adecuado.</li>
+                      <li>No transportar pizzas en maletines pequeños donde deban colocarse inclinadas o verticalmente.</li>
+                      <li>No aplastar, doblar ni comprimir los empaques de los alimentos.</li>
+                      <li>Evitar que las bebidas se derramen sobre los productos.</li>
+                      <li>Mantener los alimentos protegidos, estables y en buenas condiciones.</li>
+                      <li>Conducir con precaución, evitando movimientos bruscos que puedan dañar los pedidos.</li>
+                    </ul>
+                  </div>
+
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 space-y-2">
+                    <h5 className="font-black text-[#F4B400] text-xs sm:text-sm">
+                      ⭐ Recuerda: tu calificación depende de tu servicio
+                    </h5>
+                    <p className="text-gray-200">
+                      Si entregas alimentos derramados, aplastados, deformados o en malas condiciones por una manipulación inadecuada, el cliente puede darte una mala calificación.
+                    </p>
+                    <p className="font-bold text-white">
+                      Las malas calificaciones afectan directamente tu reputación en RYYCO y pueden disminuir tus oportunidades de recibir nuevos domicilios.
+                    </p>
+                    <p className="text-gray-300">
+                      Los incumplimientos graves o reiterados de las normas de servicio pueden ocasionar restricciones o suspensión de tu acceso a nuevos pedidos, según las políticas de RYYCO.
+                    </p>
+                    <p className="font-bold text-[#F4B400]">
+                      Es mejor rechazar un domicilio que no puedes transportar correctamente que entregar un producto dañado y perjudicar tu reputación.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Secciones 5 y 6 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 5. Salir hacia el cliente */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">5. 🛵 Salir hacia el cliente</h4>
+                    <p className="text-gray-300">Cuando tengas el pedido:</p>
+                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                      <li>Actualiza el estado en la aplicación a <strong className="text-white">«En camino al cliente»</strong>.</li>
+                      <li>Comunícate con el cliente para confirmar la dirección exacta de entrega y cualquier referencia necesaria.</li>
+                      <li>Transporta los productos cuidadosamente.</li>
+                      <li>Respeta las normas de tránsito y evita maniobras peligrosas.</li>
+                    </ul>
+                    <p className="font-bold text-[#F4B400] pt-1">
+                      La seguridad es más importante que la velocidad.
+                    </p>
+                  </div>
+
+                  {/* 6. Entregar el pedido al cliente */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">6. 🤝 Entregar el pedido al cliente</h4>
+                    <p className="text-gray-300">Al llegar a la dirección:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-gray-300">
+                      <li>Saluda al cliente amablemente.</li>
+                      <li>Confirma que estás entregando el pedido correcto.</li>
+                      <li>Entrega los productos en buenas condiciones.</li>
+                      <li>Solicita al cliente el <strong className="text-white">código de entrega de RYYCO</strong>.</li>
+                      <li>Ingresa el código en la aplicación para confirmar y liberar el pedido.</li>
+                      <li>Verifica que el pedido haya quedado registrado como entregado.</li>
+                    </ol>
+                    <p className="text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2.5 text-xs">
+                      <strong className="text-amber-200">Importante:</strong> El código debe solicitarse cuando efectivamente se realice la entrega. Nunca marques un pedido como entregado sin haberlo entregado.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Secciones 7 y 8 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 7. Solicitar una calificación */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">7. ⭐ Solicitar una calificación</h4>
+                    <p className="text-gray-300">
+                      Después de realizar la entrega, invita al cliente a calificar tu servicio en RYYCO.
+                    </p>
+                    <p className="text-gray-300">Puedes decirle:</p>
+                    <blockquote className="bg-[#111827] border-l-4 border-[#F4B400] p-3 rounded-r-lg italic text-white text-xs">
+                      "¡Muchas gracias por pedir en Rico! Si te gustó mi servicio, te agradecería mucho que me regalaras una buena calificación en la aplicación. ¡Que tengas un excelente día!"
+                    </blockquote>
+                    <div className="space-y-1 pt-1">
+                      <p className="font-bold text-white text-xs">¿Por qué es importante?</p>
+                      <ul className="list-disc list-inside space-y-1 text-gray-300">
+                        <li>Las buenas calificaciones fortalecen tu reputación.</li>
+                        <li>Una mejor experiencia aumenta la confianza de los clientes.</li>
+                        <li>Los domiciliarios mejor calificados pueden recibir mayor prioridad en la asignación de nuevos pedidos, según los criterios implementados en la plataforma.</li>
+                      </ul>
+                    </div>
+                    <p className="font-bold text-[#F4B400] text-xs pt-1">
+                      Entre mejor sea tu servicio, mayores serán tus oportunidades de recibir nuevos domicilios.
+                    </p>
+                  </div>
+
+                  {/* 8. ¿Cuánto gana un domiciliario? */}
+                  <div className="bg-[#090B12] border border-emerald-500/30 rounded-xl p-4 space-y-2.5 flex flex-col justify-between">
+                    <div className="space-y-2.5">
+                      <h4 className="text-sm font-black text-white">8. 💰 ¿Cuánto gana un domiciliario?</h4>
+                      <p className="text-gray-300">En la zona urbana de Ipiales:</p>
+                      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 space-y-1">
+                        <p className="font-black text-white text-sm">Valor del domicilio: $7.000 COP</p>
+                        <p className="font-black text-emerald-400 text-sm">Ganancia del domiciliario: $7.000 COP (100%)</p>
+                      </div>
+                      <p className="text-gray-300">
+                        RYYCO no descuenta ninguna comisión de este valor.
+                      </p>
+                      <p className="text-gray-300">
+                        El restaurante paga directamente al domiciliario el servicio de entrega.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Secciones 9 y 10 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 9. Actualizar siempre los estados del pedido */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">9. 🔄 Actualizar siempre los estados del pedido</h4>
+                    <p className="text-gray-300">
+                      Es obligatorio mantener actualizada la información en la aplicación.
+                    </p>
+                    <div className="overflow-hidden rounded-lg border border-[#232B3A]">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-[#111827] text-white font-black border-b border-[#232B3A]">
+                          <tr>
+                            <th className="py-2 px-3">Momento</th>
+                            <th className="py-2 px-3">Acción</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#232B3A] text-gray-300">
+                          <tr>
+                            <td className="py-2 px-3">Recibes un domicilio</td>
+                            <td className="py-2 px-3 font-bold text-white">Aceptar pedido</td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 px-3">Llegas al restaurante</td>
+                            <td className="py-2 px-3 font-bold text-white">En restaurante</td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 px-3">Sales hacia el cliente</td>
+                            <td className="py-2 px-3 font-bold text-white">En camino al cliente</td>
+                          </tr>
+                          <tr>
+                            <td className="py-2 px-3">Entregas y recibes el código</td>
+                            <td className="py-2 px-3 font-bold text-emerald-400">Confirmar entrega</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-gray-400 text-xs">
+                      Estos estados permiten al cliente y a la plataforma conocer el progreso real de su pedido.
+                    </p>
+                  </div>
+
+                  {/* 10. ¿Qué hacer ante una eventualidad? */}
+                  <div className="bg-[#090B12] border border-[#232B3A] rounded-xl p-4 space-y-2.5">
+                    <h4 className="text-sm font-black text-white">10. 🚨 ¿Qué hacer ante una eventualidad?</h4>
+                    <p className="text-gray-300">
+                      Si tienes algún inconveniente, como un daño de tu motocicleta, una llanta pinchada, un accidente o una situación que impida completar el servicio:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-gray-300">
+                      <li>Comunícate inmediatamente con <strong className="text-white">Soporte de Administración General RYYCO mediante WhatsApp</strong>.</li>
+                      <li>Informa el número del pedido y explica la situación.</li>
+                      <li>Solicita la liberación del pedido cuando no puedas continuar.</li>
+                      <li>Espera las instrucciones para que el servicio pueda ser reasignado a otro domiciliario.</li>
+                    </ul>
+                    <p className="text-[#E63946] font-bold text-xs pt-1">
+                      No abandones un pedido sin informar a soporte.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nuestro compromiso como equipo */}
+                <div className="bg-[#090B12] border border-[#E63946]/30 rounded-2xl p-4 sm:p-5 space-y-3">
+                  <h4 className="text-sm sm:text-base font-black text-white">
+                    ❤️ Nuestro compromiso como equipo
+                  </h4>
+                  <p className="text-gray-300">
+                    En RYYCO creemos que un buen domiciliario no solamente entrega comida: <strong className="text-white">entrega confianza, responsabilidad y una excelente experiencia</strong>.
+                  </p>
+                  <div className="space-y-1">
+                    <p className="font-bold text-white">Recuerda siempre:</p>
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 list-disc list-inside text-gray-300">
+                      <li>Ser puntual, respetuoso y amable.</li>
+                      <li>Mantener una buena presentación personal.</li>
+                      <li>Cuidar los alimentos durante el transporte.</li>
+                      <li>No aceptar pedidos incompatibles con tu maletín.</li>
+                      <li>Actualizar los estados de cada pedido.</li>
+                      <li>Solicitar el código de entrega.</li>
+                      <li>Invitar al cliente a calificar tu servicio.</li>
+                    </ul>
+                  </div>
+                  <div className="pt-3 border-t border-[#232B3A] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <p className="font-black text-[#F4B400]">¡Gracias por pertenecer al equipo RYYCO!</p>
+                      <p className="font-bold text-white text-xs">RYYCO — Conectamos restaurantes, domiciliarios y clientes.</p>
+                    </div>
+                    <a
+                      href="https://ryyco.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-black text-[#E63946] hover:underline shrink-0"
+                    >
+                      🌐 https://ryyco.com
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </details>
 
 
 
@@ -2490,35 +3041,442 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
 
             {/* TAB 2: HISTORY AND EARNINGS */}
             {activeTab === 'history' && (
-              <div className="space-y-6">
-                {/* Stats Summary */}
+              <div className="space-y-5">
+                {/* Global Totals Summary */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-2xl">
                     <span className="text-xs font-bold text-[#A9B2C3] uppercase block">Total Entregas</span>
-                    <span className="text-2xl font-black text-white mt-1 block">{driver.completedDeliveriesCount || 0}</span>
+                    <span className="text-2xl font-black text-white mt-1 block">
+                      {earningsAnalytics.totalCompletedCount}
+                    </span>
                   </div>
 
                   <div className="bg-[#111827] border border-[#232B3A] p-5 rounded-2xl">
                     <span className="text-xs font-bold text-[#A9B2C3] uppercase block">Ganancias Totales</span>
                     <span className="text-2xl font-black text-[#E63946] mt-1 block">
-                      ${(driver.totalEarnings || 0).toLocaleString('es-CO')} COP
+                      ${earningsAnalytics.totalAllTimeEarnings.toLocaleString('es-CO')} COP
                     </span>
                   </div>
                 </div>
 
-                {/* History List */}
-                <div className="bg-[#111827] border border-[#232B3A] rounded-2xl p-6 space-y-4">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-[#E63946]" />
-                    <span>Historial de Entregas Realizadas</span>
-                  </h3>
+                {/* Day, Week & Month Earnings Breakdown Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  {/* Ganancias del Día */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedDayOffset(0);
+                      setHistoryPeriodFilter('day');
+                    }}
+                    className={`text-left bg-[#111827] border p-4 rounded-2xl transition cursor-pointer ${
+                      historyPeriodFilter === 'day'
+                        ? 'border-emerald-500/70 ring-1 ring-emerald-500/30'
+                        : 'border-[#232B3A] hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-[#A9B2C3] uppercase">
+                        Ganancias del Día
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-400">
+                        {selectedDayOffset === 0
+                          ? 'Hoy'
+                          : earningsAnalytics.targetDayDate.toLocaleDateString('es-CO', {
+                              day: 'numeric',
+                              month: 'short',
+                            })}
+                      </span>
+                    </div>
+                    <span className="text-xl font-black text-emerald-400 mt-1.5 block">
+                      $
+                      {(historyPeriodFilter === 'day'
+                        ? earningsAnalytics.selectedDayEarnings
+                        : earningsAnalytics.todayEarnings
+                      ).toLocaleString('es-CO')}{' '}
+                      COP
+                    </span>
+                    <span className="text-[11px] text-[#A9B2C3] mt-1 block">
+                      {historyPeriodFilter === 'day'
+                        ? `${earningsAnalytics.selectedDayCount} ${
+                            earningsAnalytics.selectedDayCount === 1 ? 'entrega en este día' : 'entregas en este día'
+                          }`
+                        : `${earningsAnalytics.todayCount} ${
+                            earningsAnalytics.todayCount === 1 ? 'entrega hoy' : 'entregas hoy'
+                          }`}
+                    </span>
+                  </button>
 
-                  {orderHistory.length === 0 ? (
-                    <p className="text-xs text-[#A9B2C3] py-6 text-center">Aún no has completado entregas.</p>
+                  {/* Ganancias de la Semana */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedWeekOffset(0);
+                      setHistoryPeriodFilter('week');
+                    }}
+                    className={`text-left bg-[#111827] border p-4 rounded-2xl transition cursor-pointer ${
+                      historyPeriodFilter === 'week'
+                        ? 'border-sky-500/70 ring-1 ring-sky-500/30'
+                        : 'border-[#232B3A] hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-[#A9B2C3] uppercase">
+                        Ganancias de la Semana
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-sky-500/15 text-sky-400">
+                        {selectedWeekOffset === 0 ? 'Esta semana' : 'Semana selec.'}
+                      </span>
+                    </div>
+                    <span className="text-xl font-black text-sky-400 mt-1.5 block">
+                      $
+                      {(historyPeriodFilter === 'week'
+                        ? earningsAnalytics.selectedWeekEarnings
+                        : earningsAnalytics.currentWeekEarnings
+                      ).toLocaleString('es-CO')}{' '}
+                      COP
+                    </span>
+                    <span className="text-[11px] text-[#A9B2C3] mt-1 block">
+                      {historyPeriodFilter === 'week'
+                        ? `${earningsAnalytics.selectedWeekCount} ${
+                            earningsAnalytics.selectedWeekCount === 1 ? 'entrega en la semana' : 'entregas en la semana'
+                          }`
+                        : `${earningsAnalytics.currentWeekCount} ${
+                            earningsAnalytics.currentWeekCount === 1 ? 'entrega esta semana' : 'entregas esta semana'
+                          }`}
+                    </span>
+                  </button>
+
+                  {/* Ganancias del Mes */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonthKey(earningsAnalytics.currentMonthKey);
+                      setHistoryPeriodFilter('month');
+                    }}
+                    className={`text-left bg-[#111827] border p-4 rounded-2xl transition cursor-pointer ${
+                      historyPeriodFilter === 'month'
+                        ? 'border-[#F4B400]/70 ring-1 ring-[#F4B400]/30'
+                        : 'border-[#232B3A] hover:border-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-[#A9B2C3] uppercase">
+                        Ganancias del Mes
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#F4B400]/15 text-[#F4B400]">
+                        {historyPeriodFilter === 'month'
+                          ? earningsAnalytics.selectedMonthStats.label
+                          : earningsAnalytics.currentMonthStats.label}
+                      </span>
+                    </div>
+                    <span className="text-xl font-black text-[#F4B400] mt-1.5 block">
+                      $
+                      {(historyPeriodFilter === 'month'
+                        ? earningsAnalytics.selectedMonthStats.earnings
+                        : earningsAnalytics.currentMonthStats.earnings
+                      ).toLocaleString('es-CO')}{' '}
+                      COP
+                    </span>
+                    <span className="text-[11px] text-[#A9B2C3] mt-1 block">
+                      {historyPeriodFilter === 'month'
+                        ? `${earningsAnalytics.selectedMonthStats.count} ${
+                            earningsAnalytics.selectedMonthStats.count === 1 ? 'entrega en el mes' : 'entregas en el mes'
+                          }`
+                        : `${earningsAnalytics.currentMonthStats.count} ${
+                            earningsAnalytics.currentMonthStats.count === 1 ? 'entrega este mes' : 'entregas este mes'
+                          }`}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Ganancias Mes a Mes Breakdown */}
+                <div className="bg-[#111827] border border-[#232B3A] rounded-2xl p-5 space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-[#F4B400]" />
+                      <span>Ganancias Mes a Mes</span>
+                    </h3>
+                    <span className="text-[11px] text-[#A9B2C3]">
+                      Toca un mes para ver sus entregas detalladas
+                    </span>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {earningsAnalytics.monthlyBreakdown.map(monthItem => {
+                      const isCurrentMonth = monthItem.monthKey === earningsAnalytics.currentMonthKey;
+                      const isSelectedMonth =
+                        historyPeriodFilter === 'month' &&
+                        earningsAnalytics.activeMonthKey === monthItem.monthKey;
+                      const barPercent =
+                        earningsAnalytics.maxMonthEarnings > 0
+                          ? Math.max(
+                              monthItem.earnings > 0 ? 8 : 0,
+                              Math.round((monthItem.earnings / earningsAnalytics.maxMonthEarnings) * 100)
+                            )
+                          : 0;
+
+                      return (
+                        <button
+                          key={monthItem.monthKey}
+                          type="button"
+                          onClick={() => {
+                            if (isSelectedMonth) {
+                              setHistoryPeriodFilter('all');
+                            } else {
+                              setSelectedMonthKey(monthItem.monthKey);
+                              setHistoryPeriodFilter('month');
+                            }
+                          }}
+                          className={`w-full text-left p-3.5 rounded-xl border transition cursor-pointer ${
+                            isSelectedMonth
+                              ? 'bg-[#090B12] border-[#F4B400]/70 ring-1 ring-[#F4B400]/30'
+                              : 'bg-[#090B12]/70 border-[#232B3A] hover:border-gray-700'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Calendar className="w-4 h-4 text-[#F4B400] shrink-0" />
+                              <span className="text-xs sm:text-sm font-bold text-white truncate">
+                                {monthItem.label}
+                              </span>
+                              {isCurrentMonth && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 shrink-0">
+                                  Mes actual
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="text-right shrink-0">
+                              <span className="text-xs sm:text-sm font-black text-[#E63946] block">
+                                ${monthItem.earnings.toLocaleString('es-CO')} COP
+                              </span>
+                              <span className="text-[10px] text-[#A9B2C3] block">
+                                {monthItem.count} {monthItem.count === 1 ? 'entrega' : 'entregas'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Visual proportional bar */}
+                          <div className="mt-2.5 w-full h-1.5 bg-[#1F2937] rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-[#E63946] to-[#F4B400] rounded-full transition-all duration-300"
+                              style={{ width: `${barPercent}%` }}
+                            />
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* History List with Day / Week / Month / All Filters */}
+                <div className="bg-[#111827] border border-[#232B3A] rounded-2xl p-5 sm:p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-[#E63946]" />
+                      <span>Historial de Entregas Realizadas</span>
+                    </h3>
+
+                    {/* Period Filter Selector */}
+                    <div className="grid grid-cols-4 gap-1.5 bg-[#090B12] p-1 rounded-xl border border-[#232B3A]">
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPeriodFilter('all')}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                          historyPeriodFilter === 'all'
+                            ? 'bg-[#E63946] text-white shadow-sm'
+                            : 'text-[#A9B2C3] hover:text-white'
+                        }`}
+                      >
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPeriodFilter('day')}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                          historyPeriodFilter === 'day'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-[#A9B2C3] hover:text-white'
+                        }`}
+                      >
+                        Día
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPeriodFilter('week')}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                          historyPeriodFilter === 'week'
+                            ? 'bg-sky-600 text-white shadow-sm'
+                            : 'text-[#A9B2C3] hover:text-white'
+                        }`}
+                      >
+                        Semana
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryPeriodFilter('month')}
+                        className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                          historyPeriodFilter === 'month'
+                            ? 'bg-[#F4B400] text-[#090B12] shadow-sm'
+                            : 'text-[#A9B2C3] hover:text-white'
+                        }`}
+                      >
+                        Mes
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Period Navigation Controls when Day, Week, or Month is active */}
+                  {historyPeriodFilter === 'day' && (
+                    <div className="flex items-center justify-between gap-2 bg-[#090B12] border border-[#232B3A] rounded-xl p-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDayOffset(prev => prev - 1)}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1F2937] text-xs font-bold text-white flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span>Día ant.</span>
+                      </button>
+
+                      <div className="text-center">
+                        <span className="text-xs font-bold text-white capitalize block">
+                          {earningsAnalytics.periodSummaryTitle}
+                        </span>
+                        {selectedDayOffset !== 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedDayOffset(0)}
+                            className="text-[10px] text-emerald-400 font-bold underline mt-0.5 cursor-pointer"
+                          >
+                            Volver a Hoy
+                          </button>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={selectedDayOffset >= 0}
+                        onClick={() => setSelectedDayOffset(prev => Math.min(0, prev + 1))}
+                        className="px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1F2937] disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1 transition cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <span>Día sig.</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {historyPeriodFilter === 'week' && (
+                    <div className="space-y-3 bg-[#090B12] border border-[#232B3A] rounded-xl p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWeekOffset(prev => prev - 1)}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1F2937] text-xs font-bold text-white flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <span>Sem. ant.</span>
+                        </button>
+
+                        <div className="text-center">
+                          <span className="text-xs font-bold text-white block">
+                            {earningsAnalytics.periodSummaryTitle}
+                          </span>
+                          {selectedWeekOffset !== 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedWeekOffset(0)}
+                              className="text-[10px] text-sky-400 font-bold underline mt-0.5 cursor-pointer"
+                            >
+                              Volver a esta semana
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={selectedWeekOffset >= 0}
+                          onClick={() => setSelectedWeekOffset(prev => Math.min(0, prev + 1))}
+                          className="px-2.5 py-1.5 rounded-lg bg-[#111827] hover:bg-[#1F2937] disabled:opacity-40 text-xs font-bold text-white flex items-center gap-1 transition cursor-pointer disabled:cursor-not-allowed"
+                        >
+                          <span>Sem. sig.</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Compact 7-day breakdown inside the selected week */}
+                      <div className="grid grid-cols-7 gap-1.5 pt-1">
+                        {earningsAnalytics.weekDaysBreakdown.map(dayItem => (
+                          <div
+                            key={dayItem.dayLabel + dayItem.dateNum}
+                            className={`p-1.5 rounded-lg border text-center ${
+                              dayItem.isToday
+                                ? 'bg-sky-500/15 border-sky-500/50'
+                                : dayItem.count > 0
+                                  ? 'bg-[#111827] border-[#232B3A]'
+                                  : 'bg-[#111827]/40 border-[#1F2937]/60 opacity-60'
+                            }`}
+                          >
+                            <span className="text-[10px] font-bold text-[#A9B2C3] block">
+                              {dayItem.dayLabel} {dayItem.dateNum}
+                            </span>
+                            <span className="text-[10px] font-black text-white mt-0.5 block">
+                              {dayItem.earnings > 0
+                                ? `$${Math.round(dayItem.earnings / 1000)}k`
+                                : '$0'}
+                            </span>
+                            <span className="text-[9px] text-[#A9B2C3] block">
+                              {dayItem.count} ped.
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {historyPeriodFilter === 'month' && (
+                    <div className="flex flex-wrap items-center gap-1.5 bg-[#090B12] border border-[#232B3A] rounded-xl p-2.5">
+                      {earningsAnalytics.monthlyBreakdown.map(m => (
+                        <button
+                          key={m.monthKey}
+                          type="button"
+                          onClick={() => setSelectedMonthKey(m.monthKey)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                            earningsAnalytics.activeMonthKey === m.monthKey
+                              ? 'bg-[#F4B400] text-[#090B12]'
+                              : 'bg-[#111827] text-[#A9B2C3] hover:text-white'
+                          }`}
+                        >
+                          {m.label} ({m.count})
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Active Period Subtotal Banner */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-[#090B12] border border-[#232B3A] text-xs">
+                    <span className="text-[#A9B2C3] font-medium capitalize">
+                      {earningsAnalytics.periodSummaryTitle}:{' '}
+                      <strong className="text-white">
+                        {earningsAnalytics.filteredEntries.length}{' '}
+                        {earningsAnalytics.filteredEntries.length === 1 ? 'entrega' : 'entregas'}
+                      </strong>
+                    </span>
+                    <span className="font-black text-[#E63946]">
+                      Subtotal: ${earningsAnalytics.periodSummaryEarnings.toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
+
+                  {earningsAnalytics.filteredEntries.length === 0 ? (
+                    <p className="text-xs text-[#A9B2C3] py-6 text-center">
+                      No hay entregas registradas en este período.
+                    </p>
                   ) : (
                     <div className="divide-y divide-[#232B3A]">
-                      {orderHistory.map((histOrder) => (
-                        <div key={histOrder.id} className="py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-2 text-xs">
+                      {earningsAnalytics.filteredEntries.map(({ order: histOrder, completedDate, fee }) => (
+                        <div
+                          key={histOrder.id}
+                          className="py-3 flex flex-col sm:flex-row justify-between sm:items-center gap-2 text-xs"
+                        >
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-bold text-white">Pedido #{histOrder.orderNumber}</span>
@@ -2526,12 +3484,23 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
                                 Entregado
                               </span>
                             </div>
-                            <span className="text-[#A9B2C3]">{histOrder.storeName} → {histOrder.customerName}</span>
+                            <span className="text-[#A9B2C3]">
+                              {histOrder.storeName} → {histOrder.customerName}
+                            </span>
                           </div>
 
                           <div className="text-right">
-                            <span className="font-bold text-[#E63946] block">${(systemDeliveryFee || histOrder.deliveryFee || 7000).toLocaleString('es-CO')}</span>
-                            <span className="text-[10px] text-[#A9B2C3]">{new Date(histOrder.createdAt).toLocaleDateString()}</span>
+                            <span className="font-bold text-[#E63946] block">
+                              ${fee.toLocaleString('es-CO')}
+                            </span>
+                            <span className="text-[10px] text-[#A9B2C3]">
+                              {completedDate.toLocaleDateString('es-CO')}{' '}
+                              ·{' '}
+                              {completedDate.toLocaleTimeString('es-CO', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </span>
                           </div>
                         </div>
                       ))}
