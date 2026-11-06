@@ -4,7 +4,7 @@
  */
 
 import { tool } from '@openai/agents';
-import { RealtimeAgent, RealtimeSession } from '@openai/agents/realtime';
+import { RealtimeAgent, RealtimeSession, OpenAIRealtimeWebRTC } from '@openai/agents/realtime';
 import { z } from 'zod';
 import { saveOrder, checkIsStoreClosed } from './firebase';
 import { 
@@ -33,7 +33,7 @@ export const IAMESERO_WELCOME_MESSAGE =
   '¡Hola! Bienvenido a Rico. Qué gusto tenerte por aquí. Cuéntame, ¿qué se te antoja comer hoy?';
 
 export interface RealtimeMeseroCallbacks {
-  onStateChange: (state: 'idle' | 'listening' | 'processing' | 'speaking') => void;
+  onStateChange: (state: 'idle' | 'connecting' | 'listening' | 'processing' | 'speaking') => void;
   onTranscriptDelta: (text: string, isFinal: boolean, sender: 'user' | 'assistant') => void;
   onCartUpdated?: (cart: GeneralCartItem[]) => void;
   onOrderCreated?: (order: OrderItem) => void;
@@ -56,6 +56,10 @@ export class RealtimeMeseroManager {
   private greetingTimer: any = null;
   private isAudioPlaying = false;
   private handledSpeechItems = new Set<string>();
+  private seenEvents = new Set<string>();
+  private connectionAbort: AbortController | null = null;
+  private pendingResponse = false;
+  private responseRequested = false;
   private preprocessorCleanup: (() => void) | null = null;
   private processingWatchdogTimer: any = null;
   private unsubscribeCatalog: (() => void) | null = null;
@@ -63,6 +67,36 @@ export class RealtimeMeseroManager {
 
   constructor(callbacks: RealtimeMeseroCallbacks) {
     this.callbacks = callbacks;
+  }
+
+  private waitForStep<T>(operation: Promise<T>, signal: AbortSignal, releaseLate?: (value: T) => void): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const abort = () => reject(signal.reason || new Error('Llamada finalizada.'));
+      if (signal.aborted) abort();
+      else signal.addEventListener('abort', abort, { once: true });
+      operation.then(value => {
+        signal.removeEventListener('abort', abort);
+        if (signal.aborted) { releaseLate?.(value); abort(); }
+        else resolve(value);
+      }, error => { signal.removeEventListener('abort', abort); reject(error); });
+    });
+  }
+
+  private flushUserResponse(): void {
+    if (!this.pendingResponse || this.isGeneratingResponse || this.responseRequested || !this.session) return;
+    this.pendingResponse = false;
+    this.responseRequested = true;
+    this.callbacks.onStateChange('processing');
+    this.session.transport.sendEvent({ type: 'response.create' });
+    this.armResponseTimeout();
+  }
+
+  private armResponseTimeout(): void {
+    if (this.processingWatchdogTimer) clearTimeout(this.processingWatchdogTimer);
+    this.processingWatchdogTimer = setTimeout(() => {
+      this.stop();
+      this.callbacks.onError?.('La respuesta está tardando demasiado. Vuelve a conectar la voz o continúa por chat.');
+    }, 25000);
   }
 
   private buildLiveInstructions(catalog: ClientAvailableCatalog): string {
@@ -124,7 +158,9 @@ ${catalog.compactAiJson}`;
 
       const audioCtx = new AudioCtxClass();
       if (audioCtx.state === 'suspended') {
-        audioCtx.resume().catch(() => {});
+        // Never transmit silence from a context blocked by mobile autoplay policy.
+        void audioCtx.close().catch(() => {});
+        return { cleanStream: rawStream, cleanup: () => {} };
       }
 
       const sourceNode = audioCtx.createMediaStreamSource(rawStream);
@@ -826,6 +862,7 @@ ${catalog.compactAiJson}`;
     }
     this.hasTriggeredGreeting = true;
     this.isGeneratingResponse = true;
+    this.armResponseTimeout();
     if (this.greetingTimer) {
       clearTimeout(this.greetingTimer);
       this.greetingTimer = null;
@@ -879,15 +916,22 @@ ${catalog.compactAiJson}`;
   }
 
   public async start(options?: { shouldGreet?: boolean; inputReady?: Promise<void> }): Promise<void> {
-    if (this.isConnected) return;
+    if (this.isConnected || this.connectionAbort) return;
+    const controller = new AbortController();
+    this.connectionAbort = controller;
+    const signal = controller.signal;
+    const connectionTimeout = setTimeout(() => controller.abort(new Error('La conexión de voz tardó demasiado. Revisa tu conexión y vuelve a intentar.')), 30000);
     const shouldGreet = Boolean(options?.shouldGreet);
     this.hasTriggeredGreeting = false;
     this.handledSpeechItems.clear();
+    this.seenEvents.clear();
+    this.pendingResponse = false;
+    this.responseRequested = false;
     this.isGeneratingResponse = false;
     this.currentAssistantTranscript = '';
     this.lastEmittedFinalTranscript = '';
 
-    this.callbacks.onStateChange('processing');
+    this.callbacks.onStateChange('connecting');
 
     try {
       // 1. Request microphone permissions first
@@ -897,14 +941,14 @@ ${catalog.compactAiJson}`;
 
       let mediaStream: MediaStream;
       try {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        mediaStream = await this.waitForStep(navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
             channelCount: 1
           } 
-        });
+        }), signal, stream => stream.getTracks().forEach(track => track.stop()));
       } catch (micErr: any) {
         const isPermissionDenied = 
           micErr?.name === 'NotAllowedError' || 
@@ -926,7 +970,9 @@ ${catalog.compactAiJson}`;
       this.localStream = cleanStream;
       if (options?.inputReady) {
         cleanStream.getAudioTracks().forEach(track => { track.enabled = false; });
-        void options.inputReady.finally(() => cleanStream.getAudioTracks().forEach(track => { track.enabled = true; }));
+        void options.inputReady.then(() => {
+          if (!signal.aborted) cleanStream.getAudioTracks().forEach(track => { track.enabled = true; });
+        }, () => {});
       }
 
       try {
@@ -947,15 +993,15 @@ ${catalog.compactAiJson}`;
 
       for (const endpoint of endpointCandidates) {
         try {
-          const sessionResponse = await smartApiFetch(endpoint, {
+          const sessionResponse = await this.waitForStep(smartApiFetch(endpoint, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
             body: JSON.stringify({}),
-            signal: AbortSignal.timeout(10000)
-          });
+            signal: AbortSignal.any([signal, AbortSignal.timeout(10000)])
+          }), signal);
 
           const responseText = await sessionResponse.text();
           let sessionData: any = null;
@@ -982,6 +1028,7 @@ ${catalog.compactAiJson}`;
             break;
           }
         } catch (fetchErr: any) {
+          if (signal.aborted) throw signal.reason;
           lastErrorMessage = fetchErr?.message || 'Error de conexión con el servicio de voz';
         }
       }
@@ -1008,7 +1055,7 @@ ${catalog.compactAiJson}`;
 
       // 5. Connect RealtimeSession with WebRTC, robust server VAD and Spanish transcription
       this.session = new RealtimeSession(agent, {
-        transport: 'webrtc',
+        transport: new OpenAIRealtimeWebRTC({ mediaStream: this.localStream, audioElement: this.remoteAudioElement }),
         apiKey: ephemeralKey,
         model: chosenModel as any,
         config: {
@@ -1035,7 +1082,10 @@ ${catalog.compactAiJson}`;
       });
 
       // 6. Listen to RealtimeSession lifecycle events for continuous hands-free voice
-      this.session.on('audio_start', () => {
+      const listen = (name: string, callback: (...args: any[]) => void) => {
+        (this.session as any).on(name, (...args: any[]) => { if (!signal.aborted) callback(...args); });
+      };
+      listen('audio_start', () => {
         this.isAudioPlaying = true;
         if (this.processingWatchdogTimer) {
           clearTimeout(this.processingWatchdogTimer);
@@ -1044,17 +1094,17 @@ ${catalog.compactAiJson}`;
         this.callbacks.onStateChange('speaking');
       });
 
-      this.session.on('audio_stopped', () => {
+      listen('audio_stopped', () => {
+        this.isAudioPlaying = false;
+        this.callbacks.onStateChange(this.isGeneratingResponse || this.responseRequested ? 'processing' : 'listening');
+      });
+
+      listen('audio_interrupted', () => {
         this.isAudioPlaying = false;
         this.callbacks.onStateChange('listening');
       });
 
-      this.session.on('audio_interrupted', () => {
-        this.isAudioPlaying = false;
-        this.callbacks.onStateChange('listening');
-      });
-
-      this.session.on('agent_start', () => {
+      listen('agent_start', () => {
         if (this.processingWatchdogTimer) {
           clearTimeout(this.processingWatchdogTimer);
           this.processingWatchdogTimer = null;
@@ -1062,42 +1112,51 @@ ${catalog.compactAiJson}`;
         this.callbacks.onStateChange('processing');
       });
 
-      this.session.on('agent_end', (_ctx: any, _agent: any, output: string) => {
+      listen('agent_end', (_ctx: any, _agent: any, output: string) => {
         if (this.processingWatchdogTimer) {
           clearTimeout(this.processingWatchdogTimer);
           this.processingWatchdogTimer = null;
         }
-        this.isGeneratingResponse = false;
         const cleanOutput = (output || '').trim();
         if (cleanOutput && cleanOutput !== this.lastEmittedFinalTranscript) {
           this.lastEmittedFinalTranscript = cleanOutput;
           this.callbacks.onTranscriptDelta(cleanOutput, true, 'assistant');
         }
-        this.callbacks.onStateChange('listening');
+        this.callbacks.onStateChange(this.isAudioPlaying ? 'speaking' : this.responseRequested ? 'processing' : 'listening');
       });
 
-      this.session.on('error', (err: any) => {
+      listen('error', (err: any) => {
         console.warn("Realtime session error:", err);
         this.isGeneratingResponse = false;
         if (this.processingWatchdogTimer) {
           clearTimeout(this.processingWatchdogTimer);
           this.processingWatchdogTimer = null;
         }
+        this.stop();
         if (this.callbacks.onError) {
           this.callbacks.onError(err?.message || 'Error en la sesión de voz Realtime');
         }
       });
 
       const handleRawRealtimeEvent = (ev: any) => {
-        if (!ev || !ev.type) return;
+        if (signal.aborted || !ev || !ev.type) return;
+        if (ev.event_id) {
+          if (this.seenEvents.has(ev.event_id)) return;
+          this.seenEvents.add(ev.event_id);
+          if (this.seenEvents.size > 512) this.seenEvents.delete(this.seenEvents.values().next().value!);
+        }
 
         switch (ev.type) {
           case 'response.created': {
             this.isGeneratingResponse = true;
+            this.responseRequested = false;
+            this.currentAssistantTranscript = '';
+            if (this.pendingResponse) this.session?.interrupt();
             if (this.processingWatchdogTimer) {
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
             }
+            this.armResponseTimeout();
             break;
           }
           case 'response.audio_transcript.delta':
@@ -1124,7 +1183,6 @@ ${catalog.compactAiJson}`;
               this.callbacks.onTranscriptDelta(finalTranscript, true, 'assistant');
             }
             this.currentAssistantTranscript = '';
-            this.callbacks.onStateChange('listening');
             break;
           }
           case 'input_audio_buffer.speech_started': {
@@ -1133,7 +1191,7 @@ ${catalog.compactAiJson}`;
               this.processingWatchdogTimer = null;
             }
             // Acoustic activity alone must not interrupt the assistant.
-            if (!this.isGeneratingResponse) this.callbacks.onUserSpeechChange?.(true);
+            if (!this.isGeneratingResponse && !this.isAudioPlaying) this.callbacks.onUserSpeechChange?.(true);
             break;
           }
           case 'input_audio_buffer.speech_stopped': {
@@ -1154,12 +1212,15 @@ ${catalog.compactAiJson}`;
           case 'conversation.item.input_audio_transcription.completed': {
             if (ev.item_id && this.handledSpeechItems.has(ev.item_id)) break;
             if (ev.item_id) this.handledSpeechItems.add(ev.item_id);
+            if (this.handledSpeechItems.size > 512) this.handledSpeechItems.delete(this.handledSpeechItems.values().next().value!);
             const transcript = ev.transcript || '';
             const spoken = transcript.trim();
             if (/[\p{L}]{2}/u.test(spoken) && !/^\s*[\[(]?(ruido|noise|música|music|silencio|silence|aplausos)[\])]?\s*$/iu.test(spoken)) {
               this.callbacks.onTranscriptDelta(spoken, true, 'user');
+              if (this.processingWatchdogTimer) clearTimeout(this.processingWatchdogTimer);
+              this.pendingResponse = true;
               if (this.isGeneratingResponse || this.isAudioPlaying) this.session?.interrupt();
-              (this.session as any)?.transport?.sendEvent({ type: 'response.create' });
+              this.flushUserResponse();
             }
             break;
           }
@@ -1173,11 +1234,18 @@ ${catalog.compactAiJson}`;
           }
           case 'response.done': {
             this.isGeneratingResponse = false;
+            this.responseRequested = false;
             if (this.processingWatchdogTimer) {
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
             }
-            this.callbacks.onStateChange('listening');
+            if (ev.response?.status === 'failed') {
+              this.stop();
+              this.callbacks.onError?.('No pude completar la respuesta. Vuelve a conectar la voz o continúa por chat.');
+              break;
+            }
+            this.flushUserResponse();
+            this.callbacks.onStateChange(this.isAudioPlaying ? 'speaking' : this.responseRequested ? 'processing' : 'listening');
             break;
           }
           case 'session.created': {
@@ -1194,32 +1262,28 @@ ${catalog.compactAiJson}`;
           case 'error': {
             this.isGeneratingResponse = false;
             console.warn("Realtime transport error:", ev.error);
+            this.stop();
+            this.callbacks.onError?.('Se interrumpió la conversación de voz. Vuelve a conectar para continuar.');
             break;
           }
         }
       };
 
-      (this.session as any).on?.('transport_event', (event: any) => {
+      listen('transport_event', (event: any) => {
         handleRawRealtimeEvent(event);
       });
 
       const transport = (this.session as any).transport;
-      transport?.on?.('*', (event: any) => {
-        handleRawRealtimeEvent(event);
-      });
-      transport?.on?.('session.updated', (event: any) => {
-        console.log("Realtime server confirmed session.updated event:", event);
-        if (shouldGreet && this.isConnected && !this.hasTriggeredGreeting) {
-          this.triggerInitialGreeting();
+      transport?.on?.('connection_change', (status: string) => {
+        if (!signal.aborted && this.isConnected && status === 'disconnected') {
+          this.stop();
+          this.callbacks.onError?.('Se perdió la conexión de voz. Pulsa Reintentar para continuar.');
         }
       });
 
       // Connect session with WebRTC media stream and remote audio element
-      await this.session.connect({
-        model: chosenModel,
-        mediaStream: this.localStream,
-        audioElement: this.remoteAudioElement
-      } as any);
+      await this.waitForStep(this.session.connect({ apiKey: ephemeralKey }), signal);
+      clearTimeout(connectionTimeout);
 
       // Explicitly enforce server VAD, Spanish Whisper transcription, and marin voice via transport.updateSessionConfig
       try {
@@ -1312,12 +1376,19 @@ ${catalog.compactAiJson}`;
         }
       });
     } catch (error: any) {
-      this.stop();
+      if (this.connectionAbort === controller) this.stop();
       throw error;
+    } finally {
+      clearTimeout(connectionTimeout);
     }
   }
 
   public stop(): void {
+    const controller = this.connectionAbort;
+    this.connectionAbort = null;
+    controller?.abort(new Error('Llamada finalizada.'));
+    this.pendingResponse = false;
+    this.responseRequested = false;
     this.isAudioPlaying = false;
     if (this.greetingTimer) {
       clearTimeout(this.greetingTimer);
