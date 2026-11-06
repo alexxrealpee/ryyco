@@ -639,6 +639,7 @@ export default function LinnkProVoiceAssistant({
 
   // 7. Start & End Real-Time Voice Call Session (100% Continuous Hands-Free WebRTC)
   const startVoiceCall = async () => {
+    if (isInVoiceCallRef.current) return;
     setIsOpen(true);
     setIsInVoiceCall(true);
     isInVoiceCallRef.current = true;
@@ -648,7 +649,9 @@ export default function LinnkProVoiceAssistant({
     cancelAiTextStreaming();
     setActiveSpeaker(null);
     setActiveTranscriptText('');
-    setAssistantState('listening');
+    setAssistantState('processing');
+    setActiveSpeaker('assistant');
+    setActiveTranscriptText('¡Hola! Estoy conectando mi voz para ayudarte a escoger qué comer…');
     setMicPermissionError(null);
 
     // Warm up AudioContext synchronously on user gesture (Crucial for mobile browsers)
@@ -664,6 +667,21 @@ export default function LinnkProVoiceAssistant({
 
     stopAudioPlayback();
     initAudioAnalyser();
+    // Speak immediately on the tap while the voice bundle and network connect in parallel.
+    let localGreeting: Promise<void> = Promise.resolve();
+    let greetedLocally = false;
+    if (!isVoiceMuted && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined') {
+      localGreeting = new Promise(resolve => {
+        const welcome = new SpeechSynthesisUtterance('¡Hola! Soy iAmesero de RYYCO. ¿Qué se te antoja comer hoy?');
+        welcome.lang = 'es-CO'; welcome.rate = 1.05;
+        let finished = false;
+        const finish = () => { if (!finished) { finished = true; clearTimeout(timeout); resolve(); } };
+        welcome.onstart = () => { greetedLocally = true; hasGreetedVoiceInSessionRef.current = true; };
+        welcome.onend = finish; welcome.onerror = finish;
+        const timeout = setTimeout(finish, 6000);
+        window.speechSynthesis.speak(welcome);
+      });
+    }
 
     // Start OpenAI Realtime WebRTC continuous voice session
     try {
@@ -760,8 +778,11 @@ export default function LinnkProVoiceAssistant({
         }
       });
 
-      const shouldGreet = !hasGreetedVoiceInSessionRef.current;
-      await realtimeManagerRef.current.start({ shouldGreet });
+      const connection = realtimeManagerRef.current.start({ shouldGreet: false, inputReady: localGreeting });
+      await Promise.all([connection, localGreeting]);
+      if (isInVoiceCallRef.current) setActiveTranscriptText('Te escucho. ¿Qué se te antoja comer hoy?');
+      const shouldGreet = !greetedLocally;
+      if (shouldGreet && isInVoiceCallRef.current) realtimeManagerRef.current.triggerInitialGreeting();
       if (!isInVoiceCallRef.current) {
         realtimeManagerRef.current?.stop();
         return;

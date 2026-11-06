@@ -125,6 +125,7 @@ import {
   db
 } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
 import { 
   UserProfile, 
   CustomTheme, 
@@ -591,20 +592,38 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       setPushPermission('unsupported');
     }
 
-    // Refresh the real Android registration when this account opens its portal.
-    initializeFCM().then(async () => {
-      if (!isNativePush()) return;
-      if (nativePushPermission() === 'granted') await requestSellerFCMPermission({ uid: profile.uid, email: profile.email, storeName: profile.displayName });
+    const refreshStatus = () => {
       const status = getSellerFCMStatus(profile.uid);
       setPushPermission(status.permission);
       setSellerFCMToken(status.hasToken ? status.token : null);
-    }).catch(() => {});
-    if (profile.uid) {
-      const status = getSellerFCMStatus(profile.uid);
-      if (status.token) {
-        setSellerFCMToken(status.token);
-      }
-    }
+    };
+    refreshStatus();
+    if (!isNativePush()) { initializeFCM().catch(() => {}); return; }
+
+    // The profile can be restored before Firebase restores the authenticated session.
+    let cancelled = false;
+    const stopAuth = onAuthStateChanged(auth, user => {
+      if (cancelled) return;
+      if (!user || user.uid !== profile.uid) { setSellerFCMToken(null); return; }
+      initializeFCM().then(async () => {
+        if (cancelled) return;
+        if (nativePushPermission() === 'granted') {
+          const result = await requestSellerFCMPermission({ uid: profile.uid, email: profile.email, storeName: profile.displayName });
+          if (cancelled) return;
+          if (!result.success) {
+            setSellerFCMToken(null);
+            setNewOrderAlert(`⚠️ ${result.error || 'No se pudo registrar el teléfono. Reintenta activar las notificaciones.'}`);
+            return;
+          }
+        }
+        refreshStatus();
+      }).catch(() => {
+        if (cancelled) return;
+        setSellerFCMToken(null);
+        setNewOrderAlert('⚠️ No se pudo conectar con las notificaciones. Pulsa Activar Notificaciones Push para reintentar.');
+      });
+    });
+    return () => { cancelled = true; stopAuth(); };
   }, [profile.uid]);
 
   // Real-time Push Stream (SSE) for instant orders across tabs and background
@@ -7011,7 +7030,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
       {/* 6. ORDER DETAIL MODAL OVERLAY */}
       {viewingOrder && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] animate-fade-in">
-          <div role="dialog" aria-modal="true" aria-labelledby="restaurant-order-detail-title" className="bg-gray-950 border border-gray-850 rounded-3xl w-full max-w-lg min-h-0 max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col">
+          <div role="dialog" aria-modal="true" aria-labelledby="restaurant-order-detail-title" className="bg-gray-950 border border-gray-850 rounded-3xl w-full max-w-lg min-h-0 h-[calc(100dvh-2rem)] max-h-[900px] overflow-hidden flex flex-col">
             
             <div className="flex shrink-0 items-center justify-between border-b border-gray-900 mx-6 mt-6 pb-3">
               <div>
@@ -7033,7 +7052,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
               </button>
             </div>
 
-            <div className="min-h-0 overflow-y-auto overscroll-contain p-6 pt-5 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 pt-5 space-y-5" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y pinch-zoom' }}>
             {/* Buyer specifics */}
             <div className="space-y-2 text-xs text-gray-400 bg-gray-900/40 p-4 rounded-xl border border-gray-900/80">
               <span className="text-[9px] font-bold uppercase text-indigo-450 tracking-wider block">Procedencia de compra</span>

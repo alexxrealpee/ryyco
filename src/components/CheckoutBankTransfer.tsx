@@ -147,15 +147,15 @@ export default function CheckoutBankTransfer({
           ref={fileInput}
           aria-label="Seleccionar comprobante de pago"
           type="file"
-          accept="image/jpeg,image/png,image/webp"
+          accept="image/*"
           disabled={busy}
-          className="hidden"
+          className="sr-only"
           onChange={async event => {
             const file = event.target.files?.[0];
             event.target.value = '';
             if (!file) return;
-            if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-              setMessage('Selecciona una imagen JPG, PNG o WebP de máximo 10 MB.');
+            if ((file.type && !file.type.startsWith('image/')) || file.size > 20 * 1024 * 1024) {
+              setMessage('Selecciona una imagen de máximo 20 MB. Puedes usar una captura JPG o PNG.');
               return;
             }
             setBusy(true);
@@ -168,10 +168,8 @@ export default function CheckoutBankTransfer({
               setMessage(
                 `✓ Comprobante cargado (${Math.ceil(result.dataUrl.length / 1024)} KB). Ya puedes confirmar tu pedido.`
               );
-            } catch {
-              setMessage(
-                'No se pudo reducir el comprobante. Recorta la imagen para mostrar solo el pago y vuelve a intentarlo.'
-              );
+            } catch (error) {
+              setMessage(error instanceof Error ? error.message : 'No se pudo preparar el comprobante. Intenta con una captura JPG o PNG.');
             } finally {
               setBusy(false);
               onBusy(false);

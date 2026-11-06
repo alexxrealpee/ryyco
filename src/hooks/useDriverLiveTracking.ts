@@ -1,3 +1,4 @@
+import { isNativeDriverLocation } from '../lib/nativeDriverLocation';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { OrderItem, DriverProfile, DeliveryTrackingData } from '../types';
 import { updateDeliveryLiveLocation, stopDeliveryTracking } from '../lib/firebase';
@@ -18,6 +19,7 @@ export function useDriverLiveTracking({ activeDelivery, driver }: Props) {
     !['delivered', 'cancelled'].includes(activeDelivery.deliveryStep);
 
   useEffect(() => {
+    if (isNativeDriverLocation()) return;
     setCurrentCoords(null);
     setLastUpdate(null);
     setError(null);

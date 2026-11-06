@@ -1,3 +1,4 @@
+import { useNativeDriverLocation, isNativeDriverLocation, stopNativeDriverLocation } from '../lib/nativeDriverLocation';
 import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
 import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
@@ -365,17 +366,9 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     }
   }, [activeDelivery?.id, activeDelivery?.storeOwnerId, activeDelivery?.storeLat, activeDelivery?.storeLng, activeDelivery?.storeMapUrl, activeDelivery?.storeReference, activeDelivery?.storePhone]);
 
-  // Real-time GPS Geolocation Tracking Engine for Domiciliario
-  const {
-    isTracking: isGpsTracking,
-    lastUpdate: lastGpsUpdate,
-    error: gpsError,
-    currentCoords,
-    manualForceSync
-  } = useDriverLiveTracking({
-    activeDelivery,
-    driver
-  });
+  const nativeTracking = useNativeDriverLocation(driver, isAvailable, activeDelivery, activeOrderChecked);
+  const webTracking = useDriverLiveTracking({ activeDelivery, driver });
+  const { isTracking: isGpsTracking, lastUpdate: lastGpsUpdate, error: gpsError, currentCoords, manualForceSync } = isNativeDriverLocation() ? nativeTracking : webTracking;
 
   const presenceError = useDriverPresence(driver, isAvailable, activeDelivery, currentCoords);
 
@@ -684,12 +677,20 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   useEffect(() => {
     if (!driver) return;
     let cancelled = false;
-    initializeFCM().then(async () => {
-      if (cancelled) return;
-      if (isNativePush() && nativePushPermission() === 'granted') await requestDriverFCMPermission(driver);
-      if (!cancelled) setFcmStatus(getDriverFCMStatus(driver.id));
-    }).catch(() => {});
-    return () => { cancelled = true; };
+    const stopAuth = onAuthStateChanged(auth, user => {
+      if (!user || cancelled) return;
+      initializeFCM().then(async () => {
+        if (cancelled) return;
+        if (isNativePush() && nativePushPermission() === 'granted') {
+          const result = await requestDriverFCMPermission(driver);
+          if (!cancelled && !result.success) setPushNotificationFeedback(result.error || 'No se pudo registrar este teléfono para recibir pedidos.');
+        }
+        if (!cancelled) setFcmStatus(getDriverFCMStatus(driver.id));
+      }).catch(() => {
+        if (!cancelled) setPushNotificationFeedback('No se pudo conectar con las notificaciones. Pulsa Activar PUSH para reintentar.');
+      });
+    });
+    return () => { cancelled = true; stopAuth(); };
   }, [driver?.id]);
   const isPushNotificationsActive = fcmStatus.hasToken;
 
@@ -998,6 +999,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
   // Logout Handler - Clears persistent storage and offline status
   const handleLogout = async () => {
+    await stopNativeDriverLocation();
     if (driver) {
       try {
         await updateDriverAvailability(driver.id, false);
@@ -2831,7 +2833,7 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
                           </div>
                           <div>
                             <span className="text-xs font-bold text-[#A9B2C3] block">Estado GPS & Radar</span>
-                            {isAvailable && <p className="text-xs text-gray-400">Tu ubicación se comparte con administración mientras estás disponible y mantienes el portal abierto.</p>}
+                            {isAvailable && <p className="text-xs text-gray-400">{isNativeDriverLocation() ? 'Tu ubicación se comparte mientras estás disponible, también con la app en segundo plano. Si tienes una entrega activa, el cliente seguirá viendo tu ubicación hasta terminarla.' : 'Tu ubicación se comparte con administración mientras estás disponible y mantienes el portal abierto.'}</p>}
                             <span className="text-xs font-bold text-[#E63946] flex items-center gap-1.5">
                               {presenceError || gpsError || (isGpsTracking ? 'GPS activo' : isAvailable ? 'Buscando pedidos en tiempo real...' : 'Modo no disponible')}
                             </span>

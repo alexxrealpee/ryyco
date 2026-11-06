@@ -14,6 +14,7 @@ import { app, db, auth } from './firebase';
 import { OrderItem } from '../types';
 
 const nativeTokenId = (token: string) => token.replace(/[^a-zA-Z0-9_-]/g, '_').slice(-100);
+let nativeRoleRegistrationInProgress = false;
 export async function disableNativePushForLogout() {
   if (!isNativePush()) return;
   await clearNativePushBinding();
@@ -22,36 +23,50 @@ export async function disableNativePushForLogout() {
     if (token) await deleteDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(token))).catch(() => {});
     localStorage.removeItem(`ryyco_${role}_native_token`);
     localStorage.removeItem(`ryyco_${role}_fcm_token`);
+    localStorage.removeItem(`ryyco_${role}_native_owner`);
   }
   localStorage.removeItem('ryyco_driver_notifications_enabled');
 }
 async function requestNativeRole(role: 'admin' | 'seller' | 'driver', identity: Record<string, string>) {
+  if (nativeRoleRegistrationInProgress) return { success: false, error: 'Ya se están activando las notificaciones. Espera y reintenta.' };
+  nativeRoleRegistrationInProgress = true;
   try {
     const sessionUid = auth.currentUser?.uid;
     if (!sessionUid) throw new Error('Inicia sesión para activar las notificaciones.');
+    const owner = identity.driverId || identity.storeOwnerId || identity.adminUid;
+    if (!owner) throw new Error('No se pudo identificar la cuenta para las notificaciones.');
+    const savedBindings = ['admin', 'seller', 'driver'].map(savedRole => ({
+      role: savedRole,
+      token: localStorage.getItem(`ryyco_${savedRole}_native_token`),
+      owner: localStorage.getItem(`ryyco_${savedRole}_native_owner`),
+    })).filter(binding => binding.token);
+    if (savedBindings.some(binding => binding.role !== role || binding.owner !== owner)) {
+      // Invalidate FCM first: an old account's Firestore rules may prevent cleanup.
+      // Reusing that token could deliver the previous account's notifications.
+      await clearNativePushBinding();
+      for (const binding of savedBindings) {
+        await deleteDoc(doc(db, `${binding.role}_fcm_tokens`, nativeTokenId(binding.token!))).catch(() => {});
+        localStorage.removeItem(`ryyco_${binding.role}_native_token`);
+        localStorage.removeItem(`ryyco_${binding.role}_fcm_token`);
+        localStorage.removeItem(`ryyco_${binding.role}_native_owner`);
+      }
+    }
     // Only report success after the native token is stored under the authenticated account.
     const token = await registerNativePush(async value => {
       if (auth.currentUser?.uid !== sessionUid) throw new Error('La sesión cambió. Vuelve a activar las notificaciones.');
-      for (const otherRole of ['admin', 'seller', 'driver'].filter(value => value !== role)) {
-        const otherToken = localStorage.getItem(`ryyco_${otherRole}_native_token`);
-        if (otherToken) {
-          await deleteDoc(doc(db, `${otherRole}_fcm_tokens`, nativeTokenId(otherToken)));
-          localStorage.removeItem(`ryyco_${otherRole}_native_token`);
-          localStorage.removeItem(`ryyco_${otherRole}_fcm_token`);
-        }
-      }
       const previous = localStorage.getItem(`ryyco_${role}_native_token`);
       await setDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(value)), {
         ...identity, token: value, device: 'android', active: true,
         userAgent: navigator.userAgent, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       }, { merge: true });
-      if (previous && previous !== value) await deleteDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(previous)));
+      if (previous && previous !== value) await deleteDoc(doc(db, `${role}_fcm_tokens`, nativeTokenId(previous))).catch(() => {});
       localStorage.setItem(`ryyco_${role}_native_token`, value);
       localStorage.setItem(`ryyco_${role}_fcm_token`, value);
-      localStorage.setItem(`ryyco_${role}_native_owner`, identity.driverId || identity.storeOwnerId || identity.adminUid);
+      localStorage.setItem(`ryyco_${role}_native_owner`, owner);
     });
     return { success: true, token };
   } catch (error: any) { return { success: false, error: error?.message || 'No se pudo activar el dispositivo Android.' }; }
+  finally { nativeRoleRegistrationInProgress = false; }
 }
 function nativeRoleStatus(role: string, owner?: string) {
   const token = localStorage.getItem(`ryyco_${role}_native_token`);

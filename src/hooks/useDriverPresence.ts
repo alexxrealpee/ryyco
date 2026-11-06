@@ -1,3 +1,4 @@
+import { isNativeDriverLocation } from '../lib/nativeDriverLocation';
 import { useEffect, useRef, useState } from 'react';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
@@ -17,6 +18,7 @@ export function useDriverPresence(driver: DriverProfile | null, available: boole
     !['delivered', 'cancelled'].includes(order.deliveryStep);
   useEffect(() => {
     setError(null);
+    if (isNativeDriverLocation()) return;
     if (!enabled || !id) return;
     const ref = doc(db, 'driver_presence', id);
     let stopped = false, busy = false, lastSent = 0;

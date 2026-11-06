@@ -24,20 +24,51 @@ export interface CompressOptions {
 export const RECEIPT_STORAGE_LIMIT = 96 * 1024;
 
 export async function compressPaymentReceipt(file: File): Promise<CompressionResult> {
-  const attempts = [
-    { maxWidth: 1200, maxHeight: 1800, quality: 0.72 },
-    { maxWidth: 1000, maxHeight: 1500, quality: 0.65 },
-    { maxWidth: 850, maxHeight: 1280, quality: 0.6 },
-  ];
-  let smallest: CompressionResult | undefined;
-  for (const options of attempts) {
-    const result = await compressImageFile(file, { ...options, maxSizeBytes: 60 * 1024 });
-    if (!smallest || result.dataUrl.length < smallest.dataUrl.length) smallest = result;
-    // Preserve resolution once the compact storage target has been reached.
-    if (result.dataUrl.length <= 80 * 1024) return result;
+  if (!file.size || file.size > 20 * 1024 * 1024) throw new Error('Selecciona una imagen de máximo 20 MB.');
+  // Decode once from a temporary URL, never a Base64 copy of the full original.
+  const url = URL.createObjectURL(file);
+  const image = new Image();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const canvas = document.createElement('canvas');
+  try {
+    await new Promise<void>((resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error('La imagen tardó demasiado en abrirse. Intenta con una captura JPG o PNG.')), 20000);
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error('No se pudo abrir la imagen. Guarda el comprobante como captura JPG, PNG o WebP.'));
+      image.src = url;
+    });
+    clearTimeout(timeout);
+    const width = image.naturalWidth || image.width, height = image.naturalHeight || image.height;
+    if (!width || !height) throw new Error('La imagen no tiene dimensiones válidas.');
+    const context = canvas.getContext('2d', { alpha: false });
+    if (!context) throw new Error('No se pudo preparar el comprobante. Cierra otras aplicaciones e intenta de nuevo.');
+    let smallest: CompressionResult | undefined;
+    for (const maxWidth of [1200, 1000, 850, 720]) {
+      const ratio = Math.min(1, maxWidth / width, (maxWidth * 1.5) / height);
+      canvas.width = Math.max(1, Math.round(width * ratio));
+      canvas.height = Math.max(1, Math.round(height * ratio));
+      context.imageSmoothingEnabled = true; context.imageSmoothingQuality = 'high';
+      context.fillStyle = '#FFFFFF'; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.78, 0.64, 0.5, 0.4]) {
+        let dataUrl = canvas.toDataURL('image/webp', quality);
+        const format = dataUrl.startsWith('data:image/webp') ? 'webp' : 'jpeg';
+        if (format === 'jpeg') dataUrl = canvas.toDataURL('image/jpeg', quality);
+        const compressedSize = estimateDataUrlBytes(dataUrl);
+        const result: CompressionResult = { dataUrl, originalSize: file.size, compressedSize,
+          savedPercent: Math.max(0, Math.round((1 - compressedSize / file.size) * 100)), width: canvas.width, height: canvas.height, format };
+        if (!smallest || dataUrl.length < smallest.dataUrl.length) smallest = result;
+        if (dataUrl.length <= 80 * 1024) return result;
+        // Yield between encodings so the uploading indicator can paint on mobile.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+    if (smallest && smallest.dataUrl.length <= RECEIPT_STORAGE_LIMIT) return smallest;
+    throw new Error('Recorta la imagen para mostrar solo el comprobante y vuelve a subirla.');
+  } finally {
+    clearTimeout(timeout); image.onload = null; image.onerror = null; image.src = '';
+    canvas.width = 0; canvas.height = 0; URL.revokeObjectURL(url);
   }
-  if (smallest && smallest.dataUrl.length <= RECEIPT_STORAGE_LIMIT) return smallest;
-  throw new Error('Recorta la imagen para mostrar solo el comprobante y vuelve a subirla.');
 }
 
 /**

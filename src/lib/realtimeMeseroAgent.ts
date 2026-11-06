@@ -54,6 +54,8 @@ export class RealtimeMeseroManager {
   private hasTriggeredGreeting: boolean = false;
   private isGeneratingResponse: boolean = false;
   private greetingTimer: any = null;
+  private isAudioPlaying = false;
+  private handledSpeechItems = new Set<string>();
   private preprocessorCleanup: (() => void) | null = null;
   private processingWatchdogTimer: any = null;
   private unsubscribeCatalog: (() => void) | null = null;
@@ -876,10 +878,11 @@ ${catalog.compactAiJson}`;
     } catch (e) {}
   }
 
-  public async start(options?: { shouldGreet?: boolean }): Promise<void> {
+  public async start(options?: { shouldGreet?: boolean; inputReady?: Promise<void> }): Promise<void> {
     if (this.isConnected) return;
     const shouldGreet = Boolean(options?.shouldGreet);
     this.hasTriggeredGreeting = false;
+    this.handledSpeechItems.clear();
     this.isGeneratingResponse = false;
     this.currentAssistantTranscript = '';
     this.lastEmittedFinalTranscript = '';
@@ -921,6 +924,10 @@ ${catalog.compactAiJson}`;
       const { cleanStream, cleanup } = this.createCleanVoiceStream(mediaStream);
       this.preprocessorCleanup = cleanup;
       this.localStream = cleanStream;
+      if (options?.inputReady) {
+        cleanStream.getAudioTracks().forEach(track => { track.enabled = false; });
+        void options.inputReady.finally(() => cleanStream.getAudioTracks().forEach(track => { track.enabled = true; }));
+      }
 
       try {
         this.callbacks.onLocalStreamCreated?.(cleanStream);
@@ -946,7 +953,8 @@ ${catalog.compactAiJson}`;
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
-            body: JSON.stringify({})
+            body: JSON.stringify({}),
+            signal: AbortSignal.timeout(10000)
           });
 
           const responseText = await sessionResponse.text();
@@ -1007,12 +1015,12 @@ ${catalog.compactAiJson}`;
           voice: 'marin',
           audio: {
             input: {
+              noiseReduction: { type: 'near_field' },
               turnDetection: {
-                type: 'server_vad',
-                threshold: 0.78,
-                prefixPaddingMs: 300,
-                silenceDurationMs: 650,
-                createResponse: true
+                type: 'semantic_vad',
+                eagerness: 'medium',
+                interruptResponse: false,
+                createResponse: false
               },
               transcription: {
                 model: 'whisper-1',
@@ -1028,6 +1036,7 @@ ${catalog.compactAiJson}`;
 
       // 6. Listen to RealtimeSession lifecycle events for continuous hands-free voice
       this.session.on('audio_start', () => {
+        this.isAudioPlaying = true;
         if (this.processingWatchdogTimer) {
           clearTimeout(this.processingWatchdogTimer);
           this.processingWatchdogTimer = null;
@@ -1036,10 +1045,12 @@ ${catalog.compactAiJson}`;
       });
 
       this.session.on('audio_stopped', () => {
+        this.isAudioPlaying = false;
         this.callbacks.onStateChange('listening');
       });
 
       this.session.on('audio_interrupted', () => {
+        this.isAudioPlaying = false;
         this.callbacks.onStateChange('listening');
       });
 
@@ -1121,12 +1132,13 @@ ${catalog.compactAiJson}`;
               clearTimeout(this.processingWatchdogTimer);
               this.processingWatchdogTimer = null;
             }
-            this.callbacks.onUserSpeechChange?.(true);
-            this.callbacks.onStateChange('listening');
+            // Acoustic activity alone must not interrupt the assistant.
+            if (!this.isGeneratingResponse) this.callbacks.onUserSpeechChange?.(true);
             break;
           }
           case 'input_audio_buffer.speech_stopped': {
             this.callbacks.onUserSpeechChange?.(false);
+            if (this.isGeneratingResponse || this.isAudioPlaying) break;
             this.callbacks.onStateChange('processing');
             // Watchdog: If OpenAI detects no actual message/intent after speech stops (e.g. ambient thump or noise discarded),
             // safely return the interface back to 'listening' after 1500ms rather than staying stuck in processing
@@ -1140,9 +1152,14 @@ ${catalog.compactAiJson}`;
             break;
           }
           case 'conversation.item.input_audio_transcription.completed': {
+            if (ev.item_id && this.handledSpeechItems.has(ev.item_id)) break;
+            if (ev.item_id) this.handledSpeechItems.add(ev.item_id);
             const transcript = ev.transcript || '';
-            if (transcript.trim()) {
-              this.callbacks.onTranscriptDelta(transcript.trim(), true, 'user');
+            const spoken = transcript.trim();
+            if (/[\p{L}]{2}/u.test(spoken) && !/^\s*[\[(]?(ruido|noise|música|music|silencio|silence|aplausos)[\])]?\s*$/iu.test(spoken)) {
+              this.callbacks.onTranscriptDelta(spoken, true, 'user');
+              if (this.isGeneratingResponse || this.isAudioPlaying) this.session?.interrupt();
+              (this.session as any)?.transport?.sendEvent({ type: 'response.create' });
             }
             break;
           }
@@ -1211,12 +1228,12 @@ ${catalog.compactAiJson}`;
           voice: 'marin',
           audio: {
             input: {
+              noiseReduction: { type: 'near_field' },
               turnDetection: {
-                type: 'server_vad',
-                threshold: 0.78,
-                prefixPaddingMs: 300,
-                silenceDurationMs: 650,
-                createResponse: true
+                type: 'semantic_vad',
+                eagerness: 'medium',
+                interruptResponse: false,
+                createResponse: false
               },
               transcription: {
                 model: 'whisper-1',
@@ -1238,12 +1255,12 @@ ${catalog.compactAiJson}`;
             session: {
               voice: 'marin',
               turn_detection: {
-                type: 'server_vad',
-                threshold: 0.78,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 650,
-                create_response: true
+                type: 'semantic_vad',
+                eagerness: 'medium',
+                interrupt_response: false,
+                create_response: false
               },
+              input_audio_noise_reduction: { type: 'near_field' },
               input_audio_transcription: {
                 model: 'whisper-1',
                 language: 'es'
@@ -1301,6 +1318,7 @@ ${catalog.compactAiJson}`;
   }
 
   public stop(): void {
+    this.isAudioPlaying = false;
     if (this.greetingTimer) {
       clearTimeout(this.greetingTimer);
       this.greetingTimer = null;
