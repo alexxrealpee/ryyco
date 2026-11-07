@@ -17,7 +17,21 @@ function setup(options = {}) {
   class Session {
     constructor(agent, config) { sessions.push(this); this.events = {}; this.config = config.config; this.transport = config.transport; }
     on(name, fn) { this.events[name] = fn; }
-    async connect(config) { assert.equal(config.apiKey, 'test-session'); await options.connect?.(); }
+    async connect(config) {
+      assert.equal(config.apiKey, 'test-session');
+      this.peer = new EventTarget();
+      await this.transport.options.changePeerConnection(this.peer);
+      await options.connect?.();
+      if (!options.deferReady) {
+        this.events.transport_event({ type: 'session.updated' });
+        this.audioReady();
+      }
+    }
+    audioReady() {
+      const event = new Event('track');
+      event.track = { kind: 'audio', readyState: 'live' };
+      this.peer.dispatchEvent(event);
+    }
     interrupt() { sent.push({ type: 'interrupted' }); }
     close() { this.closed = true; }
   }
@@ -40,16 +54,54 @@ function setup(options = {}) {
   return { manager, sent, transcripts, states, errors, sessions, track, stream, captures: () => captures,
     event: event => sessions.at(-1).events.transport_event(event) };
 }
-test('single captured stream reaches WebRTC and greeting mute is released', async () => {
-  const t = setup(), greeting = deferred();
+test('single captured stream reaches WebRTC and microphone is enabled', async () => {
+  const t = setup();
   try {
-    await t.manager.start({ inputReady: greeting.promise });
+    await t.manager.start();
     assert.equal(t.captures(), 1);
     assert.equal(t.sessions[0].transport.options.mediaStream, t.stream);
     assert(t.sessions[0].transport.options.audioElement);
-    assert.equal(t.track.enabled, false);
-    greeting.resolve(); await tick(); assert.equal(t.track.enabled, true);
+    assert.equal(t.track.enabled, true);
     assert(t.states.includes('connecting'));
+  } finally { t.manager.stop(); }
+});
+test('greeting waits for both confirmed session and live audio, and happens once', async () => {
+  for (const audioFirst of [false, true]) {
+    const t = setup({ deferReady: true });
+    try {
+      const starting = t.manager.start({ shouldGreet: true });
+      while (!t.sessions.at(-1)?.peer) await tick();
+      await tick();
+      const acknowledge = () => t.event({ type: 'session.updated' });
+      const audio = () => t.sessions[0].audioReady();
+      t.manager.triggerInitialGreeting();
+      (audioFirst ? audio : acknowledge)(); await tick();
+      assert.equal(t.manager.getIsConnected(), false);
+      assert.equal(t.track.enabled, false);
+      assert.equal(t.states.at(-1), 'connecting');
+      assert.equal(t.sent.filter(e => e.type === 'response.create').length, 0);
+      (audioFirst ? acknowledge : audio)(); await starting;
+      acknowledge(); audio(); t.manager.triggerInitialGreeting();
+      assert.equal(t.manager.getIsConnected(), true);
+      assert.equal(t.track.enabled, true);
+      assert.equal(t.sent.filter(e => e.type === 'response.create').length, 1);
+    } finally { t.manager.stop(); }
+  }
+});
+test('cancel while waiting for readiness never greets; a new call can start', async () => {
+  const t = setup({ deferReady: true });
+  const starting = t.manager.start({ shouldGreet: true });
+  const rejected = assert.rejects(starting, /finalizada/);
+  while (!t.sessions.at(-1)?.peer) await tick();
+  t.manager.stop(); await rejected;
+  t.event({ type: 'session.updated' }); t.sessions[0].audioReady(); await tick();
+  assert.equal(t.sent.filter(e => e.type === 'response.create').length, 0);
+  assert(t.track.stops > 0);
+  try {
+    const restart = t.manager.start({ shouldGreet: true });
+    while (t.sessions.length < 2 || !t.sessions[1].peer) await tick();
+    t.event({ type: 'session.updated' }); t.sessions[1].audioReady(); await restart;
+    assert.equal(t.sent.filter(e => e.type === 'response.create').length, 1);
   } finally { t.manager.stop(); }
 });
 test('noise does not interrupt; human speech waits for cancellation before one new response', async () => {

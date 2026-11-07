@@ -212,7 +212,6 @@ export default function LinnkProVoiceAssistant({
   const hasGreetedVoiceInSessionRef = useRef<boolean>(false);
   const realtimeManagerRef = useRef<RealtimeMeseroManager | null>(null);
   const voiceCallGenerationRef = useRef(0);
-  const cancelGreetingRef = useRef<(() => void) | null>(null);
   const connectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recognitionRef = useRef<any>(null);
   const localSpeechStreamRef = useRef<MediaStream | null>(null);
@@ -247,7 +246,6 @@ export default function LinnkProVoiceAssistant({
   useEffect(() => () => {
     voiceCallGenerationRef.current++;
     isInVoiceCallRef.current = false;
-    cancelGreetingRef.current?.();
     if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
     realtimeManagerRef.current?.stop();
     recognitionRef.current?.abort();
@@ -681,8 +679,6 @@ export default function LinnkProVoiceAssistant({
     setActiveSpeaker(null);
     setActiveTranscriptText('');
     setAssistantState('connecting');
-    setActiveSpeaker('assistant');
-    setActiveTranscriptText('¡Hola! Estoy conectando mi voz para ayudarte a escoger qué comer…');
     setMicPermissionError(null);
 
     // Warm up AudioContext synchronously on user gesture (Crucial for mobile browsers)
@@ -698,20 +694,6 @@ export default function LinnkProVoiceAssistant({
 
     stopAudioPlayback();
     initAudioAnalyser();
-    // Speak immediately on the tap while the voice bundle and network connect in parallel.
-    let localGreeting: Promise<void> = Promise.resolve();
-    if (!isVoiceMuted && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined') {
-      localGreeting = new Promise(resolve => {
-        const welcome = new SpeechSynthesisUtterance('¡Hola! Un momento, estoy conectando mi voz.');
-        welcome.lang = 'es-CO'; welcome.rate = 1.05;
-        let finished = false;
-        const finish = () => { if (!finished) { finished = true; clearTimeout(timeout); resolve(); } };
-        welcome.onend = finish; welcome.onerror = finish;
-        const timeout = setTimeout(() => { if (isCurrentCall()) window.speechSynthesis.cancel(); finish(); }, 4500);
-        cancelGreetingRef.current = finish;
-        try { window.speechSynthesis.speak(welcome); } catch { finish(); }
-      });
-    }
 
     // Start OpenAI Realtime WebRTC continuous voice session
     try {
@@ -820,12 +802,8 @@ export default function LinnkProVoiceAssistant({
       });
 
       const manager = realtimeManagerRef.current;
-      const connection = manager.start({ shouldGreet: false, inputReady: localGreeting });
-      await Promise.all([connection, localGreeting]);
+      await manager.start({ shouldGreet: true });
       if (!isCurrentCall()) { manager.stop(); return; }
-      cancelGreetingRef.current = null;
-      setActiveTranscriptText('Ya estamos conectados. Puedes hablar con naturalidad.');
-      manager.triggerInitialGreeting();
       hasGreetedVoiceInSessionRef.current = true;
     } catch (realtimeErr: any) {
       if (!isCurrentCall()) return;
@@ -867,8 +845,6 @@ export default function LinnkProVoiceAssistant({
     voiceCallGenerationRef.current++;
     if (connectionTimerRef.current) clearTimeout(connectionTimerRef.current);
     connectionTimerRef.current = null;
-    cancelGreetingRef.current?.();
-    cancelGreetingRef.current = null;
     setIsInVoiceCall(false);
     isInVoiceCallRef.current = false;
     setAssistantState('idle');
@@ -1717,9 +1693,9 @@ export default function LinnkProVoiceAssistant({
                       </h3>
                     </div>
                     {/* Status Indicator */}
-                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium leading-none mt-1">
+                    <div className={`flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium leading-none mt-1 ${activeTab === 'call' && assistantState === 'connecting' ? 'invisible' : ''}`}>
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      <span>{activeTab !== 'call' ? 'Chat' : micPermissionError ? 'Voz desconectada' : assistantState === 'connecting' ? 'Conectando…' : !isInVoiceCall ? 'Listo para hablar' : assistantState === 'speaking' ? 'Hablando' : assistantState === 'processing' ? 'Preparando respuesta…' : 'Escuchando'}</span>
+                      <span>{activeTab !== 'call' ? 'Chat' : micPermissionError ? 'Voz desconectada' : assistantState === 'connecting' ? '' : !isInVoiceCall ? 'Listo para hablar' : assistantState === 'speaking' ? 'Hablando' : assistantState === 'processing' ? 'Preparando respuesta…' : 'Escuchando'}</span>
                     </div>
                   </div>
                 </div>
@@ -1806,11 +1782,12 @@ export default function LinnkProVoiceAssistant({
                   </div>
 
                   {/* 1. Dynamic Real-Time Transcription (Strictly ONLY ONE text visible at a time: User -> AI) */}
-                  <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm sm:max-w-md mx-auto min-h-[64px]">
-                    <p role="status" aria-live="polite" className="text-sm text-slate-300 mb-3 flex items-center justify-center gap-2">
-                      {assistantState === 'connecting' && <Loader2 className="w-4 h-4 animate-spin" />}
-                      {micPermissionError ? 'Podemos continuar por chat o volver a intentar.' : !isInVoiceCall ? 'Toca Hablar y cuéntame qué te gustaría comer.' : assistantState === 'connecting' ? 'Conectando tu voz… Puedes cancelar abajo.' : assistantState === 'speaking' ? 'iAmesero está hablando. Toca el chef si quieres interrumpir.' : assistantState === 'processing' ? 'Estoy preparando tu respuesta…' : 'Te escucho. No necesitas mantener pulsado el botón.'}
-                    </p>
+                  {assistantState !== 'connecting' && <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm sm:max-w-md mx-auto min-h-[64px]">
+                    {(!isInVoiceCall || micPermissionError || assistantState === 'speaking' || assistantState === 'processing') && (
+                      <p role="status" aria-live="polite" className="text-sm text-slate-300 mb-3 flex items-center justify-center gap-2">
+                        {micPermissionError ? 'Podemos continuar por chat o volver a intentar.' : !isInVoiceCall ? 'Toca Hablar y cuéntame qué te gustaría comer.' : assistantState === 'speaking' ? 'iAmesero está hablando. Toca el chef si quieres interrumpir.' : 'Estoy preparando tu respuesta…'}
+                      </p>
+                    )}
                     <AnimatePresence mode="wait">
                       {activeTranscriptText.trim() ? (
                         <motion.p
@@ -1819,13 +1796,13 @@ export default function LinnkProVoiceAssistant({
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
                           transition={{ duration: 0.15 }}
-                          className="text-base sm:text-lg font-medium text-white/95 tracking-normal leading-snug break-words"
+                          className="text-sm sm:text-base font-medium text-white/95 tracking-normal leading-snug break-words"
                         >
                           {activeTranscriptText.trim()}
                         </motion.p>
                       ) : null}
                     </AnimatePresence>
-                  </div>
+                  </div>}
 
                   {/* Mobile / Browser Mic Permission Notice if any */}
                   {micPermissionError && (
@@ -1859,10 +1836,12 @@ export default function LinnkProVoiceAssistant({
                       {/* Central Circle Button (Contracts slightly & pulses gently back to original size only while user speaks) */}
                       <motion.button
                         id="linnkpro-interactive-center-mic"
+                        disabled={assistantState === 'connecting'}
+                        aria-busy={assistantState === 'connecting'}
                         aria-label={!isInVoiceCall ? 'Iniciar conversación de voz' : assistantState === 'speaking' ? 'Interrumpir respuesta' : 'Conversación de voz activa'}
                         onClick={handleCentralMicClick}
                         animate={
-                          isUserSpeaking
+                          isUserSpeaking && assistantState !== 'connecting'
                             ? {
                                 scale: [1, 0.88, 1],
                                 boxShadow: [
@@ -1888,14 +1867,22 @@ export default function LinnkProVoiceAssistant({
                                 ease: 'easeOut',
                               }
                         }
-                        className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border-2 sm:border-[3px] border-[#EF4444] bg-[#0E131F]/95 flex items-center justify-center relative z-10 active:scale-95 cursor-pointer focus:outline-none group"
+                        className={`w-32 h-32 sm:w-36 sm:h-36 rounded-full border-2 sm:border-[3px] ${assistantState === 'connecting' ? 'border-[#E63946]/20' : 'border-[#EF4444]'} bg-[#0E131F]/95 flex items-center justify-center relative z-10 enabled:active:scale-95 enabled:cursor-pointer focus:outline-none group`}
                         title={assistantState === 'speaking' ? 'Toca para interrumpir' : isUserSpeaking ? 'IAMesero te está escuchando' : transcript ? 'Toca para enviar' : 'IAMesero activo'}
                       >
+                        {assistantState === 'connecting' && (
+                          <motion.span
+                            aria-hidden="true"
+                            className="absolute -inset-[2px] sm:-inset-[3px] rounded-full border-2 sm:border-[3px] border-transparent border-t-[#E63946] border-r-[#E63946] pointer-events-none"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                          />
+                        )}
                         <div className="relative flex items-center justify-center">
                           <ChefCapSparkIcon 
                             size={78} 
                             fill="#ffffff" 
-                            className={`transition-transform duration-200 ${isUserSpeaking ? 'scale-95' : 'group-hover:scale-105'}`} 
+                            className={`transition-transform duration-200 ${assistantState === 'connecting' ? '' : isUserSpeaking ? 'scale-95' : 'group-hover:scale-105'}`}
                           />
                         </div>
                       </motion.button>
@@ -1903,7 +1890,7 @@ export default function LinnkProVoiceAssistant({
                   </div>
 
                   {/* 3. Action Cards Pop-up (Cart or Product quick cards during call) */}
-                  {lastAssistantMessage?.actionPayload && (
+                  {assistantState !== 'connecting' && lastAssistantMessage?.actionPayload && (
                     <div className="z-10 mb-3">
                       {lastAssistantMessage.actionPayload.type === 'CART_SUMMARY' && (
                         <div className="bg-[#111827] border border-red-500/40 rounded-2xl p-3 shadow-lg flex items-center justify-between">

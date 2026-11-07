@@ -53,7 +53,6 @@ export class RealtimeMeseroManager {
   private lastEmittedFinalTranscript: string = '';
   private hasTriggeredGreeting: boolean = false;
   private isGeneratingResponse: boolean = false;
-  private greetingTimer: any = null;
   private isAudioPlaying = false;
   private handledSpeechItems = new Set<string>();
   private seenEvents = new Set<string>();
@@ -863,10 +862,7 @@ ${catalog.compactAiJson}`;
     this.hasTriggeredGreeting = true;
     this.isGeneratingResponse = true;
     this.armResponseTimeout();
-    if (this.greetingTimer) {
-      clearTimeout(this.greetingTimer);
-      this.greetingTimer = null;
-    }
+    this.callbacks.onStateChange('processing');
 
     try {
       if (this.remoteAudioElement && this.remoteAudioElement.paused) {
@@ -915,7 +911,7 @@ ${catalog.compactAiJson}`;
     } catch (e) {}
   }
 
-  public async start(options?: { shouldGreet?: boolean; inputReady?: Promise<void> }): Promise<void> {
+  public async start(options?: { shouldGreet?: boolean }): Promise<void> {
     if (this.isConnected || this.connectionAbort) return;
     const controller = new AbortController();
     this.connectionAbort = controller;
@@ -968,12 +964,7 @@ ${catalog.compactAiJson}`;
       const { cleanStream, cleanup } = this.createCleanVoiceStream(mediaStream);
       this.preprocessorCleanup = cleanup;
       this.localStream = cleanStream;
-      if (options?.inputReady) {
-        cleanStream.getAudioTracks().forEach(track => { track.enabled = false; });
-        void options.inputReady.then(() => {
-          if (!signal.aborted) cleanStream.getAudioTracks().forEach(track => { track.enabled = true; });
-        }, () => {});
-      }
+      cleanStream.getAudioTracks().forEach(track => { track.enabled = false; });
 
       try {
         this.callbacks.onLocalStreamCreated?.(cleanStream);
@@ -1054,8 +1045,23 @@ ${catalog.compactAiJson}`;
       }
 
       // 5. Connect RealtimeSession with WebRTC, robust server VAD and Spanish transcription
+      // connect() can resolve on the SDK's acknowledgement timeout. Require actual
+      // session confirmation and a live remote audio track before greeting.
+      let confirmSession!: () => void;
+      let confirmAudio!: () => void;
+      const sessionReady = new Promise<void>(resolve => { confirmSession = resolve; });
+      const audioReady = new Promise<void>(resolve => { confirmAudio = resolve; });
       this.session = new RealtimeSession(agent, {
-        transport: new OpenAIRealtimeWebRTC({ mediaStream: this.localStream, audioElement: this.remoteAudioElement }),
+        transport: new OpenAIRealtimeWebRTC({
+          mediaStream: this.localStream,
+          audioElement: this.remoteAudioElement,
+          changePeerConnection: async (peerConnection) => {
+            peerConnection.addEventListener('track', event => {
+              if (event.track.kind === 'audio' && event.track.readyState === 'live') confirmAudio();
+            }, { signal });
+            return peerConnection;
+          },
+        }),
         apiKey: ephemeralKey,
         model: chosenModel as any,
         config: {
@@ -1254,9 +1260,7 @@ ${catalog.compactAiJson}`;
           }
           case 'session.updated': {
             console.log("Realtime session.updated confirmed by server:", ev.session || ev);
-            if (shouldGreet && this.isConnected && !this.hasTriggeredGreeting) {
-              this.triggerInitialGreeting();
-            }
+            confirmSession();
             break;
           }
           case 'error': {
@@ -1282,7 +1286,9 @@ ${catalog.compactAiJson}`;
       });
 
       // Connect session with WebRTC media stream and remote audio element
-      await this.waitForStep(this.session.connect({ apiKey: ephemeralKey }), signal);
+      await this.waitForStep(Promise.all([
+        this.session.connect({ apiKey: ephemeralKey }), sessionReady, audioReady,
+      ]), signal);
       clearTimeout(connectionTimeout);
 
       // Explicitly enforce server VAD, Spanish Whisper transcription, and marin voice via transport.updateSessionConfig
@@ -1338,16 +1344,11 @@ ${catalog.compactAiJson}`;
       }
 
       this.isConnected = true;
+      this.localStream?.getAudioTracks().forEach(track => { track.enabled = true; });
       this.callbacks.onStateChange('listening');
 
-      // Trigger automatic welcome greeting once the session is fully established
-      if (shouldGreet && !this.hasTriggeredGreeting) {
-        this.greetingTimer = setTimeout(() => {
-          if (this.isConnected && !this.hasTriggeredGreeting) {
-            this.triggerInitialGreeting();
-          }
-        }, 160);
-      }
+      // Readiness comes from the transport and server events, never a greeting delay.
+      if (shouldGreet) this.triggerInitialGreeting();
 
       // Subscribe to real-time catalog changes during the conversation and update instructions in-place without restarting the call
       if (this.unsubscribeCatalog) {
@@ -1390,10 +1391,6 @@ ${catalog.compactAiJson}`;
     this.pendingResponse = false;
     this.responseRequested = false;
     this.isAudioPlaying = false;
-    if (this.greetingTimer) {
-      clearTimeout(this.greetingTimer);
-      this.greetingTimer = null;
-    }
     if (this.unsubscribeCatalog) {
       try {
         this.unsubscribeCatalog();
