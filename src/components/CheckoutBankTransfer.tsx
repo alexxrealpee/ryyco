@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
+import { useReceiptUpload } from '../hooks/useReceiptUpload';
 import type { BankAccount } from '../types';
 import {
   normalizeBankAccount,
@@ -41,8 +42,7 @@ export default function CheckoutBankTransfer({
   baseOrderAmount?: number;
 }) {
   const fileInput = useRef<HTMLInputElement>(null);
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { busy, message, setMessage, upload } = useReceiptUpload(onProof, onBusy);
 
   const activeAccount = resolveSelectedBankAccount(accounts, selectedAccountId);
 
@@ -150,30 +150,10 @@ export default function CheckoutBankTransfer({
           accept="image/*"
           disabled={busy}
           className="sr-only"
-          onChange={async event => {
+          onChange={event => {
             const file = event.target.files?.[0];
             event.target.value = '';
-            if (!file) return;
-            if ((file.type && !file.type.startsWith('image/')) || file.size > 20 * 1024 * 1024) {
-              setMessage('Selecciona una imagen de máximo 20 MB. Puedes usar una captura JPG o PNG.');
-              return;
-            }
-            setBusy(true);
-            onBusy(true);
-            setMessage('Preparando comprobante…');
-            try {
-              const { compressPaymentReceipt } = await import('../lib/imageCompressor');
-              const result = await compressPaymentReceipt(file);
-              onProof(result.dataUrl);
-              setMessage(
-                `✓ Comprobante cargado (${Math.ceil(result.dataUrl.length / 1024)} KB). Ya puedes confirmar tu pedido.`
-              );
-            } catch (error) {
-              setMessage(error instanceof Error ? error.message : 'No se pudo preparar el comprobante. Intenta con una captura JPG o PNG.');
-            } finally {
-              setBusy(false);
-              onBusy(false);
-            }
+            void upload(file);
           }}
         />
       </div>

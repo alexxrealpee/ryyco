@@ -23,21 +23,40 @@ export interface CompressOptions {
 // Includes Base64 overhead: Firestore stores the data URL, not the binary image.
 export const RECEIPT_STORAGE_LIMIT = 96 * 1024;
 
-export async function compressPaymentReceipt(file: File): Promise<CompressionResult> {
+export function validatePaymentReceipt(file: File): void {
   if (!file.size || file.size > 20 * 1024 * 1024) throw new Error('Selecciona una imagen de máximo 20 MB.');
+  // Android document providers sometimes report photos as generic binary files.
+  const genericImage = file.type === 'application/octet-stream' && /\.(jpe?g|png|webp|heic|heif|avif|gif|bmp)$/i.test(file.name);
+  if (file.type && !file.type.startsWith('image/') && !genericImage) {
+    throw new Error('Selecciona una imagen. Puedes usar una captura JPG o PNG.');
+  }
+}
+
+export async function compressPaymentReceipt(file: File, signal?: AbortSignal): Promise<CompressionResult> {
+  validatePaymentReceipt(file);
+  const checkCancelled = () => {
+    if (signal?.aborted) throw new DOMException('Carga cancelada.', 'AbortError');
+  };
+  checkCancelled();
   // Decode once from a temporary URL, never a Base64 copy of the full original.
   const url = URL.createObjectURL(file);
   const image = new Image();
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let cancelDecode: (() => void) | undefined;
   const canvas = document.createElement('canvas');
   try {
     await new Promise<void>((resolve, reject) => {
+      cancelDecode = () => reject(new DOMException('Carga cancelada.', 'AbortError'));
+      signal?.addEventListener('abort', cancelDecode, { once: true });
       timeout = setTimeout(() => reject(new Error('La imagen tardó demasiado en abrirse. Intenta con una captura JPG o PNG.')), 20000);
       image.onload = () => resolve();
-      image.onerror = () => reject(new Error('No se pudo abrir la imagen. Guarda el comprobante como captura JPG, PNG o WebP.'));
+      image.onerror = () => reject(new Error(/heic|heif/i.test(file.type + file.name)
+        ? 'Este navegador no puede abrir esta foto HEIC. Toma una captura de pantalla del comprobante y selecciona esa captura.'
+        : 'No se pudo abrir la imagen. Si está en la nube, descárgala al teléfono e intenta de nuevo con una captura JPG o PNG.'));
       image.src = url;
     });
     clearTimeout(timeout);
+    checkCancelled();
     const width = image.naturalWidth || image.width, height = image.naturalHeight || image.height;
     if (!width || !height) throw new Error('La imagen no tiene dimensiones válidas.');
     const context = canvas.getContext('2d', { alpha: false });
@@ -51,9 +70,15 @@ export async function compressPaymentReceipt(file: File): Promise<CompressionRes
       context.fillStyle = '#FFFFFF'; context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       for (const quality of [0.78, 0.64, 0.5, 0.4]) {
-        let dataUrl = canvas.toDataURL('image/webp', quality);
-        const format = dataUrl.startsWith('data:image/webp') ? 'webp' : 'jpeg';
+        checkCancelled();
+        let dataUrl = '';
+        try { dataUrl = canvas.toDataURL('image/webp', quality); } catch { /* Try JPEG on unsupported encoders. */ }
+        const format = dataUrl.startsWith('data:image/webp;base64,') ? 'webp' : 'jpeg';
         if (format === 'jpeg') dataUrl = canvas.toDataURL('image/jpeg', quality);
+        // Some mobile canvases return "data:," on failure. Never save it as a receipt.
+        if (!/^data:image\/(webp|jpeg);base64,[A-Za-z0-9+/]+={0,2}$/.test(dataUrl)) {
+          throw new Error('No se pudo preparar la imagen. Intenta con una captura de pantalla del comprobante.');
+        }
         const compressedSize = estimateDataUrlBytes(dataUrl);
         const result: CompressionResult = { dataUrl, originalSize: file.size, compressedSize,
           savedPercent: Math.max(0, Math.round((1 - compressedSize / file.size) * 100)), width: canvas.width, height: canvas.height, format };
@@ -66,6 +91,7 @@ export async function compressPaymentReceipt(file: File): Promise<CompressionRes
     if (smallest && smallest.dataUrl.length <= RECEIPT_STORAGE_LIMIT) return smallest;
     throw new Error('Recorta la imagen para mostrar solo el comprobante y vuelve a subirla.');
   } finally {
+    if (cancelDecode) signal?.removeEventListener('abort', cancelDecode);
     clearTimeout(timeout); image.onload = null; image.onerror = null; image.src = '';
     canvas.width = 0; canvas.height = 0; URL.revokeObjectURL(url);
   }

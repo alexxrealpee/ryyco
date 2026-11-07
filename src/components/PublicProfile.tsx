@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useReceiptUpload } from '../hooks/useReceiptUpload';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   fetchProfileByUsername, 
@@ -230,6 +231,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
   }, [profile?.bankAccounts, selectedBankAccountId]);
   const [uploadedOrderProofBase64, setUploadedOrderProofBase64] = useState('');
+  const receiptUpload = useReceiptUpload(setUploadedOrderProofBase64);
   const [createAccountWithOrder, setCreateAccountWithOrder] = useState(true);
   const [acceptedBuyerTermsInCheckout, setAcceptedBuyerTermsInCheckout] = useState(true);
   const [isBuyerTermsModalOpen, setIsBuyerTermsModalOpen] = useState(false);
@@ -945,6 +947,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   };
 
   const executePlaceOrder = async (customer: CustomerProfile) => {
+    if (receiptUpload.isBusy()) { alert('Espera a que termine de preparar el comprobante.'); return; }
     if (!profile || placingOrderLockRef.current) return;
     if (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim()) {
       alert("Debes subir el comprobante de pago de la transferencia bancaria para poder avanzar.");
@@ -1105,6 +1108,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       return;
     }
 
+    if (receiptUpload.isBusy()) { alert('Espera a que termine de preparar el comprobante.'); return; }
     if (deliveryType === 'table' && !tableNumber.trim()) {
       alert("Por favor, indica o selecciona el número de tu mesa (*)");
       return;
@@ -3913,19 +3917,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   <input
                     type="file"
                     accept="image/*"
+                    aria-label="Seleccionar comprobante de pago"
+                    disabled={receiptUpload.busy || orderSubmitting}
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) {
-                        if (file.size > 2 * 1024 * 1024) {
-                          alert("La imagen excede el límite de 2 MB. Por favor elige una menos pesada.");
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          setUploadedOrderProofBase64(reader.result as string);
-                        };
-                        reader.readAsDataURL(file);
-                      }
+                      e.target.value = '';
+                      void receiptUpload.upload(file);
                     }}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                   />
@@ -3943,10 +3940,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                       </div>
                       <button
                         type="button"
+                        disabled={receiptUpload.busy || orderSubmitting}
                         onClick={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
                           setUploadedOrderProofBase64('');
+                          receiptUpload.setMessage('Comprobante eliminado.');
                         }}
                         className="p-1 px-2 bg-gray-900 hover:bg-gray-805 text-gray-400 hover:text-white rounded-lg text-[9px] font-bold transition font-mono z-30"
                       >
@@ -3956,14 +3955,16 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   ) : (
                     <div className="flex flex-col items-center justify-center gap-1.5 text-gray-450 hover:text-white transition">
                       <Plus className="w-5 h-5 text-gray-500 animate-pulse" />
-                      <span className="text-[11px] font-black uppercase tracking-wider text-indigo-400 leading-none">Adjuntar comprobante / captura</span>
-                      <span className="text-[8.5px] text-gray-500">Soporta fotos de recibo, transferencias bancarias, etc. (Máx 2MB)</span>
+                      <span className="text-[11px] font-black uppercase tracking-wider text-indigo-400 leading-none">{receiptUpload.busy ? 'Preparando comprobante…' : 'Adjuntar comprobante / captura'}</span>
+                      <span className="text-[8.5px] text-gray-500">Imagen o captura de pantalla (máx. 20 MB). Se comprimirá automáticamente.</span>
                     </div>
                   )}
                 </div>
               </div>
             )}
 
+
+            {receiptUpload.message && <p role="status" className="text-xs text-gray-300">{receiptUpload.message}</p>}
 
             {/* Total final */}
             <div className="border-t border-gray-900 pt-4 space-y-2">
@@ -4055,7 +4056,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </button>
               <button
                 type="submit"
-                disabled={orderSubmitting || (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim())}
+                disabled={orderSubmitting || receiptUpload.busy || (deliveryType !== 'table' && payMethod === 'transfer' && !uploadedOrderProofBase64.trim())}
                 className="flex-1 py-3 hover:opacity-90 font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition shadow cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{ backgroundColor: storeAccent, color: getContrastText(storeAccent) }}
               >

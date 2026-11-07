@@ -1783,11 +1783,6 @@ export default function LinnkProVoiceAssistant({
 
                   {/* 1. Dynamic Real-Time Transcription (Strictly ONLY ONE text visible at a time: User -> AI) */}
                   {assistantState !== 'connecting' && <div className="flex flex-col items-center justify-center z-10 pt-1 text-center px-4 max-w-sm sm:max-w-md mx-auto min-h-[64px]">
-                    {(!isInVoiceCall || micPermissionError || assistantState === 'speaking' || assistantState === 'processing') && (
-                      <p role="status" aria-live="polite" className="text-sm text-slate-300 mb-3 flex items-center justify-center gap-2">
-                        {micPermissionError ? 'Podemos continuar por chat o volver a intentar.' : !isInVoiceCall ? 'Toca Hablar y cuéntame qué te gustaría comer.' : assistantState === 'speaking' ? 'iAmesero está hablando. Toca el chef si quieres interrumpir.' : 'Estoy preparando tu respuesta…'}
-                      </p>
-                    )}
                     <AnimatePresence mode="wait">
                       {activeTranscriptText.trim() ? (
                         <motion.p
