@@ -15,7 +15,7 @@ interface Props {
   onLogout: () => void;
 }
 
-const rowClass = 'flex min-h-16 w-full items-center gap-4 rounded-xl px-3 py-4 text-left text-[16px] font-medium leading-snug text-[#F8FAFC] transition-colors hover:bg-[#232B3A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E63946]';
+const rowClass = 'flex min-h-12 w-full shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-left text-[14px] font-medium leading-snug text-[#F8FAFC] transition-colors hover:bg-[#232B3A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#E63946]';
 
 export default function HomeNavigationDrawer({ customer, isAndroid, onClose, onCustomerTab, onNavigate, onLogout }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -63,22 +63,22 @@ export default function HomeNavigationDrawer({ customer, isAndroid, onClose, onC
             </span>
           </button>
         </header>
-        <nav aria-label="Opciones de inicio" className="flex-1 rounded-tr-[28px] bg-[#0F172A] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
-          <div className="space-y-1 pb-4">
-            <button id="drawer-my-orders-btn" type="button" className={rowClass} onClick={() => onCustomerTab('orders')}><ShoppingBag className="h-6 w-6 shrink-0 text-[#E63946]" />Mis Pedidos</button>
-            {!isAndroid && <button id="drawer-my-points-btn" type="button" className={rowClass} onClick={() => onCustomerTab('rewards')}><Crown className="h-6 w-6 shrink-0 text-[#FFC400]" /><span className="flex-1">Puntos Ryycos</span>{customer && <span className="rounded-lg bg-[#FFC400] px-2 py-1 text-xs font-bold text-[#111827]">{(customer.points || 0).toLocaleString('es-CO')} R</span>}</button>}
-            <a href="https://wa.me/573106502043?text=Hola%20Soporte%20Ryyco%2C%20necesito%20ayuda" target="_blank" rel="noopener noreferrer" className={rowClass} onClick={onClose}><HelpCircle className="h-6 w-6 shrink-0 text-[#E63946]" />Centro de Ayuda / Soporte</a>
+        <nav aria-label="Opciones de inicio" className="flex flex-1 flex-col gap-1 rounded-tr-[28px] bg-[#0F172A] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5">
+          <div className="contents">
+            <button id="drawer-my-orders-btn" type="button" className={rowClass} onClick={() => onCustomerTab('orders')}><ShoppingBag className="h-5 w-5 shrink-0 text-[#E63946]" />Mis Pedidos</button>
+            {!isAndroid && <button id="drawer-my-points-btn" type="button" className={rowClass} onClick={() => onCustomerTab('rewards')}><Crown className="h-5 w-5 shrink-0 text-[#FFC400]" /><span className="flex-1">Puntos Ryycos</span>{customer && <span className="rounded-lg bg-[#FFC400] px-2 py-1 text-xs font-bold text-[#111827]">{(customer.points || 0).toLocaleString('es-CO')} R</span>}</button>}
+            <a href="https://wa.me/573106502043?text=Hola%20Soporte%20Ryyco%2C%20necesito%20ayuda" target="_blank" rel="noopener noreferrer" className={rowClass} onClick={onClose}><HelpCircle className="h-5 w-5 shrink-0 text-[#E63946]" />Centro de Ayuda / Soporte</a>
           </div>
-          <div className="space-y-1 py-4">
-            {!isAndroid && <button type="button" className={rowClass} onClick={() => onCustomerTab('wheel')}><Gift className="h-6 w-6 shrink-0 text-[#FFC400]" />Ruleta de Premios</button>}
-            <button type="button" className={rowClass} onClick={() => onNavigate('/carruselproduc')}><Flame className="h-6 w-6 shrink-0 text-[#E63946]" />Reels de Comida</button>
+          <div className="contents">
+            {!isAndroid && <button type="button" className={rowClass} onClick={() => onCustomerTab('wheel')}><Gift className="h-5 w-5 shrink-0 text-[#FFC400]" />Ruleta de Premios</button>}
+            <button type="button" className={rowClass} onClick={() => onNavigate('/carruselproduc')}><Flame className="h-5 w-5 shrink-0 text-[#E63946]" />Reels de Comida</button>
           </div>
-          <div className="space-y-1 py-4">
-            <button type="button" className={rowClass} onClick={() => onNavigate('/landing')}><Store className="h-6 w-6 shrink-0 text-[#E63946]" />Registrar mi restaurante</button>
-            <button type="button" className={rowClass} onClick={() => onNavigate('/admin-restaurante', 'seller')}><Utensils className="h-6 w-6 shrink-0 text-[#E63946]" />Administrar mi Restaurante</button>
-            <button type="button" className={rowClass} onClick={() => onNavigate('/domiciliario', 'driver')}><Bike className="h-6 w-6 shrink-0 text-[#FFC400]" />Acceso Domiciliario (Login)</button>
+          <div className="contents">
+            <button type="button" className={rowClass} onClick={() => onNavigate('/landing')}><Store className="h-5 w-5 shrink-0 text-[#E63946]" />Registrar mi restaurante</button>
+            <button type="button" className={rowClass} onClick={() => onNavigate('/admin-restaurante', 'seller')}><Utensils className="h-5 w-5 shrink-0 text-[#E63946]" />Administrar mi Restaurante</button>
+            <button type="button" className={rowClass} onClick={() => onNavigate('/domiciliario', 'driver')}><Bike className="h-5 w-5 shrink-0 text-[#FFC400]" />Acceso Domiciliario (Login)</button>
           </div>
-          {customer && <div className="pt-3"><button type="button" className={rowClass} onClick={onLogout}><LogOut className="h-6 w-6 shrink-0 text-[#E63946]" />Cerrar sesión</button></div>}
+          {customer && <div className="contents"><button type="button" className={rowClass} onClick={onLogout}><LogOut className="h-5 w-5 shrink-0 text-[#E63946]" />Cerrar sesión</button></div>}
         </nav>
       </motion.div>
     </dialog>, document.body,
