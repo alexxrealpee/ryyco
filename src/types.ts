@@ -377,6 +377,7 @@ export interface OrderItem {
   // Eventualidad y Reasignación Administrativa de Domiciliarios
   eventualityReport?: OrderEventualityReport;
   reassignmentHistory?: OrderReassignmentRecord[];
+  reassignmentId?: string;
 }
 
 export type OrderChatSenderRole = 'driver' | 'customer' | 'system';

@@ -5213,34 +5213,17 @@ export async function reportOrderEventuality(
     userRole: 'driver'
   };
 
-  try {
-    const snap = await getDoc(orderRef);
-    if (snap.exists()) {
-      const orderData = snap.data() as OrderItem;
-      const currentHistory = Array.isArray(orderData.orderStatusHistory) 
-        ? [...orderData.orderStatusHistory, historyItem] 
-        : [historyItem];
-
-      await updateDoc(orderRef, {
-        eventualityReport: report,
-        orderStatusHistory: currentHistory,
-        statusHistory: currentHistory
-      });
-    } else {
-      await updateDoc(orderRef, {
-        eventualityReport: report
-      });
+  await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error('El pedido ya no existe.');
+    const order = snapshot.data() as OrderItem;
+    if ((order.deliveryDriverId || order.driverId) !== report.driverId ||
+        order.status === 'delivered' || order.status === 'cancelled' || order.deliveryStep === 'delivered') {
+      throw new Error('El pedido ya no está activo en tu cuenta. Actualiza tus entregas.');
     }
-  } catch (err) {
-    console.warn("Could not update doc in firestore for eventuality report:", err);
-    try {
-      await updateDoc(orderRef, {
-        eventualityReport: report
-      });
-    } catch (e) {
-      console.error("Error setting eventuality report:", e);
-    }
-  }
+    const history = [...(order.orderStatusHistory || order.statusHistory || []), historyItem];
+    transaction.update(orderRef, { eventualityReport: report, orderStatusHistory: history, statusHistory: history });
+  });
 
   // Local storage backup sync
   try {
@@ -5283,8 +5266,9 @@ export async function releaseDriverAndReassignOrderTransaction(
     reason: string;
     description?: string;
     foodRecoveryCoordinated?: boolean;
+    expectedDriverId?: string;
   }
-): Promise<{ success: boolean; message: string }> {
+): Promise<{ success: boolean; message: string; order?: OrderItem }> {
   const orderRef = doc(db, 'orders', orderId);
   const now = new Date().toISOString();
 
@@ -5297,7 +5281,7 @@ export async function releaseDriverAndReassignOrderTransaction(
 
       const orderData = orderDoc.data() as OrderItem;
 
-      if (orderData.status === 'delivered') {
+      if (orderData.status === 'delivered' || orderData.deliveryStep === 'delivered') {
         return {
           success: false,
           message: "El pedido ya fue marcado como entregado y no puede ser reasignado."
@@ -5311,8 +5295,18 @@ export async function releaseDriverAndReassignOrderTransaction(
         };
       }
 
+      const assignedDriver = orderData.deliveryDriverId || orderData.driverId;
+      if (!assignedDriver || orderData.deliveryType === 'restaurant' ||
+          orderData.isTableOrder || orderData.orderType === 'table' || orderData.orderType === 'pickup') {
+        return { success: false, message: 'Este pedido no tiene un domiciliario RYYCO asignado para liberar.' };
+      }
+      if (releaseDetails.expectedDriverId && assignedDriver !== releaseDetails.expectedDriverId) {
+        return { success: false, message: 'El domiciliario asignado cambió. Revisa el pedido actualizado antes de liberarlo.' };
+      }
+      if (!releaseDetails.reason.trim()) return { success: false, message: 'Indica el motivo de la liberación.' };
+
       // Check if food was already picked up from restaurant
-      const isFoodPickedUp = orderData.status === 'shipped' ||
+      const isFoodPickedUp = orderData.status === 'picked_up' || orderData.status === 'shipped' ||
         orderData.status === 'delivering' ||
         orderData.deliveryStep === 'picked_up' ||
         orderData.deliveryStep === 'to_client' ||
@@ -5384,11 +5378,15 @@ export async function releaseDriverAndReassignOrderTransaction(
         deliveryVehiclePlate: '',
         deliveryStep: deleteField(),
         deliveryStepUpdatedAt: '',
-        restaurantPaymentStatus: 'unconfirmed',
+        // Money already paid to the restaurant must not become payable again.
+        restaurantPaymentStatus: orderData.driverPaidToRestaurant ? 'already_paid' : (orderData.restaurantPaymentStatus || 'unconfirmed'),
         customerCodConfirmed: false,
-        driverPaidToRestaurant: false,
-        driverPaidAmount: 0,
-        driverPaidAt: '',
+        reassignmentId: reassignmentRecord.id,
+        pendingAt: now,
+        processingAt: '',
+        shippedAt: '',
+        processingDuration: 0,
+        shippingDuration: 0,
         reassignmentHistory: existingHistory,
         orderStatusHistory: currentStatusHistory,
         statusHistory: currentStatusHistory
@@ -5399,18 +5397,25 @@ export async function releaseDriverAndReassignOrderTransaction(
       }
 
       transaction.update(orderRef, resetUpdates);
+      // Atomic with releasing the order: the next courier must create a fresh
+      // tracking document instead of trying to overwrite the previous owner's.
+      transaction.delete(doc(db, 'delivery_tracking', orderId));
 
-      // Local storage backup sync
+      return {
+        success: true,
+        message: `El pedido #${orderData.orderNumber || ''} fue liberado con éxito y ya está disponible en tiempo real para otros domiciliarios.`,
+        order: { ...orderData, ...resetUpdates, id: orderId, deliveryStep: undefined } as OrderItem,
+      };
+    });
+
+    // Cache only after Firestore commits; transactions may retry or fail.
+    if (result.success && result.order) {
       try {
-        const storeKey = `linnk_orders_${orderData.storeOwnerId}`;
+        const storeKey = `linnk_orders_${result.order.storeOwnerId}`;
         const storeOrders = JSON.parse(localStorage.getItem(storeKey) || '[]');
         const idx = storeOrders.findIndex((o: any) => o.id === orderId);
         if (idx > -1) {
-          storeOrders[idx] = {
-            ...storeOrders[idx],
-            ...resetUpdates,
-            deliveryStep: undefined
-          };
+          storeOrders[idx] = result.order;
           localStorage.setItem(storeKey, JSON.stringify(storeOrders));
         }
 
@@ -5418,20 +5423,12 @@ export async function releaseDriverAndReassignOrderTransaction(
         const allOrders = JSON.parse(localStorage.getItem(allKey) || '[]');
         const idxAll = allOrders.findIndex((o: any) => o.id === orderId);
         if (idxAll > -1) {
-          allOrders[idxAll] = {
-            ...allOrders[idxAll],
-            ...resetUpdates,
-            deliveryStep: undefined
-          };
+          allOrders[idxAll] = result.order;
           localStorage.setItem(allKey, JSON.stringify(allOrders));
         }
       } catch (e) {}
 
-      return {
-        success: true,
-        message: `El pedido #${orderData.orderNumber || ''} fue liberado con éxito y ya está disponible en tiempo real para otros domiciliarios.`
-      };
-    });
+    }
 
     return result;
   } catch (err: any) {
@@ -5458,31 +5455,13 @@ export async function updateOrderDeliveryStep(
   const orderRef = doc(db, 'orders', orderId);
   const now = new Date().toISOString();
 
-  let currentOrder: OrderItem | null = null;
-  try {
-    const snap = await getDoc(orderRef);
-    if (snap.exists()) {
-      currentOrder = { id: snap.id, ...(snap.data() as any) } as OrderItem;
+  const updates = await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error('El pedido ya no existe.');
+    const currentOrder = { ...snapshot.data(), id: orderId } as OrderItem;
+    if (!driverId || (currentOrder.deliveryDriverId || currentOrder.driverId) !== driverId) {
+      throw new Error('Este pedido ya no está asignado a tu cuenta. Actualiza tus entregas.');
     }
-  } catch (e) {
-    console.warn("Could not fetch order snapshot from firestore:", e);
-  }
-
-  // Local storage fallback if offline or not found in Firestore
-  if (!currentOrder) {
-    try {
-      const allKey = 'linnk_orders_all';
-      const localAll = JSON.parse(localStorage.getItem(allKey) || '[]');
-      const found = localAll.find((o: any) => o.id === orderId);
-      if (found) currentOrder = { ...found, id: orderId };
-    } catch (e) {}
-  }
-
-  if (!currentOrder) {
-    currentOrder = { id: orderId } as OrderItem;
-  } else if (!currentOrder.id) {
-    currentOrder.id = orderId;
-  }
 
   if (currentOrder?.status === 'delivered') {
     throw new Error("Un pedido entregado no puede ser modificado.");
@@ -5592,7 +5571,9 @@ export async function updateOrderDeliveryStep(
     ...timeUpdates
   };
 
-  await updateDoc(orderRef, updates);
+  transaction.update(orderRef, updates);
+  return updates;
+  });
 
   // Sync local storage cache for store & admin
   try {
@@ -5626,10 +5607,20 @@ export async function updateOrderDriverPaymentInfo(
     driverPaidToRestaurant?: boolean;
     driverPaidAmount?: number;
     driverPaidAt?: string;
-  }
+  },
+  driverId: string
 ): Promise<void> {
   const orderRef = doc(db, 'orders', orderId);
-  await updateDoc(orderRef, paymentData);
+  await runTransaction(db, async transaction => {
+    const snapshot = await transaction.get(orderRef);
+    if (!snapshot.exists()) throw new Error('El pedido ya no existe.');
+    const order = snapshot.data() as OrderItem;
+    if (!driverId || (order.deliveryDriverId || order.driverId) !== driverId ||
+        order.status === 'delivered' || order.status === 'cancelled') {
+      throw new Error('Este pedido ya no está disponible para tu cuenta. Actualiza tus entregas.');
+    }
+    transaction.update(orderRef, cleanUndefined(paymentData));
+  });
 
   // Sync local storage cache for store & admin
   try {

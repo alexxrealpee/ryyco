@@ -570,15 +570,17 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   };
 
   const handleConfirmReassignOrder = async () => {
-    if (!reassigningOrder) return;
+    if (!reassigningOrder || isSubmittingReassignment) return;
     setIsSubmittingReassignment(true);
     setReassignSuccessMsg('');
     try {
-      const adminEmail = systemSettings?.adminEmails?.[0] || PRIMARY_ADMIN_EMAIL || 'admin@ryyco.com';
+      const adminEmail = auth.currentUser?.email;
+      if (!adminEmail) throw new Error('Inicia sesión con tu cuenta de administración para autorizar la liberación.');
       const res = await releaseDriverAndReassignOrderTransaction(reassigningOrder.id, adminEmail, {
         reason: reassignReason,
         description: reassignDescription.trim(),
-        foodRecoveryCoordinated: reassignFoodConfirmed
+        foodRecoveryCoordinated: reassignFoodConfirmed,
+        expectedDriverId: reassigningOrder.deliveryDriverId || reassigningOrder.driverId || ''
       });
 
       if (!res.success) {
@@ -588,50 +590,11 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
       setReassignSuccessMsg(res.message);
 
-      // Local state sync
-      setAllOrders(prev => prev.map(o => {
-        if (o.id !== reassigningOrder.id) return o;
-        return {
-          ...o,
-          status: 'pending',
-          deliveryDriverId: '',
-          driverId: '',
-          deliveryDriverName: '',
-          deliveryDriverPhone: '',
-          deliveryDriverPhoto: '',
-          deliveryVehicle: '',
-          deliveryVehiclePlate: '',
-          deliveryStep: undefined,
-          deliveryStepUpdatedAt: '',
-          eventualityReport: o.eventualityReport ? {
-            ...o.eventualityReport,
-            resolved: true,
-            resolvedAt: new Date().toISOString(),
-            resolvedBy: adminEmail
-          } : undefined
-        };
-      }));
-
-      if (viewingOrder && viewingOrder.id === reassigningOrder.id) {
-        setViewingOrder(prev => prev ? {
-          ...prev,
-          status: 'pending',
-          deliveryDriverId: '',
-          driverId: '',
-          deliveryDriverName: '',
-          deliveryDriverPhone: '',
-          deliveryDriverPhoto: '',
-          deliveryVehicle: '',
-          deliveryVehiclePlate: '',
-          deliveryStep: undefined,
-          deliveryStepUpdatedAt: '',
-          eventualityReport: prev.eventualityReport ? {
-            ...prev.eventualityReport,
-            resolved: true,
-            resolvedAt: new Date().toISOString(),
-            resolvedBy: adminEmail
-          } : undefined
-        } : null);
+      // Use the committed order, including payment records and reassignment history.
+      if (res.order) {
+        const releasedOrder = res.order;
+        setAllOrders(prev => prev.map(o => o.id === releasedOrder.id ? releasedOrder : o));
+        setViewingOrder(prev => prev?.id === releasedOrder.id ? releasedOrder : prev);
       }
     } catch (err: any) {
       alert("Error al liberar pedido: " + (err.message || 'Error desconocido'));

@@ -50,12 +50,15 @@ export function createDeliveryTrackingService(db: Firestore) {
         return;
       }
       onConnection?.('connecting');
-      let lastGps = 0, lastServer = 0;
+      let lastGps = 0, lastServer = 0, lastDriver = '';
       let previous: { lat: number; lng: number; accuracy: number; timestamp: number } | null = null;
       unsubscribeSnapshot = onSnapshot(doc(db, 'delivery_tracking', orderId), { includeMetadataChanges: true }, snapshot => {
         onConnection?.(snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites ? 'cached' : 'live');
-        if (!snapshot.exists()) { onUpdate(null); return; }
+        if (!snapshot.exists()) { lastGps = 0; lastServer = 0; lastDriver = ''; previous = null; onUpdate(null); return; }
         const raw = snapshot.data();
+        if (raw.driverId !== lastDriver) {
+          lastGps = 0; lastServer = 0; previous = null; lastDriver = raw.driverId;
+        }
         const stamp = raw.serverUpdatedAt?.toMillis?.() || Date.parse(raw.updatedAt) || 0;
         if (stamp < lastServer) return;
         const gps = raw.gpsTimestamp ?? Date.parse(raw.updatedAt);

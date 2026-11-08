@@ -1,4 +1,5 @@
 import { doc, onSnapshot } from 'firebase/firestore';
+import HomeNavigationDrawer from './HomeNavigationDrawer';
 import CheckoutBankTransfer, { validTransferAccounts } from './CheckoutBankTransfer';
 import { balanceCatalog, resolveProductStore } from '../lib/catalogProducts';
 import { calculateBankAccountFee, resolveSelectedBankAccount } from '../lib/paymentFeeUtils';
@@ -845,25 +846,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   
   // Mobile 3-Dots Menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const isMobileMenuOpenRef = useRef(isMobileMenuOpen);
-  isMobileMenuOpenRef.current = isMobileMenuOpen;
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      if (!isMobileMenuOpenRef.current) return;
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
-        setIsMobileMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
-
   const [buyQuantity, setBuyQuantity] = useState(1);
   const [chosenVariant, setChosenVariant] = useState('');
   const [chosenVariantPrice, setChosenVariantPrice] = useState<number>(0);
@@ -1810,7 +1792,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-3 sm:py-3.5 flex items-center justify-between min-h-[64px] gap-2">
           {/* Left: 3-Dots Menu Dropdown Button & Customer Session Status on Desktop */}
           <div className="flex-1 flex items-center justify-start z-30 min-w-0 gap-2">
-            <div className="relative shrink-0" ref={mobileMenuRef}>
+            <div className="relative shrink-0">
               <button
                 type="button"
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -1819,290 +1801,35 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 }`}
                 title="Menú de Opciones"
                 aria-label="Menú de opciones"
+                aria-expanded={isMobileMenuOpen}
+                aria-controls="home-navigation-drawer"
+                aria-haspopup="dialog"
               >
                 <MoreVertical className="w-4.5 h-4.5" />
               </button>
 
-              {/* Dropdown Menu */}
-              <AnimatePresence>
-                {isMobileMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute left-0 top-full mt-2 w-72 bg-[#111827] border border-[#232B3A] rounded-2xl shadow-2xl overflow-hidden z-50 p-2 space-y-1.5"
-                  >
-                    {/* Customer Session Card (Mobile) */}
-                    {activeCustomer ? (
-                      <div className="p-2.5 mb-1 bg-slate-900 border border-slate-700/80 rounded-xl space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
-                              <User className="w-4 h-4 text-emerald-400" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-black text-white truncate">{activeCustomer.name}</p>
-                              <p className="text-[10px] text-gray-400 font-mono">{activeCustomer.phone}</p>
-                            </div>
-                          </div>
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono">
-                            {(activeCustomer.points || 0).toLocaleString('es-CO')} R
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-1.5 pt-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsMobileMenuOpen(false);
-                              setCustomerPortalTab('profile');
-                              setIsCustomerPortalOpen(true);
-                            }}
-                            className="py-1.5 px-2 bg-slate-700/60 hover:bg-slate-700 text-white rounded-lg text-[10px] font-bold text-center transition"
-                          >
-                            Mi Cuenta
-                          </button>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              setIsMobileMenuOpen(false);
-                              await logoutCustomerSession();
-                            }}
-                            className="py-1.5 px-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-lg text-[10px] font-bold text-center flex items-center justify-center gap-1 transition"
-                          >
-                            <LogOut className="w-3 h-3 text-red-400" />
-                            Cerrar Sesión
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          setCustomerPortalTab('orders');
-                          setIsCustomerPortalOpen(true);
-                        }}
-                        className="w-full text-left p-2.5 mb-1 rounded-xl bg-emerald-950/80 border border-emerald-500/40 hover:bg-emerald-900/80 transition cursor-pointer flex items-center justify-between group"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                            <User className="w-4 h-4 text-emerald-400" />
-                          </div>
-                          <div>
-                            <span className="text-xs font-black text-white group-hover:text-emerald-300 transition block">
-                              Ingresar como Cliente
-                            </span>
-                            <span className="text-[10px] text-emerald-400 font-bold block">
-                              {isAndroid ? 'Rastreo y estado de tus compras' : '+500 RYYCOS ($500 COP) Gratis'}
-                            </span>
-                          </div>
-                        </div>
-                        <span className="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-black">
-                          Entrar
-                        </span>
-                      </button>
-                    )}
-
-                    {/* Item 1: Mis Pedidos */}
-                    <button
-                      id="drawer-my-orders-btn"
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        setCustomerPortalTab('orders');
-                        setIsCustomerPortalOpen(true);
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] border border-transparent hover:border-[#232B3A] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <ShoppingBag className="w-4 h-4 text-[#E63946]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-[#E63946] transition">
-                          Mis Pedidos
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Rastreo y estado de tus compras en vivo
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Item 2: Mis Puntos Ryycos & Ruleta */}
-                    {!isAndroid && (
-                      <button
-                        id="drawer-my-points-btn"
-                        type="button"
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          setCustomerPortalTab('rewards');
-                          setIsCustomerPortalOpen(true);
-                        }}
-                        className="w-full text-left p-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 transition cursor-pointer flex items-center gap-3 text-white group"
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                          <Crown className="w-4 h-4 text-amber-400 animate-pulse" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <span className="font-extrabold text-amber-300 text-xs block">
-                              Puntos Ryycos
-                            </span>
-                            <span className="text-[9px] font-black uppercase bg-amber-400/20 text-amber-300 px-1.5 py-0.5 rounded-md">
-                              Billetera
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-gray-300 font-medium leading-tight">
-                            Billetera $ COP, transferencias y canjes
-                          </p>
-                        </div>
-                      </button>
-                    )}
-
-                    {/* Ruleta de Premios */}
-                    {!isAndroid && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          setCustomerPortalTab('wheel');
-                          setIsCustomerPortalOpen(true);
-                        }}
-                        className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-[#E63946]/15 border border-[#E63946]/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                          <Gift className="w-4 h-4 text-[#E63946]" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="font-bold text-xs text-white block group-hover:text-[#E63946] transition">
-                            Ruleta de Premios
-                          </span>
-                          <p className="text-[10px] text-gray-400 leading-tight">
-                            Gira y gana platos gratis con tus compras
-                          </p>
-                        </div>
-                      </button>
-                    )}
-
-                    {/* Reels / Historias */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        window.history.pushState({}, '', '/carruselproduc');
-                        window.dispatchEvent(new Event('popstate'));
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-[#D62839] flex items-center justify-center shrink-0 group-hover:scale-105 transition shadow-md">
-                        <Flame className="w-4 h-4 text-white fill-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-red-300 transition">
-                          Reels de Comida
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Ver platos y menús en formato video / reels
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Registrar Mi Restaurante */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        window.history.pushState({}, '', '/landing');
-                        window.dispatchEvent(new Event('popstate'));
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <Store className="w-4 h-4 text-emerald-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-emerald-300 transition">
-                          Registrar mi restaurante
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Publica tus productos y vende online
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Administrar mi Restaurante / Iniciar Sesión */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        localStorage.setItem('ryyco_auth_mode', 'seller');
-                        window.history.pushState({}, '', '/admin-restaurante');
-                        window.dispatchEvent(new Event('popstate'));
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <Utensils className="w-4 h-4 text-indigo-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-indigo-300 transition">
-                          Administrar mi Restaurante
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Ingresar a la administración de tu restaurante
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Acceso Domiciliario (Login) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        localStorage.setItem('ryyco_auth_mode', 'driver');
-                        window.history.pushState({}, '', '/domiciliario');
-                        window.dispatchEvent(new Event('popstate'));
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <Bike className="w-4 h-4 text-amber-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-amber-300 transition">
-                          Acceso Domiciliario (Login)
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Ingreso y portal para repartidores
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Centro de Ayuda */}
-                    <a
-                      href="https://wa.me/573106502043?text=Hola%20Soporte%20Ryyco%2C%20necesito%20ayuda"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                      }}
-                      className="w-full text-left p-2.5 rounded-xl hover:bg-[#1A2234] transition cursor-pointer flex items-center gap-3 text-white group border-t border-[#232B3A] pt-2 mt-1"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
-                        <HelpCircle className="w-4 h-4 text-blue-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-xs text-white block group-hover:text-blue-300 transition">
-                          Centro de Ayuda / Soporte
-                        </span>
-                        <p className="text-[10px] text-gray-400 leading-tight">
-                          Atención y soporte por WhatsApp
-                        </p>
-                      </div>
-                    </a>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {isMobileMenuOpen && (
+                <HomeNavigationDrawer
+                  customer={activeCustomer}
+                  isAndroid={isAndroid}
+                  onClose={() => setIsMobileMenuOpen(false)}
+                  onCustomerTab={(tab) => {
+                    setIsMobileMenuOpen(false);
+                    setCustomerPortalTab(tab);
+                    setIsCustomerPortalOpen(true);
+                  }}
+                  onNavigate={(path, mode) => {
+                    setIsMobileMenuOpen(false);
+                    if (mode) localStorage.setItem('ryyco_auth_mode', mode);
+                    window.history.pushState({}, '', path);
+                    window.dispatchEvent(new Event('popstate'));
+                  }}
+                  onLogout={() => {
+                    setIsMobileMenuOpen(false);
+                    void logoutCustomerSession();
+                  }}
+                />
+              )}
             </div>
 
             {/* Customer Session Status (Moved to Left on PC/Desktop) */}

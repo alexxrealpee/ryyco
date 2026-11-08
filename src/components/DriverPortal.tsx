@@ -940,10 +940,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
 
       // Check if order was released or reassigned by Administration
       const wasAssignedToMe = Boolean(driver?.id);
-      const isNoLongerMine = wasAssignedToMe && (
-        (data.deliveryDriverId && data.deliveryDriverId !== driver.id) ||
-        (!data.deliveryDriverId && data.status === 'pending')
-      );
+      const isNoLongerMine = wasAssignedToMe && (data.deliveryDriverId || data.driverId || '') !== driver.id;
 
       if (isNoLongerMine) {
         setActiveDelivery(null);
@@ -952,7 +949,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
             localStorage.removeItem(`ryyco_active_delivery_${driver.id}`);
             localStorage.setItem('ryyco_driver_has_active_delivery', 'false');
           } catch (e) {}
-          setReleasedNotice(`Administración General ha liberado el pedido #${data.orderNumber || ''} y lo reasignó. Ya estás libre y disponible para tomar nuevos pedidos.`);
+          setReleasedNotice(`Administración General ha retirado tu asignación del pedido #${data.orderNumber || ''}. Ya no tienes esta entrega a cargo. Revisa tu disponibilidad antes de recibir nuevas solicitudes.`);
           loadHistoryAndRatings(driver.id);
         }
         return;
@@ -1203,7 +1200,7 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     codConfirmed?: boolean,
     paidToStore?: boolean
   ) => {
-    if (!activeDelivery) return;
+    if (!activeDelivery || !driver) return;
     const fee = systemDeliveryFee || activeDelivery.deliveryFee || 7000;
     const foodAmount = Math.max(0, (activeDelivery.totalAmount || 0) - fee);
 
@@ -1215,11 +1212,14 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
       driverPaidAt: paidToStore ? new Date().toISOString() : (paidToStore === false ? undefined : activeDelivery.driverPaidAt)
     };
 
-    const updated = {
-      ...activeDelivery,
-      ...updates
-    };
-    setActiveDelivery(updated);
+    try {
+      await updateOrderDriverPaymentInfo(activeDelivery.id, updates, driver.id);
+    } catch (err) {
+      setPaymentFeedbackMsg(err instanceof Error ? err.message : 'No se pudo registrar el pago. Intenta de nuevo.');
+      return;
+    }
+    setActiveDelivery(previous => previous?.id === activeDelivery.id &&
+      (previous.deliveryDriverId || previous.driverId) === driver.id ? { ...previous, ...updates } : previous);
 
     if (status === 'already_paid') {
       setPaymentFeedbackMsg('✓ Registrado: Pedido ya pagado al restaurante por el cliente.');
@@ -1232,11 +1232,6 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     }
     setTimeout(() => setPaymentFeedbackMsg(''), 4500);
 
-    try {
-      await updateOrderDriverPaymentInfo(activeDelivery.id, updates);
-    } catch (err) {
-      console.error("Error updating driver payment info:", err);
-    }
   };
 
   // Save Driver Profile Updates

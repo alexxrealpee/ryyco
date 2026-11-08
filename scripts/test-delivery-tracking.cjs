@@ -202,6 +202,12 @@ async function main() {
   listener.next(snapshot(clock - 1000, false, clock + 1));
   assert.equal(received.filter(Boolean).length, 2, 'Older fixes cannot rewind the marker');
   assert.deepEqual(states.slice(1, 3), ['cached', 'live']);
+  listener.next({ id: 'o', exists: () => false, metadata: { fromCache: false } });
+  assert.equal(received.at(-1), null, 'Release removes the previous courier');
+  const reassigned = snapshot(clock - 500, false, clock + 20);
+  reassigned.data = () => ({driverId:'new-driver',lat:1,lng:1,gpsTimestamp:clock-500,isTrackingActive:true,serverUpdatedAt:{toMillis:()=>clock+20}});
+  listener.next(reassigned);
+  assert.equal(received.at(-1).driverId, 'new-driver', 'New courier is not rejected as an impossible movement of the old courier');
   listener.error({ code: 'permission-denied' });
   assert.equal(states.at(-1), 'error');
   store.authChanged(null);

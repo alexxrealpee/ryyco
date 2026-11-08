@@ -378,7 +378,9 @@ export default function DeliveryTrackingModal({
 
   // Delivery status step resolution
   const finished = activeOrder?.status === 'cancelled' || activeOrder?.status === 'delivered' || activeOrder?.deliveryStep === 'delivered';
-  const currentStep = (activeOrder?.status === 'cancelled' ? 'cancelled' : finished ? 'delivered' : null) || activeOrder?.deliveryStep || tracking?.status || (
+  const expectedDriver = activeOrder?.deliveryDriverId || activeOrder?.driverId;
+  const matchingDriver = Boolean(expectedDriver) && tracking?.driverId === expectedDriver;
+  const currentStep = (activeOrder?.status === 'cancelled' ? 'cancelled' : finished ? 'delivered' : null) || activeOrder?.deliveryStep || (matchingDriver ? tracking?.status : null) || (
     activeOrder?.status === 'delivered' ? 'delivered' :
     activeOrder?.status === 'delivering' ? 'to_client' :
     activeOrder?.status === 'picked_up' ? 'picked_up' :
@@ -397,10 +399,8 @@ export default function DeliveryTrackingModal({
   const storeLng = storeLocationCoords?.lng ?? activeOrder?.storeLng ?? tracking?.storeLng ?? destLng;
   const hasDestination = validCoordinates(activeOrder?.customerLat ?? tracking?.customerLat, activeOrder?.customerLng ?? tracking?.customerLng);
   const hasStore = validCoordinates(storeLocationCoords?.lat ?? activeOrder?.storeLat ?? tracking?.storeLat, storeLocationCoords?.lng ?? activeOrder?.storeLng ?? tracking?.storeLng);
-  const expectedDriver = activeOrder?.deliveryDriverId || activeOrder?.driverId;
-  const matchingDriver = !expectedDriver || tracking?.driverId === expectedDriver;
-  const trackingIdentity = `${order?.id}:${expectedDriver || tracking?.driverId || ''}`;
-  const deviceFix = driverLiveCoords && validCoordinates(driverLiveCoords.latitude, driverLiveCoords.longitude) && !!driverLiveCoords.timestamp;
+  const trackingIdentity = `${order?.id}:${expectedDriver || ''}`;
+  const deviceFix = Boolean(expectedDriver) && driverLiveCoords && validCoordinates(driverLiveCoords.latitude, driverLiveCoords.longitude) && !!driverLiveCoords.timestamp;
   const courierPoint: GpsPoint | null = finished ? null : deviceFix ? {
     lat: driverLiveCoords!.latitude, lng: driverLiveCoords!.longitude, timestamp: driverLiveCoords!.timestamp!,
     accuracy: driverLiveCoords!.accuracy ?? 0, heading: driverLiveCoords!.heading,
@@ -429,7 +429,7 @@ export default function DeliveryTrackingModal({
 
 
   // Courier vehicle type
-  const vehicleType = tracking?.vehicleType || activeOrder?.deliveryVehicle || 'moto';
+  const vehicleType = (matchingDriver ? tracking?.vehicleType : null) || activeOrder?.deliveryVehicle || 'moto';
   const isBike = vehicleType.toLowerCase().includes('bici') || vehicleType.toLowerCase().includes('bicicleta');
 
   // Leaflet map setup for fallback mode
@@ -654,9 +654,9 @@ export default function DeliveryTrackingModal({
   };
 
   const statusInfo = getStatusInfo(currentStep);
-  const driverName = tracking?.driverName || activeOrder.deliveryDriverName || 'Domiciliario Ryyco';
-  const driverPhone = tracking?.driverPhone || activeOrder.deliveryDriverPhone;
-  const vehiclePlate = tracking?.vehiclePlate || activeOrder.deliveryVehiclePlate;
+  const driverName = activeOrder.deliveryDriverName || (matchingDriver ? tracking?.driverName : null) || 'Domiciliario Ryyco';
+  const driverPhone = activeOrder.deliveryDriverPhone || (matchingDriver ? tracking?.driverPhone : undefined);
+  const vehiclePlate = activeOrder.deliveryVehiclePlate || (matchingDriver ? tracking?.vehiclePlate : undefined);
   const deliveryCode = getOrderDeliveryCode(activeOrder);
 
   const handleCopyDeliveryPin = () => {

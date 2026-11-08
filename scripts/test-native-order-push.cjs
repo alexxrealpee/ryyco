@@ -31,5 +31,13 @@ test('cloud dispatch isolates stores and available approved drivers, skips inval
  const sent=[];const messaging={send:async message=>sent.push(message)};
  await deliverOrder(db,messaging,'o');assert.deepEqual(sent.map(m=>m.data.role),['admin','seller','driver']);
  await deliverOrder(db,messaging,'o');assert.equal(sent.length,3);
- records.set('orders/o',{status:'delivered'});await deliverOrder(db,messaging,'o');assert.equal(sent.length,3);
+ records.set('orders/o',{status:'pending',orderType:'delivery',storeOwnerId:'s',reassignmentId:'release-1',reassignmentHistory:[{previousDriverId:'other-driver'}]});
+ await deliverOrder(db,messaging,'o','release-1');assert.equal(sent.length,4);assert.equal(sent.at(-1).data.role,'driver');
+ await deliverOrder(db,messaging,'o','release-1');assert.equal(sent.length,4,'retry of a release is deduplicated');
+ await deliverOrder(db,messaging,'o','old-release');assert.equal(sent.length,4,'stale release event is ignored');
+ records.set('orders/o',{...records.get('orders/o'),reassignmentId:'release-2'});
+ await deliverOrder(db,messaging,'o','release-2');assert.equal(sent.length,5,'a later release can notify again');
+ records.set('orders/o',{...records.get('orders/o'),reassignmentId:'release-3',reassignmentHistory:[{previousDriverId:'d'}]});
+ await deliverOrder(db,messaging,'o','release-3');assert.equal(sent.length,5,'do not notify the released courier');
+ records.set('orders/o',{status:'delivered'});await deliverOrder(db,messaging,'o');assert.equal(sent.length,5);
 });
