@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+.proveedores-module-scope {
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.proveedores-module-scope,
+.proveedores-module-scope .font-sans,
+.proveedores-module-scope button,
+.proveedores-module-scope input,
+.proveedores-module-scope select,
+.proveedores-module-scope textarea {
+  font-family: var(--font-sans);
+}
+
+.proveedores-module-scope h1,
+.proveedores-module-scope h2,
+.proveedores-module-scope h3,
+.proveedores-module-scope .font-display {
+  font-family: var(--font-display) !important;
+}
+
+.proveedores-module-scope .font-mono {
+  font-family: var(--font-mono) !important;
+}

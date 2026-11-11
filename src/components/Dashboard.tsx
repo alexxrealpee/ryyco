@@ -77,11 +77,14 @@ import {
   Laptop,
   Key,
   GripVertical,
-  Pencil
+  Pencil,
+  Truck
 } from 'lucide-react';
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { RestaurantDataTab } from './RestaurantDataTab';
+
+const ProveedoresModule = React.lazy(() => import('../modules/proveedores/App'));
 import { 
   initializeFCM, 
   requestSellerFCMPermission, 
@@ -413,7 +416,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState(false);
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'drinks' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank'>(() => {
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'drinks' | 'orders' | 'design' | 'restaurant' | 'analytics' | 'subscription' | 'bank' | 'proveedores'>(() => {
     try {
       const searchParams = new URLSearchParams(window.location.search);
       const tabParam = searchParams.get('tab')?.toLowerCase();
@@ -825,7 +828,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
   const [receiptNotes, setReceiptNotes] = useState('');
   const [uploadedReceiptBase64, setUploadedReceiptBase64] = useState('');
   const [submittingProof, setSubmittingProof] = useState(false);
-  const [selectedSubPlan, setSelectedSubPlan] = useState<'basico' | 'medio' | 'pro'>('basico');
+  const [selectedSubPlan, setSelectedSubPlan] = useState<'basico' | 'medio' | 'pro' | 'avanzado'>('basico');
 
   // Custom Themes
   const [customTheme, setCustomTheme] = useState<CustomTheme>({
@@ -2459,6 +2462,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
             <ExternalLink className="w-3.5 h-3.5 opacity-60" />
           </a>
 
+          {/* Proveedores (Top Toolbar Button) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('proveedores')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+              activeTab === 'proveedores'
+                ? 'bg-amber-400/15 text-amber-300 border-amber-500/30 shadow-sm'
+                : 'bg-gray-900 hover:bg-gray-850 hover:text-white text-gray-300 border-gray-800'
+            }`}
+            title="Ingreso a Proveedores"
+          >
+            <Truck className="w-4 h-4 text-amber-400" />
+            <span>Proveedores</span>
+          </button>
+
           {/* FCM Push Notification status & trigger button for seller */}
           <button
             type="button"
@@ -2713,6 +2731,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
           >
             <Landmark className="w-4 h-4 text-emerald-400" />
             Datos Bancarios
+          </button>
+
+          {/* Proveedores (Sidebar Navigation Button) */}
+          <button
+            type="button"
+            onClick={() => setActiveTab('proveedores')}
+            className={`w-auto md:w-full text-start py-1.5 md:py-3 px-2 md:px-3.5 rounded-xl text-xs font-bold flex items-center gap-2 shrink-0 transition cursor-pointer ${
+              activeTab === 'proveedores'
+                ? 'bg-amber-400/10 text-amber-400 border border-amber-500/20'
+                : 'text-gray-400 hover:text-white hover:bg-gray-900 border border-transparent'
+            }`}
+          >
+            <Truck className="w-4 h-4 text-amber-400" />
+            Proveedores
           </button>
 
           {isUserAdmin && (
@@ -7020,6 +7052,20 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                   <BankSettings profile={profile} onSave={handleSaveBankAccounts} />
                 )}
 
+                {activeTab === 'proveedores' && (
+                  <React.Suspense
+                    fallback={
+                      <div className="flex items-center justify-center py-24 text-gray-400 text-sm font-bold">
+                        Cargando módulo de Proveedores...
+                      </div>
+                    }
+                  >
+                    <div className="rounded-2xl overflow-hidden border border-gray-800 bg-[#F8F9FA] text-[#111827]">
+                      <ProveedoresModule loggedRestaurantProfile={profile} />
+                    </div>
+                  </React.Suspense>
+                )}
+
               </motion.div>
             </AnimatePresence>
             </>
@@ -8084,6 +8130,21 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 >
                   <Landmark className="w-4 h-4 text-emerald-400" />
                   <span>Datos Bancarios</span>
+                </button>
+
+                {/* Proveedores */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('proveedores');
+                    setIsMobileMoreOpen(false);
+                  }}
+                  className={`w-full py-3 px-3 rounded-xl text-left text-xs font-bold flex items-center gap-3 transition cursor-pointer ${
+                    activeTab === 'proveedores' ? 'bg-amber-450/10 text-amber-400 border border-amber-500/20' : 'text-gray-300 hover:bg-gray-900 border border-transparent'
+                  }`}
+                >
+                  <Truck className="w-4 h-4 text-amber-400" />
+                  <span>Proveedores</span>
                 </button>
 
                 {/* Panel Administrador */}
