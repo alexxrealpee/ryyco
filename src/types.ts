@@ -145,13 +145,20 @@ export interface UserProfile {
   restaurantPaymentMethods?: string[];
   restaurantChefNote?: string;
   restaurantDaysOpen?: string[];
+  freeDeliveryEnabled?: boolean; // Domicilio gratis ofrecido por el restaurante (entrega con domiciliarios propios)
   // Exact Geolocation / Google Maps Coordinates
   lat?: number;
   lng?: number;
   mapUrl?: string;
 }
 
+export interface ScheduleSlot {
+  openTime: string;
+  closeTime: string;
+}
+
 export interface DaySchedule {
+  slots?: ScheduleSlot[];
   isOpen: boolean;
   openTime: string;
   closeTime: string;
@@ -298,6 +305,7 @@ export interface OrderItem {
   paymentMethod: 'whatsapp' | 'transfer' | 'delivery_cash' | 'cod';
   status: OrderStatus;
   deliveryType?: 'restaurant' | 'ryyco';
+  isFreeDelivery?: boolean; // Indica si el pedido tiene domicilio gratis asumido por el restaurante (excluido de red RYYCO)
   driverId?: string; // Standard identifier of the assigned driver
   cancelledBy?: 'customer' | 'restaurant' | 'driver' | 'admin' | 'system';
   cancellationReason?: string;

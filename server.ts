@@ -1044,8 +1044,15 @@ Formatos válidos para:
   // Broadcast new delivery request to connected Delivery Drivers (Domiciliarios)
   app.post('/api/fcm/broadcast-driver-request', async (req, res) => {
     try {
-      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, customerName, totalAmount, itemsCount, tokens: incomingTokens } = req.body || {};
-      console.log(`[FCM-SERVER] 🛵 Nueva solicitud de entrega para Domiciliarios: Pedido #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" -> Destino: "${customerAddress || 'Ipiales'}" (Tarifa: $${deliveryCost || 0})`);
+      const { orderId, orderNumber, storeName, customerAddress, deliveryCost, customerName, totalAmount, itemsCount, tokens: incomingTokens, isFreeDelivery, deliveryType } = req.body || {};
+      
+      // Domicilio gratis: pedido manejado por el restaurante - NO notificar a domiciliarios RYYCO
+      if (isFreeDelivery || deliveryType === 'restaurant') {
+        console.log(`[FCM-SERVER] 🛵🚫 Pedido #${orderNumber || 'S/N'} es DOMICILIO GRATIS (restaurant). No se notifica a domiciliarios RYYCO.`);
+        return res.json({ success: true, skipped: true, reason: 'free_delivery_restaurant' });
+      }
+      
+      console.log(`[FCM-SERVER] 🛵 Nueva solicitud de entrega para Domiciliarios: Pedido #${orderNumber || 'S/N'} en "${storeName || 'Tienda'}" -> Destino: "${customerAddress || 'Ipiales'}" (Tarifa: ${deliveryCost || 0})`);
 
       const payload = {
         type: 'DRIVER_REQUEST_PUSH',

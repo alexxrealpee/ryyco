@@ -1,3 +1,4 @@
+import { daySlots, weeklyScheduleError } from '../lib/weeklySchedule';
 import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
 import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
@@ -272,39 +273,41 @@ export function generateSubscriptionCobroMessageByType(
     );
   }
 
-  // Standard template
+  // Standard renewal message; billing details remain specific to each restaurant.
   let statusTitle = 'VENCIDA';
-  let statusText = 'Su mensualidad se encuentra vencida. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.';
-
   if (effectiveStatus === 'suspended') {
     statusTitle = 'SUSPENDIDA';
-    statusText = 'Su mensualidad se encuentra pendiente y su restaurante está suspendido temporalmente. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.';
   } else if (effectiveStatus === 'trial') {
     statusTitle = 'PRUEBA FINALIZADA';
-    statusText = 'Su período de prueba gratuita de 7 días ha concluido con éxito. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario activar su suscripción mensual.';
   } else if (effectiveStatus === 'pending_payment') {
     statusTitle = 'PENDIENTE DE PAGO';
-    statusText = 'Su mensualidad se encuentra pendiente de pago. Para continuar recibiendo pedidos y mantener sus productos visibles en RYYCO, es necesario renovar su suscripción.';
   }
 
   return (
-    `🍔 *¡Hola, equipo de ${storeName}!* 👋\n\n` +
-    `Reciban un cordial saludo de la administración de *RYYCO.com*.\n\n` +
-    `📊 *¡Conozcan los resultados de este mes!*\n\n` +
-    `Los invitamos a ingresar a su panel de administración para revisar los pedidos y el desempeño de su restaurante en nuestra plataforma.\n\n` +
-    `🔗 https://ryyco.com/pedidos-restaurante\n\n` +
-    `🔔 *ESTADO DE SUSCRIPCIÓN: ${statusTitle}* ⚠️\n\n` +
-    `${statusText}\n\n` +
-    `📋 *DETALLES DEL PLAN*\n` +
-    `🏪 Restaurante: ${storeName}\n` +
-    `📦 Plan: ${planName}\n` +
+    `🍽️❤️ *¡${storeName}, seguimos creciendo juntos!*\n\n` +
+    `Gracias por ser parte de *RYYCO*, un ecosistema gastronómico que trabaja para impulsar las ventas de nuestros restaurantes aliados. 🚀\n\n` +
+    `📈 *¡TENEMOS GRANDES NOTICIAS!*\n\n` +
+    `✅ Más de *800 clientes activos* en nuestra plataforma.\n` +
+    `✅ Nuevos domiciliarios y mejoras para agilizar los pedidos.\n` +
+    `✅ *Aplicación Android disponible* y próximamente para iPhone.\n` +
+    `✅ Visitamos *Medellín* para conocer nuevas tecnologías que beneficien a nuestros aliados.\n` +
+    `✅ Estamos desarrollando *inteligencia artificial, control de inventarios y conexión con proveedores* para facilitar la administración de sus negocios.\n\n` +
+    `🎬 *¡ESTE MES INVERTIMOS EN SU RESTAURANTE!*\n\n` +
+    `Al renovar su mensualidad, destinaremos su aporte a *publicidad para su propio negocio*, creando y publicando un nuevo video promocional con una *meta de alcance de 20.000 personas*. 🎯\n\n` +
+    `💛 *Su mensualidad no es solo un pago, es una inversión en publicidad, tecnología y nuevas oportunidades de venta.*\n\n` +
+    `📋 *RENOVACIÓN DE SUSCRIPCIÓN*\n` +
+    `🏪 Restaurante: *${storeName}*\n` +
+    `📦 Plan: *${planName}*\n` +
     `💰 Mensualidad: *${planPriceFormatted}*\n` +
-    `📅 Día de corte: *${anchorDay} de cada mes*\n\n` +
-    `💳 *PAGO DE RENOVACIÓN*\n` +
-    `📱 Nequi: *3219730865*\n\n` +
-    `✅ *Para reactivar su restaurante*, realicen el pago y envíennos el comprobante por este chat. Una vez confirmado, procederemos con la reactivación.\n\n` +
-    `🚀 *¡Gracias por confiar en RYYCO! Seguimos trabajando para impulsar las ventas de su restaurante.*\n\n` +
-    `❤️ *Administración RYYCO*\n` +
+    `📅 Corte: *${anchorDay} de cada mes*\n` +
+    `🔔 Estado: *${statusTitle}*\n\n` +
+    `💳 *Nequi: 3219730865*\n\n` +
+    `📲 Envíennos el comprobante por este chat para reactivar su restaurante y coordinar su video promocional.\n\n` +
+    `📱 *App Android:*\n` +
+    `https://play.google.com/store/search?q=Ryyco&c=apps\n\n` +
+    `📊 *Panel de administración:*\n` +
+    `https://ryyco.com/pedidos-restaurante\n\n` +
+    `❤️ *Gracias por confiar en RYYCO. ¡Cuando nuestros restaurantes crecen, crecemos todos!*\n\n` +
     `🌐 https://ryyco.com`
   );
 }
@@ -2047,6 +2050,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     DAYS_OF_WEEK_LIST.forEach(day => {
       if (user.weeklySchedule && user.weeklySchedule[day.id]) {
         base[day.id] = {
+          ...user.weeklySchedule[day.id],
           isOpen: user.weeklySchedule[day.id].isOpen ?? true,
           openTime: user.weeklySchedule[day.id].openTime || defOpen,
           closeTime: user.weeklySchedule[day.id].closeTime || defClose
@@ -2068,6 +2072,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     setWeeklyScheduleInput(prev => ({
       ...prev,
       [dayId]: {
+        ...prev[dayId],
         isOpen: !prev[dayId]?.isOpen,
         openTime: prev[dayId]?.openTime || '08:00',
         closeTime: prev[dayId]?.closeTime || '22:00'
@@ -2079,6 +2084,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     setWeeklyScheduleInput(prev => ({
       ...prev,
       [dayId]: {
+        ...prev[dayId],
+        slots: daySlots(prev[dayId]).map((slot, i) => i === 0 ? { ...slot, [field]: val } : slot),
         isOpen: prev[dayId]?.isOpen ?? true,
         openTime: prev[dayId]?.openTime || '08:00',
         closeTime: prev[dayId]?.closeTime || '22:00',
@@ -2095,6 +2102,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       DAYS_OF_WEEK_LIST.forEach(d => {
         next[d.id] = {
           isOpen: prev[d.id]?.isOpen ?? true,
+          slots: daySlots(source).map(slot => ({ ...slot })),
           openTime: source.openTime,
           closeTime: source.closeTime
         };
@@ -2118,6 +2126,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           isOpen = d.id === 'sabado' || d.id === 'domingo';
         }
         next[d.id] = {
+          ...prev[d.id],
           isOpen,
           openTime: prev[d.id]?.openTime || '08:00',
           closeTime: prev[d.id]?.closeTime || '22:00'
@@ -2133,6 +2142,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       DAYS_OF_WEEK_LIST.forEach(d => {
         next[d.id] = {
           isOpen: prev[d.id]?.isOpen ?? true,
+          slots: [{ openTime: open, closeTime: close }],
           openTime: open,
           closeTime: close
         };
@@ -2143,6 +2153,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   const handleSaveSchedule = async () => {
     if (!scheduleModalUser) return;
+    const invalidSchedule = weeklyScheduleError(weeklyScheduleInput);
+    if (invalidSchedule) { alert(invalidSchedule); return; }
     setSavingSchedule(true);
     try {
       const activeDaysList = (Object.entries(weeklyScheduleInput) as [string, DaySchedule][])

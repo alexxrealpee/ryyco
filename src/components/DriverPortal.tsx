@@ -850,10 +850,12 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
         return;
       }
 
-      // Filter strictly for delivery orders in 'pending' status (excluding table orders and pickup orders)
+      // Filter strictly for delivery orders in 'pending' status (excluding table orders, pickup orders, and free-delivery orders handled by the restaurant)
       const pendingOrders = unassignedOrders.filter(o => {
         const isTableOrPickup = o.orderType === 'table' || o.orderType === 'pickup' || o.isTableOrder || o.customerName?.toLowerCase().startsWith('mesa ') || o.customerAddress?.toLowerCase().includes('mesa') || o.customerAddress?.toLowerCase().includes('recoger');
-        return o.status === 'pending' && !isTableOrPickup;
+        // Domicilio gratis: pedidos gestionados por el restaurante con sus propios domiciliarios
+        const isFreeDeliveryRestaurant = (o as any).isFreeDelivery === true || o.deliveryType === 'restaurant';
+        return o.status === 'pending' && !isTableOrPickup && !isFreeDeliveryRestaurant;
       });
       setAvailableOrders(pendingOrders);
 

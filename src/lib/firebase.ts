@@ -1,3 +1,4 @@
+import { evaluateWeeklySchedule } from './weeklySchedule';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1977,7 +1978,9 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   // Broadcast FCM push notification for Delivery Drivers (Domiciliarios)
   try {
     const isTableOrPickup = result.orderType === 'table' || result.orderType === 'pickup' || result.isTableOrder || result.customerName?.toLowerCase().startsWith('mesa ') || result.customerAddress?.toLowerCase().includes('mesa') || result.customerAddress?.toLowerCase().includes('recoger');
-    if (typeof window !== 'undefined' && !isTableOrPickup && (!result.status || result.status === 'pending')) {
+    // Domicilio gratis: pedido manejado por el restaurante - NO enviar a domiciliarios RYYCO
+    const isFreeDeliveryOrder = Boolean(result.isFreeDelivery || result.deliveryType === 'restaurant');
+    if (typeof window !== 'undefined' && !isTableOrPickup && !isFreeDeliveryOrder && (!result.status || result.status === 'pending')) {
       (async () => {
         let activeTokens: string[] = [];
         try {
@@ -2002,7 +2005,9 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
             deliveryCost: result.deliveryCost || result.deliveryFee || 3000,
             totalAmount: result.totalAmount,
             itemsCount: result.items?.length || 1,
-            tokens: activeTokens
+            tokens: activeTokens,
+            isFreeDelivery: result.isFreeDelivery,
+            deliveryType: result.deliveryType
           })
         }).catch(() => {});
 
@@ -3399,11 +3404,11 @@ export function getColombiaCurrentDayAndMinutes(): { dayId: string; dayIndex: nu
 
     return { dayId, dayIndex, dayLabel, currentMinutes };
   } catch {
-    const now = new Date();
-    const dayIndex = now.getDay();
+    const now = new Date(Date.now() - 5 * 60 * 60 * 1000);
+    const dayIndex = now.getUTCDay();
     const dayId = DAY_IDS[dayIndex] || 'lunes';
     const dayLabel = DAY_LABELS[dayIndex] || 'Lunes';
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
     return { dayId, dayIndex, dayLabel, currentMinutes };
   }
 }
@@ -3416,7 +3421,7 @@ export function getStoreOperatingScheduleInfo(profile?: {
   openTime?: string;
   closeTime?: string;
   restaurantDaysOpen?: string[];
-  weeklySchedule?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
+  weeklySchedule?: WeeklySchedule;
   isClosed?: boolean;
   suspended?: boolean;
   subscriptionStatus?: string;
@@ -3443,115 +3448,11 @@ export function getStoreOperatingScheduleInfo(profile?: {
   const { dayId, dayIndex, dayLabel, currentMinutes } = getColombiaCurrentDayAndMinutes();
   const DAY_IDS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 
-  // Check custom weeklySchedule first
-  if (profile.weeklySchedule && typeof profile.weeklySchedule === 'object') {
-    const todaySched = profile.weeklySchedule[dayId];
-    
-    // Check if the store was open yesterday night and closes today after midnight
-    const prevDayIndex = (dayIndex + 6) % 7;
-    const prevDayId = DAY_IDS[prevDayIndex];
-    const prevSched = profile.weeklySchedule[prevDayId];
-    let coveredByPrevDayOvernight = false;
-
-    if (prevSched && prevSched.isOpen && prevSched.openTime && prevSched.closeTime) {
-      const [pO_H, pO_M] = prevSched.openTime.split(':').map(n => parseInt(n, 10));
-      const [pC_H, pC_M] = prevSched.closeTime.split(':').map(n => parseInt(n, 10));
-      if (!isNaN(pO_H) && !isNaN(pO_M) && !isNaN(pC_H) && !isNaN(pC_M)) {
-        const prevOpenMins = pO_H * 60 + pO_M;
-        const prevCloseMins = pC_H * 60 + pC_M;
-        if (prevCloseMins < prevOpenMins && currentMinutes < prevCloseMins) {
-          // Store is currently running on yesterday night's shift!
-          coveredByPrevDayOvernight = true;
-          return {
-            scheduleActive: true,
-            isClosedBySchedule: false,
-            isOpenToday: true,
-            todayScheduleText: `Turno extendido hasta las ${prevSched.closeTime}`,
-            dayLabel,
-            openTime: prevSched.openTime,
-            closeTime: prevSched.closeTime
-          };
-        }
-      }
-    }
-
-    if (!todaySched || !todaySched.isOpen) {
-      return {
-        scheduleActive: true,
-        isClosedBySchedule: true,
-        isOpenToday: false,
-        todayScheduleText: `Cerrado los ${dayLabel}s`,
-        dayLabel
-      };
-    }
-
-    const openStr = todaySched.openTime || '11:00';
-    const closeStr = todaySched.closeTime || '23:00';
-    const [oH, oM] = openStr.split(':').map(n => parseInt(n, 10));
-    const [cH, cM] = closeStr.split(':').map(n => parseInt(n, 10));
-    const openMins = (!isNaN(oH) && !isNaN(oM)) ? oH * 60 + oM : 11 * 60;
-    const closeMins = (!isNaN(cH) && !isNaN(cM)) ? cH * 60 + cM : 23 * 60;
-
-    let isWithinHours = false;
-    if (closeMins > openMins) {
-      isWithinHours = currentMinutes >= openMins && currentMinutes < closeMins;
-    } else if (closeMins < openMins) {
-      // Overnight (e.g. 18:00 - 02:00)
-      isWithinHours = currentMinutes >= openMins || currentMinutes < closeMins;
-    } else {
-      isWithinHours = true; // 24 hours
-    }
-
-    return {
-      scheduleActive: true,
-      isClosedBySchedule: !isWithinHours,
-      isOpenToday: true,
-      todayScheduleText: `${openStr} - ${closeStr}`,
-      dayLabel,
-      openTime: openStr,
-      closeTime: closeStr
-    };
-  }
-
-  // Fallback to legacy single openTime/closeTime and restaurantDaysOpen
-  const daysList = profile.restaurantDaysOpen || ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'];
-  const isOpenToday = daysList.includes(dayId);
-
-  if (!isOpenToday) {
-    return {
-      scheduleActive: true,
-      isClosedBySchedule: true,
-      isOpenToday: false,
-      todayScheduleText: `Cerrado los ${dayLabel}s`,
-      dayLabel
-    };
-  }
-
-  const openStr = profile.openTime || '11:00';
-  const closeStr = profile.closeTime || '23:00';
-  const [oH, oM] = openStr.split(':').map(n => parseInt(n, 10));
-  const [cH, cM] = closeStr.split(':').map(n => parseInt(n, 10));
-  const openMins = (!isNaN(oH) && !isNaN(oM)) ? oH * 60 + oM : 11 * 60;
-  const closeMins = (!isNaN(cH) && !isNaN(cM)) ? cH * 60 + cM : 23 * 60;
-
-  let isWithinHours = false;
-  if (closeMins > openMins) {
-    isWithinHours = currentMinutes >= openMins && currentMinutes < closeMins;
-  } else if (closeMins < openMins) {
-    isWithinHours = currentMinutes >= openMins || currentMinutes < closeMins;
-  } else {
-    isWithinHours = true;
-  }
-
-  return {
-    scheduleActive: true,
-    isClosedBySchedule: !isWithinHours,
-    isOpenToday: true,
-    todayScheduleText: `${openStr} - ${closeStr}`,
-    dayLabel,
-    openTime: openStr,
-    closeTime: closeStr
-  };
+  const days = profile.restaurantDaysOpen || DAY_IDS;
+  const schedule = profile.weeklySchedule || Object.fromEntries(DAY_IDS.map(id => [id, {
+    isOpen: days.includes(id), openTime: profile.openTime || '11:00', closeTime: profile.closeTime || '23:00'
+  }]));
+  return evaluateWeeklySchedule(schedule, dayIndex, currentMinutes, dayLabel);
 }
 
 export function checkIsStoreClosed(profile?: {
@@ -3564,7 +3465,7 @@ export function checkIsStoreClosed(profile?: {
   openTime?: string;
   closeTime?: string;
   restaurantDaysOpen?: string[];
-  weeklySchedule?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
+  weeklySchedule?: WeeklySchedule;
 } | null): boolean {
   if (!profile) return true;
 
@@ -5017,6 +4918,7 @@ export function listenToUnassignedOrders(onOrdersChanged: (orders: OrderItem[]) 
       if (
         order.status === 'pending' && 
         order.deliveryType !== 'restaurant' &&
+        !order.isFreeDelivery &&
         (!order.deliveryDriverId || order.deliveryDriverId.trim() === '') &&
         (!order.driverId || order.driverId.trim() === '') &&
         !isTableOrPickup

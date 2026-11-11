@@ -121,7 +121,8 @@ import {
   Ticket,
   Scale,
   Navigation,
-  Key
+  Key,
+  Bike,
 } from 'lucide-react';
 import BuyerTermsModal from './BuyerTermsModal';
 import DeliveryTrackingModal from './DeliveryTrackingModal';
@@ -561,10 +562,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   }, [normalizedBankAccounts, selectedBankAccountId]);
 
   const baseOrderAmountBeforePaymentFee = useMemo(() => {
-    const dFee = deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee;
+    const isStoreFreeDelivery = Boolean(profile.freeDeliveryEnabled);
+    const dFee = (deliveryType === 'pickup' || deliveryType === 'table' || (deliveryType === 'delivery' && isStoreFreeDelivery)) ? 0 : systemDeliveryFee;
     const disc = Math.min(totalCartCost, rewardDiscountAmount);
     return Math.max(0, totalCartCost + totalPackagingCost + dFee - disc);
-  }, [totalCartCost, totalPackagingCost, deliveryType, systemDeliveryFee, rewardDiscountAmount]);
+  }, [totalCartCost, totalPackagingCost, deliveryType, systemDeliveryFee, profile.freeDeliveryEnabled, rewardDiscountAmount]);
 
   const activePaymentMethodFee = useMemo(() => {
     if (payMethod !== 'transfer' || !selectedBankAccount) return 0;
@@ -959,7 +961,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
     const isTable = deliveryType === 'table';
     const isPickup = deliveryType === 'pickup';
-    const deliveryFee = (isPickup || isTable) ? 0 : systemDeliveryFee;
+    const isFreeDeliveryOrder = Boolean(profile.freeDeliveryEnabled && deliveryType === 'delivery');
+    const deliveryFee = (isPickup || isTable || isFreeDeliveryOrder) ? 0 : systemDeliveryFee;
     const packagingCost = isTable ? 0 : cart.reduce((sum, item) => {
       const p = item?.product || (item as any) || {};
       const prodId = p.id || (item as any)?.productId;
@@ -1039,6 +1042,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       }),
       totalAmount: totalSum,
       deliveryFee: deliveryFee,
+      deliveryCost: deliveryFee,
+      isFreeDelivery: isFreeDeliveryOrder,
+      deliveryType: isFreeDeliveryOrder ? 'restaurant' : (deliveryType === 'delivery' ? 'ryyco' : undefined),
       packagingCost: packagingCost > 0 ? packagingCost : undefined,
       paymentMethodFee: paymentMethodFee > 0 ? paymentMethodFee : undefined,
       paymentMethodFeeType: paymentMethodFee > 0 && chosenBankAcc ? chosenBankAcc.additionalFeeType : undefined,
@@ -1206,6 +1212,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     } else if (isPickup) {
       msg += `Tipo de Entrega: *🛍️ Recoger en Restaurante / Local (Sin costo de envío)*\n`;
       msg += `Domicilio: *$0 (Recoger en Restaurante)*\n`;
+    } else if (order.isFreeDelivery || profile.freeDeliveryEnabled) {
+      msg += `Tipo de Entrega: *🛵 Envío a Domicilio (¡Domicilio Gratis!)*\n`;
+      msg += `Domicilio: *$0 (¡Domicilio gratis ofrecido por el restaurante!)*\n`;
     } else {
       msg += `Tipo de Entrega: *🛵 Envío a Domicilio*\n`;
       msg += `Domicilio: ${profile.currency || '$'}${feeVal.toLocaleString('es-CO')}\n`;
@@ -1640,6 +1649,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               <span className="text-sm md:text-[15px] font-black tracking-widest uppercase leading-none">
                 {profile.displayName || 'MODA URBANA'}
               </span>
+              {profile.freeDeliveryEnabled && (
+                <span className="text-[9px] text-emerald-400 font-extrabold flex items-center gap-1 mt-0.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  Domicilio Gratis ($0)
+                </span>
+              )}
             </div>
           </div>
 
@@ -2050,6 +2065,33 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
               </button>
             </div>
           )}
+        </section>
+      )}
+
+      {/* 2.7 RESTAURANT FREE DELIVERY PROMOTION BANNER */}
+      {profile.freeDeliveryEnabled && (
+        <section className="w-full max-w-7xl mx-auto px-4 md:px-8 mt-4">
+          <div className="bg-gradient-to-r from-emerald-950/40 via-emerald-900/20 to-emerald-950/30 border border-emerald-500/40 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 shadow-lg backdrop-blur-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <Bike className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-black text-emerald-400 uppercase tracking-wider">¡Domicilio Gratis!</span>
+                  <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                    Envío $0 COP
+                  </span>
+                </div>
+                <p className="text-xs text-gray-300 mt-0.5">
+                  Esta tienda te ofrece entrega a domicilio totalmente gratis en todos tus pedidos.
+                </p>
+              </div>
+            </div>
+            <span className="hidden sm:inline-flex text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-3 py-1.5 rounded-xl border border-emerald-500/30 shrink-0">
+              🛵 Entrega directa del restaurante
+            </span>
+          </div>
         </section>
       )}
 
@@ -3328,6 +3370,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                   </span>
                   {deliveryType === 'pickup' || deliveryType === 'table' ? (
                     <span className="font-mono font-bold text-emerald-400">GRATIS ($0)</span>
+                  ) : profile.freeDeliveryEnabled && deliveryType === 'delivery' ? (
+                    <span className="font-mono font-bold text-emerald-400">¡GRATIS! ($0)</span>
                   ) : (
                     <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
                   )}
@@ -3335,7 +3379,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 <div className="flex items-center justify-between font-extrabold text-sm text-white pt-1 border-t border-dashed border-gray-900">
                   <span>Total estimado:</span>
                   <span className="text-base font-mono font-black" style={{ color: storeAccent }}>
-                    {getStoreCurrency()}{(totalCartCost + totalPackagingCost + (deliveryType === 'pickup' || deliveryType === 'table' ? 0 : systemDeliveryFee)).toLocaleString()}
+                    {getStoreCurrency()}{(totalCartCost + totalPackagingCost + (deliveryType === 'pickup' || deliveryType === 'table' || (profile.freeDeliveryEnabled && deliveryType === 'delivery') ? 0 : systemDeliveryFee)).toLocaleString()}
                   </span>
                 </div>
 
@@ -3990,6 +4034,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
                 </span>
                 {deliveryType === 'pickup' || deliveryType === 'table' ? (
                   <span className="font-mono font-bold text-emerald-400">GRATIS ($0)</span>
+                ) : profile.freeDeliveryEnabled && deliveryType === 'delivery' ? (
+                  <span className="font-mono font-bold text-emerald-400">¡GRATIS! ($0)</span>
                 ) : (
                   <span className="font-mono text-amber-400">{getStoreCurrency()}{systemDeliveryFee.toLocaleString()}</span>
                 )}
@@ -4188,7 +4234,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
             const sub = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
             const isT = deliveryType === 'table';
             const isP = deliveryType === 'pickup';
-            const fee = (isP || isT) ? 0 : systemDeliveryFee;
+            const fee = (isP || isT || (profile.freeDeliveryEnabled && deliveryType === 'delivery')) ? 0 : systemDeliveryFee;
             const disc = Math.min(sub, rewardDiscountAmount);
             return `${profile?.currency || '$'}${Math.max(0, sub + fee - disc).toLocaleString('es-CO')}`;
           })()

@@ -1,3 +1,4 @@
+import { daySlots, weeklyScheduleError } from '../lib/weeklySchedule';
 import React, { useState, useEffect } from 'react';
 import { 
   Utensils, 
@@ -129,6 +130,8 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
   const [acceptsDelivery, setAcceptsDelivery] = useState(profile.restaurantAcceptsDelivery ?? true);
   const [acceptsTakeaway, setAcceptsTakeaway] = useState(profile.restaurantAcceptsTakeaway ?? true);
   const [acceptsTableOrders, setAcceptsTableOrders] = useState(profile.restaurantAcceptsTableOrders ?? true);
+  const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState(profile.freeDeliveryEnabled ?? false);
+  const [savingFreeDelivery, setSavingFreeDelivery] = useState(false);
   const [tableCount, setTableCount] = useState<number | string>(profile.restaurantTableCount || 10);
   const [wifiPass, setWifiPass] = useState(profile.restaurantWifiPass || '');
 
@@ -155,8 +158,37 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
     }
   }, [profile.restaurantAddress, profile.address, profile.location]);
 
+  // Keep freeDeliveryEnabled in sync with profile updates
+  useEffect(() => {
+    if (profile.freeDeliveryEnabled !== undefined) {
+      setFreeDeliveryEnabled(Boolean(profile.freeDeliveryEnabled));
+    }
+  }, [profile.freeDeliveryEnabled]);
+
+  const handleToggleFreeDelivery = async (newVal: boolean) => {
+    setFreeDeliveryEnabled(newVal);
+    setSavingFreeDelivery(true);
+    try {
+      const updated: UserProfile = {
+        ...profile,
+        freeDeliveryEnabled: newVal
+      };
+      await onSave(updated);
+      setProfile(updated);
+    } catch (err) {
+      console.error("Error updating free delivery mode:", err);
+      setFreeDeliveryEnabled(!newVal);
+      alert("Error al actualizar la opción de Domicilio Gratis.");
+    } finally {
+      setSavingFreeDelivery(false);
+    }
+  };
+
   // Schedule state: supports custom, independent open and close times for each day of the week
   const [scheduleEnabled, setScheduleEnabled] = useState(profile.scheduleEnabled ?? true);
+  const [copyTargets, setCopyTargets] = useState<string[]>([]);
+  const [copySource, setCopySource] = useState<string | null>(null);
+  const [scheduleError, setScheduleError] = useState('');
   const [copyFeedbackDay, setCopyFeedbackDay] = useState<string | null>(null);
 
   const buildInitialWeeklySchedule = (): WeeklySchedule => {
@@ -168,6 +200,7 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
     DAYS_OF_WEEK.forEach(day => {
       if (profile.weeklySchedule && profile.weeklySchedule[day.id]) {
         base[day.id] = {
+          ...profile.weeklySchedule[day.id],
           isOpen: profile.weeklySchedule[day.id].isOpen ?? true,
           openTime: profile.weeklySchedule[day.id].openTime || defOpen,
           closeTime: profile.weeklySchedule[day.id].closeTime || defClose
@@ -195,31 +228,27 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
     }));
   };
 
-  const updateDayTime = (dayId: string, field: 'openTime' | 'closeTime', val: string) => {
-    setWeeklySchedule(prev => ({
-      ...prev,
-      [dayId]: {
-        ...prev[dayId],
-        [field]: val
-      }
-    }));
+  const updateSlots = (dayId: string, slots: ReturnType<typeof daySlots>) => {
+    setWeeklySchedule(prev => ({ ...prev, [dayId]: { ...prev[dayId], slots, ...(slots[0] || {}) } }));
+    setScheduleError('');
   };
 
-  const copyDayScheduleToAll = (sourceDayId: string) => {
+  const updateDayTime = (dayId: string, index: number, field: 'openTime' | 'closeTime', val: string) => {
+    updateSlots(dayId, daySlots(weeklySchedule[dayId]).map((slot, i) => i === index ? { ...slot, [field]: val } : slot));
+  };
+
+  const copyDayScheduleToAll = (sourceDayId: string, targets = DAYS_OF_WEEK.map(day => day.id)) => {
     const source = weeklySchedule[sourceDayId];
     if (!source) return;
     setWeeklySchedule(prev => {
       const next = { ...prev };
-      Object.keys(next).forEach(dayId => {
-        next[dayId] = {
-          ...next[dayId],
-          openTime: source.openTime,
-          closeTime: source.closeTime
-        };
+      targets.forEach(dayId => {
+        next[dayId] = { ...source, slots: daySlots(source).map(slot => ({ ...slot })) };
       });
       return next;
     });
     setCopyFeedbackDay(sourceDayId);
+    setCopySource(null);
     setTimeout(() => setCopyFeedbackDay(null), 2500);
   };
 
@@ -263,6 +292,9 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUsernameError('');
+    const invalidSchedule = weeklyScheduleError(weeklySchedule);
+    setScheduleError(invalidSchedule);
+    if (invalidSchedule) return;
     setIsSaving(true);
     try {
       const cleanUsername = usernameField.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
@@ -304,6 +336,7 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
         restaurantAcceptsDelivery: acceptsDelivery,
         restaurantAcceptsTakeaway: acceptsTakeaway,
         restaurantAcceptsTableOrders: acceptsTableOrders,
+        freeDeliveryEnabled,
         restaurantTableCount: Number(tableCount) || 0,
         restaurantWifiPass: wifiPass.trim(),
         restaurantAddress: restaurantAddress.trim(),
@@ -710,6 +743,63 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                   </div>
                   <h4 className="text-xs font-black">En Mesa (Salón)</h4>
                   <p className="text-[10px] text-gray-400 mt-0.5">Comandas con número de mesa</p>
+                </div>
+              </div>
+
+              {/* Domicilio Gratis (Promoción / Domiciliarios Propios del Restaurante) */}
+              <div className={`p-4 rounded-2xl border transition-all ${
+                freeDeliveryEnabled 
+                  ? 'bg-gradient-to-r from-emerald-950/40 via-emerald-900/20 to-gray-950 border-emerald-500/50 shadow-md' 
+                  : 'bg-gray-900/40 border-gray-800'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-3.5">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                      freeDeliveryEnabled ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-gray-800 text-gray-500 border border-gray-700'
+                    }`}>
+                      <Bike className="w-5 h-5" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-black text-white">Domicilio Gratis</h4>
+                        {freeDeliveryEnabled ? (
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Activo • $0 COP
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-gray-800 text-gray-400 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                            Desactivado
+                          </span>
+                        )}
+                        {savingFreeDelivery && (
+                          <span className="text-[10px] text-amber-400 animate-pulse">Guardando...</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-300">
+                        Ofrece costo de envío <strong className="text-white">$0 COP</strong> a tus clientes. Tu restaurante asume y gestiona la entrega con sus propios domiciliarios.
+                      </p>
+                      <div className="pt-1 flex items-start gap-1.5 text-[11px] text-amber-300/90 font-medium">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400 mt-0.5" />
+                        <span>
+                          <strong>Atención:</strong> Los pedidos con domicilio gratis <span className="underline decoration-amber-400/50">NO se enviarán a la red de domiciliarios de RYYCO</span>. Serán responsabilidad exclusiva de tu restaurante.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center sm:self-center shrink-0 pl-14 sm:pl-0">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={freeDeliveryEnabled}
+                        onChange={(e) => handleToggleFreeDelivery(e.target.checked)}
+                        disabled={savingFreeDelivery}
+                        className="sr-only peer"
+                      />
+                      <div className="w-13 h-7 bg-gray-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[3px] after:bg-white after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500"></div>
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -1141,6 +1231,7 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                     </div>
                   </div>
 
+                  {scheduleError && <p role="alert" className="text-xs text-red-400">{scheduleError}</p>}
                   {/* Lista de días con horarios independientes */}
                   <div className="space-y-2">
                     {DAYS_OF_WEEK.map((d) => {
@@ -1188,13 +1279,15 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
 
                             {/* Horarios del día o mensaje de descanso */}
                             {isOpen ? (
-                              <div className="flex flex-wrap items-center gap-2">
+                              <div className="space-y-2">
+                                {daySlots(daySched).map((slot, slotIndex) => (
+                                <div key={slotIndex} className="flex flex-wrap items-center gap-2">
                                 <div className="flex items-center gap-1.5 bg-gray-950 px-2 py-1 rounded-lg border border-gray-800">
                                   <span className="text-[9px] font-black uppercase text-gray-500">Abre:</span>
                                   <input
                                     type="time"
-                                    value={daySched.openTime || '11:00'}
-                                    onChange={(e) => updateDayTime(d.id, 'openTime', e.target.value)}
+                                    value={slot.openTime}
+                                    onChange={(e) => updateDayTime(d.id, slotIndex, 'openTime', e.target.value)}
                                     className="bg-transparent text-xs font-bold text-white font-mono focus:outline-none cursor-pointer"
                                   />
                                 </div>
@@ -1203,12 +1296,19 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                                   <span className="text-[9px] font-black uppercase text-gray-500">Cierra:</span>
                                   <input
                                     type="time"
-                                    value={daySched.closeTime || '23:00'}
-                                    onChange={(e) => updateDayTime(d.id, 'closeTime', e.target.value)}
+                                    value={slot.closeTime}
+                                    onChange={(e) => updateDayTime(d.id, slotIndex, 'closeTime', e.target.value)}
                                     className="bg-transparent text-xs font-bold text-white font-mono focus:outline-none cursor-pointer"
                                   />
                                 </div>
 
+                                {slot.closeTime <= slot.openTime && <span className="text-[10px] text-gray-400">Cierra al día siguiente</span>}
+                                <button type="button" aria-label={`Eliminar horario ${slotIndex + 1} de ${d.label}`} onClick={() => updateSlots(d.id, daySlots(daySched).filter((_, i) => i !== slotIndex))} className="text-[10px] text-red-400 px-2 py-1 rounded-lg border border-gray-700">Eliminar</button>
+                                </div>
+                                ))}
+                                <div className="flex flex-wrap gap-2">
+                                <button type="button" onClick={() => updateSlots(d.id, [...daySlots(daySched), { openTime: '', closeTime: '' }])} className="text-[10px] font-bold px-2 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200">+ Agregar horario</button>
+                                <button type="button" onClick={() => { setCopySource(d.id); setCopyTargets([]); }} className="text-[10px] font-bold px-2 py-1 rounded-lg border border-gray-700 text-gray-400 hover:text-gray-200">Copiar a días…</button>
                                 <button
                                   type="button"
                                   onClick={() => copyDayScheduleToAll(d.id)}
@@ -1231,6 +1331,12 @@ export const RestaurantDataTab: React.FC<RestaurantDataTabProps> = ({
                                     </>
                                   )}
                                 </button>
+                                </div>
+                                {copySource === d.id && <div className="flex flex-wrap items-center gap-2 text-[10px] text-gray-300">
+                                  {DAYS_OF_WEEK.filter(day => day.id !== d.id).map(day => <label key={day.id} className="flex items-center gap-1"><input type="checkbox" checked={copyTargets.includes(day.id)} onChange={e => setCopyTargets(prev => e.target.checked ? [...prev, day.id] : prev.filter(id => id !== day.id))} />{day.label}</label>)}
+                                  <button type="button" disabled={!copyTargets.length} onClick={() => copyDayScheduleToAll(d.id, copyTargets)} className="px-2 py-1 rounded-lg border border-gray-700 disabled:opacity-40">Aplicar</button>
+                                  <button type="button" onClick={() => setCopySource(null)}>Cancelar</button>
+                                </div>}
                               </div>
                             ) : (
                               <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
