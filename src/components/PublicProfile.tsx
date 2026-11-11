@@ -562,11 +562,11 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   }, [normalizedBankAccounts, selectedBankAccountId]);
 
   const baseOrderAmountBeforePaymentFee = useMemo(() => {
-    const isStoreFreeDelivery = Boolean(profile.freeDeliveryEnabled);
+    const isStoreFreeDelivery = Boolean(profile?.freeDeliveryEnabled);
     const dFee = (deliveryType === 'pickup' || deliveryType === 'table' || (deliveryType === 'delivery' && isStoreFreeDelivery)) ? 0 : systemDeliveryFee;
     const disc = Math.min(totalCartCost, rewardDiscountAmount);
     return Math.max(0, totalCartCost + totalPackagingCost + dFee - disc);
-  }, [totalCartCost, totalPackagingCost, deliveryType, systemDeliveryFee, profile.freeDeliveryEnabled, rewardDiscountAmount]);
+  }, [totalCartCost, totalPackagingCost, deliveryType, systemDeliveryFee, profile?.freeDeliveryEnabled, rewardDiscountAmount]);
 
   const activePaymentMethodFee = useMemo(() => {
     if (payMethod !== 'transfer' || !selectedBankAccount) return 0;
