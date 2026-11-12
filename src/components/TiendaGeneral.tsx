@@ -69,6 +69,7 @@ import { cleanColombianPhone, formatColombianPhoneWith57 } from '../lib/phoneUti
 import LinnkProLogo from './LinnkProLogo';
 
 // Lazy-load secondary modal components so initial home page paint is near-instantaneous
+const UpcomingRestaurantsModal = React.lazy(() => import('./UpcomingRestaurantsModal'));
 const CustomerPortalModal = React.lazy(() => import('./CustomerPortalModal'));
 const CustomerOrderAuthPromptModal = React.lazy(() => import('./CustomerOrderAuthPromptModal'));
 const FullScreenSearchModal = React.lazy(() => import('./FullScreenSearchModal'));
@@ -931,6 +932,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const uniqueStores = openRestaurants;
 
   // Closed restaurants list (non-suspended stores that are currently closed)
+  const [isUpcomingOpen, setIsUpcomingOpen] = useState(false);
   const [isClosedRestaurantsModalOpen, setIsClosedRestaurantsModalOpen] = useState(false);
   const closedRestaurants = useMemo(() => {
     const uniqueByUid = new Map<string, UserProfile>();
@@ -1785,6 +1787,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     window.open(`https://wa.me/${targetPhone}?text=${cleanMsg}`, '_blank');
   };
 
+  const upcomingCircle = <button type="button" aria-label="Restaurantes por abrir"
+    onMouseDown={e => { e.stopPropagation(); hasMovedStoresRef.current = false; }}
+    onClick={e => { if (shouldIgnoreStoreCarouselClick()) { e.preventDefault(); e.stopPropagation(); return; } setIsUpcomingOpen(true); }}
+    className="flex flex-col items-center gap-1.5 flex-shrink-0 cursor-pointer group select-none">
+    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full p-0.5 flex items-center justify-center bg-slate-900 ring-2 ring-slate-700/80 group-hover:ring-[#E63946] group-hover:scale-105 transition-all duration-200">
+      <Clock className="w-6 h-6 sm:w-7 sm:h-7 text-[#E63946] pointer-events-none" />
+    </div>
+    <span className="text-[10px] sm:text-xs font-bold text-[#C4CBD8] group-hover:text-white text-center">Por abrir</span>
+  </button>;
+
   return (
     <div className="bg-[#090D16] min-h-screen font-sans text-[#C4CBD8] flex flex-col selection:bg-[#FF6B00] selection:text-black relative overflow-x-hidden">
       {/* 1. Navbar */}
@@ -2530,6 +2542,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                     </button>
                   );
                 })}
+                {upcomingCircle}
               </div>
 
               {/* Active Filtered Store Recommendation Banner */}
@@ -2583,6 +2596,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
           ) : !isRestaurantsLoading ? (
             <div className="border-t border-slate-800 pt-4 transition-opacity duration-200">
+              <div className="flex items-center px-2 pb-4">{upcomingCircle}</div>
               <div className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-start gap-3">
                   <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 shrink-0 mt-0.5">
@@ -4279,6 +4293,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
       {/* Modals lazy-loaded on demand to ensure ultra-fast initial home page rendering */}
       <React.Suspense fallback={null}>
+        {isUpcomingOpen && <UpcomingRestaurantsModal profiles={profilesMap} availabilityError={restaurantsError} onRetryAvailability={retryRestaurants} onClose={() => setIsUpcomingOpen(false)} />}
         {orderAuthPromptData.isOpen && (
           <CustomerOrderAuthPromptModal
             isOpen={orderAuthPromptData.isOpen}
