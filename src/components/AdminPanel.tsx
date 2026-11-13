@@ -1,4 +1,6 @@
 import { daySlots, weeklyScheduleError } from '../lib/weeklySchedule';
+import { SubscriptionCollectionBadge, SubscriptionCollectionButton, SubscriptionCollectionConfirmation, useSubscriptionCollectionFollowups } from './SubscriptionCollectionFollowup';
+import { updateCollectionFollowup } from '../lib/subscriptionCollection';
 import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
 import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
@@ -1784,6 +1786,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   // State & Handlers for Cobro de Suscripción WhatsApp Modal
   const [cobroModalUser, setCobroModalUser] = useState<AdminUser | null>(null);
+  const collectionTracking = useSubscriptionCollectionFollowups(activeAdminTab === 'subscriptions' || !!cobroModalUser);
+  const collectionAttemptLock = useRef(false);
+  const [collectionAttemptBusy, setCollectionAttemptBusy] = useState(false);
+  const [collectionAttemptError, setCollectionAttemptError] = useState('');
+  const recordCollectionAttempt = async (user: AdminUser) => {
+    if (!isSubscriptionExpiredOrSuspended(user).isExpired || collectionAttemptLock.current) return;
+    collectionAttemptLock.current = true;
+    setCollectionAttemptBusy(true);
+    setCollectionAttemptError('');
+    try { await updateCollectionFollowup(user, 'attempt'); }
+    catch (error) { setCollectionAttemptError(error instanceof Error ? error.message : 'No se pudo registrar el intento de cobro.'); }
+    finally { collectionAttemptLock.current = false; setCollectionAttemptBusy(false); }
+  };
   const [cobroCustomPhone, setCobroCustomPhone] = useState<string>('');
   const [cobroCustomMessage, setCobroCustomMessage] = useState<string>('');
   const [cobroTemplateType, setCobroTemplateType] = useState<'standard' | 'urgent' | 'promo' | 'trial'>('standard');
@@ -1799,6 +1814,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     const chosenTemplate: 'standard' | 'urgent' | 'promo' | 'trial' = effectiveStatus === 'trial' ? 'trial' : template;
 
     setCobroModalUser(user);
+    setCollectionAttemptError('');
     setCobroCustomPhone(cleanNumber);
     setCobroTemplateType(chosenTemplate);
     setCopiedCobroText(false);
@@ -3733,9 +3749,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                                     <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
                                     {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
-                                      <span className="ml-1 px-1.5 py-0.2 bg-red-500/25 text-red-300 rounded text-[9px] font-black border border-red-500/40 uppercase">
-                                        Cobrar
-                                      </span>
+                                      <SubscriptionCollectionBadge user={user} tracking={collectionTracking} />
                                     )}
                                   </button>
                                 ) : (
@@ -3910,6 +3924,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                           {/* Botón Destacado para Cobrar Plan por WhatsApp */}
                           <div className="pt-2">
+                            {isExpired ? <SubscriptionCollectionButton user={user} tracking={collectionTracking} onClick={() => handleOpenCobroModal(user)} wide /> : (
                             <button
                               type="button"
                               onClick={() => handleOpenCobroModal(user)}
@@ -3936,6 +3951,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 animate-ping ml-1" />
                               )}
                             </button>
+                            )}
                           </div>
 
                           <div className="pt-2">
@@ -4090,9 +4106,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
                                       <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
                                       {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
-                                        <span className="ml-1 px-1 py-0.2 bg-red-500/25 text-red-300 rounded text-[8.5px] font-black border border-red-500/40 uppercase">
-                                          Cobrar
-                                        </span>
+                                        <SubscriptionCollectionBadge user={user} tracking={collectionTracking} />
                                       )}
                                     </button>
                                   ) : (
@@ -4192,6 +4206,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   </span>
 
                                   {/* Botón Cobrar colocado directamente debajo de Días Restantes */}
+                                  {isExpired ? <SubscriptionCollectionButton user={user} tracking={collectionTracking} onClick={() => handleOpenCobroModal(user)} /> : (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenCobroModal(user)}
@@ -4210,6 +4225,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
                                     )}
                                   </button>
+                                  )}
                                 </div>
                               </td>
                               <td className="py-3.5 px-4 text-center">
@@ -7889,7 +7905,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
         {/* Modal de Cobro de Suscripción por WhatsApp para Tiendas Expiradas */}
         {cobroModalUser && (() => {
-          const user = cobroModalUser;
+          const user = users.find(item => item.uid === cobroModalUser.uid) || cobroModalUser;
           const { effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
           const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
           const planPriceFormatted = `$${planPrice.toLocaleString('es-CO')} COP`;
@@ -8099,7 +8115,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       <div className="flex flex-col gap-1.5 w-full">
                         <button
                           type="button"
-                          onClick={() => openPersonalWhatsApp(fullDestinationNumber, cobroCustomMessage)}
+                          disabled={collectionAttemptBusy}
+                          onClick={() => {
+                            if (collectionAttemptLock.current) return;
+                            openPersonalWhatsApp(fullDestinationNumber, cobroCustomMessage);
+                            void recordCollectionAttempt(user);
+                          }}
                           className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 active:scale-[0.98]"
                           title="Abrir directamente en WhatsApp Messenger Personal (no Business)"
                         >
@@ -8108,6 +8129,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         </button>
                         <a
                           href={webWhatsAppUrl}
+                          onClick={event => {
+                            if (collectionAttemptLock.current) { event.preventDefault(); return; }
+                            void recordCollectionAttempt(user);
+                          }}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-gray-400 hover:text-white underline text-center transition"
@@ -8149,6 +8174,12 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       )}
                     </button>
                   </div>
+
+                  {collectionAttemptError && <p role="alert" className="text-xs text-red-300">
+                    WhatsApp se abrió, pero no se guardó el intento: {collectionAttemptError}{' '}
+                    <button type="button" disabled={collectionAttemptBusy} onClick={() => void recordCollectionAttempt(user)} className="underline">Reintentar guardado</button>
+                  </p>}
+                  <SubscriptionCollectionConfirmation user={user} tracking={collectionTracking} />
 
                   <div className="flex items-center justify-between pt-1 text-[11px]">
                     <button

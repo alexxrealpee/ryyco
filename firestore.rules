@@ -25,6 +25,17 @@ service cloud.firestore {
       );
     }
     
+    // Private collection follow-up metadata. Existing subscription documents remain authoritative.
+    match /subscription_collection_followups/{restaurantId} {
+      allow read, create, update: if isAdmin();
+      match /periods/{periodId} {
+        allow read, create, update: if isAdmin();
+        match /messages/{messageId} {
+          allow read, create, update: if isAdmin();
+        }
+      }
+    }
+
     // Users collection rules
     match /users/{userId} {
       allow read: if isAuth();
