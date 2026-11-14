@@ -1,4 +1,5 @@
 import { daySlots, weeklyScheduleError } from '../lib/weeklySchedule';
+import './adminFlatTheme.css';
 import { SubscriptionCollectionBadge, SubscriptionCollectionButton, SubscriptionCollectionConfirmation, useSubscriptionCollectionFollowups } from './SubscriptionCollectionFollowup';
 import { updateCollectionFollowup } from '../lib/subscriptionCollection';
 import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
@@ -2807,7 +2808,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   }, [users, search]);
 
   return (
-    <div className="min-h-screen bg-[#090b12] text-gray-100 p-4 md:p-8 pb-28 lg:pb-8">
+    <div className="ryyco-admin-theme min-h-screen bg-black text-gray-100 p-4 md:p-8 pb-28 lg:pb-8">
       <div className="max-w-[1600px] mx-auto">
         
         {/* Mobile Top Header */}

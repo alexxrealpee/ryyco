@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import './adminFlatTheme.css';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import L from 'leaflet';
@@ -1282,7 +1283,7 @@ export default function AdminDriversMap({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-label="Mapa de domiciliarios disponibles y restaurantes"
-      className="fixed inset-0 z-[1000000] bg-[#090B12] text-white flex flex-col h-[100dvh]"
+      className="ryyco-admin-theme fixed inset-0 z-[1000000] bg-black text-white flex flex-col h-[100dvh]"
     >
       {/* Scoped dark tooltip styling for Leaflet hover tooltips */}
       <style>{`
