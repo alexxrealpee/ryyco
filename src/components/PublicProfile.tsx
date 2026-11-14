@@ -1316,10 +1316,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     new Date(profile.subscriptionTrialExpires).getTime() < Date.now()
   );
 
-  const isStoreSuspended = profile.suspended || 
-    profile.subscriptionStatus === 'suspended' || 
-    profile.subscriptionStatus === 'expired' || 
-    isTrialExpired;
+  const isStoreSuspended = profile.suspended || profile.subscriptionStatus === 'suspended';
 
   if (isStoreSuspended) {
     const whatsappContact = "3219730865";
@@ -2169,15 +2166,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           )}
 
           {/* Shoppable catalog board */}
-          {isTrialExpired ? (
-            <div className="w-full text-center py-12 px-6 border border-amber-500/30 rounded-3xl bg-amber-950/20 text-xs text-amber-300 space-y-2">
-              <Clock className="w-8 h-8 text-amber-400 mx-auto animate-pulse" />
-              <strong className="block text-sm text-white font-bold">Catálogo en Pausa Temporal</strong>
-              <p className="max-w-md mx-auto text-[11px] text-gray-300">
-                Esta tienda ha completado su período gratuito de prueba (1 semana). Los productos no están visibles para clientes mientras se completa la verificación del comprobante de pago del Plan Básico.
-              </p>
-            </div>
-          ) : products.length === 0 ? (
+          {products.length === 0 ? (
             <div className="w-full text-center py-12 px-6 border border-dashed rounded-3xl opacity-50 text-xs">
               Esta tienda aún no ha publicado productos en venta.
             </div>

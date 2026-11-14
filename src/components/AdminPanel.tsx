@@ -1532,6 +1532,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       } catch (e) {}
     } catch(e) {
       console.error("Error updating plan:", e);
+      throw e;
     }
 
     setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, subscriptionPlan: newPlan } : u));
@@ -1567,7 +1568,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       if (isSuspended) {
         updates.isClosed = true;
       } else if (isExpired) {
-        updates.isClosed = true;
         updates.suspended = false;
       } else if (newStatus === 'trial') {
         updates.isClosed = false;
@@ -1631,7 +1631,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       } else if (newStatus === 'suspended') {
         statusDescription = '⚠️ ESTADO SUSPENDIDO (Bloqueada por Administración - Tienda Cerrada)';
       } else if (newStatus === 'expired') {
-        statusDescription = '🔴 ESTADO EXPIRADO (Suscripción Vencida - Tienda Cerrada)';
+        statusDescription = '🔴 ESTADO EXPIRADO (Mensualidad pendiente de cobro)';
       } else if (newStatus === 'active') {
         statusDescription = '🟢 ESTADO ACTIVO (Tienda Abierta y Operativa)';
       } else if (newStatus === 'under_review') {
@@ -1644,6 +1644,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       setTimeout(() => setNotif(''), 4500);
     } catch (e) {
       console.error(e);
+      setNotif(`❌ No se pudo guardar el estado de la suscripción: ${e instanceof Error ? e.message : 'Reintenta la operación'}`);
+      setTimeout(() => setNotif(''), 5000);
     }
   };
 
@@ -2755,7 +2757,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     return list;
-  }, [nonArchivedUsers, selectedSubscriptionStatusFilter, subscriptionSearchQuery]);
+  }, [nonArchivedUsers, selectedSubscriptionStatusFilter, subscriptionSearchQuery, nowMs]);
 
   const isViewingArchivedList = subscriptionArchiveView === 'archived' || selectedSubscriptionStatusFilter === 'archived';
 
@@ -2768,21 +2770,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const { effectiveStatus, isExpired } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'expired' || isExpired;
     }).length;
-  }, [nonArchivedUsers]);
+  }, [nonArchivedUsers, nowMs]);
 
   const suspendedSubscriptionsCount = useMemo(() => {
     return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isSuspended } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'suspended' || isSuspended;
     }).length;
-  }, [nonArchivedUsers]);
+  }, [nonArchivedUsers, nowMs]);
 
   const activeSubscriptionsCount = useMemo(() => {
     return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
       return !isExpired && !isSuspended && (effectiveStatus === 'active' || effectiveStatus === 'trial');
     }).length;
-  }, [nonArchivedUsers]);
+  }, [nonArchivedUsers, nowMs]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
@@ -3580,6 +3582,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
               {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR & ARCHIVED STORES SWITCHER */}
               <div className="space-y-4">
+                {collectionTracking.error && <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200 flex items-center justify-between gap-3">
+                  <span>{collectionTracking.error}</span>
+                  <button type="button" onClick={collectionTracking.retry} className="font-bold underline shrink-0">Reintentar</button>
+                </div>}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <button

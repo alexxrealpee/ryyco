@@ -3469,34 +3469,12 @@ export function checkIsStoreClosed(profile?: {
 } | null): boolean {
   if (!profile) return true;
 
-  // 1. If store is suspended or subscription explicitly expired, it is ALWAYS closed for customers
+  // Subscription debt is a billing alert. Only suspension blocks the store here.
   if (
     profile.suspended === true || 
-    profile.subscriptionStatus === 'suspended' || 
-    profile.subscriptionStatus === 'expired'
+    profile.subscriptionStatus === 'suspended'
   ) {
     return true;
-  }
-
-  const now = Date.now();
-
-  // 2. Paid subscription: If user has a valid paid period in the future, they are NOT closed by subscription!
-  const hasValidPaidUntil = !!(
-    profile.subscriptionPaidUntil && 
-    !isNaN(new Date(profile.subscriptionPaidUntil).getTime()) && 
-    new Date(profile.subscriptionPaidUntil).getTime() >= now
-  );
-
-  // 3. If NOT covered by a valid paid period, check 7-day trial expiration
-  if (!hasValidPaidUntil) {
-    if (profile.subscriptionStatus !== 'active' && profile.subscriptionStatus !== 'under_review') {
-      if (profile.subscriptionTrialExpires) {
-        const trialExp = new Date(profile.subscriptionTrialExpires).getTime();
-        if (!isNaN(trialExp) && trialExp < now) {
-          return true;
-        }
-      }
-    }
   }
 
   // 4. Manual override takes highest priority if explicitly set to true
@@ -3652,7 +3630,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
           if (apiStores.length > 0 || apiProducts.length > 0) {
             const apiProfilesMap: Record<string, UserProfile> = {};
             apiStores.forEach((s: any) => {
-              const isSuspended = s.suspended === true || s.subscriptionStatus === 'suspended' || s.subscriptionStatus === 'expired';
+              const isSuspended = s.suspended === true || s.subscriptionStatus === 'suspended';
               const prof: UserProfile = {
                 ...s,
                 uid: s.uid,
@@ -3735,7 +3713,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
     if (profilesSnapshotResult.status === 'fulfilled' && profilesSnapshotResult.value && !profilesSnapshotResult.value.empty) {
       profilesSnapshotResult.value.forEach(docSnap => {
         const data = docSnap.data() as UserProfile;
-        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+        const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended';
         const profileObj: UserProfile = { 
           ...data, 
           uid: data.uid || docSnap.id,
@@ -3758,7 +3736,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
         Object.keys(parsed).forEach(k => {
           const p = parsed[k];
           if (p) {
-            const isSuspended = p.suspended === true || p.subscriptionStatus === 'suspended' || p.subscriptionStatus === 'expired';
+            const isSuspended = p.suspended === true || p.subscriptionStatus === 'suspended';
             const profileObj: UserProfile = { 
               ...p, 
               uid: p.uid || k, 
@@ -3781,7 +3759,7 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
           try {
             const sp = JSON.parse(localStorage.getItem(key) || '{}');
             if (sp && sp.uid) {
-              const isSuspended = sp.suspended === true || sp.subscriptionStatus === 'suspended' || sp.subscriptionStatus === 'expired';
+              const isSuspended = sp.suspended === true || sp.subscriptionStatus === 'suspended';
               const profileObj: UserProfile = { 
                 ...sp, 
                 suspended: isSuspended,
@@ -3852,15 +3830,13 @@ export async function fetchAllActiveProductsAndStores(forceRefresh: boolean = fa
       }
     });
 
-    // 6. Filter out products belonging to suspended or expired stores so they are hidden from customers
+    // 6. Only suspension hides the catalog; expired billing remains a collection alert.
     const activeProductsForClients = dedupedProducts.filter(p => {
       const storeProf = findStoreForProduct(p, profilesMap);
       if (storeProf) {
         if (
           storeProf.suspended === true || 
-          storeProf.subscriptionStatus === 'suspended' || 
-          storeProf.subscriptionStatus === 'expired' ||
-          (storeProf.subscriptionTrialExpires && storeProf.subscriptionStatus !== 'active' && new Date(storeProf.subscriptionTrialExpires).getTime() < Date.now())
+          storeProf.subscriptionStatus === 'suspended'
         ) {
           return false;
         }
@@ -3904,7 +3880,7 @@ export async function fetchOpenRestaurantsFromFirebase(): Promise<UserProfile[]>
     snap.forEach(docSnap => {
       const data = docSnap.data() as UserProfile;
       const uid = data.uid || docSnap.id;
-      const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended' || data.subscriptionStatus === 'expired';
+      const isSuspended = data.suspended === true || data.subscriptionStatus === 'suspended';
       const isClosedNow = isSuspended || data.isClosed === true || checkIsStoreClosed({ ...data, isClosed: data.isClosed, suspended: isSuspended });
       const profileObj: UserProfile = {
         ...data,
@@ -4394,7 +4370,7 @@ export function calculateNextExpirationDate(
     }
   } else if (user?.createdAt) {
     const createdDate = new Date(user.createdAt);
-    baseDate = !isNaN(createdDate.getTime()) ? createdDate : new Date();
+    baseDate = !isNaN(createdDate.getTime()) && (monthsToAdd < 0 || createdDate.getTime() > Date.now()) ? createdDate : new Date();
   } else {
     baseDate = new Date();
   }

@@ -40,5 +40,6 @@ test('legacy daily schedules are supported', () => {
 });
 test('suspended, archived, unpublished and inactive profiles are excluded', () => {
   assert.equal(eligible(profile),true);
-  for (const flags of [{suspended:true},{archived:true},{isPublished:false},{active:false},{subscriptionStatus:'expired'},{role:'driver'},{status:'draft'}]) assert.equal(eligible({...profile,...flags}),false);
+  assert.equal(eligible({...profile,subscriptionStatus:'expired'}),true);
+  for (const flags of [{suspended:true},{archived:true},{isPublished:false},{active:false},{subscriptionStatus:'suspended'},{role:'driver'},{status:'draft'}]) assert.equal(eligible({...profile,...flags}),false);
 });

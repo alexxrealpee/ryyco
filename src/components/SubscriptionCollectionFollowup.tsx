@@ -19,27 +19,37 @@ export function useSubscriptionCollectionFollowups(enabled: boolean) {
     setReady(false);
     setError('');
     let stop = () => {};
+    let deadline: ReturnType<typeof setTimeout>;
+    let active = true;
     const stopAuth = onAuthStateChanged(auth, (user) => {
       stop();
+      clearTimeout(deadline);
       setRecords({});
       setReady(false);
-      if (!user) return;
+      if (!user) { setError('Inicia sesión como administrador para consultar los cobros.'); return; }
+      deadline = setTimeout(() => {
+        if (active) setError('El seguimiento de cobros tarda en conectar. Comprueba la conexión y reintenta.');
+      }, 15000);
       stop = onSnapshot(collection(db, COLLECTION_FOLLOWUPS), { includeMetadataChanges: true }, snapshot => {
         // Never present a cached absence as "not yet sent". Wait for server confirmation.
         if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) return;
+        clearTimeout(deadline);
         setRecords(Object.fromEntries(snapshot.docs.map(d => [d.id, d.data() as CollectionFollowup])));
         setReady(true);
         setError('');
-      }, () => {
+      }, (error) => {
+        clearTimeout(deadline);
         setReady(false);
-        setError('No se pudo sincronizar el seguimiento de cobros.');
+        setError(error.code === 'permission-denied'
+          ? 'Firebase no autorizó el seguimiento de cobros. Revisa los permisos administrativos y las reglas publicadas.'
+          : 'No se pudo sincronizar el seguimiento de cobros. Comprueba la conexión y reintenta.');
       });
     });
     const refresh = () => setNow(Date.now());
     const timer = window.setInterval(refresh, 30000);
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
-    return () => { stopAuth(); stop(); clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+    return () => { active = false; clearTimeout(deadline); stopAuth(); stop(); clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, [enabled, retry]);
   return { records, error, ready, now, retry: () => setRetry(n => n + 1) };
 }

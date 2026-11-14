@@ -117,8 +117,7 @@ export function isRestaurantOpenNow(store?: UserProfile | null): boolean {
   if (!store) return false;
   const isSuspended =
     store.suspended === true ||
-    store.subscriptionStatus === 'suspended' ||
-    store.subscriptionStatus === 'expired';
+    store.subscriptionStatus === 'suspended';
   if (isSuspended) return false;
   if (store.isClosed === true) return false;
   if (checkIsStoreClosed(store)) return false;

@@ -40,7 +40,7 @@ export function isUpcomingRestaurantEligible(profile: UserProfile) {
   const flags = profile as UserProfile & Record<string, unknown>;
   return Boolean(profile.username && (profile.displayName || profile.storeName || profile.username)) &&
     profile.role !== 'driver' && profile.role !== 'admin' && !profile.suspended && !profile.archived &&
-    !['expired', 'suspended'].includes(profile.subscriptionStatus || '') &&
+    profile.subscriptionStatus !== 'suspended' &&
     !['active', 'isActive', 'published', 'isPublished', 'enabled'].some(key => flags[key] === false) &&
     !['inactive', 'disabled', 'deactivated', 'draft', 'unpublished'].includes(String(flags.status || ''));
 }
