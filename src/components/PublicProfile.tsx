@@ -5,6 +5,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useReceiptUpload } from '../hooks/useReceiptUpload';
+import { useCheckoutField } from '../hooks/useCheckoutField';
+import { finishCheckoutAttempt } from '../lib/pendingCheckout';
+import { consumePurchasedCart } from '../lib/cartHelper';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   fetchProfileByUsername, 
@@ -168,7 +171,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     return getStoredCart();
   });
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [isCheckoutOpen, setIsCheckoutOpen] = useCheckoutField('store_isCheckoutOpen', false);
 
   // Real-time synchronization with general cart (from Reels, Vitrina, Home, etc.)
   useEffect(() => {
@@ -191,18 +194,18 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
   // Cart customer form details
   const [systemDeliveryFee, setSystemDeliveryFee] = useState(7000);
-  const [custName, setCustName] = useState('');
-  const [custPhone, setCustPhone] = useState('');
+  const [custName, setCustName] = useCheckoutField('custName', '');
+  const [custPhone, setCustPhone] = useCheckoutField('custPhone', '');
   const [phoneError, setPhoneError] = useState('');
-  const [custEmail, setCustEmail] = useState('');
-  const [custAddress, setCustAddress] = useState<string>(() => {
+  const [custEmail, setCustEmail] = useCheckoutField('custEmail', '');
+  const [custAddress, setCustAddress] = useCheckoutField<string>('custAddress', () => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('ryyco_customer_delivery_address') || '';
     }
     return '';
   });
-  const [pickupNotes, setPickupNotes] = useState('');
-  const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(() => {
+  const [pickupNotes, setPickupNotes] = useCheckoutField('pickupNotes', '');
+  const [custCoordinates, setCustCoordinates] = useCheckoutField<{ lat: number; lng: number; mapUrl: string } | null>('custCoordinates', () => {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('ryyco_customer_coordinates');
@@ -212,12 +215,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     return null;
   });
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
-  const [custNotes, setCustNotes] = useState('');
-  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup' | 'table'>('delivery');
-  const [tableNumber, setTableNumber] = useState('');
+  const [custNotes, setCustNotes] = useCheckoutField('custNotes', '');
+  const [deliveryType, setDeliveryType] = useCheckoutField<'delivery' | 'pickup' | 'table'>('store_deliveryType', 'delivery');
+  const [tableNumber, setTableNumber] = useCheckoutField('store_tableNumber', '');
   const [isTableModalOpen, setIsTableModalOpen] = useState(false);
-  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'cod'>('transfer');
-  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string>('');
+  const [payMethod, setPayMethod] = useCheckoutField<'whatsapp' | 'transfer' | 'cod'>('store_payMethod', 'transfer');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useCheckoutField<string>('store_selectedBankAccountId', '');
   useEffect(() => {
     if (deliveryType === 'delivery' && payMethod === 'cod') setPayMethod('transfer');
   }, [deliveryType, payMethod]);
@@ -958,7 +961,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     placingOrderLockRef.current = true;
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
-    const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+    const subtotal = cart.reduce((sum, item) => sum + (getCartItemUnitPrice(item) * item.quantity), 0);
     const isTable = deliveryType === 'table';
     const isPickup = deliveryType === 'pickup';
     const isFreeDeliveryOrder = Boolean(profile.freeDeliveryEnabled && deliveryType === 'delivery');
@@ -1066,8 +1069,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       setSubmittedOrder(savedOrder);
       
       // Clear out customer cart local states & shared storage
-      saveStoredCart([]);
-      setCart([]);
+      setCart(consumePurchasedCart(cart));
+      finishCheckoutAttempt(savedOrder.storeOwnerId);
       setUploadedOrderProofBase64('');
       setAppliedRewardCode('');
       setRewardDiscountAmount(0);
@@ -1076,7 +1079,7 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
     } catch(err) {
       console.error(err);
-      alert("Ocurrió un error al registrar el pedido. Intenta nuevamente.");
+      alert(err instanceof Error ? err.message : 'No se pudo registrar el pedido. Comprueba tu conexión y reintenta.');
     } finally {
       placingOrderLockRef.current = false;
       orderSubmittingRef.current = false;
@@ -1088,8 +1091,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     if (placingOrderLockRef.current) return;
     setActiveCustomer(authenticatedCustomer);
     setActiveCustomerSession(authenticatedCustomer);
-    setCustName(authenticatedCustomer.name);
-    setCustPhone(authenticatedCustomer.phone);
+    setCustName(previous => previous.trim() || authenticatedCustomer.name);
+    setCustPhone(previous => previous.trim() || authenticatedCustomer.phone);
     if (authenticatedCustomer.address && !isPickupOrInvalidAddress(authenticatedCustomer.address) && !custAddress) {
       setCustAddress(authenticatedCustomer.address);
     }
@@ -1102,6 +1105,12 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!profile || cart.length === 0 || orderSubmittingRef.current) return;
+    if (cart.some(item => item.product.userId !== profile.uid)) {
+      try { sessionStorage.setItem('linnkpro_open_checkout', 'true'); } catch {}
+      if (onNavigateHome) onNavigateHome();
+      else window.location.assign('/?cart=checkout');
+      return;
+    }
     
     const cleanedPhone = cleanColombianPhone(custPhone);
     if (!custName.trim()) {
@@ -3419,8 +3428,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
       {isCheckoutOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <form 
+            data-ryyco-checkout
             onSubmit={handlePlaceOrderSubmit} 
-            className="bg-gray-950 border border-gray-850 rounded-3xl w-full max-w-md p-6 text-gray-100 relative shadow-2.5xl max-h-[92vh] overflow-y-auto space-y-4"
+            className="bg-gray-950 border border-gray-850 rounded-3xl w-full max-w-md p-6 text-gray-100 relative shadow-2.5xl max-h-[92dvh] overflow-y-auto overscroll-contain space-y-4"
           >
             <div className="flex items-center justify-between border-b border-gray-900 pb-3">
               <h3 className="font-extrabold text-sm uppercase flex items-center gap-1.5 text-white">

@@ -1,4 +1,6 @@
 import { evaluateWeeklySchedule } from './weeklySchedule';
+import { validateCheckoutAvailability } from './checkoutValidation';
+import { pendingCheckoutId } from './pendingCheckout';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1652,7 +1654,7 @@ function buildOrderIdempotencyKey(order: OrderItem): string {
     .map(i => `${(i.productId || i.name || '').trim().toLowerCase()}:${i.quantity || 1}:${Math.round(Number(i.price) || 0)}:${(i.selectedVariant || '').trim().toLowerCase()}`)
     .sort()
     .join('|');
-  return `${storeKey}__${phoneKey}__${totalKey}__${itemsKey}`;
+  return JSON.stringify([storeKey, phoneKey, totalKey, itemsKey, order.customerAddress, order.paymentMethod, order.paymentMethodAccountId, order.notes, order.items.map(i => i.selectedAddons || [])]);
 }
 
 // CREATE CUSTOMER ORDER
@@ -1673,26 +1675,17 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   }
 
   const savePromise = (async (): Promise<OrderItem> => {
-  // 1. Strict Live Validation against Firestore: Verify store is open (isClosed === false)
-  if (order.storeOwnerId && order.storeOwnerId !== 'store_general') {
-    try {
-      const storeDoc = await getDoc(doc(db, 'profiles', order.storeOwnerId));
-      if (storeDoc.exists()) {
-        const storeData = storeDoc.data() as UserProfile;
-        if (storeData.isClosed === true) {
-          const sName = storeData.displayName || storeData.storeName || storeData.username || 'El restaurante';
-          throw new Error(`No se puede procesar el pedido porque ${sName} se encuentra cerrado actualmente.`);
-        }
-      }
-    } catch (e: any) {
-      if (e?.message && e.message.includes('cerrado')) {
-        throw e;
-      }
-    }
-  }
+  const orderId = pendingCheckoutId(idempotencyKey, order.storeOwnerId, () => doc(collection(db, 'orders')).id);
+  const docRef = doc(db, 'orders', orderId);
+  const previousAttempt = await getDocFromServer(docRef);
+  if (previousAttempt.exists()) return { ...previousAttempt.data(), id: orderId } as OrderItem;
+  // Server reads are required: cached availability must never authorize a new order.
+  const liveStore = await validateCheckoutAvailability(order,
+    async id => { const snap = await getDocFromServer(doc(db, 'profiles', id)); return snap.exists() ? snap.data() as UserProfile : null; },
+    async id => { const snap = await getDocFromServer(doc(db, 'products', id)); return snap.exists() ? snap.data() as ProductItem : null; },
+    checkIsStoreClosed);
 
   const result = { ...order };
-  const docRef = doc(collection(db, 'orders'));
   result.id = docRef.id;
   result.status = 'pending';
   // Generate 4-digit delivery verification code for the customer to give to the driver
@@ -1719,9 +1712,8 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   // Auto-resolve store name and store contact/location details with exact coordinates
   if (result.storeOwnerId && result.storeOwnerId !== 'store_general') {
     try {
-      const storeDoc = await getDoc(doc(db, 'profiles', result.storeOwnerId));
-      if (storeDoc.exists()) {
-        const sData = storeDoc.data() as UserProfile;
+      if (liveStore) {
+        const sData = liveStore;
         if (!result.storeName || result.storeName.trim() === '' || result.storeName === 'Tienda Linnk' || result.storeName === 'Tienda en la plataforma') {
           result.storeName = sData.displayName || sData.storeName || sData.username || 'Mi Tienda';
         }
@@ -1847,6 +1839,7 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   }
 
   // Check active referral code (valid for 3 days)
+  let persistReferral: (() => Promise<void>) | undefined;
   const activeRef = getActiveReferralCode();
   if (activeRef && activeRef.code && !result.referralCode) {
     try {
@@ -1880,16 +1873,16 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
           status: 'pending',
           createdAt: new Date().toISOString()
         };
-        await setDoc(commDocRef, cleanUndefined(commRecord)).catch(() => {});
-
-        // Update creator aggregate metrics
-        const creatorRef = doc(db, 'creators', creator.id);
-        await updateDoc(creatorRef, {
+        persistReferral = async () => {
+          await setDoc(commDocRef, cleanUndefined(commRecord));
+          const creatorRef = doc(db, 'creators', creator.id);
+          await updateDoc(creatorRef, {
           totalOrdersCount: increment(1),
           totalSalesAmount: increment(order.totalAmount),
           totalEarnings: increment(commAmount),
           updatedAt: new Date().toISOString()
-        }).catch(() => {});
+          });
+        };
       }
     } catch (err) {
       console.warn("Error attaching referral to order:", err);
@@ -1897,7 +1890,14 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   }
 
   const cleanedResult = cleanUndefined(result);
-  await setDoc(docRef, cleanedResult);
+  const existingOrder = await runTransaction(db, async transaction => {
+    const existing = await transaction.get(docRef);
+    if (existing.exists()) return { ...existing.data(), id: docRef.id } as OrderItem;
+    transaction.set(docRef, cleanedResult);
+    return null;
+  });
+  if (existingOrder) return existingOrder;
+  persistReferral?.().catch(error => console.warn('Referral update pending after saved order:', error));
 
   // Backup locally under storeOwnerId
   try {

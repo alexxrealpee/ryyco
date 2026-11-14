@@ -1,4 +1,7 @@
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useCheckoutField } from '../hooks/useCheckoutField';
+import { finishCheckoutAttempt } from '../lib/pendingCheckout';
+import { consumePurchasedCart } from '../lib/cartHelper';
 import HomeNavigationDrawer from './HomeNavigationDrawer';
 import CheckoutBankTransfer, { validTransferAccounts } from './CheckoutBankTransfer';
 import { balanceCatalog, resolveProductStore } from '../lib/catalogProducts';
@@ -366,7 +369,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return false;
     }
   });
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(() => {
+  const [isCheckoutOpen, setIsCheckoutOpen] = useCheckoutField('home_isCheckoutOpen', () => {
     try {
       const search = typeof window !== 'undefined' ? window.location.search : '';
       return search.includes('cart=checkout') ||
@@ -407,17 +410,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   }, []);
 
   // Form fields
-  const [custName, setCustName] = useState('');
-  const [custPhone, setCustPhone] = useState('');
+  const [custName, setCustName] = useCheckoutField('custName', '');
+  const [custPhone, setCustPhone] = useCheckoutField('custPhone', '');
   const [phoneError, setPhoneError] = useState('');
-  const [custAddress, setCustAddress] = useState<string>(() => {
+  const [custAddress, setCustAddress] = useCheckoutField<string>('custAddress', () => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('ryyco_customer_delivery_address') || '';
     }
     return '';
   });
-  const [pickupNotes, setPickupNotes] = useState('');
-  const [custCoordinates, setCustCoordinates] = useState<{ lat: number; lng: number; mapUrl: string } | null>(() => {
+  const [pickupNotes, setPickupNotes] = useCheckoutField('pickupNotes', '');
+  const [custCoordinates, setCustCoordinates] = useCheckoutField<{ lat: number; lng: number; mapUrl: string } | null>('custCoordinates', () => {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('ryyco_customer_coordinates');
@@ -427,11 +430,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     return null;
   });
   const [isMapPickerOpen, setIsMapPickerOpen] = useState(false);
-  const [custNotes, setCustNotes] = useState('');
-  const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
-  const [isPaymentStep, setIsPaymentStep] = useState(false);
+  const [custNotes, setCustNotes] = useCheckoutField('custNotes', '');
+  const [deliveryType, setDeliveryType] = useCheckoutField<'delivery' | 'pickup'>('home_deliveryType', 'delivery');
+  const [isPaymentStep, setIsPaymentStep] = useCheckoutField('home_isPaymentStep', false);
   useEffect(() => { if (!isCheckoutOpen) setIsPaymentStep(false); }, [isCheckoutOpen]);
-  const [payMethod, setPayMethod] = useState<'whatsapp' | 'transfer' | 'delivery_cash'>('whatsapp');
+  const [payMethod, setPayMethod] = useCheckoutField<'whatsapp' | 'transfer' | 'delivery_cash'>('home_payMethod', 'whatsapp');
   useEffect(() => {
     if (deliveryType === 'delivery' && payMethod === 'delivery_cash') setPayMethod('whatsapp');
   }, [deliveryType, payMethod]);
@@ -443,7 +446,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [paymentConnectionError, setPaymentConnectionError] = useState(false);
   const [paymentRetry, setPaymentRetry] = useState(0);
   const [transferProofs, setTransferProofs] = useState<Record<string, string>>({});
-  const [selectedTransferAccounts, setSelectedTransferAccounts] = useState<Record<string, string>>({});
+  const [selectedTransferAccounts, setSelectedTransferAccounts] = useCheckoutField<Record<string, string>>('home_selectedTransferAccounts', {});
   const [proofBusy, setProofBusy] = useState<Record<string, boolean>>({});
   const uploadingProof = Object.values(proofBusy).some(Boolean);
   useEffect(() => {
@@ -1605,6 +1608,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
         const saved = await saveOrder(newOrder);
         created.push(saved);
+        setCart(consumePurchasedCart(sellerCart));
+        finishCheckoutAttempt(saved.storeOwnerId);
       }
 
       const cleanOrderPhone = sanitizeCustomerPhone(custPhone.trim() || customer.phone);
@@ -1624,15 +1629,18 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       setSubmittedOrders(created);
       setTransferProofs({});
       setSelectedTransferAccounts({});
-      clearAllCart();
-      setCart([]);
       setIsCartOpen(false);
       setIsCheckoutOpen(false);
       setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
       setIsSuccessOpen(true);
     } catch (err) {
       console.error(err);
-      alert("Ocurrió un error al registrar el pedido. Intenta nuevamente.");
+      if (created.length) {
+        setSubmittedOrders(created);
+        setCustomerOrders(previous => [...created.filter(order => !previous.some(item => item.id === order.id)), ...previous]);
+        handleSelectTrackingOrder(created[0].id);
+      }
+      alert(`${created.length ? `Se registraron ${created.length} pedido(s). En el carrito quedan únicamente los productos pendientes. ` : ''}${err instanceof Error ? err.message : 'No se pudo registrar el pedido. Comprueba tu conexión y reintenta.'}`);
     } finally {
       placingOrderLockRef.current = false;
       orderSubmittingRef.current = false;
@@ -1644,8 +1652,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (placingOrderLockRef.current) return;
     setActiveCustomer(authenticatedCustomer);
     setActiveCustomerSession(authenticatedCustomer);
-    setCustName(authenticatedCustomer.name);
-    setCustPhone(authenticatedCustomer.phone);
+    setCustName(previous => previous.trim() || authenticatedCustomer.name);
+    setCustPhone(previous => previous.trim() || authenticatedCustomer.phone);
     if (authenticatedCustomer.address && !isPickupOrInvalidAddress(authenticatedCustomer.address) && !custAddress) {
       setCustAddress(authenticatedCustomer.address);
     }
@@ -3717,7 +3725,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
 
               {/* Scrollable Form Body */}
-              <form onSubmit={handlePlaceOrderSubmit} className="flex-grow overflow-y-auto p-5 space-y-4 text-left">
+              <form data-ryyco-checkout onSubmit={handlePlaceOrderSubmit} className="flex-grow overflow-y-auto p-5 space-y-4 text-left">
                 <div className="flex flex-wrap items-center justify-between gap-1.5 pb-0.5">
                   <p className="text-[11px] text-[#A9B2C3] font-medium leading-relaxed">
                     Completa los datos de entrega
@@ -4015,7 +4023,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                 <button type="button" autoFocus disabled={orderSubmitting || uploadingProof} onClick={() => setIsPaymentStep(false)}
                   className="px-3 py-2 rounded-xl bg-[#334155] text-white text-xs font-bold disabled:opacity-50">Volver a mis datos</button>
               </header>
-              <form onSubmit={handlePlaceOrderSubmit} className="overflow-y-auto p-5 space-y-4 text-left">
+              <form data-ryyco-checkout onSubmit={handlePlaceOrderSubmit} className="overflow-y-auto p-5 space-y-4 text-left">
                 <p className="text-xs text-gray-300">Elige cómo pagar. Tu pedido se registrará al confirmar este paso.</p>
                 {/* Payment Method Option */}
                 <div className="space-y-2 pt-2 border-t border-[#232B3A]">

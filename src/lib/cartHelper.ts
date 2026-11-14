@@ -397,6 +397,13 @@ export function removeProductFromCart(cartItemIdOrProductId: string): GeneralCar
 }
 
 // Clear cart completely
+export function consumePurchasedCart(purchased: GeneralCartItem[]): GeneralCartItem[] {
+  const quantities = new Map(purchased.map(item => [item.id, item.quantity]));
+  const remaining = getStoredCart().map(item => ({ ...item, quantity: item.quantity - (quantities.get(item.id) || 0) })).filter(item => item.quantity > 0);
+  saveStoredCart(remaining);
+  return remaining;
+}
+
 export function clearAllCart(): GeneralCartItem[] {
   saveStoredCart([]);
   return [];
