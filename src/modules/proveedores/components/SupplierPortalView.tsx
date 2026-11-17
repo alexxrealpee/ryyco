@@ -225,11 +225,16 @@ export const SupplierPortalView: React.FC<SupplierPortalViewProps> = ({
       message: appMessage.trim() || 'Interesados en abastecer a la red de restaurantes del ecosistema RYYCO.',
     });
 
+    // Borrar formulario para evitar envíos repetidos
+    setAppTradeName('');
+    setAppBusinessName('');
+    setAppNit('');
+    setAppContactName('');
+    setAppContactWhatsapp('');
+    setAppEmail('');
+    setAppMessage('');
+
     setApplicationSubmitted(true);
-    setTimeout(() => {
-      setApplicationSubmitted(false);
-      setActiveSubTab('directory');
-    }, 2800);
   };
 
   const handleProductSubmit = (e: React.FormEvent) => {
@@ -994,18 +999,42 @@ export const SupplierPortalView: React.FC<SupplierPortalViewProps> = ({
               </div>
             </div>
 
-            {applicationSubmitted ? (
-              <div className="p-8 text-center space-y-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-                <h4 className="text-lg font-bold text-gray-900">
-                  ¡Solicitud enviada a RYYCO Central!
-                </h4>
-                <p className="text-xs text-gray-600 max-w-md mx-auto">
-                  Tu expediente ha quedado registrado en la mesa de control de SuperAdmin. Un asesor comercial se comunicará vía WhatsApp para activar tus permisos de catálogo.
-                </p>
+            {applicationSubmitted && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+                onClick={() => {
+                  setApplicationSubmitted(false);
+                  setActiveSubTab('directory');
+                }}
+              >
+                <div
+                  className="relative w-full max-w-md bg-white rounded-3xl border border-gray-100 p-6 sm:p-8 shadow-2xl space-y-4 text-center animate-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 mx-auto shadow-xs">
+                    <CheckCircle2 className="w-9 h-9" />
+                  </div>
+                  <h4 className="text-xl font-black text-gray-950 font-display">
+                    ¡Postulación enviada con éxito!
+                  </h4>
+                  <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
+                    Tu postulación ha sido enviada a <strong>RYYCO Central</strong>. Nuestro equipo verificará tus datos y te contactará por WhatsApp para habilitar tu portal de proveedor.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setApplicationSubmitted(false);
+                      setActiveSubTab('directory');
+                    }}
+                    className="w-full py-3 px-4 bg-[#E52243] hover:bg-[#D1132A] text-white text-xs sm:text-sm font-bold rounded-xl transition-colors cursor-pointer"
+                  >
+                    Entendido
+                  </button>
+                </div>
               </div>
-            ) : (
-              <form onSubmit={handleApplicationSubmit} className="space-y-4">
+            )}
+
+            <form onSubmit={handleApplicationSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1">
@@ -1110,31 +1139,34 @@ export const SupplierPortalView: React.FC<SupplierPortalViewProps> = ({
                     <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
                       <span>Ciudad / Municipio *</span>
                       <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                        Detectada en mapa
+                        Fijada en el mapa
                       </span>
                     </label>
                     <input
                       type="text"
                       required
+                      readOnly
                       value={appCity}
-                      onChange={(e) => setAppCity(e.target.value)}
-                      placeholder="Ej. Ipiales"
-                      className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 text-gray-900 rounded-lg focus:bg-white focus:outline-none focus:border-[#E52243]"
+                      placeholder="Ubica tu bodega en el mapa..."
+                      className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-100 border border-gray-200 text-gray-800 font-semibold rounded-lg cursor-not-allowed select-none focus:outline-none"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
                   <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
-                    <span>Dirección de tu bodega / CEDI o punto de despacho</span>
-                    <span className="text-[10px] text-gray-400 font-medium">Autocompletada</span>
+                    <span>Dirección de tu bodega / CEDI o punto de despacho *</span>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      Autocompletada por GPS/Mapa
+                    </span>
                   </label>
                   <input
                     type="text"
+                    required
+                    readOnly
                     value={appAddress}
-                    onChange={(e) => setAppAddress(e.target.value)}
-                    placeholder="Ej. Carrera 5 #14-22 Zona Mayorista, Ipiales"
-                    className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-50 border border-gray-200 text-gray-900 rounded-lg focus:bg-white focus:outline-none focus:border-[#E52243]"
+                    placeholder="Mueve el pin 📦 en el mapa para autocompletar la dirección..."
+                    className="w-full px-3 py-2 text-xs sm:text-sm bg-gray-100 border border-gray-200 text-gray-800 font-semibold rounded-lg cursor-not-allowed select-none focus:outline-none"
                   />
                 </div>
 
@@ -1198,7 +1230,6 @@ export const SupplierPortalView: React.FC<SupplierPortalViewProps> = ({
                   </button>
                 </div>
               </form>
-            )}
           </div>
         )}
 

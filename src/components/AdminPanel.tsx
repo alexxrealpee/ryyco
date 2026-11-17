@@ -1,7 +1,4 @@
 import { daySlots, weeklyScheduleError } from '../lib/weeklySchedule';
-import './adminFlatTheme.css';
-import { SubscriptionCollectionBadge, SubscriptionCollectionButton, SubscriptionCollectionConfirmation, useSubscriptionCollectionFollowups } from './SubscriptionCollectionFollowup';
-import { updateCollectionFollowup } from '../lib/subscriptionCollection';
 import { usePushOrderNavigation } from '../lib/usePushOrderNavigation';
 import { isNativePush, nativePushPermission } from '../lib/nativePush';
 /**
@@ -41,6 +38,7 @@ import {
 } from '../lib/firebase';
 import AdminDriversManager from './AdminDriversManager';
 const AdminDriversMap = React.lazy(() => import('./AdminDriversMap'));
+const ProveedoresAdminModule = React.lazy(() => import('../modules/proveedores/App'));
 import AdminReferralsManager from './AdminReferralsManager';
 import AdminStoresManager from './AdminStoresManager';
 import AdminSalesStats from './AdminSalesStats';
@@ -163,7 +161,8 @@ interface AdminUser {
   username: string;
   role: 'user' | 'admin';
   plan?: 'free' | 'pro' | 'business';
-  subscriptionPlan?: 'basico' | 'medio' | 'pro';
+  subscriptionPlan?: 'basico' | 'medio' | 'pro' | 'avanzado';
+  requestedPlan?: 'basico' | 'medio' | 'pro' | 'avanzado';
   subscriptionStatus?: string;
   storeName?: string;
   whatsapp?: string;
@@ -326,14 +325,15 @@ const getSubscriptionCobroWhatsAppUrl = (user: AdminUser, templateType: 'standar
   return getPersonalWhatsAppUrl(rawPhone, message);
 };
 
-const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images' => {
+const getInitialAdminTab = (): 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'proveedores' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images' => {
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const queryTab = urlParams.get('tab')?.toLowerCase();
-    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'> = [
-      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores', 'order_times', 'product_images'
+    const validTabs: Array<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'proveedores' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'> = [
+      'users', 'payments', 'subscriptions', 'orders', 'drivers', 'proveedores', 'sales_stats', 'top_customers', 'referrals', 'general', 'stores', 'order_times', 'product_images'
     ];
     if (queryTab === 'tiendas') return 'stores';
+    if (queryTab === 'proveedores' || queryTab === 'admin_proveedores' || queryTab === 'proveedores_b2b') return 'proveedores';
     if (queryTab === 'tiempos' || queryTab === 'tiempos_pedidos' || queryTab === 'tiempos-pedidos' || queryTab === 'order_times' || queryTab === 'times') return 'order_times';
     if (queryTab === 'ventas' || queryTab === 'estadisticas' || queryTab === 'stats' || queryTab === 'sales' || queryTab === 'sales_stats') return 'sales_stats';
     if (queryTab === 'clientes' || queryTab === 'customers' || queryTab === 'top_customers' || queryTab === 'whatsapp' || queryTab === 'clientes_whatsapp') return 'top_customers';
@@ -386,7 +386,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [notif, setNotif] = useState('');
-  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'>(getInitialAdminTab());
+  const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'proveedores' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
   const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
@@ -401,7 +401,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   }, []);
 
   // Tab switching with instant URL query and storage synchronization
-  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images') => {
+  const handleSwitchTab = (tab: 'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'proveedores' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images') => {
     setActiveAdminTab(tab);
     try {
       localStorage.setItem('ryyco_admin_active_tab', tab);
@@ -1533,7 +1533,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       } catch (e) {}
     } catch(e) {
       console.error("Error updating plan:", e);
-      throw e;
     }
 
     setUsers(prev => prev.map(u => u.uid === user.uid ? { ...u, subscriptionPlan: newPlan } : u));
@@ -1569,6 +1568,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       if (isSuspended) {
         updates.isClosed = true;
       } else if (isExpired) {
+        updates.isClosed = true;
         updates.suspended = false;
       } else if (newStatus === 'trial') {
         updates.isClosed = false;
@@ -1632,7 +1632,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       } else if (newStatus === 'suspended') {
         statusDescription = '⚠️ ESTADO SUSPENDIDO (Bloqueada por Administración - Tienda Cerrada)';
       } else if (newStatus === 'expired') {
-        statusDescription = '🔴 ESTADO EXPIRADO (Mensualidad pendiente de cobro)';
+        statusDescription = '🔴 ESTADO EXPIRADO (Suscripción Vencida - Tienda Cerrada)';
       } else if (newStatus === 'active') {
         statusDescription = '🟢 ESTADO ACTIVO (Tienda Abierta y Operativa)';
       } else if (newStatus === 'under_review') {
@@ -1645,8 +1645,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       setTimeout(() => setNotif(''), 4500);
     } catch (e) {
       console.error(e);
-      setNotif(`❌ No se pudo guardar el estado de la suscripción: ${e instanceof Error ? e.message : 'Reintenta la operación'}`);
-      setTimeout(() => setNotif(''), 5000);
     }
   };
 
@@ -1789,19 +1787,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
   // State & Handlers for Cobro de Suscripción WhatsApp Modal
   const [cobroModalUser, setCobroModalUser] = useState<AdminUser | null>(null);
-  const collectionTracking = useSubscriptionCollectionFollowups(activeAdminTab === 'subscriptions' || !!cobroModalUser);
-  const collectionAttemptLock = useRef(false);
-  const [collectionAttemptBusy, setCollectionAttemptBusy] = useState(false);
-  const [collectionAttemptError, setCollectionAttemptError] = useState('');
-  const recordCollectionAttempt = async (user: AdminUser) => {
-    if (!isSubscriptionExpiredOrSuspended(user).isExpired || collectionAttemptLock.current) return;
-    collectionAttemptLock.current = true;
-    setCollectionAttemptBusy(true);
-    setCollectionAttemptError('');
-    try { await updateCollectionFollowup(user, 'attempt'); }
-    catch (error) { setCollectionAttemptError(error instanceof Error ? error.message : 'No se pudo registrar el intento de cobro.'); }
-    finally { collectionAttemptLock.current = false; setCollectionAttemptBusy(false); }
-  };
   const [cobroCustomPhone, setCobroCustomPhone] = useState<string>('');
   const [cobroCustomMessage, setCobroCustomMessage] = useState<string>('');
   const [cobroTemplateType, setCobroTemplateType] = useState<'standard' | 'urgent' | 'promo' | 'trial'>('standard');
@@ -1817,7 +1802,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     const chosenTemplate: 'standard' | 'urgent' | 'promo' | 'trial' = effectiveStatus === 'trial' ? 'trial' : template;
 
     setCobroModalUser(user);
-    setCollectionAttemptError('');
     setCobroCustomPhone(cleanNumber);
     setCobroTemplateType(chosenTemplate);
     setCopiedCobroText(false);
@@ -2758,7 +2742,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
 
     return list;
-  }, [nonArchivedUsers, selectedSubscriptionStatusFilter, subscriptionSearchQuery, nowMs]);
+  }, [nonArchivedUsers, selectedSubscriptionStatusFilter, subscriptionSearchQuery]);
 
   const isViewingArchivedList = subscriptionArchiveView === 'archived' || selectedSubscriptionStatusFilter === 'archived';
 
@@ -2771,21 +2755,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const { effectiveStatus, isExpired } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'expired' || isExpired;
     }).length;
-  }, [nonArchivedUsers, nowMs]);
+  }, [nonArchivedUsers]);
 
   const suspendedSubscriptionsCount = useMemo(() => {
     return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isSuspended } = isSubscriptionExpiredOrSuspended(u);
       return effectiveStatus === 'suspended' || isSuspended;
     }).length;
-  }, [nonArchivedUsers, nowMs]);
+  }, [nonArchivedUsers]);
 
   const activeSubscriptionsCount = useMemo(() => {
     return nonArchivedUsers.filter(u => {
       const { effectiveStatus, isExpired, isSuspended } = isSubscriptionExpiredOrSuspended(u);
       return !isExpired && !isSuspended && (effectiveStatus === 'active' || effectiveStatus === 'trial');
     }).length;
-  }, [nonArchivedUsers, nowMs]);
+  }, [nonArchivedUsers]);
 
   const filteredUsers = useMemo(() => {
     const sorted = sortUsersNewestFirst(users);
@@ -2808,7 +2792,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   }, [users, search]);
 
   return (
-    <div className="ryyco-admin-theme min-h-screen bg-black text-gray-100 p-4 md:p-8 pb-28 lg:pb-8">
+    <div className="min-h-screen bg-[#090b12] text-gray-100 p-4 md:p-8 pb-28 lg:pb-8">
       <div className="max-w-[1600px] mx-auto">
         
         {/* Mobile Top Header */}
@@ -3116,6 +3100,20 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </button>
 
                   <button
+                    onClick={() => handleSwitchTab('proveedores')}
+                    className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
+                      activeAdminTab === 'proveedores'
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
+                        : 'text-gray-400 hover:text-white hover:bg-gray-900/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Package className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="truncate">Administrador de Proveedores</span>
+                    </div>
+                  </button>
+
+                  <button
                     onClick={() => handleSwitchTab('general')}
                     className={`w-full py-2.5 px-2.5 rounded-xl text-[11.5px] font-bold transition flex items-center justify-between text-left cursor-pointer ${
                       activeAdminTab === 'general' 
@@ -3298,6 +3296,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             >
               <ImageIcon className="w-5 h-5 text-emerald-400" />
               <span className="text-[10px] font-medium leading-none whitespace-nowrap">Imágenes</span>
+            </button>
+
+            <button
+              onClick={() => handleSwitchTab('proveedores')}
+              className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition relative cursor-pointer min-w-[78px] shrink-0 ${
+                activeAdminTab === 'proveedores'
+                  ? 'text-indigo-400 font-bold bg-indigo-500/10 border border-indigo-500/20'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <Package className="w-5 h-5 text-amber-400" />
+              <span className="text-[10px] font-medium leading-none whitespace-nowrap">Proveedores</span>
             </button>
 
             <button
@@ -3583,10 +3593,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
               {/* SECTION A: ACTIVE SUBSCRIPTIONS MONITOR & ARCHIVED STORES SWITCHER */}
               <div className="space-y-4">
-                {collectionTracking.error && <div role="alert" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200 flex items-center justify-between gap-3">
-                  <span>{collectionTracking.error}</span>
-                  <button type="button" onClick={collectionTracking.retry} className="font-bold underline shrink-0">Reintentar</button>
-                </div>}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="flex flex-wrap items-center gap-2.5">
                     <button
@@ -3756,7 +3762,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                     <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                                     <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
                                     {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
-                                      <SubscriptionCollectionBadge user={user} tracking={collectionTracking} />
+                                      <span className="ml-1 px-1.5 py-0.2 bg-red-500/25 text-red-300 rounded text-[9px] font-black border border-red-500/40 uppercase">
+                                        Cobrar
+                                      </span>
                                     )}
                                   </button>
                                 ) : (
@@ -3931,7 +3939,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
                           {/* Botón Destacado para Cobrar Plan por WhatsApp */}
                           <div className="pt-2">
-                            {isExpired ? <SubscriptionCollectionButton user={user} tracking={collectionTracking} onClick={() => handleOpenCobroModal(user)} wide /> : (
                             <button
                               type="button"
                               onClick={() => handleOpenCobroModal(user)}
@@ -3958,7 +3965,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                 <span className="w-2 h-2 rounded-full bg-red-400 shrink-0 animate-ping ml-1" />
                               )}
                             </button>
-                            )}
                           </div>
 
                           <div className="pt-2">
@@ -4113,7 +4119,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       <ShieldCheck className="w-3 h-3 text-emerald-400 shrink-0" />
                                       <span>👑 Dueño: +57 {formatWhatsAppDisplay(user.ownerWhatsapp || user.whatsapp || user.phone)}</span>
                                       {(effectiveStatus === 'expired' || effectiveStatus === 'suspended') && (
-                                        <SubscriptionCollectionBadge user={user} tracking={collectionTracking} />
+                                        <span className="ml-1 px-1 py-0.2 bg-red-500/25 text-red-300 rounded text-[8.5px] font-black border border-red-500/40 uppercase">
+                                          Cobrar
+                                        </span>
                                       )}
                                     </button>
                                   ) : (
@@ -4213,7 +4221,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                   </span>
 
                                   {/* Botón Cobrar colocado directamente debajo de Días Restantes */}
-                                  {isExpired ? <SubscriptionCollectionButton user={user} tracking={collectionTracking} onClick={() => handleOpenCobroModal(user)} /> : (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenCobroModal(user)}
@@ -4232,7 +4239,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                                       <span className="w-1.5 h-1.5 rounded-full bg-red-400 shrink-0" />
                                     )}
                                   </button>
-                                  )}
                                 </div>
                               </td>
                               <td className="py-3.5 px-4 text-center">
@@ -5994,6 +6000,15 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     Gestione las variables del sistema, costo predeterminado de domicilio/envío y opciones globales de soporte.
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleSwitchTab('proveedores')}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-gray-950 font-black text-xs uppercase tracking-wider rounded-xl transition shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer shrink-0"
+                >
+                  <Package className="w-4 h-4 stroke-[2.5]" />
+                  <span>Administrador de Proveedores</span>
+                </button>
               </div>
 
               {/* Firebase CSV Data Export Section for AI Analysis */}
@@ -6585,6 +6600,27 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
 
             </div>
+          </div>
+        ) : activeAdminTab === 'proveedores' ? (
+          <div className="rounded-3xl overflow-hidden border border-gray-800 shadow-2xl bg-[#F8F9FA]">
+            <React.Suspense
+              fallback={
+                <div className="p-12 text-center text-gray-500 font-bold text-sm">
+                  Cargando Administrador de Proveedores...
+                </div>
+              }
+            >
+              <ProveedoresAdminModule
+                initialSection="admin_central"
+                staffAdminSession={{
+                  email: auth.currentUser?.email || PRIMARY_ADMIN_EMAIL,
+                  displayName: auth.currentUser?.displayName || 'Administrador General RYYCO',
+                  role: 'SuperAdmin Operaciones',
+                  token: auth.currentUser?.uid || 'ryyco-staff-admin',
+                  authenticatedAt: new Date().toISOString(),
+                }}
+              />
+            </React.Suspense>
           </div>
         ) : null}
           </main>
@@ -7912,7 +7948,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
         {/* Modal de Cobro de Suscripción por WhatsApp para Tiendas Expiradas */}
         {cobroModalUser && (() => {
-          const user = users.find(item => item.uid === cobroModalUser.uid) || cobroModalUser;
+          const user = cobroModalUser;
           const { effectiveStatus } = isSubscriptionExpiredOrSuspended(user);
           const planPrice = user.subscriptionPlan === 'pro' ? 99000 : user.subscriptionPlan === 'medio' ? 79000 : 49000;
           const planPriceFormatted = `$${planPrice.toLocaleString('es-CO')} COP`;
@@ -8122,12 +8158,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       <div className="flex flex-col gap-1.5 w-full">
                         <button
                           type="button"
-                          disabled={collectionAttemptBusy}
-                          onClick={() => {
-                            if (collectionAttemptLock.current) return;
-                            openPersonalWhatsApp(fullDestinationNumber, cobroCustomMessage);
-                            void recordCollectionAttempt(user);
-                          }}
+                          onClick={() => openPersonalWhatsApp(fullDestinationNumber, cobroCustomMessage)}
                           className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-950/50 active:scale-[0.98]"
                           title="Abrir directamente en WhatsApp Messenger Personal (no Business)"
                         >
@@ -8136,10 +8167,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                         </button>
                         <a
                           href={webWhatsAppUrl}
-                          onClick={event => {
-                            if (collectionAttemptLock.current) { event.preventDefault(); return; }
-                            void recordCollectionAttempt(user);
-                          }}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-gray-400 hover:text-white underline text-center transition"
@@ -8181,12 +8208,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                       )}
                     </button>
                   </div>
-
-                  {collectionAttemptError && <p role="alert" className="text-xs text-red-300">
-                    WhatsApp se abrió, pero no se guardó el intento: {collectionAttemptError}{' '}
-                    <button type="button" disabled={collectionAttemptBusy} onClick={() => void recordCollectionAttempt(user)} className="underline">Reintentar guardado</button>
-                  </p>}
-                  <SubscriptionCollectionConfirmation user={user} tracking={collectionTracking} />
 
                   <div className="flex items-center justify-between pt-1 text-[11px]">
                     <button

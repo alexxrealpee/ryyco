@@ -7,12 +7,10 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
-  MapPin,
   Navigation,
   Compass,
   Check,
   Search,
-  Building2,
   Loader2,
   Sparkles,
 } from 'lucide-react';
@@ -20,8 +18,8 @@ import {
 export interface LocationChangeData {
   lat: number;
   lng: number;
-  address?: string;
-  city?: string;
+  address: string;
+  city: string;
 }
 
 interface WarehouseLocationPickerMapProps {
@@ -36,12 +34,38 @@ interface WarehouseLocationPickerMapProps {
 
 // Zonas comerciales y bodegas de referencia en Nariño (Ipiales, Pasto y frontera)
 const PRESET_ZONES = [
-  { name: 'Zona Industrial Ipiales', lat: 0.835, lng: -77.64, address: 'Zona Industrial, Lote 12, Ipiales', city: 'Ipiales' },
-  { name: 'Centro / Plaza Mayorista', lat: 0.8285, lng: -77.6445, address: 'Carrera 6 #14-20, Centro, Ipiales', city: 'Ipiales' },
+  { name: 'Zona Industrial Ipiales', lat: 0.835, lng: -77.64, address: 'Zona Industrial, Bodegas Ipiales', city: 'Ipiales' },
+  { name: 'Centro / Plaza Mayorista', lat: 0.8285, lng: -77.6445, address: 'Carrera 6 #14-20, Sector Plaza Mayorista, Ipiales', city: 'Ipiales' },
   { name: 'Vía Panamericana Sur', lat: 0.821, lng: -77.652, address: 'Km 2 Vía Panamericana Sur, Ipiales', city: 'Ipiales' },
   { name: 'Frontera Rumichaca', lat: 0.813, lng: -77.662, address: 'Paso Fronterizo Rumichaca, Bodegas Ipiales', city: 'Ipiales' },
   { name: 'Parque Industrial Pasto', lat: 1.2136, lng: -77.2811, address: 'Av. Panamericana Norte, Parque Industrial, Pasto', city: 'Pasto' },
 ];
+
+function buildFallbackAddress(targetLat: number, targetLng: number): { address: string; city: string } {
+  // Buscar si está cerca de alguna zona de referencia conocida
+  let closestZone = PRESET_ZONES[0];
+  let minDistance = Infinity;
+  for (const zone of PRESET_ZONES) {
+    const d = Math.hypot(zone.lat - targetLat, zone.lng - targetLng);
+    if (d < minDistance) {
+      minDistance = d;
+      closestZone = zone;
+    }
+  }
+
+  const inferredCity = targetLat > 1.05 ? 'Pasto' : 'Ipiales';
+  if (minDistance < 0.008) {
+    return {
+      address: `${closestZone.address} (${targetLat.toFixed(5)}, ${targetLng.toFixed(5)})`,
+      city: closestZone.city,
+    };
+  }
+
+  return {
+    address: `Ubicación geolocalizada en ${inferredCity} (${targetLat.toFixed(5)}, ${targetLng.toFixed(5)})`,
+    city: inferredCity,
+  };
+}
 
 export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProps> = ({
   lat,
@@ -55,6 +79,11 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.Marker | null>(null);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   // Fallback si no tiene coordenadas iniciales: Ipiales Centro (0.8305, -77.6462)
   const initialLat = Number(lat) && !isNaN(lat) && lat !== 0 ? Number(lat) : 0.8305;
@@ -115,88 +144,102 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
   };
 
   // Función de geocodificación inversa (coordenadas -> dirección + ciudad)
-  const resolveLocationFromCoords = useCallback(
-    async (targetLat: number, targetLng: number) => {
-      setIsGeocoding(true);
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4500);
+  const resolveLocationFromCoords = useCallback(async (targetLat: number, targetLng: number) => {
+    // 1. Emitir de inmediato dirección preliminar por coordenadas para que el campo nunca quede vacío
+    const fallback = buildFallbackAddress(targetLat, targetLng);
+    setDetectedAddress(fallback.address);
+    setDetectedCity(fallback.city);
+    onChangeRef.current({
+      lat: targetLat,
+      lng: targetLng,
+      address: fallback.address,
+      city: fallback.city,
+    });
 
-        const res = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${targetLat}&lon=${targetLng}&zoom=18&addressdetails=1`,
-          {
-            signal: controller.signal,
-            headers: {
-              'Accept-Language': 'es',
-            },
-          }
-        );
-        clearTimeout(timeoutId);
+    setIsGeocoding(true);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.address) {
-            const addr = data.address;
-
-            // Extraer municipio / ciudad con alta precisión
-            const resolvedCity =
-              addr.town ||
-              addr.city ||
-              addr.municipality ||
-              addr.village ||
-              addr.county ||
-              'Ipiales';
-
-            // Extraer calle, número y barrio
-            const road =
-              addr.road ||
-              addr.pedestrian ||
-              addr.street ||
-              addr.neighbourhood ||
-              addr.suburb ||
-              '';
-            const number = addr.house_number || '';
-            const neighborhood = addr.neighbourhood || addr.suburb || addr.quarter || '';
-
-            let formattedAddress = '';
-            if (road) {
-              formattedAddress = number ? `${road} #${number}` : road;
-              if (neighborhood && neighborhood !== road) {
-                formattedAddress += `, ${neighborhood}`;
-              }
-              formattedAddress += `, ${resolvedCity}`;
-            } else if (data.display_name) {
-              formattedAddress = data.display_name
-                .split(',')
-                .slice(0, 3)
-                .map((s: string) => s.trim())
-                .join(', ');
-            } else {
-              formattedAddress = `Sector Bodegas, ${resolvedCity}`;
-            }
-
-            setDetectedAddress(formattedAddress);
-            setDetectedCity(resolvedCity);
-            onChange({
-              lat: targetLat,
-              lng: targetLng,
-              address: formattedAddress,
-              city: resolvedCity,
-            });
-            return;
-          }
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${targetLat}&lon=${targetLng}&zoom=18&addressdetails=1`,
+        {
+          signal: controller.signal,
+          headers: {
+            'Accept-Language': 'es',
+          },
         }
-      } catch (err) {
-        console.warn('Geocodificación inversa no completada:', err);
-      } finally {
-        setIsGeocoding(false);
-      }
+      );
+      clearTimeout(timeoutId);
 
-      // Si no fue posible contactar a Nominatim, emitir coordenadas
-      onChange({ lat: targetLat, lng: targetLng });
-    },
-    [onChange]
-  );
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.address) {
+          const addr = data.address;
+
+          // Extraer municipio / ciudad con alta precisión
+          const resolvedCity =
+            addr.town ||
+            addr.city ||
+            addr.municipality ||
+            addr.village ||
+            addr.county ||
+            fallback.city;
+
+          // Extraer calle, número y barrio
+          const road =
+            addr.road ||
+            addr.pedestrian ||
+            addr.street ||
+            addr.industrial ||
+            addr.commercial ||
+            addr.amenity ||
+            '';
+          const number = addr.house_number || '';
+          const neighborhood =
+            addr.neighbourhood ||
+            addr.suburb ||
+            addr.quarter ||
+            addr.hamlet ||
+            addr.residential ||
+            '';
+
+          let formattedAddress = '';
+          if (road) {
+            formattedAddress = number ? `${road} #${number}` : road;
+            if (neighborhood && neighborhood !== road) {
+              formattedAddress += `, ${neighborhood}`;
+            }
+            formattedAddress += `, ${resolvedCity}`;
+          } else if (neighborhood) {
+            formattedAddress = `Sector ${neighborhood}, ${resolvedCity} (${targetLat.toFixed(5)}, ${targetLng.toFixed(5)})`;
+          } else if (data.display_name) {
+            formattedAddress = data.display_name
+              .split(',')
+              .slice(0, 3)
+              .map((s: string) => s.trim())
+              .join(', ');
+          } else {
+            formattedAddress = fallback.address;
+          }
+
+          setDetectedAddress(formattedAddress);
+          setDetectedCity(resolvedCity);
+          onChangeRef.current({
+            lat: targetLat,
+            lng: targetLng,
+            address: formattedAddress,
+            city: resolvedCity,
+          });
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Geocodificación inversa usando respaldo por coordenadas:', err);
+    } finally {
+      setIsGeocoding(false);
+    }
+  }, []);
 
   // Inicializar mapa de Leaflet
   useEffect(() => {
@@ -240,7 +283,7 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
         lng: Number(position.lng.toFixed(6)),
       };
       setCurrentCoords(updated);
-      resolveLocationFromCoords(updated.lat, updated.lng);
+      void resolveLocationFromCoords(updated.lat, updated.lng);
     });
 
     // Evento al hacer clic en el mapa
@@ -253,11 +296,16 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
       marker.setLatLng([clickLat, clickLng]);
       setCurrentCoords(updated);
       map.panTo([clickLat, clickLng], { animate: true });
-      resolveLocationFromCoords(updated.lat, updated.lng);
+      void resolveLocationFromCoords(updated.lat, updated.lng);
     });
 
     mapInstanceRef.current = map;
     markerRef.current = marker;
+
+    // Si aún no hay dirección cargada en el formulario, autocompletar con la posición inicial del mapa
+    if (!address || !address.trim()) {
+      void resolveLocationFromCoords(initialLat, initialLng);
+    }
 
     setTimeout(() => {
       map.invalidateSize();
@@ -288,7 +336,7 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
       setCurrentCoords({ lat: zone.lat, lng: zone.lng });
       setDetectedAddress(zone.address);
       setDetectedCity(zone.city);
-      onChange({
+      onChangeRef.current({
         lat: zone.lat,
         lng: zone.lng,
         address: zone.address,
@@ -297,21 +345,28 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
     }
   };
 
-  // Búsqueda textual de dirección o barrio
-  const handleSearchAddress = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Búsqueda textual de dirección o barrio (SIN <form> anidado para evitar recargar la página)
+  const handleSearchAddress = async (e?: React.MouseEvent | React.KeyboardEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!searchQuery.trim()) return;
 
     setIsSearching(true);
     setSearchError(null);
 
     try {
-      const cleanQ = searchQuery.toLowerCase().includes('nariño') || searchQuery.toLowerCase().includes('colombia')
-        ? searchQuery
-        : `${searchQuery}, Nariño, Colombia`;
+      const cleanQ =
+        searchQuery.toLowerCase().includes('nariño') ||
+        searchQuery.toLowerCase().includes('colombia') ||
+        searchQuery.toLowerCase().includes('ipiales') ||
+        searchQuery.toLowerCase().includes('pasto')
+          ? searchQuery
+          : `${searchQuery}, Ipiales, Nariño, Colombia`;
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 5500);
 
       const res = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
@@ -348,8 +403,14 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
             formatted = number ? `${road} #${number}` : road;
             if (neighborhood && neighborhood !== road) formatted += `, ${neighborhood}`;
             formatted += `, ${resolvedCity}`;
+          } else if (item.display_name) {
+            formatted = item.display_name
+              .split(',')
+              .slice(0, 3)
+              .map((s: string) => s.trim())
+              .join(', ');
           } else {
-            formatted = item.display_name.split(',').slice(0, 3).join(', ');
+            formatted = `${searchQuery.trim()}, ${resolvedCity}`;
           }
 
           if (mapInstanceRef.current && markerRef.current) {
@@ -360,7 +421,7 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
           setCurrentCoords({ lat: newLat, lng: newLng });
           setDetectedAddress(formatted);
           setDetectedCity(resolvedCity);
-          onChange({
+          onChangeRef.current({
             lat: newLat,
             lng: newLng,
             address: formatted,
@@ -370,16 +431,18 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
           return;
         }
       }
-      setSearchError('No encontramos el lugar exacto. Puedes hacer clic directo en el mapa.');
+      setSearchError('No encontramos ese nombre exacto. Haz clic o arrastra el pin 📦 directamente sobre el mapa.');
     } catch {
-      setSearchError('Error al buscar dirección. Por favor selecciona el punto en el mapa.');
+      setSearchError('No se pudo buscar por texto en este momento. Haz clic o arrastra el pin 📦 directamente sobre el mapa.');
     } finally {
       setIsSearching(false);
     }
   };
 
   // Geolocalización del navegador (GPS en tiempo real)
-  const handleGetCurrentLocation = () => {
+  const handleGetCurrentLocation = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (!navigator.geolocation) {
       alert('Tu navegador no soporta geolocalización.');
       return;
@@ -394,7 +457,7 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
           markerRef.current.setLatLng([userLat, userLng]);
           mapInstanceRef.current.flyTo([userLat, userLng], 16, { animate: true });
           setCurrentCoords({ lat: userLat, lng: userLng });
-          resolveLocationFromCoords(userLat, userLng);
+          void resolveLocationFromCoords(userLat, userLng);
         }
       },
       (err) => {
@@ -407,27 +470,35 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
 
   return (
     <div className={`space-y-3 ${className}`}>
-      {/* Barra de búsqueda y botón GPS */}
+      {/* Barra de búsqueda y botón GPS (sin <form> anidado) */}
       <div className="flex flex-col sm:flex-row gap-2">
-        <form onSubmit={handleSearchAddress} className="flex-1 flex gap-1.5">
+        <div className="flex-1 flex gap-1.5">
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3 pointer-events-none" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void handleSearchAddress(e);
+                }
+              }}
               placeholder="Escribe barrio o calle para ubicar en el mapa..."
               className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-gray-300 rounded-xl text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#E52243]"
             />
           </div>
           <button
-            type="submit"
+            type="button"
+            onClick={(e) => void handleSearchAddress(e)}
             disabled={isSearching}
             className="px-3.5 py-2 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shrink-0 disabled:opacity-50"
           >
             {isSearching ? 'Buscando...' : 'Ubicar'}
           </button>
-        </form>
+        </div>
 
         <button
           type="button"
@@ -474,19 +545,19 @@ export const WarehouseLocationPickerMap: React.FC<WarehouseLocationPickerMapProp
             </div>
             <div>
               <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800 flex items-center gap-1">
-                <span>Ubicación capturada automáticamente</span>
+                <span>Ubicación y geolocalización capturada</span>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               </div>
               <div className="font-bold text-gray-950 text-xs sm:text-sm mt-0.5">
-                {detectedAddress || 'Dirección en el mapa'}
+                {detectedAddress || 'Dirección ubicada en el mapa'}
               </div>
               <div className="text-[11px] text-gray-600 font-medium">
-                Ciudad identificada: <strong className="text-gray-900">{detectedCity}</strong> · Coordenadas: {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
+                Ciudad identificada: <strong className="text-gray-900">{detectedCity}</strong> · Coordenadas GPS: {currentCoords.lat.toFixed(5)}, {currentCoords.lng.toFixed(5)}
               </div>
             </div>
           </div>
           <span className="self-end sm:self-center px-2 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 font-bold text-[10px] shrink-0">
-            ✓ Aplicada al formulario
+            ✓ Aplicada automáticamente
           </span>
         </div>
       )}

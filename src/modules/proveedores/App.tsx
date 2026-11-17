@@ -236,13 +236,22 @@ const mapUserProfileToB2BRestaurant = (profile: UserProfile): RyycoRestaurantPro
 
 export default function App({
   loggedRestaurantProfile,
+  initialSection,
+  initialOpenSupplierLogin,
+  onReturnToRyyco,
+  staffAdminSession,
 }: {
   loggedRestaurantProfile?: UserProfile | null;
+  initialSection?: ActiveSection;
+  initialOpenSupplierLogin?: boolean;
+  onReturnToRyyco?: () => void;
+  staffAdminSession?: AdminUserSession | null;
 } = {}) {
-  const [activeSection, setActiveSection] = useState<ActiveSection>('marketplace');
+  const [activeSection, setActiveSection] = useState<ActiveSection>(initialSection || 'marketplace');
 
   // Sesión administrativa de RYYCO Central
   const [adminSession, setAdminSession] = useState<AdminUserSession | null>(() => {
+    if (staffAdminSession) return staffAdminSession;
     try {
       const saved =
         localStorage.getItem('ryyco_admin_session') ||
@@ -279,6 +288,9 @@ export default function App({
   const [restaurantSession, setRestaurantSession] = useState<RyycoRestaurantProfile | null>(() => {
     if (loggedRestaurantProfile) {
       return mapUserProfileToB2BRestaurant(loggedRestaurantProfile);
+    }
+    if (initialSection === 'supplier_workspace' || initialSection === 'supplier_landing') {
+      return null;
     }
     try {
       const saved = localStorage.getItem('ryyco_restaurant_session');
@@ -422,6 +434,10 @@ export default function App({
         return;
       }
 
+      if (initialSection === 'supplier_workspace' || initialSection === 'supplier_landing') {
+        return;
+      }
+
       // 3. Si el usuario tiene una sesión guardada explícita de restaurante
       const savedRestaurantStr = localStorage.getItem('ryyco_restaurant_session');
       if (savedRestaurantStr) {
@@ -470,7 +486,20 @@ export default function App({
     );
   }, [restaurantSession, restaurants]);
 
-  const [isSupplierLoginOpen, setIsSupplierLoginOpen] = useState(false);
+  const [isSupplierLoginOpen, setIsSupplierLoginOpen] = useState<boolean>(() =>
+    Boolean(initialOpenSupplierLogin && !supplierSession)
+  );
+
+  useEffect(() => {
+    if (initialSection) {
+      setActiveSection(initialSection);
+    }
+    if (initialOpenSupplierLogin && !supplierSession) {
+      setIsSupplierLoginOpen(true);
+    } else if (initialOpenSupplierLogin === false) {
+      setIsSupplierLoginOpen(false);
+    }
+  }, [initialSection, initialOpenSupplierLogin, supplierSession]);
 
   const handleSupplierLoginSuccess = (supplier: RyycoSupplier) => {
     setSupplierSession(supplier);
@@ -1461,10 +1490,17 @@ export default function App({
     return items;
   }, [supplierSession, restaurantSession, adminSession, orders, pendingAppsCount]);
 
+  const isStandaloneSupplierView =
+    activeSection === 'supplier_landing' ||
+    Boolean(onReturnToRyyco) ||
+    (activeSection === 'supplier_workspace' && Boolean(supplierSession));
+
+  const isStandaloneAdminView = Boolean(staffAdminSession) && activeSection === 'admin_central';
+
   return (
     <div className="proveedores-module-scope min-h-screen flex flex-col bg-[#F8F9FA] text-[#111827]">
       {/* 1. Header Corporativo RYYCO */}
-      {activeSection === 'suppliers' ? null : restaurantSession && !supplierSession ? (
+      {activeSection === 'suppliers' || isStandaloneSupplierView || isStandaloneAdminView ? null : restaurantSession && !supplierSession ? (
         <header className="sticky top-0 z-40 bg-white border-b border-gray-200 shadow-2xs">
           {/* Header para PC */}
           <div className="hidden md:flex max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 items-center justify-between">
@@ -2139,7 +2175,53 @@ export default function App({
       )}
 
       {/* 2. Cuerpo Principal */}
-      {activeSection === 'suppliers' ? (
+      {isStandaloneSupplierView ? (
+        supplierSession && (activeSection === 'supplier_workspace' || Boolean(onReturnToRyyco)) ? (
+          <SupplierDashboardView
+            supplier={supplierSession}
+            products={products}
+            orders={orders}
+            commissionRates={commissionRates}
+            onLogout={() => {
+              handleSupplierLogout();
+              if (onReturnToRyyco) {
+                setActiveSection('supplier_landing');
+              }
+            }}
+            onCreateProduct={handleCreateSupplierProduct}
+            onUpdateProductAvailability={handleUpdateProductAvailability}
+            onDeleteProduct={handleDeleteProduct}
+            onUpdateProductPrice={handleUpdateProductPrice}
+            onUpdateFullProduct={handleUpdateFullProduct}
+            onUpdateOrderStatus={handleUpdateOrderStatus}
+            onUpdateOrderDetails={handleUpdateOrderDetails}
+            onUpdatePaymentStatus={handleUpdatePaymentStatus}
+            onProposeOrderChanges={handleProposeChanges}
+            onRejectOrder={handleRejectOrder}
+            onUpdateSupplierSettings={handleUpdateSupplierSettings}
+            onViewMarketplace={() => {
+              if (onReturnToRyyco) {
+                onReturnToRyyco();
+              } else {
+                setActiveSection('marketplace');
+              }
+            }}
+          />
+        ) : (
+          <SupplierLandingView
+            onSubmitApplication={handleSubmitSupplierApplication}
+            onNavigateMarketplace={() => {
+              if (onReturnToRyyco) {
+                onReturnToRyyco();
+              } else {
+                setActiveSection('marketplace');
+              }
+            }}
+            onReturnToRyyco={onReturnToRyyco}
+            onOpenSupplierLogin={() => setIsSupplierLoginOpen(true)}
+          />
+        )
+      ) : activeSection === 'suppliers' ? (
         !adminSession ? (
           <div className="py-12 px-4 max-w-lg mx-auto">
             <AdminLoginGate
@@ -2881,7 +2963,7 @@ export default function App({
       )}
 
       {/* Footer corporativo RYYCO - Rediseño Oficial PC */}
-      {activeSection !== 'suppliers' && (
+      {activeSection !== 'suppliers' && !isStandaloneSupplierView && !isStandaloneAdminView && (
         <footer className="border-t border-gray-200 bg-white mt-auto py-6 text-xs text-gray-500">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -2899,7 +2981,7 @@ export default function App({
       )}
 
       {/* Barra de Navegación Inferior para Celular Oficial (Adaptable según sesión de restaurante) */}
-      {!supplierSession && activeSection !== 'suppliers' && (
+      {!supplierSession && activeSection !== 'suppliers' && !isStandaloneSupplierView && !isStandaloneAdminView && (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 py-1.5 px-2 flex items-center justify-around shadow-lg">
           {/* 1. Inicio / Catálogo */}
           <button

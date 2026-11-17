@@ -506,17 +506,6 @@ export const AdminCentralPanel: React.FC<AdminCentralPanelProps> = ({
               <span>Red de proveedores</span>
             </button>
           )}
-
-          {onLogoutAdmin && (
-            <button
-              type="button"
-              onClick={onLogoutAdmin}
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-700 hover:text-gray-950 transition-colors ml-2 cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Cerrar sesión</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -555,16 +544,6 @@ export const AdminCentralPanel: React.FC<AdminCentralPanelProps> = ({
                 title="Ver Red de Proveedores"
               >
                 <Users className="w-4 h-4 text-gray-700" />
-              </button>
-            )}
-            {onLogoutAdmin && (
-              <button
-                type="button"
-                onClick={onLogoutAdmin}
-                className="text-gray-600 hover:text-gray-900 p-1"
-                title="Cerrar sesión"
-              >
-                <LogOut className="w-4 h-4" />
               </button>
             )}
           </div>
@@ -1671,29 +1650,31 @@ export const AdminCentralPanel: React.FC<AdminCentralPanelProps> = ({
                   <label className="block text-xs font-bold text-gray-800 mb-1.5 flex items-center justify-between">
                     <span>Ciudad de despacho</span>
                     <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                      Detectada en mapa
+                      Fijada en el mapa
                     </span>
                   </label>
                   <input
                     type="text"
+                    readOnly
                     value={directCity}
-                    onChange={(e) => setDirectCity(e.target.value)}
-                    placeholder="Ej. Ipiales"
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#E52243] focus:ring-1 focus:ring-[#E52243] transition-all shadow-xs"
+                    placeholder="Ubica la bodega en el mapa..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-800 placeholder-gray-400 cursor-not-allowed select-none focus:outline-none"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-bold text-gray-800 mb-1.5 flex items-center justify-between">
                     <span>Dirección física de bodega o punto de despacho</span>
-                    <span className="text-[10px] text-gray-400 font-medium">Autocompletada en mapa</span>
+                    <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      Autocompletada por GPS/Mapa
+                    </span>
                   </label>
                   <input
                     type="text"
+                    readOnly
                     value={directAddress}
-                    onChange={(e) => setDirectAddress(e.target.value)}
-                    placeholder="Ej. Km 3 Vía al Sur, Bodega 9, Ipiales"
-                    className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-[#E52243] focus:ring-1 focus:ring-[#E52243] transition-all shadow-xs"
+                    placeholder="Mueve el pin 📦 en el mapa para autocompletar la dirección..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-800 placeholder-gray-400 cursor-not-allowed select-none focus:outline-none"
                   />
                 </div>
 

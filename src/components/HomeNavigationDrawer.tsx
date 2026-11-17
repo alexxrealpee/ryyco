@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, useReducedMotion } from 'motion/react';
-import { Bike, ChevronRight, Crown, Flame, Gift, HelpCircle, LogOut, ShoppingBag, Store, User, Utensils, X } from 'lucide-react';
+import { Bike, Building2, ChevronRight, Crown, Flame, Gift, HelpCircle, LogOut, ShoppingBag, Store, Truck, User, Utensils, X } from 'lucide-react';
 import type { CustomerProfile } from '../types';
 
 type CustomerTab = 'orders' | 'profile' | 'rewards' | 'wheel';
@@ -76,6 +76,8 @@ export default function HomeNavigationDrawer({ customer, isAndroid, onClose, onC
           <div className="contents">
             <button type="button" className={rowClass} onClick={() => onNavigate('/landing')}><Store className="h-5 w-5 shrink-0 text-[#E63946]" />Registrar mi restaurante</button>
             <button type="button" className={rowClass} onClick={() => onNavigate('/admin-restaurante', 'seller')}><Utensils className="h-5 w-5 shrink-0 text-[#E63946]" />Administrar mi Restaurante</button>
+            <button type="button" className={rowClass} onClick={() => onNavigate('/proveedores-login')}><Building2 className="h-5 w-5 shrink-0 text-[#FFC400]" />Acceso Proveedores (Login)</button>
+            <button type="button" className={rowClass} onClick={() => onNavigate('/postular-proveedor')}><Truck className="h-5 w-5 shrink-0 text-[#E63946]" />Postular para Proveedor</button>
             <button type="button" className={rowClass} onClick={() => onNavigate('/domiciliario', 'driver')}><Bike className="h-5 w-5 shrink-0 text-[#FFC400]" />Acceso Domiciliario (Login)</button>
           </div>
           {customer && <div className="contents"><button type="button" className={rowClass} onClick={onLogout}><LogOut className="h-5 w-5 shrink-0 text-[#E63946]" />Cerrar sesión</button></div>}

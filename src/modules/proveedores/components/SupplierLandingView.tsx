@@ -47,6 +47,7 @@ interface SupplierLandingViewProps {
   onSubmitApplication: (app: Omit<SupplierApplication, 'id' | 'status' | 'createdAt'>) => void;
   onNavigateMarketplace: () => void;
   onOpenSupplierLogin?: () => void;
+  onReturnToRyyco?: () => void;
 }
 
 const CATEGORIES: SupplierCategory[] = [
@@ -62,7 +63,16 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
   onSubmitApplication,
   onNavigateMarketplace,
   onOpenSupplierLogin,
+  onReturnToRyyco,
 }) => {
+  const handleBackToRyyco = () => {
+    if (onReturnToRyyco) {
+      onReturnToRyyco();
+    } else {
+      window.history.pushState({}, '', '/');
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
   const formRef = useRef<HTMLDivElement>(null);
   const beneficiosRef = useRef<HTMLDivElement>(null);
   const comoFuncionaRef = useRef<HTMLDivElement>(null);
@@ -176,6 +186,7 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (!googleUser) {
       setGoogleError('Es indispensable vincular primero tu cuenta de Google en el Paso 1 antes de enviar la postulación.');
@@ -187,6 +198,8 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
 
     setIsSubmitting(true);
     const cleanWhatsapp = sanitizeRyycoPhone(contactWhatsapp);
+    const submittedTradeName = tradeName.trim();
+    const submittedBusinessName = businessName.trim() || `${submittedTradeName} S.A.S.`;
 
     setTimeout(() => {
       const generatedId = `app-sup-${Date.now().toString().slice(-6)}`;
@@ -194,8 +207,8 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
         googleUid: googleUser.uid,
         googleEmail: googleUser.email,
         googlePhotoUrl: googleUser.photoURL || undefined,
-        tradeName: tradeName.trim(),
-        businessName: businessName.trim() || `${tradeName.trim()} S.A.S.`,
+        tradeName: submittedTradeName,
+        businessName: submittedBusinessName,
         nit: nit.trim(),
         category,
         city: city.trim() || 'Ipiales',
@@ -211,14 +224,29 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
           `Postulación oficial como proveedor mayorista en ${category}. Capacidad de despacho inmediata.`,
       });
 
+      // Mostrar ventana emergente de confirmación
       setSubmittedApplication({
         id: generatedId,
-        tradeName: tradeName.trim(),
+        tradeName: submittedTradeName,
         contactWhatsapp: cleanWhatsapp,
       });
 
+      // Borrar todo el formulario para evitar envíos duplicados
+      setTradeName('');
+      setBusinessName('');
+      setNit('');
+      setCategory('Frutas y Verduras');
+      setContactName('');
+      setContactWhatsapp('');
+      setEmail('');
+      setMessage('');
+      setGoogleUser(null);
+      setManualGoogleEmail('');
+      setShowManualEmailInput(false);
+      setGoogleError(null);
+
       setIsSubmitting(false);
-    }, 600);
+    }, 500);
   };
 
   const faqs = [
@@ -253,9 +281,9 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
           {/* Logo RYYCO */}
           <div
-            onClick={onNavigateMarketplace}
+            onClick={handleBackToRyyco}
             className="flex items-center gap-2 cursor-pointer transition-transform hover:scale-[1.02]"
-            title="Ir al Catálogo Mayorista RYYCO"
+            title="Regresar a RYYCO"
           >
             <RyycoLogo variant="dark" className="h-8 sm:h-9" showSubtitle={false} />
           </div>
@@ -285,8 +313,16 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
             </button>
           </nav>
 
-          {/* Botón Ingresar al Portal (Desktop) */}
-          <div className="hidden md:flex items-center gap-3">
+          {/* Botones de Acción (Desktop) */}
+          <div className="hidden md:flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleBackToRyyco}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 hover:text-gray-950 text-xs font-bold transition-all cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Regresar a RYYCO</span>
+            </button>
             {onOpenSupplierLogin && (
               <button
                 type="button"
@@ -337,8 +373,8 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
               Postular empresa
             </button>
 
-            {onOpenSupplierLogin && (
-              <div className="pt-2 border-t border-gray-100">
+            <div className="pt-2 border-t border-gray-100 space-y-2">
+              {onOpenSupplierLogin && (
                 <button
                   type="button"
                   onClick={() => {
@@ -350,21 +386,32 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
                   <User className="w-4 h-4" />
                   <span>Ingresar al portal de proveedores</span>
                 </button>
-              </div>
-            )}
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileNavOpen(false);
+                  handleBackToRyyco();
+                }}
+                className="w-full py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-700 font-bold text-xs flex items-center justify-center gap-2 hover:bg-gray-100"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Regresar a RYYCO</span>
+              </button>
+            </div>
           </div>
         )}
       </header>
 
-      {/* 2. SUB-BARRA DE RETORNO AL CATÁLOGO */}
+      {/* 2. SUB-BARRA DE REGRESO A RYYCO */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-5 pb-2">
         <button
           type="button"
-          onClick={onNavigateMarketplace}
+          onClick={handleBackToRyyco}
           className="inline-flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-[#E52243] transition-colors cursor-pointer group"
         >
           <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-          <span>Volver al catálogo</span>
+          <span>Regresar a RYYCO</span>
         </button>
       </div>
 
@@ -716,45 +763,69 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
               </p>
             </div>
 
-            {/* Banner de Éxito al Enviar Solicitud */}
+            {/* Ventana Emergente (Modal) de Éxito al Enviar Postulación */}
             {submittedApplication && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 space-y-4 animate-in fade-in">
-                <div className="flex items-center gap-3 text-emerald-800">
-                  <CheckCircle2 className="w-7 h-7 text-emerald-600 shrink-0" />
-                  <div>
-                    <h3 className="font-extrabold text-base">
-                      ¡Postulación enviada exitosamente!
-                    </h3>
-                    <p className="text-xs text-emerald-700">
-                      Radicado: <span className="font-mono font-bold">{submittedApplication.id}</span> · Empresa: <span className="font-bold">{submittedApplication.tradeName}</span>
-                    </p>
-                  </div>
-                </div>
-
-                <p className="text-xs text-emerald-800 leading-relaxed">
-                  Tu solicitud ya se encuentra registrada en <strong>RYYCO Central</strong>. Nuestro equipo validará el NIT y te contactará por WhatsApp para la activación.
-                </p>
-
-                <div className="pt-2 flex flex-wrap gap-3">
-                  <a
-                    href={`https://wa.me/573164167447?text=${encodeURIComponent(
-                      `Hola RYYCO Central, acabo de postular mi empresa proveedora "${submittedApplication.tradeName}" con radicado ${submittedApplication.id}. Quisiera agilizar la revisión.`
-                    )}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-colors shadow-2xs"
-                  >
-                    <Phone className="w-4 h-4" />
-                    <span>Contactar a RYYCO por WhatsApp</span>
-                  </a>
-
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+                onClick={() => setSubmittedApplication(null)}
+              >
+                <div
+                  className="relative w-full max-w-md bg-white rounded-3xl border border-gray-100 p-6 sm:p-8 shadow-2xl space-y-5 text-center animate-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <button
                     type="button"
                     onClick={() => setSubmittedApplication(null)}
-                    className="px-4 py-2.5 bg-white border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl hover:bg-emerald-100/50 transition-colors"
+                    className="absolute top-4 right-4 p-1.5 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                    aria-label="Cerrar ventana"
                   >
-                    Enviar otra postulación
+                    <X className="w-5 h-5" />
                   </button>
+
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 mx-auto shadow-xs">
+                    <CheckCircle2 className="w-9 h-9" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-black uppercase tracking-wider">
+                      Solicitud recibida
+                    </span>
+                    <h3 className="text-2xl font-black text-gray-950 font-display leading-tight">
+                      ¡Postulación enviada con éxito!
+                    </h3>
+                    <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
+                      La postulación de <strong className="text-gray-900">{submittedApplication.tradeName}</strong> ha sido registrada en <strong>RYYCO Central</strong> con el radicado <span className="font-mono font-bold text-emerald-700">{submittedApplication.id}</span>.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-gray-50 border border-gray-200/80 text-xs text-gray-600 leading-relaxed text-left space-y-1">
+                    <p className="font-bold text-gray-900">¿Qué sigue ahora?</p>
+                    <p>
+                      Nuestro equipo verificará tu información tributaria y comercial, y te contactará por WhatsApp para habilitar tu portal de proveedor.
+                    </p>
+                  </div>
+
+                  <div className="pt-1 flex flex-col gap-2.5">
+                    <a
+                      href={`https://wa.me/573164167447?text=${encodeURIComponent(
+                        `Hola RYYCO Central, acabo de postular mi empresa proveedora "${submittedApplication.tradeName}" con radicado ${submittedApplication.id}. Quisiera agilizar la revisión.`
+                      )}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl transition-colors shadow-xs flex items-center justify-center gap-2"
+                    >
+                      <Phone className="w-4 h-4" />
+                      <span>Notificar por WhatsApp a RYYCO Central</span>
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => setSubmittedApplication(null)}
+                      className="w-full py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Entendido, cerrar ventana
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -985,30 +1056,35 @@ export const SupplierLandingView: React.FC<SupplierLandingViewProps> = ({
                         <label className="block text-xs font-bold text-gray-800 flex items-center justify-between">
                           <span>Ciudad identificada *</span>
                           <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                            Detectada en mapa
+                            Fijada en el mapa
                           </span>
                         </label>
                         <input
                           type="text"
                           required
+                          readOnly
                           value={city}
-                          onChange={(e) => setCity(e.target.value)}
-                          placeholder="Ej. Ipiales, Pasto, Nariño"
-                          className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:border-[#E52243] focus:ring-1 focus:ring-[#E52243]"
+                          placeholder="Ubica tu bodega en el mapa de abajo..."
+                          title="Mueve el pin en el mapa para actualizar la ciudad automáticamente"
+                          className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 placeholder:text-gray-400 cursor-not-allowed select-none focus:outline-hidden"
                         />
                       </div>
 
                       <div className="space-y-1">
                         <label className="block text-xs font-bold text-gray-800 flex items-center justify-between">
-                          <span>Dirección de bodega o punto de despacho</span>
-                          <span className="text-[10px] text-gray-400 font-medium">Autocompletada</span>
+                          <span>Dirección de bodega o punto de despacho *</span>
+                          <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            Autocompletada por GPS/Mapa
+                          </span>
                         </label>
                         <input
                           type="text"
+                          required
+                          readOnly
                           value={address}
-                          onChange={(e) => setAddress(e.target.value)}
-                          placeholder="Ej. Cra. 10 # 5-20, Ipiales"
-                          className="w-full px-3.5 py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:border-[#E52243] focus:ring-1 focus:ring-[#E52243]"
+                          placeholder="Ubica el pin 📦 en el mapa para llenar la dirección..."
+                          title="Mueve el pin en el mapa para actualizar la dirección de tu bodega automáticamente"
+                          className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs font-semibold text-gray-800 placeholder:text-gray-400 cursor-not-allowed select-none focus:outline-hidden"
                         />
                       </div>
                     </div>

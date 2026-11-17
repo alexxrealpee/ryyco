@@ -35,12 +35,13 @@ const CarruselProduc = React.lazy(() => import('./components/CarruselProduc'));
 const FirstVisitAddressModal = React.lazy(() => import('./components/FirstVisitAddressModal'));
 const PrivacyPolicyPage = React.lazy(() => import('./components/PrivacyPolicyPage'));
 const LinnkProVoiceAssistant = React.lazy(() => import('./components/LinnkProVoiceAssistant'));
+const ProveedoresModule = React.lazy(() => import('./modules/proveedores/App'));
 import { getStoredDriverSession } from './lib/driverSessionStorage';
 import { DriverProfile } from './types';
 
 // Helper function defined outside or hoisted for initial state computation
 const detectInitialRouteFromUrl = (): { 
-  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad' | 'not-found';
+  view: 'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad' | 'proveedores-login' | 'proveedores-landing' | 'not-found';
   username: string | null;
   reelId: string | null;
 } => {
@@ -90,7 +91,9 @@ const detectInitialRouteFromUrl = (): {
     'tienda', 'tiendas', 'catalogo', 'domiciliario', 'driver-register', 'driver-portal', 'domiciliarios',
     'carruselproduc', 'carrusel-productos', 'reels', 'reel', 'historias', 'historia', 'api', 'assets',
     'registro-cliente', 'privacidad', 'politica-de-privacidad', 'privacy', 'privacy-policy', 'legal',
-    'restaurante', 'restaurantes', 'admin-restaurante', 'pedidos-restaurante', 'panel-restaurante', 'pedidos'
+    'restaurante', 'restaurantes', 'admin-restaurante', 'pedidos-restaurante', 'panel-restaurante', 'pedidos',
+    'proveedores', 'proveedores-login', 'acceso-proveedores', 'portal-proveedor',
+    'postular-proveedor', 'registro-proveedor', 'vender-proveedor', 'proveedores-landing'
   ];
 
   const pathLower = pathUser.toLowerCase();
@@ -166,7 +169,7 @@ const detectInitialRouteFromUrl = (): {
     hashLower === 'admin' || 
     hashLower.startsWith('admin/') || 
     searchParams.has('admin') ||
-    (searchTab && ['users', 'payments', 'subscriptions', 'orders', 'drivers', 'referrals', 'general', 'stores', 'tiendas'].includes(searchTab))
+    (searchTab && ['users', 'payments', 'subscriptions', 'orders', 'drivers', 'proveedores', 'referrals', 'general', 'stores', 'tiendas'].includes(searchTab))
   ) {
     return { view: 'admin', username: null, reelId: null };
   }
@@ -222,6 +225,23 @@ const detectInitialRouteFromUrl = (): {
   if (['driver-register'].includes(pathLower) || ['driver-register'].includes(hashLower)) {
     return { view: 'driver-register', username: null, reelId: null };
   }
+  if (
+    ['postular-proveedor', 'registro-proveedor', 'vender-proveedor', 'proveedores-landing'].includes(pathLower) ||
+    ['postular-proveedor', 'registro-proveedor', 'vender-proveedor', 'proveedores-landing'].includes(hashLower) ||
+    searchView === 'postular-proveedor' ||
+    searchView === 'proveedores-landing' ||
+    (pathLower === 'proveedores' && searchParams.get('mode') === 'landing')
+  ) {
+    return { view: 'proveedores-landing', username: null, reelId: null };
+  }
+  if (
+    ['proveedores', 'proveedores-login', 'acceso-proveedores', 'portal-proveedor'].includes(pathLower) ||
+    ['proveedores', 'proveedores-login', 'acceso-proveedores', 'portal-proveedor'].includes(hashLower) ||
+    searchView === 'proveedores' ||
+    searchView === 'proveedores-login'
+  ) {
+    return { view: 'proveedores-login', username: null, reelId: null };
+  }
 
   // If driver session is cached in local storage and user is accessing root or default view without another specific route
   try {
@@ -259,7 +279,7 @@ export default function App() {
   const initialRoute = detectInitialRouteFromUrl();
   const initialDriverSession = getStoredDriverSession();
 
-  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad' | 'not-found'>(() => {
+  const [view, setView] = useState<'landing' | 'login' | 'signup' | 'dashboard' | 'profile' | 'admin' | 'tienda' | 'driver-register' | 'driver-portal' | 'carruselproduc' | 'privacidad' | 'proveedores-login' | 'proveedores-landing' | 'not-found'>(() => {
     if (initialRoute.view === 'driver-portal') return 'driver-portal';
     if (initialDriverSession && (window.location.pathname.toLowerCase().includes('domiciliario') || localStorage.getItem('ryyco_auth_mode') === 'driver')) {
       return 'driver-portal';
@@ -330,11 +350,14 @@ export default function App() {
                           pathnameLower.includes('dashboard') ||
                           pathnameLower.includes('restaurante') ||
                           pathnameLower.includes('pedidos') ||
+                          pathnameLower.includes('proveedor') ||
                           view === 'driver-portal' ||
                           view === 'driver-register' ||
+                          view === 'proveedores-login' ||
+                          view === 'proveedores-landing' ||
                           view === 'admin';
 
-    if (!savedAddress && !hasCompletedPrompt && !isSpecialPath && authMode !== 'driver' && authMode !== 'seller' && view !== 'driver-portal' && view !== 'driver-register' && view !== 'admin') {
+    if (!savedAddress && !hasCompletedPrompt && !isSpecialPath && authMode !== 'driver' && authMode !== 'seller') {
       const timer = setTimeout(() => {
         setIsFirstVisitAddressOpen(true);
       }, 500);
@@ -375,6 +398,12 @@ export default function App() {
       case 'driver-portal':
       case 'driver-register':
         document.title = 'Portal Domiciliarios | Ryyco';
+        break;
+      case 'proveedores-login':
+        document.title = 'Portal de Proveedores | Ryyco';
+        break;
+      case 'proveedores-landing':
+        document.title = 'Postular como Proveedor | Ryyco';
         break;
       case 'dashboard':
         document.title = 'Panel de Control | Ryyco';
@@ -457,8 +486,8 @@ export default function App() {
             const activeUserProfileUrl = getUsernameFromUrl();
             const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
             const hashVal = window.location.hash.toLowerCase();
-            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
-              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias', 'proveedores', 'proveedores-login', 'acceso-proveedores', 'portal-proveedor', 'postular-proveedor', 'registro-proveedor', 'vender-proveedor', 'proveedores-landing'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel', '#proveedores', '#/proveedores', '#proveedores-login', '#/proveedores-login', '#postular-proveedor', '#/postular-proveedor'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
 
             if (custProfile || activeUserProfileUrl || isPublicRoute || !authMode) {
               localStorage.setItem('ryyco_auth_mode', 'customer');
@@ -483,8 +512,8 @@ export default function App() {
             const activeUserProfileUrl = getUsernameFromUrl();
             const pathUser = window.location.pathname.substring(1).trim().toLowerCase();
             const hashVal = window.location.hash.toLowerCase();
-            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
-              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
+            const isPublicRoute = ['tienda', 'tiendas', 'catalogo', 'landing', 'vender', 'crear-tienda', 'domiciliario', 'domiciliarios', 'driver-register', 'driver-portal', 'carruselproduc', 'reels', 'reel', 'historias', 'proveedores', 'proveedores-login', 'acceso-proveedores', 'portal-proveedor', 'postular-proveedor', 'registro-proveedor', 'vender-proveedor', 'proveedores-landing'].some(r => pathUser === r || pathUser.startsWith(r + '/')) ||
+              ['#tienda', '#/tienda', '#tiendas', '#/tiendas', '#catalogo', '#/catalogo', '#landing', '#/landing', '#domiciliario', '#/domiciliario', '#driver-portal', '#/driver-portal', '#carruselproduc', '#/carruselproduc', '#reels', '#/reels', '#reel', '#/reel', '#proveedores', '#/proveedores', '#proveedores-login', '#/proveedores-login', '#postular-proveedor', '#/postular-proveedor'].some(r => hashVal === r || hashVal.startsWith(r + '/'));
 
             setView(prevView => {
               if (prevView === 'signup') {
@@ -740,8 +769,26 @@ export default function App() {
         />
       )}
 
+      {view === 'proveedores-login' && (
+        <ProveedoresModule
+          key="proveedores-login"
+          initialSection="supplier_landing"
+          initialOpenSupplierLogin={true}
+          onReturnToRyyco={() => handleNavigateHome()}
+        />
+      )}
+
+      {view === 'proveedores-landing' && (
+        <ProveedoresModule
+          key="proveedores-landing"
+          initialSection="supplier_landing"
+          initialOpenSupplierLogin={false}
+          onReturnToRyyco={() => handleNavigateHome()}
+        />
+      )}
+
         {/* First-Visit / Customer Delivery Address Modal in Ipiales (Only for customers, never for drivers or admin) */}
-        {view !== 'driver-portal' && view !== 'driver-register' && view !== 'admin' && view !== 'dashboard' && (
+        {view !== 'driver-portal' && view !== 'driver-register' && view !== 'admin' && view !== 'dashboard' && view !== 'proveedores-login' && view !== 'proveedores-landing' && (
           <FirstVisitAddressModal
             isOpen={isFirstVisitAddressOpen}
             onClose={() => setIsFirstVisitAddressOpen(false)}

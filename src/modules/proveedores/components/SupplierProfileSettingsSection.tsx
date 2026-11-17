@@ -469,30 +469,36 @@ export const SupplierProfileSettingsSection: React.FC<SupplierProfileSettingsSec
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-gray-800 block">
-              Ciudad de despacho <span className="text-red-500">*</span>
+            <label className="text-xs font-extrabold text-gray-800 flex items-center justify-between">
+              <span>Ciudad de despacho <span className="text-red-500">*</span></span>
+              <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                Fijada en el mapa
+              </span>
             </label>
             <input
               type="text"
               required
+              readOnly
               value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Ipiales, Pasto, etc."
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:border-[#E52243] text-sm font-bold text-gray-900 outline-none"
+              placeholder="Ubica tu bodega en el mapa..."
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm font-bold text-gray-800 cursor-not-allowed select-none outline-none"
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-gray-800 block">
-              Dirección física de bodega o punto de despacho <span className="text-red-500">*</span>
+            <label className="text-xs font-extrabold text-gray-800 flex items-center justify-between">
+              <span>Dirección física de bodega o punto de despacho <span className="text-red-500">*</span></span>
+              <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                Autocompletada por GPS/Mapa
+              </span>
             </label>
             <input
               type="text"
               required
+              readOnly
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Ej. Km 3 Vía al Sur, Bodega 9, Ipiales"
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:border-[#E52243] text-sm text-gray-900 outline-none font-medium"
+              placeholder="Mueve el pin 📦 en el mapa para autocompletar la dirección..."
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-800 cursor-not-allowed select-none outline-none"
             />
           </div>
         </div>
