@@ -5,6 +5,7 @@
 
 import express from 'express';
 import { driverTrackingAuth } from './server/driverTrackingAuth';
+import { changeStoreEmailHandler } from './server/storeEmailAdmin';
 import compression from 'compression';
 import { registerCatalogPageRoutes } from './server/catalogPage';
 import path from 'path';
@@ -175,6 +176,7 @@ async function startServer() {
   // Body parsing middleware with expanded limit for catalog, audio and voice requests
   app.use(express.json({ limit: '50mb' }));
   app.post(['/api/drivers/tracking-auth', '/api/driver-tracking-auth.php'], driverTrackingAuth);
+  app.post(['/api/admin/change-store-email', '/api/admin-change-store-email.php'], changeStoreEmailHandler);
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // API Route: AI Link Extractor

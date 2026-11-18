@@ -3,14 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { 
   Bike, 
   Car, 
   CheckCircle2, 
   XCircle, 
   ShieldAlert, 
-  Star, 
   Search, 
   Phone, 
   Mail, 
@@ -40,6 +39,8 @@ import {
 } from 'lucide-react';
 import { fetchAllDrivers, updateDriverStatus, deleteDriverAccount } from '../lib/firebase';
 import { DriverProfile, DriverStatus } from '../types';
+import { buildDriverRankings, selectPerformanceDrivers, type DriverPerformance, type DriverPerformanceSort } from '../lib/driverPerformance';
+import { fetchDriverPerformance } from '../lib/driverPerformanceData';
 import {
   fetchDriverFCMTokens,
   deleteDriverFCMToken,
@@ -60,6 +61,15 @@ export default function AdminDriversManager() {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'available' | 'unavailable'>('all');
+  const [performanceSort, setPerformanceSort] = useState<DriverPerformanceSort>('default');
+  const [ascendingDeliveries, setAscendingDeliveries] = useState(false);
+  const [performance, setPerformance] = useState<Record<string, DriverPerformance>>({});
+  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [performanceErrors, setPerformanceErrors] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [showRanking, setShowRanking] = useState(false);
+  const [minimumRatings, setMinimumRatings] = useState(5);
+  const loadGeneration = useRef(0);
 
   // FCM Driver Push Tokens State
   const [showFcmModal, setShowFcmModal] = useState<boolean>(false);
@@ -97,17 +107,42 @@ export default function AdminDriversManager() {
   useEffect(() => {
     loadDrivers();
     loadDriverTokens();
+    return () => { loadGeneration.current += 1; };
   }, []);
 
-  const loadDrivers = async () => {
+  const loadDrivers = async (forceStats = false) => {
+    const generation = ++loadGeneration.current;
     setLoading(true);
+    setLoadError('');
     try {
-      const data = await fetchAllDrivers();
+      const data = await fetchAllDrivers(false);
+      if (generation !== loadGeneration.current) return;
       setDrivers(data);
+      setLoading(false);
+      setPerformanceLoading(true);
+      setPerformanceErrors([]);
+      setPerformance({});
+      // Four workers bound network concurrency. Cards appear before historical statistics.
+      let next = 0;
+      await Promise.all(Array.from({ length: Math.min(4, data.length) }, async () => {
+        while (next < data.length && generation === loadGeneration.current) {
+          const driver = data[next++];
+          try {
+            const stats = await fetchDriverPerformance(driver.id, forceStats);
+            if (generation === loadGeneration.current) setPerformance(previous => ({ ...previous, [driver.id]: stats }));
+          } catch {
+            if (generation === loadGeneration.current) setPerformanceErrors(previous => [...previous, driver.id]);
+          }
+        }
+      }));
     } catch (e) {
       console.error("Error loading drivers:", e);
+      if (generation === loadGeneration.current) setLoadError('No se pudieron cargar los domiciliarios. Pulsa Actualizar para reintentar.');
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) {
+        setLoading(false);
+        setPerformanceLoading(false);
+      }
     }
   };
 
@@ -229,22 +264,10 @@ export default function AdminDriversManager() {
     }
   };
 
-  const filteredDrivers = drivers.filter(d => {
-    const fullName = `${d.firstName || ''} ${d.lastName || ''}`.toLowerCase();
-    const doc = (d.docNumber || '').toLowerCase();
-    const email = (d.email || '').toLowerCase();
-    const phone = (d.phone || '').toLowerCase();
-    const search = searchTerm.toLowerCase();
-
-    const matchesSearch = fullName.includes(search) || doc.includes(search) || email.includes(search) || phone.includes(search);
-    const matchesFilter = statusFilter === 'all' || d.status === statusFilter;
-    const matchesAvailability =
-      availabilityFilter === 'all' ||
-      (availabilityFilter === 'available' && !!d.isAvailable) ||
-      (availabilityFilter === 'unavailable' && !d.isAvailable);
-
-    return matchesSearch && matchesFilter && matchesAvailability;
-  });
+  const filteredDrivers = useMemo(() => selectPerformanceDrivers(drivers, performance, searchTerm, statusFilter, availabilityFilter, performanceSort, ascendingDeliveries),
+    [drivers, performance, searchTerm, statusFilter, availabilityFilter, performanceSort, ascendingDeliveries]);
+  const rankings = useMemo(() => buildDriverRankings(filteredDrivers, performance, minimumRatings), [filteredDrivers, performance, minimumRatings]);
+  const oldestStats = Math.min(...Object.values<DriverPerformance>(performance).map(stats => stats.checkedAt));
 
   const getStatusBadge = (status: DriverStatus) => {
     switch (status) {
@@ -306,9 +329,10 @@ export default function AdminDriversManager() {
 
           <button
             onClick={() => {
-              loadDrivers();
+              loadDrivers(true);
               loadDriverTokens();
             }}
+            disabled={loading || performanceLoading}
             className="px-4 py-2 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -386,7 +410,8 @@ export default function AdminDriversManager() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between bg-[#0d1322] border border-gray-800 p-4 rounded-2xl">
+      <div className="bg-[#0d1322] border border-gray-800 p-4 rounded-2xl space-y-4">
+      <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center justify-between">
         <div className="relative w-full lg:w-72">
           <Search className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
           <input
@@ -403,7 +428,7 @@ export default function AdminDriversManager() {
             <MapPin className="w-4 h-4" /> Ver disponibles en el mapa
           </button>
           {/* Availability Filter Toggle */}
-          <div className="flex items-center gap-1 bg-gray-950 p-1 rounded-xl border border-gray-800 shrink-0">
+          <div className="flex flex-wrap items-center gap-1 bg-gray-950 p-1 rounded-xl border border-gray-800">
             <span className="text-[10px] font-bold uppercase text-gray-500 px-2">Disponibilidad:</span>
             <button
               onClick={() => setAvailabilityFilter('all')}
@@ -440,7 +465,7 @@ export default function AdminDriversManager() {
           </div>
 
           {/* Status Filter Toggle */}
-          <div className="flex items-center gap-1 overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-1">
             {['all', 'pending', 'approved', 'rejected', 'suspended'].map((st) => (
               <button
                 key={st}
@@ -468,6 +493,70 @@ export default function AdminDriversManager() {
         </div>
       </div>
 
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Ordenar domiciliarios por rendimiento">
+          <span className="text-xs font-bold text-gray-400">Ordenar:</span>
+          {([
+            ['default', 'Registro'], ['deliveries', '🏆 Más pedidos'], ['rating', '⭐ Mejores calificaciones'],
+          ] as const).map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={performanceSort === value} onClick={() => setPerformanceSort(value)}
+              className={`min-h-11 px-3 py-2 text-xs font-bold rounded-xl border ${performanceSort === value ? 'bg-[#E63946] border-[#E63946] text-white' : 'bg-gray-950 border-gray-800 text-gray-300'}`}>
+              {label}
+            </button>
+          ))}
+          {performanceSort === 'deliveries' && <button type="button" onClick={() => setAscendingDeliveries(value => !value)}
+            className="min-h-11 px-3 py-2 text-xs font-bold rounded-xl bg-gray-950 border border-gray-800 text-white"
+            aria-label="Invertir orden de pedidos entregados">
+            {ascendingDeliveries ? '↑ Menor a mayor' : '↓ Mayor a menor'}
+          </button>}
+          <button type="button" aria-expanded={showRanking} aria-controls="driver-performance-ranking" onClick={() => setShowRanking(value => !value)}
+            className="min-h-11 px-3 py-2 text-xs font-bold rounded-xl bg-gray-950 border border-amber-500/40 text-amber-400 sm:ml-auto">
+            {showRanking ? 'Ocultar ranking' : 'Ranking de Domiciliarios'}
+          </button>
+        </div>
+        <div className="text-[11px] text-gray-400 space-y-1" aria-live="polite">
+          {performanceLoading && <p>Consultando estadísticas verificadas: {Object.keys(performance).length} de {drivers.length} domiciliarios.</p>}
+          {performanceErrors.length > 0 && <p className="text-amber-400">No se pudieron verificar las estadísticas de {performanceErrors.length} domiciliario(s). Pulsa Actualizar para reintentar; no se les asigna un cero.</p>}
+          {Number.isFinite(oldestStats) && <p>Consulta más antigua: {new Date(oldestStats).toLocaleString('es-CO', { timeZone: 'America/Bogota' })} (Colombia). Se reutilizan los datos por 10 minutos; Actualizar consulta Firebase de nuevo.</p>}
+          <p>Se cuentan pedidos entregados conservados en Firebase y una evaluación válida por pedido. Los registros eliminados o sin una entrega verificable no se incluyen.</p>
+        </div>
+      </div>
+      </div>
+
+      {showRanking && <section id="driver-performance-ranking" className="bg-gray-900 border border-gray-800 rounded-2xl p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-bold text-sm text-white">Ranking de Domiciliarios</h3>
+          <label className="text-xs text-gray-300 flex flex-wrap items-center gap-2">
+            Mínimo de evaluaciones
+            <input type="number" min="1" max="10000" step="1" value={minimumRatings}
+              onChange={event => setMinimumRatings(Math.min(10000, Math.max(1, Math.floor(Number(event.target.value) || 1))))}
+              className="w-20 min-h-11 bg-gray-950 border border-gray-700 rounded-lg px-2 text-white" />
+          </label>
+        </div>
+        <p className="text-xs text-gray-400">Solo aprobados que coinciden con los filtros. La valoración del ranking combina el promedio real con el promedio de este grupo, con un peso de 10 evaluaciones. La puntuación ajustada no es una calificación del cliente ni cambia la asignación de pedidos.</p>
+        {performanceLoading || loadError || performanceErrors.length > 0 ? <p className="text-xs text-amber-400">
+          {performanceLoading ? 'El ranking estará disponible cuando termine la consulta.' : 'Actualiza las estadísticas para mostrar un ranking completo.'}
+        </p> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-gray-950 border border-gray-800 rounded-xl p-3">
+            <h4 className="text-sm font-bold text-amber-400 mb-3">🏆 Top 10 · Entregas completadas</h4>
+            {rankings.deliveries.length === 0 ? <p className="text-xs text-gray-400">No hay entregas verificadas para estos filtros.</p> :
+              <ol className="space-y-3">{rankings.deliveries.map((driver, index) => <li key={driver.id} className="text-xs flex justify-between gap-3">
+                <span className="min-w-0 break-words text-white">{index + 1}. {driver.firstName} {driver.lastName}</span>
+                <span className="text-emerald-400 shrink-0">{performance[driver.id].completed} entregas</span>
+              </li>)}</ol>}
+          </div>
+          <div className="bg-gray-950 border border-gray-800 rounded-xl p-3">
+            <h4 className="text-sm font-bold text-amber-400 mb-3">⭐ Top 10 · Mejores calificaciones</h4>
+            {rankings.ratings.length === 0 ? <p className="text-xs text-gray-400">Nadie cumple el mínimo de {minimumRatings} evaluaciones para estos filtros.</p> :
+              <ol className="space-y-3">{rankings.ratings.map(({ driver, score }, index) => <li key={driver.id} className="text-xs space-y-1">
+                <div className="flex justify-between gap-3"><span className="min-w-0 break-words text-white">{index + 1}. {driver.firstName} {driver.lastName}</span><span className="text-amber-400 shrink-0">Índice: {score.toFixed(2)}</span></div>
+                <p className="text-gray-400">Promedio real: {performance[driver.id].average!.toFixed(2)}/5 · {performance[driver.id].ratingCount} evaluaciones</p>
+              </li>)}</ol>}
+          </div>
+        </div>}
+      </section>}
+
+      {loadError && <p role="alert" className="text-sm text-rose-400">{loadError}</p>}
       {/* Drivers List Grid / Cards */}
       {loading ? (
         <div className="text-center py-12 text-gray-500 text-xs">Cargando domiciliarios...</div>
@@ -495,14 +584,18 @@ export default function AdminDriversManager() {
                   <div>
                     <h3 className="text-sm font-bold text-white">{dr.firstName} {dr.lastName}</h3>
                     <span className="text-[11px] text-gray-400 block">{dr.docType}: {dr.docNumber}</span>
-                    <div className="flex items-center gap-1 text-[11px] text-amber-400 mt-0.5 font-bold">
-                      <Star className="w-3 h-3 fill-amber-400" />
-                      <span>{dr.rating?.toFixed(1) || '5.0'} ({dr.completedDeliveriesCount || 0} entregas)</span>
-                    </div>
                   </div>
                 </div>
 
                 {getStatusBadge(dr.status)}
+              </div>
+
+              <div className="rounded-xl bg-gray-950 border border-gray-800 p-3 text-xs space-y-1">
+                {performance[dr.id] ? <>
+                  <p className="text-gray-300">Pedidos entregados: <strong className="text-white">{performance[dr.id].completed}</strong></p>
+                  <p className="text-amber-400">Calificación: {performance[dr.id].average === null ? 'Sin calificaciones' : `⭐ ${performance[dr.id].average!.toFixed(2)}/5`}</p>
+                  <p className="text-gray-400">Calificaciones recibidas: {performance[dr.id].ratingCount}</p>
+                </> : <p className="text-gray-400">{performanceErrors.includes(dr.id) ? 'Estadísticas no disponibles' : 'Consultando estadísticas…'}</p>}
               </div>
 
               {/* Details List */}

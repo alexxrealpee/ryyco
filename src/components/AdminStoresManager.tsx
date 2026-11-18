@@ -131,6 +131,15 @@ export default function AdminStoresManager({
   const [bankModalStore, setBankModalStore] = useState<UserProfile | null>(null);
   const [storeBankAccountsMap, setStoreBankAccountsMap] = useState<Record<string, BankAccount[]>>({});
   const [selectedBankStatus, setSelectedBankStatus] = useState<'all' | 'registered' | 'pending'>('all');
+
+  // Change Store Email Modal states
+  const [changeEmailModalStore, setChangeEmailModalStore] = useState<UserProfile | null>(null);
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [confirmEmailInput, setConfirmEmailInput] = useState('');
+  const [isConfirmEmailCheck, setIsConfirmEmailCheck] = useState(false);
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
+  const [changeEmailError, setChangeEmailError] = useState<string | null>(null);
+  const [changeEmailSuccess, setChangeEmailSuccess] = useState<string | null>(null);
   
   // Feedback states
   const [copiedUid, setCopiedUid] = useState<string | null>(null);
@@ -730,6 +739,128 @@ export default function AdminStoresManager({
       showNotif(errMsg, 'error');
     } finally {
       setSendingResetFor(null);
+    }
+  };
+
+  // Change Store Email Handlers
+  const handleOpenChangeEmailModal = (store: UserProfile) => {
+    setChangeEmailModalStore(store);
+    setNewEmailInput('');
+    setConfirmEmailInput('');
+    setIsConfirmEmailCheck(false);
+    setChangeEmailError(null);
+    setChangeEmailSuccess(null);
+  };
+
+  const handleCloseChangeEmailModal = () => {
+    if (isChangingEmail) return;
+    setChangeEmailModalStore(null);
+    setChangeEmailError(null);
+    setChangeEmailSuccess(null);
+  };
+
+  const handleSubmitChangeEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!changeEmailModalStore) return;
+
+    setChangeEmailError(null);
+    setChangeEmailSuccess(null);
+
+    const cleanNewEmail = newEmailInput.trim().toLowerCase();
+    const cleanConfirm = confirmEmailInput.trim().toLowerCase();
+    const currentEmail = (changeEmailModalStore.email || '').trim().toLowerCase();
+
+    if (!cleanNewEmail) {
+      setChangeEmailError('Ingresa el nuevo correo electrónico.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanNewEmail)) {
+      setChangeEmailError('El formato del correo electrónico ingresado no es válido.');
+      return;
+    }
+
+    if (cleanNewEmail !== cleanConfirm) {
+      setChangeEmailError('La confirmación del correo no coincide con el nuevo correo ingresado.');
+      return;
+    }
+
+    if (currentEmail && cleanNewEmail === currentEmail) {
+      setChangeEmailError('El nuevo correo no puede ser idéntico al correo actual del restaurante.');
+      return;
+    }
+
+    if (!isConfirmEmailCheck) {
+      setChangeEmailError('Debes marcar la casilla de confirmación para proceder con el cambio.');
+      return;
+    }
+
+    setIsChangingEmail(true);
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('No hay una sesión activa de administrador.');
+      }
+      const idToken = await currentUser.getIdToken(true);
+
+      const response = await fetch('/api/admin/change-store-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`
+        },
+        body: JSON.stringify({
+          targetUid: changeEmailModalStore.uid,
+          newEmail: cleanNewEmail
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Ocurrió un error al actualizar el correo en el servidor.');
+      }
+
+      setChangeEmailSuccess(data.message || `Correo actualizado a ${cleanNewEmail} exitosamente.`);
+      showNotif(`✓ Correo de ${changeEmailModalStore.displayName || changeEmailModalStore.username} actualizado a ${cleanNewEmail}`);
+
+      // Update in local state
+      changeEmailModalStore.email = cleanNewEmail;
+      if (detailStore && detailStore.uid === changeEmailModalStore.uid) {
+        setDetailStore(prev => prev ? { ...prev, email: cleanNewEmail } : null);
+      }
+      if (storesMap[changeEmailModalStore.uid]) {
+        storesMap[changeEmailModalStore.uid].email = cleanNewEmail;
+      }
+      setDirectProfilesMap(prev => {
+        if (prev[changeEmailModalStore.uid]) {
+          return {
+            ...prev,
+            [changeEmailModalStore.uid]: {
+              ...prev[changeEmailModalStore.uid],
+              email: cleanNewEmail
+            }
+          };
+        }
+        return prev;
+      });
+
+      if (onRefreshData) {
+        onRefreshData();
+      }
+
+      // Auto close after 2.5 seconds
+      setTimeout(() => {
+        setChangeEmailModalStore(null);
+      }, 2500);
+
+    } catch (err: any) {
+      console.error('Error changing store email:', err);
+      setChangeEmailError(err.message || 'Error al cambiar el correo del restaurante.');
+    } finally {
+      setIsChangingEmail(false);
     }
   };
 
@@ -1848,6 +1979,17 @@ export default function AdminStoresManager({
                         <span>Clave</span>
                       </button>
 
+                      {/* Cambiar Correo de Acceso */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenChangeEmailModal(store)}
+                        className="px-2 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/25 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-sm"
+                        title="Cambiar correo de acceso del restaurante"
+                      >
+                        <Mail className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Correo</span>
+                      </button>
+
                       {/* Manual Open / Closed Toggle */}
                       <button
                         type="button"
@@ -2102,6 +2244,15 @@ export default function AdminStoresManager({
                             title="Enviar correo de restablecimiento de clave"
                           >
                             <KeyRound className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenChangeEmailModal(store)}
+                            className="p-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/25 transition cursor-pointer active:scale-95"
+                            title="Cambiar correo de acceso del restaurante"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Manual Open / Close Toggle Button */}
@@ -2462,6 +2613,16 @@ export default function AdminStoresManager({
                 >
                   <KeyRound className="w-3.5 h-3.5 text-amber-400" />
                   <span>Enviar Correo de Reinicio de Clave</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleOpenChangeEmailModal(detailStore)}
+                  className="px-3.5 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
+                  title="Cambiar correo de inicio de sesión de esta cuenta de restaurante"
+                >
+                  <Mail className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Cambiar Correo de Acceso</span>
                 </button>
 
                 <a
@@ -3081,6 +3242,176 @@ export default function AdminStoresManager({
           </div>
         );
       })()}
+
+      {/* Modal para Cambiar Correo de Acceso del Restaurante */}
+      {changeEmailModalStore && (
+        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-sm animate-fadeIn overflow-y-auto overscroll-contain">
+          <div className="bg-[#0f1422] border border-sky-500/40 rounded-3xl w-full max-w-lg my-auto p-5 sm:p-6 shadow-2xl shadow-sky-950/40 space-y-4 max-h-[90dvh] overflow-y-auto">
+            {/* Encabezado */}
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-sky-500/15 border border-sky-500/30 text-sky-400 rounded-2xl">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    Cambiar Correo de Acceso
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    Panel Administrativo · Cuenta de Restaurante
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isChangingEmail}
+                onClick={handleCloseChangeEmailModal}
+                className="p-2 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl border border-gray-800 transition cursor-pointer disabled:opacity-50"
+                title="Cerrar ventana"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Ficha Resumen del Restaurante */}
+            <div className="bg-gray-950/70 border border-gray-850 p-3.5 rounded-2xl space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider block">Restaurante / Comercio</span>
+                  <span className="text-white font-extrabold text-sm">
+                    {changeEmailModalStore.displayName || changeEmailModalStore.storeName || changeEmailModalStore.username}
+                  </span>
+                  <span className="text-gray-400 text-[11px] block">@{changeEmailModalStore.username}</span>
+                </div>
+                <div className="text-right">
+                  <span className="px-2 py-0.5 rounded-full text-[9.5px] font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                    UID Preservado
+                  </span>
+                  <span className="text-[10px] font-mono text-gray-400 block mt-0.5 truncate max-w-[140px]" title={changeEmailModalStore.uid}>
+                    {changeEmailModalStore.uid}
+                  </span>
+                </div>
+              </div>
+
+              {/* Correo Actual */}
+              <div className="pt-2 border-t border-gray-800/80 flex items-center justify-between gap-2">
+                <span className="text-gray-400 text-[11px]">Correo actual:</span>
+                <span className="font-mono font-bold text-amber-300 text-xs bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  {changeEmailModalStore.email || 'Sin correo registrado'}
+                </span>
+              </div>
+            </div>
+
+            {/* Formulario */}
+            <form onSubmit={handleSubmitChangeEmail} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-gray-300 block mb-1">
+                  Nuevo Correo Electrónico <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  autoFocus
+                  disabled={isChangingEmail}
+                  placeholder="ejemplo@restaurante.com"
+                  value={newEmailInput}
+                  onChange={(e) => setNewEmailInput(e.target.value)}
+                  className="w-full h-11 bg-gray-950 border border-gray-800 focus:border-sky-500 px-3.5 rounded-xl text-xs font-semibold text-white outline-none transition disabled:opacity-50 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-300 block mb-1">
+                  Confirmar Nuevo Correo Electrónico <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  disabled={isChangingEmail}
+                  placeholder="Repite el nuevo correo para confirmar"
+                  value={confirmEmailInput}
+                  onChange={(e) => setConfirmEmailInput(e.target.value)}
+                  className="w-full h-11 bg-gray-950 border border-gray-800 focus:border-sky-500 px-3.5 rounded-xl text-xs font-semibold text-white outline-none transition disabled:opacity-50 font-mono"
+                />
+              </div>
+
+              {/* Bloque Informativo de Seguridad y Conservación de Datos */}
+              <div className="bg-sky-950/30 border border-sky-800/40 rounded-2xl p-3 text-[11px] text-sky-200/90 space-y-1.5 leading-relaxed">
+                <div className="flex items-center gap-1.5 font-bold text-sky-300 text-xs">
+                  <ShieldCheck className="w-4 h-4 text-sky-400 shrink-0" />
+                  <span>Garantías del cambio de correo administrativo:</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-gray-300 pl-1">
+                  <li><strong className="text-white">Contraseña intacta:</strong> El restaurante iniciará sesión con su contraseña de siempre. No se solicita la contraseña anterior ni se resetea.</li>
+                  <li><strong className="text-white">Datos 100% conservados:</strong> Mismo UID, productos, pedidos, suscripciones y configuraciones sin modificaciones.</li>
+                  <li><strong className="text-white">Inmediato:</strong> No depende de enlaces ni confirmación del correo anterior. El correo viejo deja de tener acceso de inmediato.</li>
+                  <li><strong className="text-white">Auditoría:</strong> Esta operación queda registrada con fecha y firma del administrador.</li>
+                </ul>
+              </div>
+
+              {/* Casilla de Confirmación */}
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-gray-950/50 border border-gray-800 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isConfirmEmailCheck}
+                  disabled={isChangingEmail}
+                  onChange={(e) => setIsConfirmEmailCheck(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 rounded border-gray-700 bg-gray-900 text-sky-500 focus:ring-sky-500 focus:ring-offset-0 cursor-pointer shrink-0"
+                />
+                <span className="text-[11px] text-gray-300 leading-snug">
+                  Confirmo que deseo transferir el acceso de este restaurante al nuevo correo <strong className="text-white font-mono">{newEmailInput.trim() || 'indicado'}</strong>.
+                </span>
+              </label>
+
+              {/* Banner de Error */}
+              {changeEmailError && (
+                <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2 animate-fadeIn">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <span>{changeEmailError}</span>
+                </div>
+              )}
+
+              {/* Banner de Éxito */}
+              {changeEmailSuccess && (
+                <div className="p-3 bg-emerald-500/15 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-start gap-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <span className="font-semibold">{changeEmailSuccess}</span>
+                </div>
+              )}
+
+              {/* Botones de Acción */}
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-gray-850">
+                <button
+                  type="button"
+                  disabled={isChangingEmail}
+                  onClick={handleCloseChangeEmailModal}
+                  className="px-4 py-2.5 bg-gray-900 hover:bg-gray-800 text-gray-300 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isChangingEmail || !newEmailInput.trim() || !confirmEmailInput.trim() || !isConfirmEmailCheck}
+                  className="px-4 py-2.5 bg-sky-500 hover:bg-sky-400 text-black font-black text-xs rounded-xl transition cursor-pointer shadow-lg shadow-sky-500/20 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                >
+                  {isChangingEmail ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-black" />
+                      <span>Actualizando en Firebase...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="w-3.5 h-3.5" />
+                      <span>Guardar Nuevo Correo</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -42,3 +42,4 @@ dist/api/apis.php
 
 # Private Hostinger Firebase service account (never package in dist)
 firebase-service-account*.json
+.codex-attachments/

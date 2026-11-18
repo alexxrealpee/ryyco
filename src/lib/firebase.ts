@@ -4823,7 +4823,7 @@ export async function withDriverDisplayStats(driver: DriverProfile): Promise<Dri
   };
 }
 
-export async function fetchAllDrivers(): Promise<DriverProfile[]> {
+export async function fetchAllDrivers(includeDisplayStats = true): Promise<DriverProfile[]> {
   try {
     const q = query(collection(db, 'drivers'), orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
@@ -4831,7 +4831,7 @@ export async function fetchAllDrivers(): Promise<DriverProfile[]> {
     snapshot.forEach(d => {
       drivers.push({ id: d.id, ...d.data() } as DriverProfile);
     });
-    return Promise.all(drivers.map(withDriverDisplayStats));
+    return includeDisplayStats ? Promise.all(drivers.map(withDriverDisplayStats)) : drivers;
   } catch (err) {
     console.error("Error fetching drivers list:", err);
     // Fallback without ordering
@@ -4840,7 +4840,7 @@ export async function fetchAllDrivers(): Promise<DriverProfile[]> {
     snapshot.forEach(d => {
       drivers.push({ id: d.id, ...d.data() } as DriverProfile);
     });
-    return Promise.all(drivers.map(withDriverDisplayStats));
+    return includeDisplayStats ? Promise.all(drivers.map(withDriverDisplayStats)) : drivers;
   }
 }
 
