@@ -1984,10 +1984,10 @@ export default function AdminStoresManager({
                         type="button"
                         onClick={() => handleOpenChangeEmailModal(store)}
                         className="px-2 py-1.5 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/25 rounded-xl text-[10.5px] font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-sm"
-                        title="Cambiar correo de acceso del restaurante"
+                        title="Cambiar correo por restaurante"
                       >
                         <Mail className="w-3.5 h-3.5 text-sky-400" />
-                        <span>Correo</span>
+                        <span>Cambiar correo</span>
                       </button>
 
                       {/* Manual Open / Closed Toggle */}
@@ -2250,7 +2250,7 @@ export default function AdminStoresManager({
                             type="button"
                             onClick={() => handleOpenChangeEmailModal(store)}
                             className="p-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/25 transition cursor-pointer active:scale-95"
-                            title="Cambiar correo de acceso del restaurante"
+                            title="Cambiar correo por restaurante"
                           >
                             <Mail className="w-3.5 h-3.5" />
                           </button>
@@ -2619,10 +2619,10 @@ export default function AdminStoresManager({
                   type="button"
                   onClick={() => handleOpenChangeEmailModal(detailStore)}
                   className="px-3.5 py-2 bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95"
-                  title="Cambiar correo de inicio de sesión de esta cuenta de restaurante"
+                  title="Cambiar correo por restaurante"
                 >
                   <Mail className="w-3.5 h-3.5 text-sky-400" />
-                  <span>Cambiar Correo de Acceso</span>
+                  <span>Cambiar correo</span>
                 </button>
 
                 <a
