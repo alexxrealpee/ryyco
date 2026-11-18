@@ -10,6 +10,7 @@ import {
   MapPin, 
   Phone, 
   Mail, 
+  ShieldCheck, 
   ExternalLink, 
   Clock, 
   Calendar, 
