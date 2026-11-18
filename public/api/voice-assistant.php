@@ -32,6 +32,13 @@ $catalogContext = is_array($data['catalogContext'] ?? null) ? $data['catalogCont
     'cart' => []
 ];
 
+// Older clients must also enter the authenticated business route, never the customer prompt.
+if (in_array($catalogContext['role'] ?? '', ['merchant', 'admin'], true) || isset($catalogContext['merchantContext'])) {
+    $advisorForwardInput = $data;
+    require __DIR__ . '/merchant-advisor.php';
+    exit;
+}
+
 $openaiKey = getApiKey('OPENAI_API_KEY');
 $geminiKey = getApiKey('GEMINI_API_KEY');
 

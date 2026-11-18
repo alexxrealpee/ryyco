@@ -31,6 +31,7 @@
   RewriteRule ^api/realtime/client_secrets/?$ api/realtime-session.php [QSA,L]
   RewriteRule ^api/realtime/client-secrets/?$ api/realtime-session.php [QSA,L]
   RewriteRule ^api/voice-assistant/?$ api/voice-assistant.php [QSA,L]
+  RewriteRule ^api/merchant-advisor/?$ api/merchant-advisor.php [QSA,L]
   RewriteRule ^api/gemini/voice-assistant/?$ api/voice-assistant.php [QSA,L]
   RewriteRule ^api/chat/?$ api/voice-assistant.php [QSA,L]
   RewriteRule ^api/tts/?$ api/tts.php [QSA,L]

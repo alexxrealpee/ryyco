@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bot, 
@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { UserProfile, ProductItem, OrderItem } from '../types';
 import { smartApiFetch } from '../lib/apiConfig';
+import { auth } from '../lib/firebase';
+import type { AdvisorMetrics } from '../../server/merchantAdvisorCore';
 
 interface LinnkAdminVoiceAssistantProps {
   profile: UserProfile;
@@ -64,144 +66,63 @@ export default function LinnkAdminVoiceAssistant({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
+  const playbackGeneration = useRef(0);
 
-  // Business Analytics Computation for the Entrepreneur
-  const businessMetrics = useMemo(() => {
-    const now = new Date();
-    const todayStr = now.toISOString().slice(0, 10);
-
-    const pendingOrders = orders.filter(o => o.status === 'pending' || o.status === 'processing');
-    const completedOrders = orders.filter(o => o.status === 'delivered' || o.status === 'shipped');
-    const cancelledOrders = orders.filter(o => o.status === 'cancelled');
-
-    // Total sales (excluding cancelled orders)
-    const totalSales = orders.reduce((sum, o) => sum + (o.status !== 'cancelled' ? (o.totalAmount || 0) : 0), 0);
-
-    // Today sales
-    const todayOrders = orders.filter(o => o.createdAt && o.createdAt.startsWith(todayStr) && o.status !== 'cancelled');
-    const todaySales = todayOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-
-    // Ticket promedio (AOV)
-    const validOrdersCount = orders.filter(o => o.status !== 'cancelled').length;
-    const averageTicket = validOrdersCount > 0 ? Math.round(totalSales / validOrdersCount) : 0;
-
-    // Top selling items aggregation
-    const itemSalesMap: Record<string, { quantity: number; revenue: number }> = {};
-    orders.forEach(o => {
-      if (o.status !== 'cancelled' && Array.isArray(o.items)) {
-        o.items.forEach(it => {
-          const name = it.name || 'Producto';
-          if (!itemSalesMap[name]) itemSalesMap[name] = { quantity: 0, revenue: 0 };
-          itemSalesMap[name].quantity += (it.quantity || 1);
-          itemSalesMap[name].revenue += ((it.price || 0) * (it.quantity || 1));
-        });
-      }
+  const [serverMetrics, setServerMetrics] = useState<AdvisorMetrics | null>(null);
+  const [metricsError, setMetricsError] = useState('');
+  const requestRef = useRef<AbortController | null>(null);
+  const summaryRef = useRef<AbortController | null>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const sendRef = useRef<(text: string) => void>(() => {});
+  const scopeRef = useRef(profile.uid);
+  const businessMetrics = {
+    totalSales: serverMetrics?.totalSales,
+    averageTicket: serverMetrics?.averageTicket,
+    avgPrepMinutes: serverMetrics?.averagePrepMinutes,
+    pendingCount: serverMetrics?.pendingCount,
+    lowStockItems: serverMetrics?.lowStock || [],
+    repeatCustomerRate: serverMetrics?.repeatCustomerRate,
+  };
+  const welcome = () => `¡Hola! Soy tu asesor empresarial de RYYCO para ${profile.displayName || profile.username || 'tu restaurante'}. Estoy aquí para ayudarte a analizar las ventas, conocer el rendimiento de tus productos y encontrar oportunidades para hacer crecer tu restaurante. ¿Qué te gustaría analizar hoy?`;
+  const stopResources = () => {
+    playbackGeneration.current += 1;
+    requestRef.current?.abort(); requestRef.current = null;
+    recognitionRef.current?.abort(); currentAudioRef.current?.pause();
+    if (audioUrlRef.current) { URL.revokeObjectURL(audioUrlRef.current); audioUrlRef.current = null; }
+    window.speechSynthesis?.cancel();
+    setIsProcessing(false); setIsListening(false); setIsSpeaking(false);
+  };
+  const requestAdvisor = async (message: string, history: ChatMessage[], controller: AbortController) => {
+    const user = auth.currentUser;
+    if (!user || user.uid !== profile.uid) throw new Error('Inicia sesión con la cuenta propietaria de este restaurante para consultar sus datos.');
+    const token = await user.getIdToken();
+    const response = await smartApiFetch('/api/merchant-advisor.php', {
+      method: 'POST', signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ message, storeUid: profile.uid, history: history.filter(m => m.id !== 'welcome-entrepreneur').slice(-8).map(m => ({ role: m.sender, text: m.text })) }),
     });
-
-    const topSellingItems = Object.entries(itemSalesMap)
-      .map(([name, val]) => ({ name, ...val }))
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 5);
-
-    // Low stock items alerts (stock <= 5)
-    const lowStockItems = products
-      .filter(p => typeof p.stock === 'number' && p.stock <= 5)
-      .map(p => ({ name: p.name, stock: p.stock, price: p.price }));
-
-    // Operational times calculation (preparation and total delivery)
-    const prepOrders = orders.filter(o => typeof o.processingDuration === 'number' && o.processingDuration > 0);
-    const avgPrepMinutes = prepOrders.length > 0
-      ? Math.round(prepOrders.reduce((acc, o) => acc + (o.processingDuration || 0), 0) / prepOrders.length / 60)
-      : 0;
-
-    const deliveryOrders = orders.filter(o => typeof o.totalDuration === 'number' && o.totalDuration > 0);
-    const avgDeliveryMinutes = deliveryOrders.length > 0
-      ? Math.round(deliveryOrders.reduce((acc, o) => acc + (o.totalDuration || 0), 0) / deliveryOrders.length / 60)
-      : 0;
-
-    // Customer retention & loyalty
-    const customerMap: Record<string, number> = {};
-    orders.forEach(o => {
-      let rawPhone = (o.customerPhone || '').replace(/\D/g, '').replace(/^0+/, '');
-      if (rawPhone.length === 12 && rawPhone.startsWith('57')) rawPhone = rawPhone.slice(2);
-      else if (rawPhone.length > 10 && rawPhone.startsWith('573')) rawPhone = rawPhone.slice(2);
-      const key = (rawPhone && rawPhone.length >= 7) ? rawPhone : (o.customerName || '').toLowerCase().trim();
-      if (key) customerMap[key] = (customerMap[key] || 0) + 1;
-    });
-    const uniqueCustomersCount = Object.keys(customerMap).length;
-    const repeatCount = Object.values(customerMap).filter(c => c > 1).length;
-    const repeatCustomerRate = uniqueCustomersCount > 0 ? Math.round((repeatCount / uniqueCustomersCount) * 100) : 0;
-
-    // Peak hours analysis
-    let lunchOrders = 0;
-    let dinnerOrders = 0;
-    let otherOrders = 0;
-    orders.forEach(o => {
-      if (o.createdAt) {
-        const hour = new Date(o.createdAt).getHours();
-        if (hour >= 11 && hour <= 15) lunchOrders++;
-        else if (hour >= 18 && hour <= 23) dinnerOrders++;
-        else otherOrders++;
-      }
-    });
-    const peakHoursSummary = `Almuerzo (${lunchOrders} pedidos), Cena (${dinnerOrders} pedidos), Tarde (${otherOrders} pedidos)`;
-
-    // Payment methods breakdown
-    let cashOrders = 0;
-    let digitalOrders = 0;
-    orders.forEach(o => {
-      if (o.paymentMethod === 'delivery_cash' || o.paymentMethod === 'cod') cashOrders++;
-      else digitalOrders++;
-    });
-    const totalPayments = cashOrders + digitalOrders;
-    const paymentMethodsSummary = totalPayments > 0
-      ? `${Math.round((cashOrders / totalPayments) * 100)}% Efectivo contra entrega, ${Math.round((digitalOrders / totalPayments) * 100)}% Transferencia/Digital`
-      : 'Efectivo / Transferencia';
-
-    // Cancellation reasons
-    const cancellationReasons = orders
-      .filter(o => o.status === 'cancelled' && o.cancellationReason)
-      .map(o => o.cancellationReason as string);
-
-    return {
-      pendingOrders,
-      completedOrders,
-      cancelledOrders,
-      totalSales,
-      todaySales,
-      averageTicket,
-      topSellingItems,
-      lowStockItems,
-      avgPrepMinutes,
-      avgDeliveryMinutes,
-      uniqueCustomersCount,
-      repeatCustomerRate,
-      peakHoursSummary,
-      paymentMethodsSummary,
-      cancellationReasons
-    };
-  }, [orders, products]);
-
-  // Welcome message tailored for the business owner
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudieron verificar los datos del restaurante.');
+    if (data.scope !== 'merchant' || data.source !== 'firestore' || !data.metrics || typeof data.text !== 'string') throw new Error('El servicio empresarial no está disponible. Reintenta.');
+    return data;
+  };
   useEffect(() => {
-    if (isOpen && messages.length === 0) {
-      const isClosed = Boolean(profile.isClosed);
-      const prepText = businessMetrics.avgPrepMinutes > 0 ? `${businessMetrics.avgPrepMinutes} minutos` : 'medición activa';
-      const welcomeText = `¡Hola, ${profile.displayName || 'Empresario'}! Soy tu Asesor IA Empresarial exclusivo para el vendedor.
-Tu negocio está actualmente ${isClosed ? '🔴 CERRADO' : '🟢 ABIERTO'}.
-Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ventas y un ticket promedio de ${businessMetrics.averageTicket.toLocaleString('es-CO')} pesos. Tienes ${businessMetrics.pendingOrders.length} pedido(s) en curso y tu cocina tiene un tiempo promedio de preparación de ${prepText}.
-¿Qué métricas o estrategias deseas consultar hoy?`;
-
-      setMessages([
-        {
-          id: 'welcome-entrepreneur',
-          sender: 'assistant',
-          text: welcomeText,
-          timestamp: new Date()
-        }
-      ]);
+    if (scopeRef.current !== profile.uid) {
+      scopeRef.current = profile.uid; setMessages([]); messagesRef.current = [];
+      setInputText(''); setServerMetrics(null);
     }
-  }, [isOpen, profile, businessMetrics, messages.length]);
+    if (!isOpen) return;
+    if (!messagesRef.current.length) setMessages([{ id: 'welcome-entrepreneur', sender: 'assistant', text: welcome(), timestamp: new Date() }]);
+    const controller = new AbortController();
+    summaryRef.current = controller;
+    setMetricsError(''); setServerMetrics(null);
+    requestAdvisor('__summary__', [], controller).then(data => {
+      if (!controller.signal.aborted) setServerMetrics(data.metrics);
+    }).catch(error => { if (!controller.signal.aborted) setMetricsError(error.message || 'No se pudieron verificar los indicadores.'); });
+    return () => { controller.abort(); stopResources(); };
+  }, [isOpen, profile.uid]);
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -222,7 +143,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         if (transcript && transcript.trim()) {
-          handleSendMessage(transcript.trim());
+          sendRef.current(transcript.trim());
         }
         setIsListening(false);
       };
@@ -247,7 +168,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
         currentAudioRef.current.pause();
       }
     };
-  }, [profile, products, orders]);
+  }, []);
 
   const toggleListening = () => {
     if (isListening) {
@@ -270,12 +191,14 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
 
   const playVoiceResponse = async (textToSpeak: string) => {
     if (audioMuted) return;
+    const generation = ++playbackGeneration.current;
 
     try {
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
         currentAudioRef.current = null;
       }
+      if (audioUrlRef.current) { URL.revokeObjectURL(audioUrlRef.current); audioUrlRef.current = null; }
 
       setIsSpeaking(true);
 
@@ -284,10 +207,13 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: textToSpeak, voice: 'alloy' })
       });
+      if (generation !== playbackGeneration.current) return;
 
       if (res.ok) {
         const audioBlob = await res.blob();
+        if (generation !== playbackGeneration.current) return;
         const audioUrl = URL.createObjectURL(audioBlob);
+        audioUrlRef.current = audioUrl;
         const audio = new Audio(audioUrl);
         currentAudioRef.current = audio;
         audio.onended = () => {
@@ -296,6 +222,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
         };
         audio.onerror = () => {
           setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
         };
         await audio.play();
       } else {
@@ -319,123 +246,30 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
 
   const handleSendMessage = async (textToSend?: string) => {
     const messageText = (textToSend || inputText).trim();
-    if (!messageText || isProcessing) return;
-
-    setInputText('');
-    const userMsgId = `user-${Date.now()}`;
-    const newMessages: ChatMessage[] = [
-      ...messages,
-      { id: userMsgId, sender: 'user', text: messageText, timestamp: new Date() }
-    ];
-    setMessages(newMessages);
-    setIsProcessing(true);
-
-    // Comprehensive Merchant Admin Context for the AI Server
-    const merchantContextPayload = {
-      storeUid: profile.uid || '',
-      storeName: profile.displayName || profile.username || 'Mi Restaurante',
-      storeUsername: profile.username || '',
-      isClosed: Boolean(profile.isClosed),
-      scheduleEnabled: Boolean(profile.scheduleEnabled),
-      openTime: profile.openTime || '',
-      closeTime: profile.closeTime || '',
-      phone: profile.phone || '',
-      whatsapp: profile.whatsapp || '',
-      address: profile.address || profile.location || '',
-      activeProductsCount: products.filter(p => p.active !== false).length,
-      totalProductsCount: products.length,
-      totalOrdersCount: orders.length,
-      pendingOrdersCount: businessMetrics.pendingOrders.length,
-      completedOrdersCount: businessMetrics.completedOrders.length,
-      cancelledOrdersCount: businessMetrics.cancelledOrders.length,
-      totalSalesAmount: businessMetrics.totalSales,
-      todaySalesAmount: businessMetrics.todaySales,
-      averageTicket: businessMetrics.averageTicket,
-      topSellingItems: businessMetrics.topSellingItems,
-      lowStockItems: businessMetrics.lowStockItems,
-      averagePrepTimeMinutes: businessMetrics.avgPrepMinutes,
-      averageDeliveryTimeMinutes: businessMetrics.avgDeliveryMinutes,
-      cancellationReasons: businessMetrics.cancellationReasons,
-      repeatCustomerRate: businessMetrics.repeatCustomerRate,
-      uniqueCustomersCount: businessMetrics.uniqueCustomersCount,
-      peakHoursSummary: businessMetrics.peakHoursSummary,
-      paymentMethodsSummary: businessMetrics.paymentMethodsSummary,
-      recentStoreOrders: orders.slice(0, 10).map(o => ({
-        id: o.id,
-        orderNumber: o.orderNumber || 0,
-        customerName: o.customerName || 'Cliente',
-        customerPhone: o.customerPhone || '',
-        customerAddress: o.customerAddress || '',
-        totalAmount: o.totalAmount || 0,
-        status: o.status,
-        createdAt: o.createdAt ? new Date(o.createdAt).toLocaleDateString('es-CO') : 'Reciente',
-        itemsSummary: (o.items || []).map(i => `${i.quantity}x ${i.name}`).join(', '),
-        paymentMethod: o.paymentMethod || 'Efectivo'
-      })),
-      storeProducts: products.slice(0, 30).map(p => ({
-        id: p.id,
-        name: p.name,
-        price: p.price,
-        stock: p.stock,
-        category: p.category,
-        active: p.active !== false
-      }))
-    };
-
-    const historyPayload = newMessages.slice(-6).map(m => ({
-      role: m.sender === 'user' ? 'user' : 'model',
-      parts: [{ text: m.text }]
-    }));
-
+    if (!messageText || requestRef.current || !isOpen) return;
+    summaryRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const history = messagesRef.current;
+    setInputText(''); setIsProcessing(true); setMetricsError('');
+    setMessages([...history, { id: `user-${Date.now()}`, sender: 'user', text: messageText, timestamp: new Date() }]);
     try {
-      const response = await smartApiFetch('/api/voice-assistant', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: messageText,
-          history: historyPayload,
-          catalogContext: {
-            role: 'merchant',
-            merchantContext: merchantContextPayload,
-            products: [],
-            stores: [],
-            deliveryFee: 7000,
-            cart: []
-          }
-        })
-      });
-
-      const data = await response.json();
-      const botResponse = data.text || data.speechText || 'He analizado las métricas de tu negocio.';
-      const speechToPlay = data.speechText || botResponse;
-
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `bot-${Date.now()}`,
-          sender: 'assistant',
-          text: botResponse,
-          timestamp: new Date()
-        }
-      ]);
-
-      playVoiceResponse(speechToPlay);
-    } catch (err) {
-      console.error("Error communicating with Entrepreneur AI Assistant:", err);
-      const fallbackReply = `Disculpa, tuve un inconveniente de conexión. Tu negocio registra ventas acumuladas de ${businessMetrics.totalSales.toLocaleString('es-CO')} pesos, ${businessMetrics.pendingOrders.length} pedido(s) en curso y un ticket promedio de ${businessMetrics.averageTicket.toLocaleString('es-CO')} pesos.`;
-      setMessages(prev => [
-        ...prev,
-        {
-          id: `bot-fallback-${Date.now()}`,
-          sender: 'assistant',
-          text: fallbackReply,
-          timestamp: new Date()
-        }
-      ]);
+      const data = await requestAdvisor(messageText, history, controller);
+      if (controller.signal.aborted) return;
+      setServerMetrics(data.metrics);
+      setMessages(prev => [...prev, { id: `bot-${Date.now()}`, sender: 'assistant', text: data.text, timestamp: new Date() }]);
+      playVoiceResponse(data.speechText || data.text);
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      setServerMetrics(null);
+      const text = error instanceof Error ? error.message : 'No pude consultar Firebase. Reintenta tu pregunta; no mostraré cifras sin verificar.';
+      setMetricsError(text);
+      setMessages(prev => [...prev, { id: `error-${Date.now()}`, sender: 'assistant', text, timestamp: new Date() }]);
     } finally {
-      setIsProcessing(false);
+      if (requestRef.current === controller) { requestRef.current = null; setIsProcessing(false); }
     }
   };
+  sendRef.current = text => { void handleSendMessage(text); };
 
   // Quick action prompts designed for the Entrepreneur / Store Owner
   const quickPrompts = [
@@ -484,7 +318,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               {/* Reset Conversation */}
               <button
                 type="button"
-                onClick={() => setMessages([])}
+                onClick={() => { stopResources(); setMessages([{ id: 'welcome-entrepreneur', sender: 'assistant', text: welcome(), timestamp: new Date() }]); }}
                 className="p-2 bg-gray-900/80 hover:bg-gray-800 border border-gray-800 text-gray-400 hover:text-white rounded-xl transition cursor-pointer"
                 title="Reiniciar conversación"
               >
@@ -495,6 +329,8 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               <button
                 type="button"
                 onClick={() => {
+                  playbackGeneration.current += 1;
+                  window.speechSynthesis?.cancel();
                   if (isSpeaking && currentAudioRef.current) {
                     currentAudioRef.current.pause();
                     setIsSpeaking(false);
@@ -529,7 +365,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               <DollarSign className="w-3.5 h-3.5 text-indigo-400" />
               <span>Ventas:</span>
               <span className="font-bold text-indigo-300">
-                {businessMetrics.totalSales.toLocaleString('es-CO')}
+                {businessMetrics.totalSales?.toLocaleString('es-CO') ?? '—'}
               </span>
             </div>
 
@@ -538,7 +374,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
               <span>Ticket Prom:</span>
               <span className="font-bold text-emerald-300">
-                {businessMetrics.averageTicket.toLocaleString('es-CO')}
+                {businessMetrics.averageTicket?.toLocaleString('es-CO', { maximumFractionDigits: 0 }) ?? '—'}
               </span>
             </div>
 
@@ -547,7 +383,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               <Clock className="w-3.5 h-3.5 text-amber-400" />
               <span>Cocina:</span>
               <span className="font-bold text-amber-300">
-                {businessMetrics.avgPrepMinutes > 0 ? `${businessMetrics.avgPrepMinutes}m` : 'En cola'}
+                {businessMetrics.avgPrepMinutes != null ? `${businessMetrics.avgPrepMinutes.toFixed(1)}m` : 'Sin datos'}
               </span>
             </div>
 
@@ -556,7 +392,7 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               <ShoppingBag className="w-3.5 h-3.5 text-purple-400" />
               <span>Pendientes:</span>
               <span className="font-bold text-white">
-                {businessMetrics.pendingOrders.length}
+                {businessMetrics.pendingCount ?? '—'}
               </span>
             </div>
 
@@ -576,10 +412,12 @@ Hoy registras ${businessMetrics.todaySales.toLocaleString('es-CO')} pesos en ven
               <Users className="w-3.5 h-3.5 text-cyan-400" />
               <span>Recompra:</span>
               <span className="font-bold text-cyan-300">
-                {businessMetrics.repeatCustomerRate}%
+                {businessMetrics.repeatCustomerRate != null ? `${businessMetrics.repeatCustomerRate.toFixed(1)}%` : '—'}
               </span>
             </div>
           </div>
+
+          {metricsError && <p role="alert" className="px-5 py-2 text-xs text-amber-300">{metricsError}</p>}
 
           {/* Messages Area */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">

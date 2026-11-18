@@ -6,6 +6,7 @@
 import express from 'express';
 import { driverTrackingAuth } from './server/driverTrackingAuth';
 import { changeStoreEmailHandler } from './server/storeEmailAdmin';
+import { createMerchantAdvisorHandler } from './server/merchantAdvisor';
 import compression from 'compression';
 import { registerCatalogPageRoutes } from './server/catalogPage';
 import path from 'path';
@@ -360,6 +361,14 @@ Formatos válidos para:
     }
   });
 
+  const merchantAdvisor = createMerchantAdvisorHandler({ complete: async messages => {
+    const client = getOpenAIClient();
+    if (!client) return null;
+    const result = await client.chat.completions.create({ model: 'gpt-4o-mini', messages, temperature: 0.2, max_tokens: 600 }, { timeout: 20000, maxRetries: 0 });
+    return result.choices[0]?.message.content || null;
+  } });
+  app.post(['/api/merchant-advisor', '/api/merchant-advisor.php'], merchantAdvisor);
+
   // API Route: LinnkPro AI Voice Assistant (Powered strictly by OpenAI ChatGPT GPT-4o / GPT-4o-mini)
   const handleVoiceAssistantRequest = async (req: express.Request, res: express.Response) => {
     const { message, history, catalogContext } = req.body;
@@ -369,6 +378,10 @@ Formatos válidos para:
     }
 
     const safeContext = catalogContext || { products: [], stores: [], deliveryFee: 7000, cart: [] };
+    if (['merchant', 'admin'].includes(safeContext.role) || safeContext.merchantContext) {
+      await merchantAdvisor(req, res);
+      return;
+    }
 
     try {
       const openai = getOpenAIClient();
