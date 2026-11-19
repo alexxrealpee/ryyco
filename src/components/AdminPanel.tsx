@@ -6937,8 +6937,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
                   <div className="divide-y divide-gray-850">
                     {viewingOrder.items?.map((item, idx) => (
-                      <div key={idx} className="py-2 flex items-center justify-between gap-3 text-xs">
-                        <div>
+                      <div key={idx} className="py-2 flex items-start justify-between gap-3 text-xs">
+                        <div className="min-w-0 break-words">
                           <p className="font-extrabold text-white">
                             {item.name}
                           </p>
@@ -6946,6 +6946,21 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             <p className="text-[11px] text-indigo-300 font-medium">
                               Variante: {item.selectedVariant}
                             </p>
+                          )}
+                          {Array.isArray(item.selectedAddons) && item.selectedAddons.some(addon => addon?.name) && (
+                            <div className="mt-1 mb-1.5 text-[11px] text-amber-300">
+                              <p className="font-semibold text-gray-400">Adicionales por unidad:</p>
+                              <ul className="mt-1 space-y-1">
+                                {item.selectedAddons.filter(addon => addon?.name).map((addon, addonIndex) => (
+                                  <li key={addonIndex}>
+                                    + {addon.name}
+                                    {typeof addon.price === 'number' && Number.isFinite(addon.price) && addon.price >= 0
+                                      ? addon.price === 0 ? ' (Gratis)' : ` ($${addon.price.toLocaleString('es-CO')})`
+                                      : ''}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
                           <p className="text-[10.5px] text-gray-400 font-mono">
                             ${(item.price || 0).toLocaleString('es-CO')} × {item.quantity}

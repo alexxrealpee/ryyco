@@ -2794,10 +2794,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
           {/* Social connections & Contact metadata */}
           <div className="flex flex-col items-center md:items-end gap-3.5 min-w-[220px]">
-            {(profile.location || profile.email) && (
+            {profile.location && (
               <div className="flex flex-col gap-1.5 text-xs font-semibold opacity-75 items-center md:items-end">
                 {profile.location && <span className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: storeAccent }} /> {profile.location}</span>}
-                {profile.email && <span className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 shrink-0" style={{ color: storeAccent }} /> {profile.email}</span>}
               </div>
             )}
 
