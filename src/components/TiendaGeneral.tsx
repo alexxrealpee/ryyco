@@ -17,6 +17,7 @@ import {
   Store, 
   ShoppingBag, 
   Search, 
+  Snowflake,
   Sparkles, 
   ArrowLeft, 
   ExternalLink, 
@@ -1953,8 +1954,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       </header>
 
       {/* 2. Hero Section */}
-      <section className="relative overflow-hidden pt-6 pb-2 sm:pt-10 sm:pb-4 px-3 sm:px-6 md:px-8 bg-transparent z-10">
-        <div className="max-w-6xl mx-auto grid grid-cols-12 items-center gap-2 sm:gap-6">
+      <section className="relative isolate overflow-hidden pt-6 pb-2 sm:pt-10 sm:pb-4 px-3 sm:px-6 md:px-8 z-10">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_85%_40%,#164536_0%,transparent_58%),radial-gradient(ellipse_at_4%_0%,#51232b_0%,transparent_45%)]"
+        />
+        <div className="relative max-w-6xl mx-auto grid grid-cols-12 items-center gap-2 sm:gap-6">
           {/* Left Column: Stories tag, Social media & Text */}
           <div className="col-span-7 sm:col-span-7 flex flex-col items-start text-left space-y-2 z-10">
             <div className="flex items-center flex-wrap gap-2 mb-0.5">
@@ -2035,8 +2040,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             </div>
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black tracking-tight leading-[1.08] font-sans">
-              <span className="block text-white">¿Qué se te</span>
-              <span className="block text-[#E63946]">antoja hoy?</span>
+              <span className="block text-white">Antojos de</span>
+              <span className="block text-[#FFD98A]">Navidad</span>
             </h1>
             <p className="text-xs sm:text-sm text-gray-300 max-w-md font-medium">
               Pide a tus restaurantes favoritos de Ipiales con entrega rápida a domicilio.
@@ -2047,14 +2052,13 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           <div className="col-span-5 sm:col-span-5 relative flex items-center justify-center sm:justify-end">
             <div className="relative w-full max-w-[170px] sm:max-w-[270px] md:max-w-[340px] flex items-center justify-center py-2">
               
-              {/* Backdrop Circle */}
-              <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 w-[110px] h-[110px] sm:w-[180px] sm:h-[180px] md:w-[220px] md:h-[220px] bg-[#E63946] rounded-full opacity-90 shadow-2xl shadow-[#E63946]/40 -z-0" />
-
-              {/* Left Side Curved Doodle Aroma Lines */}
-              <svg className="absolute -left-3 sm:-left-6 top-1/2 -translate-y-1/2 w-4 sm:w-7 h-8 sm:h-12 text-[#E63946] z-20 pointer-events-none select-none" viewBox="0 0 24 36" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round">
-                <path d="M 18 5 C 10 11, 10 25, 18 31" />
-                <path d="M 10 10 C 4 14, 4 22, 10 26" />
-              </svg>
+              <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+                <div className="absolute right-0 sm:right-2 top-1/2 -translate-y-1/2 size-[110px] sm:size-[180px] md:size-[220px] rounded-full border border-[#FFD98A]/50 bg-linear-to-br from-[#24775D] to-[#103E31] shadow-2xl shadow-emerald-950/60" />
+                <Snowflake className="absolute -top-2 left-[12%] size-5 -rotate-12 text-[#D5F6EC] sm:size-8" />
+                <Sparkles className="absolute -top-2 right-1 size-5 text-[#FFD98A] sm:right-4 sm:size-8" />
+                <Sparkles className="absolute bottom-3 -left-2 size-4 text-[#FFD98A] sm:-left-4 sm:size-6" />
+                <Snowflake className="absolute -bottom-2 right-1 size-4 rotate-12 text-[#D5F6EC] sm:right-4 sm:size-6" />
+              </div>
 
               {/* Floating Transparent Food Combo Image */}
               <img 
