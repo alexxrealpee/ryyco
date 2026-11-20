@@ -10,6 +10,13 @@ try {
     $limit = min(24, max(1, (int)($_GET['limit'] ?? 12)));
     $after = (string)($_GET['after'] ?? '');
     if ($after !== '' && !preg_match('/^[A-Za-z0-9_.@ -]{1,150}$/D', $after)) throw new InvalidArgumentException('cursor');
+    $storeId = $_GET['storeId'] ?? '';
+    $storeUsername = $_GET['storeUsername'] ?? '';
+    if (!is_string($storeId) || !is_string($storeUsername) ||
+        ($storeId !== '' && ($kind !== 'products' || !preg_match('/^[A-Za-z0-9_.@ -]{1,150}$/D', $storeId))) ||
+        ($storeUsername !== '' && ($storeId === '' || strlen($storeUsername) > 150))) {
+        throw new InvalidArgumentException('store');
+    }
     $profileFields = ['uid','email','createdAt','role','plan','subscriptionPlan','subscriptionAnchorDay','username','displayName','storeName','bio','currency','category','layout','isClosed','suspended','archived',
         'subscriptionStatus','subscriptionTrialExpires','subscriptionPaidUntil','scheduleEnabled','openTime','closeTime',
         'restaurantDaysOpen','weeklySchedule','phone','whatsapp','customerServiceWhatsapp','ownerWhatsapp','address','mapUrl','restaurantReference',
@@ -25,6 +32,16 @@ try {
     if ($kind === 'products') {
         $query['limit'] = $limit;
         if ($after !== '') $query['startAt'] = ['before'=>false,'values'=>[['referenceValue'=>substr($base, strlen('https://firestore.googleapis.com/v1/')) . '/products/' . $after]]];
+        if ($storeId !== '') {
+            $equals = fn($field, $value) => ['fieldFilter'=>['field'=>['fieldPath'=>$field], 'op'=>'EQUAL', 'value'=>['stringValue'=>$value]]];
+            $filters = [$equals('userId', $storeId)];
+            foreach (array_unique([$storeUsername, strtolower(trim($storeUsername))]) as $username) {
+                if ($username === '') continue;
+                if ($username !== $storeId) $filters[] = $equals('userId', $username);
+                $filters[] = $equals('storeUsername', $username);
+            }
+            $query['where'] = count($filters) === 1 ? $filters[0] : ['compositeFilter'=>['op'=>'OR', 'filters'=>$filters]];
+        }
     }
     $rows = catalogHttpJson($base . ':runQuery', ['structuredQuery'=>$query]);
     $items = catalogDocuments($rows, $collection);
@@ -39,6 +56,7 @@ try {
     $count = count($items);
     $last = $count ? basename($documents[$count-1]['document']['name']) : null;
     echo json_encode(['source'=>'firestore-server','kind'=>$kind,'items'=>$items,
+        ...($storeId !== '' ? ['storeId'=>$storeId] : []),
         'hasMore'=>$kind === 'products' && $count === $limit,'cursor'=>$last,'confirmedAt'=>gmdate('c')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 } catch (Throwable $e) {
     http_response_code($e instanceof InvalidArgumentException ? 400 : 503);
