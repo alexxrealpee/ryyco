@@ -47,6 +47,7 @@ import AdminWhatsAppDriversModal from './AdminWhatsAppDriversModal';
 import AdminOrderTimesManager from './AdminOrderTimesManager';
 import AdminProductImagesOptimizer from './AdminProductImagesOptimizer';
 import OrderTimeTimeline from './OrderTimeTimeline';
+import WhatsAppPaymentNotice from './WhatsAppPaymentNotice';
 import { getActiveOrderElapsed, applyOrderTimeTransition } from '../lib/orderTimeTracking';
 import { checkIsTableOrder, checkIsPickupOrder } from '../lib/orderTypeUtils';
 import { SubscriptionPayment, OrderItem, SystemSettings, UserProfile, WeeklySchedule, DaySchedule, DriverProfile, OrderReassignmentRecord } from '../types';
@@ -5245,6 +5246,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                             )}
                           </div>
 
+                          <WhatsAppPaymentNotice paymentMethod={order.paymentMethod} />
+
                           {/* Store badge & WhatsApp del Restaurante */}
                           <div className="py-2 px-2.5 bg-indigo-950/25 border border-indigo-900/40 rounded-xl space-y-1.5">
                             <div className="flex items-center justify-between gap-2 min-w-0">
@@ -5605,15 +5608,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                               <span className="text-[9px] text-gray-400 font-bold uppercase block mt-0.5">
                                 COP
                               </span>
-                              <span className="inline-block mt-1 text-[8.5px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-gray-300 truncate max-w-full">
-                                {order.paymentMethod === 'whatsapp' 
-                                  ? 'Contraentrega (WA)' 
-                                  : order.paymentMethod === 'transfer' 
-                                  ? 'Transferencia' 
-                                  : order.paymentMethod === 'cod' 
-                                  ? 'Contra entrega' 
-                                  : 'Efectivo'}
-                              </span>
+                              {order.paymentMethod === 'whatsapp' ? (
+                                <WhatsAppPaymentNotice paymentMethod={order.paymentMethod} />
+                              ) : (
+                                <span className="inline-block mt-1 text-[8.5px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-900 border border-gray-800 text-gray-300 truncate max-w-full">
+                                  {order.paymentMethod === 'transfer' ? 'Transferencia' : order.paymentMethod === 'cod' ? 'Contra entrega' : 'Efectivo'}
+                                </span>
+                              )}
                             </td>
                             <td className="py-3.5 px-3 align-top text-center">
                               {(() => {
@@ -6974,20 +6975,18 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
 
                   {/* Summary row */}
-                  <div className="pt-2 border-t border-gray-800 flex items-center justify-between">
-                    <div>
+                  <div className="pt-2 border-t border-gray-800 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
                       <span className="text-[10px] uppercase font-black text-gray-400 block">Método de Pago</span>
-                      <span className="text-xs font-bold text-white">
-                        {viewingOrder.paymentMethod === 'whatsapp' 
-                          ? 'Contraentrega (WA)' 
-                          : viewingOrder.paymentMethod === 'transfer' 
-                          ? 'Transferencia Bancaria' 
-                          : viewingOrder.paymentMethod === 'cod' 
-                          ? 'Contra entrega' 
-                          : 'Efectivo'}
-                      </span>
+                      {viewingOrder.paymentMethod === 'whatsapp' ? (
+                        <WhatsAppPaymentNotice paymentMethod={viewingOrder.paymentMethod} />
+                      ) : (
+                        <span className="text-xs font-bold text-white">
+                          {viewingOrder.paymentMethod === 'transfer' ? 'Transferencia Bancaria' : viewingOrder.paymentMethod === 'cod' ? 'Contra entrega' : 'Efectivo'}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-right">
+                    <div className="shrink-0 text-right">
                       <span className="text-[10px] uppercase font-black text-gray-400 block">Total Final</span>
                       <span className="text-base font-black text-emerald-400">
                         ${(viewingOrder.totalAmount || 0).toLocaleString('es-CO')} COP
