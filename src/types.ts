@@ -589,7 +589,8 @@ export interface CustomerProfile {
   id: string; // Phone number or unique ID
   phone: string;
   name: string;
-  password?: string;
+  // La contraseña ya no se guarda aquí: la gestiona Firebase Auth
+  // (ver signInCustomerWithPassword en lib/firebase.ts).
   email?: string;
   avatarUrl?: string;
   authUid?: string;

@@ -61,6 +61,60 @@ function catalogExternalize($value, string $directory) {
     return '/catalog-images/' . $name;
 }
 
+// Anchos permitidos para miniaturas (evita generar tamaños arbitrarios).
+const CATALOG_THUMB_WIDTHS = [240, 360, 480, 720];
+
+/**
+ * Devuelve una miniatura WebP de una foto local de /catalog-images/ con el ancho
+ * pedido, generándola una sola vez en /catalog-images/thumbs/. Si el servidor no
+ * tiene GD con WebP, la foto ya es pequeña o algo falla, devuelve la original.
+ */
+function catalogThumbnail(string $url, int $width, string $directory): string {
+    if (!in_array($width, CATALOG_THUMB_WIDTHS, true)) return $url;
+    if (!preg_match('~^/catalog-images/([a-f0-9]{64})\.(jpg|png|webp|gif)$~D', $url, $m)) return $url;
+    if (!function_exists('imagecreatefromstring') || !function_exists('imagewebp')) return $url;
+
+    $thumbDir = $directory . '/thumbs';
+    $name = $m[1] . '-' . $width . '.webp';
+    $target = $thumbDir . '/' . $name;
+    $public = '/catalog-images/thumbs/' . $name;
+    if (is_file($target)) return $public;
+
+    $source = $directory . '/' . $m[1] . '.' . $m[2];
+    if (!is_file($source) || filesize($source) > 8 * 1024 * 1024) return $url;
+    $info = @getimagesize($source);
+    if (!$info || $info[0] <= 0 || $info[1] <= 0) return $url;
+    [$w0, $h0] = $info;
+    if ($w0 <= $width) return $url;              // ya es pequeña
+    if ($w0 * $h0 > 40000000) return $url;       // evita agotar memoria
+
+    $image = @imagecreatefromstring((string) file_get_contents($source));
+    if (!$image) return $url;
+    $height = max(1, (int) round($h0 * $width / $w0));
+    $thumb = imagecreatetruecolor($width, $height);
+    imagealphablending($thumb, false);
+    imagesavealpha($thumb, true);
+    imagecopyresampled($thumb, $image, 0, 0, 0, 0, $width, $height, $w0, $h0);
+    imagedestroy($image);
+
+    $ok = false;
+    $temporary = null;
+    if (is_dir($thumbDir) || @mkdir($thumbDir, 0755, true) || is_dir($thumbDir)) {
+        $temporary = @tempnam($thumbDir, '.thumb-');
+        if ($temporary && @imagewebp($thumb, $temporary, 78)) {
+            clearstatcache(true, $temporary);
+            $ok = filesize($temporary) > 0 && @rename($temporary, $target);
+        }
+    }
+    imagedestroy($thumb);
+    if (!$ok) {
+        if ($temporary) @unlink($temporary);
+        return is_file($target) ? $public : $url;
+    }
+    @chmod($target, 0644);
+    return $public;
+}
+
 function catalogReadLive(int $productLimit = 0): array {
     if (!function_exists('curl_multi_init')) throw new RuntimeException('cURL unavailable');
     $url = 'https://firestore.googleapis.com/v1/projects/studio-9002217802-13e05/databases/ai-studio-be9196c8-7041-4ba9-b337-ca71c1485d15/documents:runQuery';

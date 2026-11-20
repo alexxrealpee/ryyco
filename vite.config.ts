@@ -28,6 +28,11 @@ export default defineConfig(({mode}) => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
+              // Notificaciones push: solo las usan los paneles (admin, domiciliario,
+              // restaurante), que se cargan bajo demanda. No van en la carga inicial.
+              if (id.includes('@firebase/messaging') || id.includes('@firebase/installations') || /[\\/]firebase[\\/]messaging[\\/]/.test(id)) {
+                return 'vendor-firebase-messaging';
+              }
               if (id.includes('firebase')) {
                 return 'vendor-firebase';
               }

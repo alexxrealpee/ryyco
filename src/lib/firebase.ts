@@ -24,6 +24,7 @@ import {
   GoogleAuthProvider,
   sendPasswordResetEmail,
   onAuthStateChanged,
+  updatePassword,
   User as FirebaseUser
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
@@ -6684,7 +6685,6 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     id: phone,
     phone,
     name: cust.name || existing?.name || 'Cliente Ryyco',
-    password: cust.password !== undefined ? cust.password : (existing?.password || ''),
     email: cleanEmail,
     avatarUrl: cust.avatarUrl ?? existing?.avatarUrl ?? '',
     authUid: cust.authUid ?? existing?.authUid ?? '',
@@ -6702,11 +6702,13 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
     updatedAt: now
   };
 
-  // Save to Firestore
+  // Save to Firestore. Las contraseñas las gestiona Firebase Auth: cualquier
+  // contraseña antigua guardada en texto plano se elimina del documento.
+  const firestoreData = { ...cleanUndefined(customerData), password: deleteField() };
   try {
-    await setDoc(doc(db, 'customers', phone), cleanUndefined(customerData), { merge: true });
+    await setDoc(doc(db, 'customers', phone), firestoreData, { merge: true });
     if (cust.id && cust.id !== phone) {
-      await setDoc(doc(db, 'customers', cust.id), cleanUndefined(customerData), { merge: true }).catch(() => {});
+      await setDoc(doc(db, 'customers', cust.id), firestoreData, { merge: true }).catch(() => {});
     }
   } catch (err) {
     console.warn("Failed saving customer to Firestore, caching locally:", err);
@@ -6750,9 +6752,11 @@ export async function markCustomerWelcomeMessageSent(phone: string, sentAt?: str
 export function setActiveCustomerSession(profile: CustomerProfile): void {
   const phone = sanitizeCustomerPhone(profile.phone);
   try {
+    // Nunca guardar en el navegador una contraseña antigua que viniera en el documento.
+    const { password: _legacyPassword, ...safeProfile } = profile as CustomerProfile & { password?: unknown };
     localStorage.setItem('ryyco_active_customer_phone', phone);
     localStorage.setItem('ryyco_auth_mode', 'customer');
-    localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(profile));
+    localStorage.setItem(`ryyco_customer_${phone}`, JSON.stringify(safeProfile));
   } catch (e) {}
 
   if (typeof window !== 'undefined') {
@@ -6791,6 +6795,111 @@ export async function logoutCustomerSession(): Promise<void> {
     } catch (e) {}
   }
 }
+
+// ---------------------------------------------------------------------------
+// Acceso de clientes con celular + contraseña mediante Firebase Auth.
+// Firebase guarda la contraseña cifrada (hash); Firestore nunca la ve.
+// Cada celular se asocia a un correo interno que no recibe mensajes:
+//   3001234567@clientes.ryyco.com
+// Requiere tener habilitado "Correo electrónico/contraseña" en
+// Firebase Console → Authentication → Sign-in method.
+// ---------------------------------------------------------------------------
+export const CUSTOMER_AUTH_EMAIL_DOMAIN = 'clientes.ryyco.com';
+export const CUSTOMER_MIN_PASSWORD_LENGTH = 6; // mínimo exigido por Firebase Auth
+
+export function customerAuthEmail(rawPhone: string): string {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone || phone.length < 7) {
+    throw new Error('Por favor ingresa un número de celular válido.');
+  }
+  return `${phone}@${CUSTOMER_AUTH_EMAIL_DOMAIN}`;
+}
+
+function markCustomerAuthMode(): void {
+  try {
+    // Antes de iniciar sesión, para que App.tsx no lo trate como restaurante.
+    localStorage.setItem('ryyco_auth_mode', 'customer');
+  } catch (e) {}
+}
+
+export async function signInCustomerWithPassword(rawPhone: string, password: string): Promise<FirebaseUser> {
+  const email = customerAuthEmail(rawPhone);
+  markCustomerAuthMode();
+  const credential = await signInWithEmailAndPassword(auth, email, password);
+  return credential.user;
+}
+
+export async function registerCustomerWithPassword(rawPhone: string, password: string): Promise<FirebaseUser> {
+  const email = customerAuthEmail(rawPhone);
+  if (password.length < CUSTOMER_MIN_PASSWORD_LENGTH) {
+    throw new Error(`La contraseña debe tener al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`);
+  }
+  markCustomerAuthMode();
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  return credential.user;
+}
+
+/** True si la sesión actual de Firebase es la cuenta de contraseña de ese celular. */
+export function isCustomerPasswordSession(rawPhone: string): boolean {
+  try {
+    return (auth.currentUser?.email || '').toLowerCase() === customerAuthEmail(rawPhone);
+  } catch (e) {
+    return false;
+  }
+}
+
+export async function changeCustomerPassword(rawPhone: string, newPassword: string): Promise<void> {
+  if (newPassword.length < CUSTOMER_MIN_PASSWORD_LENGTH) {
+    throw new Error(`La contraseña debe tener al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`);
+  }
+  const user = auth.currentUser;
+  if (!user || !isCustomerPasswordSession(rawPhone)) {
+    throw new Error('Para cambiar tu contraseña, cierra sesión y vuelve a entrar con tu celular y contraseña actual.');
+  }
+  await updatePassword(user, newPassword);
+}
+
+export function describeCustomerAuthError(err: any): string {
+  switch (err?.code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+    case 'auth/invalid-login-credentials':
+      return 'Celular o contraseña incorrectos. Si te registraste con Google, usa el botón de Google. Si nunca creaste una contraseña para este número, toca "Crear cuenta".';
+    case 'auth/email-already-in-use':
+      return 'Este número ya tiene una contraseña creada. Inicia sesión con ella.';
+    case 'auth/weak-password':
+      return `La contraseña debe tener al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`;
+    case 'auth/too-many-requests':
+      return 'Demasiados intentos. Espera unos minutos e inténtalo de nuevo.';
+    case 'auth/network-request-failed':
+      return 'Sin conexión. Revisa tu internet e inténtalo de nuevo.';
+    case 'auth/requires-recent-login':
+      return 'Por seguridad, cierra sesión y vuelve a entrar antes de cambiar tu contraseña.';
+    case 'auth/operation-not-allowed':
+      return 'El acceso con contraseña no está habilitado todavía. Ingresa con Google.';
+    default:
+      return err?.message || 'No se pudo completar el acceso. Inténtalo de nuevo.';
+  }
+}
+
+// Limpia contraseñas antiguas que hayan quedado guardadas en este navegador.
+(function scrubLegacyCustomerPasswordsFromCache() {
+  if (typeof window === 'undefined') return;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith('ryyco_customer_')) continue;
+      const raw = localStorage.getItem(key);
+      if (!raw || !raw.includes('"password"')) continue;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && 'password' in parsed) {
+        delete parsed.password;
+        localStorage.setItem(key, JSON.stringify(parsed));
+      }
+    }
+  } catch (e) {}
+})();
 
 /**
  * Award RYYCOS and free dish wheel spin when an order is completed/placed
