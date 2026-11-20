@@ -83,6 +83,7 @@ import {
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { RestaurantDataTab } from './RestaurantDataTab';
+import OrderTimeTimeline from './OrderTimeTimeline';
 import WhatsAppPaymentNotice from './WhatsAppPaymentNotice';
 
 const ProveedoresModule = React.lazy(() => import('../modules/proveedores/App'));
@@ -7421,6 +7422,8 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 WhatsApp Aviso
               </button>
             </div>
+
+            <OrderTimeTimeline order={viewingOrder} />
             </div>
           </div>
         </div>
