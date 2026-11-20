@@ -17,6 +17,20 @@ assert.equal(r.body.hasMore,true);assert.equal(r.body.cursor,'p1');assert.match(
 let q=JSON.parse(request.options.body).structuredQuery;
 assert.equal(q.limit,1);assert.equal(q.startAt.before,false);assert.ok(q.startAt.values[0].referenceValue.endsWith('/products/p0'));
 assert.ok(!q.select.fields.some(f=>f.fieldPath==='imageURL'),'do not fetch image bytes with metadata');
+assert.equal(q.where,undefined);
+r=await call('catalogPage',{kind:'products',limit:'12',after:'p0',storeId:'owner',storeUsername:'Alias'});
+assert.equal(r.code,200);
+assert.equal(r.body.storeId,'owner');
+q=JSON.parse(request.options.body).structuredQuery;
+assert.equal(q.where.compositeFilter.op,'OR');
+assert.deepEqual(q.where.compositeFilter.filters.map(({fieldFilter})=>[fieldFilter.field.fieldPath,fieldFilter.op,fieldFilter.value.stringValue]),[
+  ['userId','EQUAL','owner'],['userId','EQUAL','Alias'],['storeUsername','EQUAL','Alias'],['userId','EQUAL','alias'],['storeUsername','EQUAL','alias'],
+]);
+assert.equal(q.limit,12);
+assert.ok(q.startAt.values[0].referenceValue.endsWith('/products/p0'));
+assert.ok(!q.select.fields.some(f=>f.fieldPath==='imageURL'));
+assert.equal((await call('catalogPage',{kind:'stores',storeId:'owner'})).code,400);
+assert.equal((await call('catalogPage',{storeUsername:'alias'})).code,400);
 reply=[{readTime:'now'}];r=await call('catalogPage',{kind:'stores'});assert.equal(r.body.items.length,0);assert.equal(r.body.hasMore,false);
 assert.equal(JSON.parse(request.options.body).structuredQuery.limit,undefined);
 reply=[];assert.equal((await call('catalogPage',{kind:'products'})).code,503);

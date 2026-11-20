@@ -87,6 +87,7 @@ import { PizzaFlavorSelector } from './PizzaFlavorSelector';
 import ProductCardImage from './ProductCardImage';
 import RestaurantLogo from './RestaurantLogo';
 import { useProgressiveStoreLoader } from '../hooks/useProgressiveStoreLoader';
+import { useSelectedStoreMenu } from '../hooks/useSelectedStoreMenu';
 import { isAndroidApp } from '../lib/capacitor';
 import { 
   getStoredCart, 
@@ -234,8 +235,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
   const [loading, setLoading] = useState(false);
-  const [loadingStoreProducts, setLoadingStoreProducts] = useState(false);
-  const [loadingStoreId, setLoadingStoreId] = useState<string | null>(null);
 
   // The hook owns the confirmed catalog. A refresh can also remove stale records.
   useEffect(() => {
@@ -306,9 +305,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedStore, setSelectedStore] = useState('all');
   const [sortBy, setSortBy] = useState<'latest' | 'price_asc' | 'price_desc'>('latest');
+  const isStoreSelected = selectedStore !== 'all';
+  const storeMenu = useSelectedStoreMenu(openRestaurants.find(store => store.uid === selectedStore));
+  const { loadMore: loadMoreStoreProducts } = storeMenu;
+  const isCatalogLoadingMore = isStoreSelected ? storeMenu.loading : isProgressiveLoadingMore;
+  const hasMoreCatalogProducts = isStoreSelected ? storeMenu.hasMore : hasMoreProgressive;
+  const catalogError = isStoreSelected ? storeMenu.error : productsError;
+  const retryCatalogProducts = isStoreSelected ? storeMenu.retry : retryProducts;
 
-  // Lazy Load on Demand: Cargar productos de Firebase al hacer clic en el logo del restaurante
-  const handleSelectStore = useCallback(async (store: UserProfile) => {
+  const handleSelectStore = useCallback((store: UserProfile) => {
     if (!store || !store.uid) return;
 
     if (selectedStore === store.uid) {
@@ -330,8 +335,6 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       ...(store.username ? { [store.username.toLowerCase()]: store } : {}),
       ...(store.displayName ? { [store.displayName.toLowerCase()]: store } : {})
     }));
-
-    // The shared metadata pager fills this filter without a second full-image query.
   }, [selectedStore]);
   
   // Quick View Modal state
@@ -951,16 +954,27 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Base list of currently active products from open, non-suspended stores (and matching selectedStore if filtered)
   // Requerimiento: Las bebidas deben estar ocultas en la página de inicio (selectedStore === 'all')
   // Validación estricta: Únicamente productos pertenecientes a restaurantes que se encuentren ABIERTOS.
+  const storeProfiles = useMemo(() => Object.values(profiles) as UserProfile[], [profiles]);
+  const selectedStoreProducts = useMemo(() => storeMenu.items?.filter(product =>
+    resolveProductStore(product, storeProfiles)?.uid === selectedStore
+  ), [storeMenu.items, storeProfiles, selectedStore]);
+  const isStoreMenuComplete = Boolean(selectedStoreProducts && !storeMenu.hasMore && !storeMenu.error);
   const availableBaseProducts = useMemo(() => {
     // Availability comes exclusively from the confirmed profiles listener.
     if (isLoadingRestaurants || restaurantsError) return [];
-    return products.filter(product => {
+    let knownProducts = products;
+    if (selectedStoreProducts) {
+      knownProducts = isStoreMenuComplete ? selectedStoreProducts
+        : Array.from(new Map([...products, ...selectedStoreProducts].map(product => [product.id, product])).values());
+    }
+    return knownProducts.filter(product => {
       if (product.active === false || (selectedStore === 'all' && isDrinkProduct(product))) return false;
-      const owner = resolveProductStore<UserProfile>(product, Object.values(profiles) as UserProfile[]);
+      const owner = resolveProductStore(product, storeProfiles);
       if (!owner || !openRestaurants.some(store => store.uid === owner.uid)) return false;
       return selectedStore === 'all' || owner.uid === selectedStore;
     });
-  }, [products, profiles, selectedStore, openRestaurants, isLoadingRestaurants, restaurantsError]);
+  }, [products, storeProfiles, selectedStore, selectedStoreProducts, isStoreMenuComplete,
+      openRestaurants, isLoadingRestaurants, restaurantsError]);
 
   // Get list of unique categories ONLY from products that actually exist and are available (food categories first)
   // If a category has no available products, it will NOT be displayed!
@@ -1013,7 +1027,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
   // Real-time loading states tied strictly to actual Firebase data presence (no fake delays)
   const isRestaurantsLoading = isLoadingRestaurants;
-  const isProductsLoading = products.length === 0 && (isLoadingProducts || progressiveStage !== 'idle');
+  const isProductsLoading = !isStoreSelected && products.length === 0 && (isLoadingProducts || progressiveStage !== 'idle');
   const isCategoriesLoading = isProductsLoading && categories.length <= 1;
 
   // Auto-scroll store carousel smoothly across both PC and mobile (oscillates automatically right and left)
@@ -1158,18 +1172,24 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Unified function to load the next batch of 4 products in order
   const loadNextBatchOfFour = useCallback(async () => {
     if (isFetchingNextBatchRef.current || isLoadingRestaurants || restaurantsError || openRestaurants.length === 0) return;
+    if (isStoreSelected && visibleLimit >= filteredProducts.length) {
+      const requestedFilter = currentFilterRef.current;
+      const loaded = await loadMoreStoreProducts();
+      if (loaded && currentFilterRef.current === requestedFilter) setVisibleLimit(previous => previous + 6);
+      return;
+    }
     isFetchingNextBatchRef.current = true;
 
     // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
     if (visibleLimit < filteredProducts.length) {
-      setVisibleLimit(prev => hasMoreProgressive ? prev + 6 : Math.min(prev + 6, filteredProducts.length));
+      setVisibleLimit(prev => !isStoreSelected && hasMoreProgressive ? prev + 6 : Math.min(prev + 6, filteredProducts.length));
       // Hold the guard through the next render so two scroll signals cannot reveal twice.
       // Released after React commits this six-product reveal.
       return;
     }
 
     // 2. Otherwise, fetch the next 6 products (from memory cache, API or Firebase)
-    if (hasMoreProgressive && !isProgressiveLoadingMore && !productsError) {
+    if (!isStoreSelected && hasMoreProgressive && !isProgressiveLoadingMore && !productsError) {
       const requestedFilter = currentFilterRef.current;
       setIsLoadingMore(true);
       try {
@@ -1186,21 +1206,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     } else {
       isFetchingNextBatchRef.current = false;
     }
-  }, [visibleLimit, filteredProducts.length, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length]);
+  }, [visibleLimit, filteredProducts.length, isStoreSelected, loadMoreStoreProducts, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // A partial first catalog can contain only closed stores or drinks. Fill the
   // metadata buffer once if filtering leaves fewer than six usable records.
   useEffect(() => {
+    if (isStoreSelected) {
+      if (hasMoreCatalogProducts && !isCatalogLoadingMore && !catalogError &&
+          (filteredProducts.length < visibleLimit || searchTerm.trim() || selectedCategory !== 'all' || sortBy !== 'latest')) {
+        void loadMoreStoreProducts();
+      }
+      return;
+    }
     if (!isLoadingRestaurants && !restaurantsError && openRestaurants.length > 0 && !isLoadingProducts &&
         products.length >= loadedProducts.length &&
         hasMoreProgressive && !isProgressiveLoadingMore && !productsError &&
-        (filteredProducts.length < visibleLimit || searchTerm.trim() || selectedStore !== 'all' || selectedCategory !== 'all' || sortBy !== 'latest')) {
+        (filteredProducts.length < visibleLimit || searchTerm.trim() || selectedCategory !== 'all' || sortBy !== 'latest')) {
       void loadNextFourProducts();
     }
-  }, [isLoadingRestaurants, restaurantsError, openRestaurants.length, isLoadingProducts, filteredProducts.length, products.length, loadedProducts.length,
-      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, visibleLimit, searchTerm, selectedStore, selectedCategory, sortBy]);
+  }, [isStoreSelected, isLoadingRestaurants, restaurantsError, openRestaurants.length, isLoadingProducts, filteredProducts.length, products.length, loadedProducts.length,
+      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, visibleLimit, searchTerm, selectedCategory, sortBy,
+      hasMoreCatalogProducts, isCatalogLoadingMore, catalogError, loadMoreStoreProducts]);
 
   useEffect(() => { isFetchingNextBatchRef.current = false; }, [visibleLimit, currentFilter]);
 
@@ -1229,7 +1257,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
     });
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
-  }, [loadNextBatchOfFour, isProgressiveLoadingMore, prefetchMargin]);
+  }, [loadNextBatchOfFour, isCatalogLoadingMore, prefetchMargin]);
 
   // Fallback passive scroll listener for older webviews
   useEffect(() => {
@@ -1276,6 +1304,10 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       return true;
     });
   }, [filteredProducts, visibleLimit]);
+
+  useEffect(() => {
+    if (selectedStoreProducts?.length) registerProductImages(selectedStoreProducts);
+  }, [selectedStoreProducts]);
 
   useEffect(() => {
     committedProductsRef.current = { filter: catalogFilter, ids: displayedProducts.map(product => product.id) };
@@ -1375,7 +1407,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     const storeDisplayName = storeProf?.displayName || storeProf?.username || 'este restaurante';
 
     // 1. Filtrar bebidas reales del restaurante en el catálogo cargado
-    const realStoreDrinks = products.filter(p => {
+    const scopedProducts = targetUid === selectedStore ? selectedStoreProducts : undefined;
+    const drinkCandidates = scopedProducts
+      ? (isStoreMenuComplete ? scopedProducts : [...scopedProducts, ...products])
+      : products;
+    const realStoreDrinks = drinkCandidates.filter(p => {
       if (!isDrinkProduct(p)) return false;
       if (p.active === false || p.outOfStock === true) return false;
       const pStoreProf = findStoreForProduct(p, profiles);
@@ -1396,7 +1432,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     // 2. Si el restaurante no tiene bebidas disponibles registradas, no mostrar sugerencias genéricas
     return [];
-  }, [products, profiles]);
+  }, [products, profiles, selectedStore, selectedStoreProducts, isStoreMenuComplete]);
 
   const handleAddSuggestedDrink = (drink: ProductItem) => {
     const prof = findStoreForProduct(drink, profiles) || (drink.userId ? profiles[drink.userId] : undefined);
@@ -1426,6 +1462,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     setIsCartOpen(true);
   };
 
+  // Finish a paginated menu when its drinks are needed in the product view or cart.
+  useEffect(() => {
+    if (!isStoreSelected || !storeMenu.hasMore || storeMenu.loading || storeMenu.error || (!hasMoreProgressive && !productsError)) return;
+    const isFromSelectedStore = (product: ProductItem) => resolveProductStore(product, storeProfiles)?.uid === selectedStore;
+    if ((selectedProduct && isFromSelectedStore(selectedProduct)) || cart.some(item => isFromSelectedStore(item.product))) {
+      void loadMoreStoreProducts();
+    }
+  }, [isStoreSelected, storeMenu.hasMore, storeMenu.loading, storeMenu.error, hasMoreProgressive, productsError,
+      storeProfiles, selectedStore, selectedProduct, cart, loadMoreStoreProducts]);
+
   // Cargar catálogo completo del restaurante en segundo plano para que todas sus bebidas reales estén disponibles
   useEffect(() => {
     if (!hasMoreProgressive && !productsError) return; // Drinks are already in the complete buffer.
@@ -1448,6 +1494,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     if (storesToFetch.size === 0) return;
 
     storesToFetch.forEach(storeUid => {
+      if (storeUid === selectedStore && !storeMenu.error) return;
       const prof = profiles[storeUid] || (Object.values(profiles) as UserProfile[]).find(p => p?.uid === storeUid);
       if (prof && prof.uid) {
         fetchProductsForStoreOnDemand(prof, 50).then(fresh => {
@@ -1463,7 +1510,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         }).catch(() => {});
       }
     });
-  }, [selectedProduct, cart, profiles, hasMoreProgressive, productsError]);
+  }, [selectedProduct, cart, profiles, hasMoreProgressive, productsError, selectedStore, storeMenu.error]);
 
   const handleSetItemQuantity = (cartItemId: string, change: number) => {
     const item = cart.find(i => i.id === cartItemId || i.product.id === cartItemId);
@@ -2672,21 +2719,21 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         </div>
 
         {/* 4. Products Display */}
-        {isProgressiveLoadingMore && filteredProducts.length === 0 && !isProductsLoading && (
+        {!isStoreSelected && isCatalogLoadingMore && filteredProducts.length === 0 && !isProductsLoading && (
           <div role="status" className="py-3 text-center text-xs text-gray-400">Cargando productos…</div>
         )}
-        {productsError && (
+        {catalogError && (
           <div role="alert" className="py-3 text-center text-xs text-gray-400">
-            <p>{productsError}</p>
-            <button type="button" onClick={() => void retryProducts()} disabled={isProgressiveLoadingMore}
+            <p>{catalogError}</p>
+            <button type="button" onClick={() => void retryCatalogProducts()} disabled={isCatalogLoadingMore}
               className="mt-2 underline disabled:opacity-50">Reintentar productos</button>
           </div>
         )}
-        {loadingStoreProducts && filteredProducts.length === 0 ? (
+        {isStoreSelected && storeMenu.loading && filteredProducts.length === 0 ? (
           <div 
             className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6"
             aria-busy="true"
-            aria-label="Cargando los 4 primeros productos del restaurante"
+            aria-label="Cargando el menú del restaurante"
           >
             {[0, 1, 2, 3].map((idx) => (
               <ProductCardSkeleton key={`store-skeleton-${idx}`} index={idx} />
@@ -2703,7 +2750,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             ))}
           </div>
         ) : filteredProducts.length === 0 ? (
-          productsError || hasMoreProgressive ? null : searchTerm.trim().length > 0 ? (
+          catalogError || hasMoreCatalogProducts ? null : searchTerm.trim().length > 0 ? (
             <div className="bg-[#111827] border border-[#232B3A] rounded-3xl py-16 px-4 text-center max-w-md mx-auto space-y-4">
               <ShoppingBag className="w-12 h-12 text-[#A9B2C3] mx-auto opacity-40" />
               <div className="space-y-1">
@@ -2911,17 +2958,17 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
           </div>
 
           {/* Known cards stay visible; only unknown metadata needs a loading indicator. */}
-          {isProgressiveLoadingMore && (
+          {isCatalogLoadingMore && (
             <div role="status" className="py-3 text-center text-xs text-gray-400">Cargando más productos…</div>
           )}
 
           {/* Smart 6-by-6 Progressive Loading indicator & control */}
-          {(visibleLimit < filteredProducts.length || hasMoreProgressive) ? (
+          {(visibleLimit < filteredProducts.length || hasMoreCatalogProducts) ? (
             <div className="w-full flex flex-col items-center justify-center py-8 gap-3 mt-6 border-t border-dashed border-[#232B3A]">
               <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
                 <span>Mostrando</span>
                 <span className="text-white font-black">{Math.min(visibleLimit, filteredProducts.length)}</span>
-                {!hasMoreProgressive && <><span>de</span><span className="text-white font-black">{filteredProducts.length}</span></>}
+                {!hasMoreCatalogProducts && !catalogError && <><span>de</span><span className="text-white font-black">{filteredProducts.length}</span></>}
                 <span>productos</span>
               </div>
 
@@ -2934,8 +2981,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
 
               <button
-                onClick={productsError ? () => void retryProducts() : handleLoadMoreFour}
-                disabled={(isLoadingMore || isProgressiveLoadingMore) && visibleLimit >= filteredProducts.length}
+                onClick={catalogError && (!isStoreSelected || visibleLimit >= filteredProducts.length)
+                  ? () => void retryCatalogProducts() : handleLoadMoreFour}
+                disabled={((!isStoreSelected && isLoadingMore) || isCatalogLoadingMore) && visibleLimit >= filteredProducts.length}
                 className="px-6 py-2.5 bg-[#1F2937] hover:bg-[#374151] border border-white/10 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <span>Cargar 6 productos más</span>
@@ -2947,7 +2995,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               {/* IntersectionObserver sentinel target */}
               <div ref={sentinelRef} className="w-full h-2 pointer-events-none opacity-0" aria-hidden="true" />
             </div>
-          ) : !productsError && !isLoadingRestaurants && !restaurantsError && filteredProducts.length > 6 ? (
+          ) : !catalogError && !isLoadingRestaurants && !restaurantsError && filteredProducts.length > 6 ? (
             <div className="w-full text-center py-8 text-xs font-medium text-gray-500 border-t border-dashed border-[#232B3A] mt-6">
               ✨ Has llegado al final — Mostrando todos los {filteredProducts.length} productos
             </div>

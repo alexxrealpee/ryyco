@@ -10,7 +10,7 @@ async function bundle(file, mock = false) {
     define: { 'import.meta.env.DEV': 'false' }, plugins: mock ? [{ name: 'firebase-mock', setup(b) {
       b.onResolve({ filter: /^firebase\/firestore$|^\.\.\/lib\/firebase$/ }, a => ({ path: a.path, namespace: 'mock' }));
       b.onLoad({ filter: /.*/, namespace: 'mock' }, a => ({ contents: a.path === 'firebase/firestore'
-        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const query=(collection,...constraints)=>({collection,constraints}); export const limit=n=>({limit:n}); export const orderBy=field=>({orderBy:field}); export const documentId=()=>"__name__"; export const startAfter=id=>({after:id}); export const getDocsFromServer=(...a)=>globalThis.__productTest.getDocsFromServer(...a);'
+        ? 'export const {collection,onSnapshot}=globalThis.__productTest; export const query=(collection,...constraints)=>({collection,constraints}); export const limit=n=>({limit:n}); export const orderBy=field=>({orderBy:field}); export const documentId=()=>"__name__"; export const startAfter=id=>({after:id}); export const where=(field,op,value)=>({field,op,value}); export const or=(...matches)=>({matches}); export const getDocsFromServer=(...a)=>globalThis.__productTest.getDocsFromServer(...a);'
         : 'export const db={}; export const checkIsStoreClosed=s=>s.isClosed;' }));
     }}] : [] });
   const m = { exports: {} };
@@ -65,6 +65,102 @@ async function main() {
   assert.equal(state.loadedProducts.length,2);assert.equal(state.productsError,null);assert.equal(state.hasMore,false);
   await act(async()=>root.unmount());
   console.log('PASS cursor pages, shared StrictMode request, deferred pages, SDK bounds, retry and stable prefix');
+
+  const { useSelectedStoreMenu } = await bundle('src/hooks/useSelectedStoreMenu.ts', true);
+  function MenuProbe({ store }) { state = useSelectedStoreMenu(store); return null; }
+  const select = store => act(async () => root.render(React.createElement(MenuProbe, { store })));
+  const storePage = (storeId, items, hasMore = false) => response({ ...page(items, hasMore), storeId });
+  let resolveFirstStore, resolveSecondPage;
+  let requestSignal;
+  fetches = 0;
+  reads = 0;
+  globalThis.__productTest.getDocsFromServer = async requested => {
+    reads++;
+    assert(requested.constraints.some(c => c.limit === 12));
+    assert.deepEqual(requested.collection.constraints[0].matches, [
+      { field: 'userId', op: '==', value: 'offline' },
+      { field: 'userId', op: '==', value: 'legacy' },
+      { field: 'storeUsername', op: '==', value: 'legacy' },
+    ]);
+    throw Error('offline');
+  };
+  globalThis.fetch = (url, { signal }) => {
+    fetches++;
+    const params = new URL(url, window.location.href).searchParams;
+    assert.equal(params.get('kind'), 'products');
+    assert.equal(params.get('limit'), '12');
+    const uid = params.get('storeId');
+    if (uid === 'first') {
+      requestSignal = signal;
+      return new Promise(resolve => { resolveFirstStore = resolve; });
+    }
+    if (uid === 'second' && !params.has('after')) {
+      assert.equal(params.get('storeUsername'), 'legacy');
+      return Promise.resolve(storePage(uid, [{ ...products[0], userId: uid }, { ...products[1], active: false }], true));
+    }
+    if (uid === 'second') {
+      assert.equal(params.get('after'), products[1].id, 'Cursor includes inactive records');
+      return new Promise(resolve => { resolveSecondPage = resolve; });
+    }
+    if (uid === 'offline') return Promise.resolve(response(page([], false)));
+    assert.equal(uid, 'empty');
+    return Promise.resolve(storePage(uid, []));
+  };
+  root = createRoot(document.getElementById('root'));
+  await select(undefined);
+  assert.equal(fetches, 0, 'No menu query until a restaurant is selected');
+  await select({ uid: 'first' });
+  assert.equal(state.loading, true);
+  await select({ uid: 'second', username: 'legacy' });
+  assert.equal(requestSignal.aborted, true);
+  assert.equal(state.hasMore, true);
+  assert.equal(state.loading, false);
+  assert.equal(fetches, 2, 'The next menu page waits until needed');
+  assert.deepEqual(state.items.map(p => p.id), ['000'], 'First cards can render before the second page');
+  await act(async () => resolveFirstStore(storePage('first', [{ ...products[5], userId: 'first' }])));
+  assert.deepEqual(state.items.map(p => p.userId), ['second'], 'Late previous selection cannot overwrite the current menu');
+  await act(async () => { void state.loadMore(); void state.loadMore(); });
+  assert.equal(state.loading, true);
+  assert.equal(fetches, 3, 'Only one request for the next menu page');
+  await act(async () => resolveSecondPage(storePage('second', [{ ...products[2], userId: 'second' }])));
+  assert.deepEqual(state.items.map(p => p.id), ['000', '002']);
+  assert.equal(state.loading, false);
+  assert.equal(reads, 0);
+  await select({ uid: 'empty' });
+  assert.deepEqual(state.items, []);
+  assert.equal(state.error, null);
+  const beforeReopen = fetches;
+  await select({ uid: 'second', username: 'legacy' });
+  assert.equal(fetches, beforeReopen, 'Recent validated menu is reused on reopen');
+  assert.deepEqual(state.items.map(p => p.id), ['000', '002']);
+  const now = Date.now;
+  try {
+    Date.now = () => now() + 21_000;
+    await select({ uid: 'empty' });
+    assert.equal(fetches, beforeReopen + 1, 'Expired results require a fresh query');
+  } finally {
+    Date.now = now;
+  }
+  await select({ uid: 'offline', username: 'legacy' });
+  assert(state.error, 'Unscoped API response and unavailable SDK show a retryable error');
+  assert.equal(reads, 1);
+  globalThis.fetch = async () => storePage('offline', [{ ...products[0], storeUsername: 'legacy' }]);
+  await act(async () => state.retry());
+  assert.equal(state.error, null);
+  assert.equal(state.items.length, 1);
+  globalThis.fetch = async () => ({ ok: false });
+  globalThis.__productTest.getDocsFromServer = async requested => {
+    assert.deepEqual(requested.collection.constraints, [{ field: 'userId', op: '==', value: 'native' }]);
+    return {
+      metadata: { fromCache: false, hasPendingWrites: false },
+      docs: [{ id: 'native-meal', data: () => ({ ...products[3], userId: 'native' }) }],
+    };
+  };
+  await select({ uid: 'native' });
+  assert.equal(state.error, null);
+  assert.deepEqual(state.items.map(p => p.id), ['native-meal'], 'Direct SDK fallback stays scoped');
+  await act(async () => root.unmount());
+  console.log('PASS selected menus: scoped pages, first-page render, rapid switching, empty menus and retry');
 
   const Image = (await bundle('src/components/ProductCardImage.tsx')).default;
   root = createRoot(document.getElementById('root'));

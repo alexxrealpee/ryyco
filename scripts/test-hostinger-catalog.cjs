@@ -64,6 +64,11 @@ try {
     if ($q['limit']!==12 || $q['orderBy'][0]['field']['fieldPath']!=='__name__') throw new RuntimeException('unbounded query');
     if (in_array('imageURL',array_column($q['select']['fields'],'fieldPath'))) throw new RuntimeException('image in metadata');
     if (isset($_GET['after']) && (!$q['startAt']['values'][0]['referenceValue'] || $q['startAt']['before']!==false)) throw new RuntimeException('wrong cursor');
+    if (isset($_GET['storeId'])) {
+      $filter=$q['where']['compositeFilter'];
+      $matches=array_map(fn($p)=>[$p['fieldFilter']['field']['fieldPath'],$p['fieldFilter']['op'],$p['fieldFilter']['value']['stringValue']],$filter['filters']);
+      if ($filter['op']!=='OR' || $matches!==[['userId','EQUAL','owner'],['userId','EQUAL','Alias'],['storeUsername','EQUAL','Alias'],['userId','EQUAL','alias'],['storeUsername','EQUAL','alias']]) throw new RuntimeException('wrong store filter');
+    } elseif (isset($q['where'])) throw new RuntimeException('unexpected filter for general catalog');
     return json_decode(${quote(JSON.stringify(fixtures))},true);
   }`);
   const metadataRoute=fs.readFileSync('public/api/catalog-page.php','utf8').replace("require_once __DIR__ . '/catalog-live.php';",`require_once ${quote(fakeHelper)};`);
@@ -73,6 +78,12 @@ try {
   assert.match(metadata.items[0].imageURL,/catalog-image\.php\?kind=products/);
   const next=JSON.parse(run(metadataRoute.replace('<?php',"<?php $_GET['after']='p11';")));
   assert.equal(next.kind,'products');
+  const menu=JSON.parse(run(metadataRoute.replace('<?php',"<?php $_GET=['after'=>'p11','storeId'=>'owner','storeUsername'=>'Alias'];")));
+  assert.equal(menu.storeId,'owner');
+  assert.equal(menu.items.length,12);
+  assert.match(menu.items[0].imageURL,/catalog-image\.php\?kind=products/);
+  assert(JSON.parse(run(metadataRoute.replace('<?php',"<?php $_GET=['kind'=>'stores','storeId'=>'owner'];"))).error);
+  assert(JSON.parse(run(metadataRoute.replace('<?php',"<?php $_GET=['storeUsername'=>'alias'];"))).error);
   const invalid=JSON.parse(run(metadataRoute.replace('<?php',"<?php $_GET['after']='../bad';")));
   assert(invalid.error);
   // Real image route: versioned cache skips repeat Firestore reads; old versions

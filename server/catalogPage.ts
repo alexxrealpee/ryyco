@@ -38,7 +38,12 @@ export async function catalogPage(req: Request, res: Response) {
   res.setHeader('Cache-Control','no-store');
   const kind = req.query.kind ?? 'products';
   const after = String(req.query.after ?? '');
-  if (!['stores','products'].includes(String(kind)) || (after && !validId(after))) {
+  const storeId = req.query.storeId ?? '';
+  const storeUsername = req.query.storeUsername ?? '';
+  if (!['stores','products'].includes(String(kind)) || (after && !validId(after)) ||
+      typeof storeId !== 'string' || typeof storeUsername !== 'string' ||
+      (storeId && (kind !== 'products' || !validId(storeId))) ||
+      (storeUsername && (!storeId || storeUsername.length > 150))) {
     res.status(400).json({error:'Solicitud de catálogo inválida.'}); return;
   }
   const count = Math.min(24,Math.max(1,Math.trunc(Number(req.query.limit) || 12)));
@@ -48,6 +53,16 @@ export async function catalogPage(req: Request, res: Response) {
   if (kind === 'products') {
     query.limit = count;
     if (after) query.startAt = {before:false,values:[{referenceValue:base.replace('https://firestore.googleapis.com/v1/','')+'/products/'+after}]};
+    if (storeId) {
+      const equals = (fieldPath: string, stringValue: string) => ({fieldFilter:{field:{fieldPath},op:'EQUAL',value:{stringValue}}});
+      const filters = [equals('userId', storeId)];
+      for (const username of new Set([storeUsername, storeUsername.trim().toLowerCase()])) {
+        if (!username) continue;
+        if (username !== storeId) filters.push(equals('userId', username));
+        filters.push(equals('storeUsername', username));
+      }
+      query.where = filters.length === 1 ? filters[0] : {compositeFilter:{op:'OR',filters}};
+    }
   }
   try {
     const rows = await read(base+':runQuery',{structuredQuery:query});
@@ -67,7 +82,7 @@ export async function catalogPage(req: Request, res: Response) {
       data[kind === 'stores' ? 'photoURL' : 'imageURL'] = '/api/catalog-image.php?'+new URLSearchParams({kind:String(kind),id,v:document.updateTime || ''});
       return data;
     });
-    res.json({source:'firestore-server',kind,items,hasMore:kind === 'products' && items.length === count,
+    res.json({source:'firestore-server',kind,items,...(storeId ? {storeId} : {}),hasMore:kind === 'products' && items.length === count,
       cursor:docs.at(-1)?.name.split('/').pop() || null,confirmedAt:new Date().toISOString()});
   } catch { res.status(503).json({error:'No se pudo consultar el catálogo en vivo.'}); }
 }
