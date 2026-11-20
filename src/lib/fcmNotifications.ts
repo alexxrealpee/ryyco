@@ -9,7 +9,7 @@ import { isNativePush, initializeNativePush, nativePushPermission, registerNativ
  */
 
 import { getMessaging, getToken, onMessage, isSupported, Messaging } from 'firebase/messaging';
-import { doc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
+import { doc, setDoc, getDocs, collection, deleteDoc, query, where } from 'firebase/firestore';
 import { app, db, auth } from './firebase';
 import { OrderItem } from '../types';
 
@@ -1185,9 +1185,11 @@ export interface AdminFCMTokenRecord {
 /**
  * Fetch all registered driver FCM device tokens from Firestore
  */
-export async function fetchDriverFCMTokens(): Promise<DriverFCMTokenRecord[]> {
+export async function fetchDriverFCMTokens(driverIds?: string[]): Promise<DriverFCMTokenRecord[]> {
+  if (driverIds?.length === 0) return [];
   try {
-    const snap = await getDocs(collection(db, 'driver_fcm_tokens'));
+    const tokensRef = collection(db, 'driver_fcm_tokens');
+    const snap = await getDocs(driverIds ? query(tokensRef, where('driverId', 'in', driverIds)) : tokensRef);
     const tokens: DriverFCMTokenRecord[] = [];
     snap.forEach((d) => {
       tokens.push({ id: d.id, ...(d.data() as any) });

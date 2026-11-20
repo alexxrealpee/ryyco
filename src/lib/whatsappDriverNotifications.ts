@@ -8,7 +8,7 @@
  * arrives in General Administration.
  */
 
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from './firebase';
 import { DriverProfile, OrderItem } from '../types';
 
@@ -171,7 +171,7 @@ export function filterActiveDrivers(drivers: DriverProfile[]): DriverProfile[] {
 export function subscribeToActiveDrivers(
   callback: (activeDrivers: DriverProfile[], allApprovedDrivers: DriverProfile[]) => void
 ): () => void {
-  const driversCol = collection(db, 'drivers');
+  const driversCol = query(collection(db, 'drivers'), where('status', '==', 'approved'));
 
   const unsubscribe = onSnapshot(driversCol, (snapshot) => {
     const allApproved: DriverProfile[] = [];

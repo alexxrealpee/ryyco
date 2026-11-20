@@ -642,6 +642,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [activeDrivers, setActiveDrivers] = useState<DriverProfile[]>([]);
   const [allApprovedDrivers, setAllApprovedDrivers] = useState<DriverProfile[]>([]);
   const [whatsAppDispatchOrder, setWhatsAppDispatchOrder] = useState<OrderItem | null>(null);
+  const needsDispatchDrivers = activeAdminTab === 'orders' || Boolean(whatsAppDispatchOrder);
   const [showLiveDriversMap, setShowLiveDriversMap] = useState<boolean>(false);
   const [fcmToken, setFcmToken] = useState<string | null>(null);
   const [isFCMReady, setIsFCMReady] = useState<boolean>(false);
@@ -831,8 +832,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
-  // Real-time listener for active delivery drivers across the platform
+  // The dispatch screen needs the full list of approved recipients, independent of the roster pages.
   useEffect(() => {
+    if (!needsDispatchDrivers) {
+      setActiveDrivers([]);
+      setAllApprovedDrivers([]);
+      return;
+    }
     let unsub: (() => void) | null = null;
     try {
       unsub = subscribeToActiveDrivers((active, all) => {
@@ -845,15 +851,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     return () => {
       if (unsub) unsub();
     };
-  }, []);
+  }, [needsDispatchDrivers]);
 
   // References to volatile states so the orders listener never restarts unnecessarily
   const storesMapRef = useRef(storesMap);
   storesMapRef.current = storesMap;
   const allStoresListRef = useRef(allStoresList);
   allStoresListRef.current = allStoresList;
-  const activeDriversRef = useRef(activeDrivers);
-  activeDriversRef.current = activeDrivers;
   const systemSettingsRef = useRef(systemSettings);
   systemSettingsRef.current = systemSettings;
   const alertedOrderIdsRef = useRef<Set<string>>(new Set());
@@ -881,7 +885,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
 
     const currentStoresMap = storesMapRef.current;
     const currentAllStoresList = allStoresListRef.current;
-    const currentActiveDrivers = activeDriversRef.current;
     const currentSystemSettings = systemSettingsRef.current;
 
     const store = currentStoresMap[order.storeOwnerId || ''] || currentAllStoresList.find(s => s.uid === order.storeOwnerId);

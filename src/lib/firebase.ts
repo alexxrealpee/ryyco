@@ -4830,6 +4830,19 @@ export async function withDriverDisplayStats(driver: DriverProfile): Promise<Dri
   };
 }
 
+export const ADMIN_DRIVERS_PAGE_SIZE = 4;
+
+export async function fetchAdminDriversPage(after: QueryDocumentSnapshot | null = null) {
+  const page = await getDocsFromServer(query(collection(db, 'drivers'),
+    orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'),
+    ...(after ? [startAfter(after)] : []), limit(ADMIN_DRIVERS_PAGE_SIZE)));
+  return {
+    drivers: page.docs.map(snapshot => ({ ...snapshot.data(), id: snapshot.id } as DriverProfile)),
+    cursor: page.docs.at(-1) ?? null,
+    hasMore: page.size === ADMIN_DRIVERS_PAGE_SIZE
+  };
+}
+
 export async function fetchAllDrivers(includeDisplayStats = true): Promise<DriverProfile[]> {
   try {
     const q = query(collection(db, 'drivers'), orderBy('createdAt', 'desc'));
@@ -4854,7 +4867,7 @@ export async function fetchAllDrivers(includeDisplayStats = true): Promise<Drive
 /**
  * Update driver status (Aprobar, Rechazar, Suspender, Reactivar)
  */
-export async function updateDriverStatus(driverId: string, status: DriverStatus, rejectionReason?: string): Promise<void> {
+export async function updateDriverStatus(driverId: string, status: DriverStatus, rejectionReason?: string): Promise<Partial<DriverProfile>> {
   const docRef = doc(db, 'drivers', driverId);
   const now = new Date().toISOString();
   const updates: Partial<DriverProfile> = {
@@ -4870,6 +4883,7 @@ export async function updateDriverStatus(driverId: string, status: DriverStatus,
     updates.isOnline = false;
   }
   await updateDoc(docRef, { ...updates, password: deleteField() });
+  return updates;
 }
 
 /**
