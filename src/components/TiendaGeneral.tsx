@@ -307,8 +307,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [sortBy, setSortBy] = useState<'latest' | 'price_asc' | 'price_desc'>('latest');
   const isStoreSelected = selectedStore !== 'all';
   const storeMenu = useSelectedStoreMenu(openRestaurants.find(store => store.uid === selectedStore));
+  const { loadMore: loadMoreStoreProducts } = storeMenu;
   const isCatalogLoadingMore = isStoreSelected ? storeMenu.loading : isProgressiveLoadingMore;
-  const hasMoreCatalogProducts = isStoreSelected ? storeMenu.loading : hasMoreProgressive;
+  const hasMoreCatalogProducts = isStoreSelected ? storeMenu.hasMore : hasMoreProgressive;
   const catalogError = isStoreSelected ? storeMenu.error : productsError;
   const retryCatalogProducts = isStoreSelected ? storeMenu.retry : retryProducts;
 
@@ -957,7 +958,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const selectedStoreProducts = useMemo(() => storeMenu.items?.filter(product =>
     resolveProductStore(product, storeProfiles)?.uid === selectedStore
   ), [storeMenu.items, storeProfiles, selectedStore]);
-  const isStoreMenuComplete = Boolean(selectedStoreProducts && !storeMenu.loading && !storeMenu.error);
+  const isStoreMenuComplete = Boolean(selectedStoreProducts && !storeMenu.hasMore && !storeMenu.error);
   const availableBaseProducts = useMemo(() => {
     // Availability comes exclusively from the confirmed profiles listener.
     if (isLoadingRestaurants || restaurantsError) return [];
@@ -1171,6 +1172,12 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   // Unified function to load the next batch of 4 products in order
   const loadNextBatchOfFour = useCallback(async () => {
     if (isFetchingNextBatchRef.current || isLoadingRestaurants || restaurantsError || openRestaurants.length === 0) return;
+    if (isStoreSelected && visibleLimit >= filteredProducts.length) {
+      const requestedFilter = currentFilterRef.current;
+      const loaded = await loadMoreStoreProducts();
+      if (loaded && currentFilterRef.current === requestedFilter) setVisibleLimit(previous => previous + 6);
+      return;
+    }
     isFetchingNextBatchRef.current = true;
 
     // 1. If we already have loaded products in memory beyond visibleLimit, reveal next 4
@@ -1199,21 +1206,29 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     } else {
       isFetchingNextBatchRef.current = false;
     }
-  }, [visibleLimit, filteredProducts.length, isStoreSelected, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length]);
+  }, [visibleLimit, filteredProducts.length, isStoreSelected, loadMoreStoreProducts, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
   // A partial first catalog can contain only closed stores or drinks. Fill the
   // metadata buffer once if filtering leaves fewer than six usable records.
   useEffect(() => {
-    if (!isStoreSelected && !isLoadingRestaurants && !restaurantsError && openRestaurants.length > 0 && !isLoadingProducts &&
+    if (isStoreSelected) {
+      if (hasMoreCatalogProducts && !isCatalogLoadingMore && !catalogError &&
+          (filteredProducts.length < visibleLimit || searchTerm.trim() || selectedCategory !== 'all' || sortBy !== 'latest')) {
+        void loadMoreStoreProducts();
+      }
+      return;
+    }
+    if (!isLoadingRestaurants && !restaurantsError && openRestaurants.length > 0 && !isLoadingProducts &&
         products.length >= loadedProducts.length &&
         hasMoreProgressive && !isProgressiveLoadingMore && !productsError &&
         (filteredProducts.length < visibleLimit || searchTerm.trim() || selectedCategory !== 'all' || sortBy !== 'latest')) {
       void loadNextFourProducts();
     }
   }, [isStoreSelected, isLoadingRestaurants, restaurantsError, openRestaurants.length, isLoadingProducts, filteredProducts.length, products.length, loadedProducts.length,
-      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, visibleLimit, searchTerm, selectedCategory, sortBy]);
+      hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, visibleLimit, searchTerm, selectedCategory, sortBy,
+      hasMoreCatalogProducts, isCatalogLoadingMore, catalogError, loadMoreStoreProducts]);
 
   useEffect(() => { isFetchingNextBatchRef.current = false; }, [visibleLimit, currentFilter]);
 
@@ -1446,6 +1461,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     setCart(updated);
     setIsCartOpen(true);
   };
+
+  // Finish a paginated menu when its drinks are needed in the product view or cart.
+  useEffect(() => {
+    if (!isStoreSelected || !storeMenu.hasMore || storeMenu.loading || storeMenu.error || (!hasMoreProgressive && !productsError)) return;
+    const isFromSelectedStore = (product: ProductItem) => resolveProductStore(product, storeProfiles)?.uid === selectedStore;
+    if ((selectedProduct && isFromSelectedStore(selectedProduct)) || cart.some(item => isFromSelectedStore(item.product))) {
+      void loadMoreStoreProducts();
+    }
+  }, [isStoreSelected, storeMenu.hasMore, storeMenu.loading, storeMenu.error, hasMoreProgressive, productsError,
+      storeProfiles, selectedStore, selectedProduct, cart, loadMoreStoreProducts]);
 
   // Cargar catálogo completo del restaurante en segundo plano para que todas sus bebidas reales estén disponibles
   useEffect(() => {
@@ -2956,7 +2981,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
               </div>
 
               <button
-                onClick={!isStoreSelected && catalogError ? () => void retryCatalogProducts() : handleLoadMoreFour}
+                onClick={catalogError && (!isStoreSelected || visibleLimit >= filteredProducts.length)
+                  ? () => void retryCatalogProducts() : handleLoadMoreFour}
                 disabled={((!isStoreSelected && isLoadingMore) || isCatalogLoadingMore) && visibleLimit >= filteredProducts.length}
                 className="px-6 py-2.5 bg-[#1F2937] hover:bg-[#374151] border border-white/10 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >

@@ -113,10 +113,15 @@ async function main() {
   assert.equal(state.loading, true);
   await select({ uid: 'second', username: 'legacy' });
   assert.equal(requestSignal.aborted, true);
-  assert.equal(state.loading, true);
+  assert.equal(state.hasMore, true);
+  assert.equal(state.loading, false);
+  assert.equal(fetches, 2, 'The next menu page waits until needed');
   assert.deepEqual(state.items.map(p => p.id), ['000'], 'First cards can render before the second page');
   await act(async () => resolveFirstStore(storePage('first', [{ ...products[5], userId: 'first' }])));
   assert.deepEqual(state.items.map(p => p.userId), ['second'], 'Late previous selection cannot overwrite the current menu');
+  await act(async () => { void state.loadMore(); void state.loadMore(); });
+  assert.equal(state.loading, true);
+  assert.equal(fetches, 3, 'Only one request for the next menu page');
   await act(async () => resolveSecondPage(storePage('second', [{ ...products[2], userId: 'second' }])));
   assert.deepEqual(state.items.map(p => p.id), ['000', '002']);
   assert.equal(state.loading, false);
@@ -124,6 +129,18 @@ async function main() {
   await select({ uid: 'empty' });
   assert.deepEqual(state.items, []);
   assert.equal(state.error, null);
+  const beforeReopen = fetches;
+  await select({ uid: 'second', username: 'legacy' });
+  assert.equal(fetches, beforeReopen, 'Recent validated menu is reused on reopen');
+  assert.deepEqual(state.items.map(p => p.id), ['000', '002']);
+  const now = Date.now;
+  try {
+    Date.now = () => now() + 21_000;
+    await select({ uid: 'empty' });
+    assert.equal(fetches, beforeReopen + 1, 'Expired results require a fresh query');
+  } finally {
+    Date.now = now;
+  }
   await select({ uid: 'offline', username: 'legacy' });
   assert(state.error, 'Unscoped API response and unavailable SDK show a retryable error');
   assert.equal(reads, 1);
