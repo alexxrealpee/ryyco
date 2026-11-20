@@ -37,7 +37,11 @@ import {
   getDocsFromCache,
   getDocsFromServer,
   getDocFromServer,
+  getAggregateFromServer,
+  count,
+  sum,
   doc, 
+  documentId,
   setDoc, 
   getDoc, 
   getDocs, 
@@ -3289,7 +3293,8 @@ export async function fetchAllOrders(): Promise<OrderItem[]> {
  * Detects new incoming orders in real-time for immediate push notification and sound alert.
  */
 export function subscribeToAllOrders(
-  callback: (orders: OrderItem[], newOrders: OrderItem[]) => void
+  callback: (orders: OrderItem[], newOrders: OrderItem[]) => void,
+  onError?: (error: Error) => void
 ): () => void {
   let isInitial = true;
   const knownIds = new Set<string>();
@@ -3323,6 +3328,7 @@ export function subscribeToAllOrders(
     callback(sorted, newIncoming);
   }, (err) => {
     console.warn("subscribeToAllOrders error:", err);
+    onError?.(err);
   });
 
   return unsubscribe;
@@ -4236,63 +4242,64 @@ export interface PaginatedOrdersResult {
   orders: OrderItem[];
   lastDoc: QueryDocumentSnapshot | null;
   hasMore: boolean;
-  totalCount?: number;
 }
 
-export async function fetchAdminOrdersBatch(
-  pageSize: number = 8,
-  lastDocSnapshot: QueryDocumentSnapshot | null = null,
-  offset: number = 0
-): Promise<PaginatedOrdersResult> {
+export const ADMIN_ORDERS_PAGE_SIZE = 4;
+
+function adminOrdersPageQuery(after?: QueryDocumentSnapshot) {
+  return query(collection(db, 'orders'), orderBy('createdAt', 'desc'), orderBy(documentId(), 'desc'),
+    ...(after ? [startAfter(after)] : []), limit(ADMIN_ORDERS_PAGE_SIZE));
+}
+
+function adminOrderFromDoc(snapshot: QueryDocumentSnapshot): OrderItem {
+  const data = snapshot.data();
+  const createdAt = typeof data.createdAt === 'string' ? data.createdAt : data.createdAt?.toDate?.().toISOString();
+  return normalizeOrderDriverStatus({ ...data, id: snapshot.id, createdAt } as OrderItem);
+}
+
+function adminOrdersPage(docs: QueryDocumentSnapshot[]): PaginatedOrdersResult {
+  let deletedIds: string[] = [];
   try {
-    let q;
-    if (lastDocSnapshot) {
-      q = query(
-        collection(db, 'orders'),
-        orderBy('createdAt', 'desc'),
-        startAfter(lastDocSnapshot),
-        limit(pageSize)
-      );
-    } else {
-      q = query(
-        collection(db, 'orders'),
-        orderBy('createdAt', 'desc'),
-        limit(pageSize)
-      );
-    }
-
-    const snapshot = await getDocs(q);
-    const orders: OrderItem[] = [];
-    let deletedIds: string[] = [];
-    try {
-      deletedIds = JSON.parse(localStorage.getItem('linnk_deleted_orders') || '[]');
-    } catch (e) {}
-
-    snapshot.forEach(docSnap => {
-      if (!deletedIds.includes(docSnap.id)) {
-        const data = docSnap.data();
-        orders.push({ id: docSnap.id, ...(data as Record<string, any>) } as OrderItem);
-      }
-    });
-
-    if (orders.length > 0) {
-      const newLastDoc = snapshot.docs[snapshot.docs.length - 1] as QueryDocumentSnapshot;
-      const hasMore = snapshot.docs.length >= pageSize;
-      return { orders, lastDoc: newLastDoc, hasMore };
-    }
-  } catch (err) {
-    console.warn("Firestore pagination query failed, using offline/cache array fallback:", err);
-  }
-
-  // Fallback: load full array and slice from offset
-  const all = await fetchAllOrders();
-  const sliced = all.slice(offset, offset + pageSize);
-  const hasMore = offset + pageSize < all.length;
+    const stored = JSON.parse(localStorage.getItem('linnk_deleted_orders') || '[]');
+    if (Array.isArray(stored)) deletedIds = stored;
+  } catch { /* Storage can be unavailable. */ }
   return {
-    orders: sliced,
-    lastDoc: null,
-    hasMore,
-    totalCount: all.length
+    orders: docs.filter(snapshot => !deletedIds.includes(snapshot.id)).map(adminOrderFromDoc),
+    lastDoc: docs.at(-1) ?? null,
+    hasMore: docs.length === ADMIN_ORDERS_PAGE_SIZE
+  };
+}
+
+export function subscribeToRecentAdminOrders(onPage: (page: PaginatedOrdersResult) => void, onError: (error: Error) => void) {
+  return onSnapshot(adminOrdersPageQuery(), { includeMetadataChanges: true }, snapshot => {
+    if (!snapshot.metadata.fromCache && !snapshot.metadata.hasPendingWrites) onPage(adminOrdersPage(snapshot.docs));
+  }, onError);
+}
+
+export async function fetchAdminOrdersBatch(after: QueryDocumentSnapshot): Promise<PaginatedOrdersResult> {
+  const snapshot = await getDocsFromServer(adminOrdersPageQuery(after));
+  return adminOrdersPage(snapshot.docs);
+}
+
+export async function fetchAdminOrderById(id: string): Promise<OrderItem | null> {
+  if (!id || id.includes('/') || id.length > 1500) return null;
+  const snapshot = await getDocFromServer(doc(db, 'orders', id));
+  return snapshot.exists() ? adminOrderFromDoc(snapshot) : null;
+}
+
+export async function fetchAdminOrderSummary() {
+  const orders = collection(db, 'orders');
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString();
+  const recent = where('createdAt', '>=', cutoff);
+  const results = await Promise.all([
+    getAggregateFromServer(query(orders, recent), { total: count() }),
+    getAggregateFromServer(query(orders, recent), { sales: sum('totalAmount') }),
+    getAggregateFromServer(query(orders, recent, where('status', '==', 'delivered')), { delivered: count() }),
+    getAggregateFromServer(query(orders, where('status', '==', 'pending')), { pending: count() }),
+    getAggregateFromServer(query(orders, recent, where('status', '==', 'pending')), { pendingRecent: count() })
+  ] as const);
+  return {
+    ...results[0].data(), ...results[1].data(), ...results[2].data(), ...results[3].data(), ...results[4].data()
   };
 }
 

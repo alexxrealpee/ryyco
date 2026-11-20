@@ -6,15 +6,16 @@ import { isNativePush, nativePushPermission } from '../lib/nativePush';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useMemo, useRef } from 'react';
 import { 
   fetchAdminStats, 
   fetchAllSubscriptionPayments,
   db,
   auth,
-  fetchAllOrders,
   subscribeToAllOrders,
-  fetchAdminOrdersBatch,
+  ADMIN_ORDERS_PAGE_SIZE,
+  fetchAdminOrderById,
+  fetchAdminOrderSummary,
   fetchAdminSubscriptionsBatch,
   fetchAllStoresMap,
   updateOrderStatus,
@@ -36,6 +37,7 @@ import {
   getOrderDeliveryCode,
   releaseDriverAndReassignOrderTransaction
 } from '../lib/firebase';
+import { useAdminOrderFeed } from '../hooks/useAdminOrderFeed';
 import AdminDriversManager from './AdminDriversManager';
 const AdminDriversMap = React.lazy(() => import('./AdminDriversMap'));
 const ProveedoresAdminModule = React.lazy(() => import('../modules/proveedores/App'));
@@ -141,6 +143,9 @@ import {
 interface AdminPanelProps {
   onBack: () => void;
 }
+
+const isPendingAdminOrder = (order: OrderItem) => order.status === 'pending' &&
+  !order.deliveryDriverId?.trim() && !order.driverId?.trim() && !order.deliveryStep;
 
 // Helpers to format and build WhatsApp links
 const formatWhatsAppDisplay = (raw?: string | null) => {
@@ -389,7 +394,15 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [notif, setNotif] = useState('');
   const [activeAdminTab, setActiveAdminTab] = useState<'users' | 'payments' | 'subscriptions' | 'orders' | 'drivers' | 'proveedores' | 'sales_stats' | 'top_customers' | 'referrals' | 'general' | 'stores' | 'order_times' | 'product_images'>(getInitialAdminTab());
   const [allPayments, setAllPayments] = useState<SubscriptionPayment[]>([]);
-  const [allOrders, setAllOrders] = useState<OrderItem[]>([]);
+  const orderFeed = useAdminOrderFeed(handleRecentAdminOrders);
+  const { orders: allOrders, setOrders: setAllOrders, loading: ordersLoading, error: ordersError,
+    hasMore: hasMoreOrders, loadNext: loadNextOrders, refresh: refreshOrders, retry: retryOrders } = orderFeed;
+  const [reportOrders, setReportOrders] = useState<OrderItem[]>([]);
+  const [reportStatus, setReportStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [reportAttempt, setReportAttempt] = useState(0);
+  const [orderSummary, setOrderSummary] = useState<Awaited<ReturnType<typeof fetchAdminOrderSummary>> | null>(null);
+  const [orderSummaryRevision, setOrderSummaryRevision] = useState(0);
+  const isOrderReport = ['sales_stats', 'top_customers', 'stores', 'order_times'].includes(activeAdminTab);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
 
   // Live timer tick for active order elapsed time calculation without page reload (every 15s)
@@ -553,7 +566,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [selectedOrderStatusFilter, setSelectedOrderStatusFilter] = useState<string>('all');
   const [orderSearchQuery, setOrderSearchQuery] = useState<string>('');
   const [viewingOrder, setViewingOrder] = useState<OrderItem | null>(null);
-  usePushOrderNavigation('admin', allOrders, setViewingOrder, () => handleSwitchTab('orders'));
+  usePushOrderNavigation('admin', allOrders, setViewingOrder, () => handleSwitchTab('orders'), fetchAdminOrderById);
 
   // Eventualities & Driver Reassignment State in Admin Panel
   const [reassigningOrder, setReassigningOrder] = useState<OrderItem | null>(null);
@@ -610,41 +623,9 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     }
   };
 
-  // Orders progressive display pagination state (initial batch of 6)
-  const [visibleOrdersCount, setVisibleOrdersCount] = useState<number>(6);
+  const [visibleOrdersCount, setVisibleOrdersCount] = useState(ADMIN_ORDERS_PAGE_SIZE);
   const ordersSentinelRef = useRef<HTMLDivElement | null>(null);
-
-  // Real-time Pending Orders Count - strictly pending/new orders without an assigned driver
-  const pendingOrdersCount = useMemo(() => {
-    return allOrders.filter(o => {
-      const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
-                        Boolean(o.driverId && o.driverId.trim() !== '') ||
-                        Boolean(o.deliveryStep);
-      const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
-      return o.status === 'pending' && !hasDriver && !isPickedUp;
-    }).length;
-  }, [allOrders]);
-
-  // Orders from the last 30 days (for the 4 KPI summary cards in Pedidos de Tiendas)
-  const ordersLast30Days = useMemo(() => {
-    const thirtyDaysAgoMs = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    return allOrders.filter(o => {
-      const rawDate = o.createdAt || o.pendingAt || o.updatedAt;
-      if (!rawDate) return false;
-      const orderMs = new Date(rawDate).getTime();
-      return !isNaN(orderMs) && orderMs >= thirtyDaysAgoMs;
-    });
-  }, [allOrders]);
-
-  const pendingOrdersLast30DaysCount = useMemo(() => {
-    return ordersLast30Days.filter(o => {
-      const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
-                        Boolean(o.driverId && o.driverId.trim() !== '') ||
-                        Boolean(o.deliveryStep);
-      const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
-      return o.status === 'pending' && !hasDriver && !isPickedUp;
-    }).length;
-  }, [ordersLast30Days]);
+  const pendingOrdersCount = orderSummary?.pending ?? allOrders.filter(isPendingAdminOrder).length;
 
   // Push Notification & Sound Alert States (FCM Powered)
   const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>('default');
@@ -954,58 +935,42 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
     setTimeout(() => setNotif(''), 5000);
   };
 
-  // Real-time listener across all store orders
+  function handleRecentAdminOrders(recent: OrderItem[], incoming: OrderItem[], removed: Set<string>) {
+    setOrderSummaryRevision(revision => revision + 1);
+    setNewIncomingOrderAlert(previous => {
+      if (!previous || removed.has(previous.id)) return null;
+      const current = recent.find(order => order.id === previous.id);
+      return current && !isPendingAdminOrder(current) ? null : previous;
+    });
+    setViewingOrder(previous => previous ? recent.find(order => order.id === previous.id) ?? previous : null);
+    const pending = incoming.find(isPendingAdminOrder);
+    if (pending) triggerNewOrderAlert(pending);
+  }
+
   useEffect(() => {
-    let unsubscribe: (() => void) | null = null;
-    try {
-      unsubscribe = subscribeToAllOrders((updatedOrders, newIncoming) => {
-        setAllOrders(updatedOrders);
+    if (!isOrderReport) return;
+    setReportStatus('loading');
+    return subscribeToAllOrders(orders => {
+      setReportOrders(orders);
+      setReportStatus('ready');
+      setViewingOrder(previous => previous ? orders.find(order => order.id === previous.id) ?? previous : null);
+    }, () => setReportStatus('error'));
+  }, [isOrderReport, reportAttempt]);
 
-        // Calculate strictly pending, unassigned orders across the entire platform
-        const genuinelyPending = updatedOrders.filter(o => {
-          const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
-                            Boolean(o.driverId && o.driverId.trim() !== '') ||
-                            Boolean(o.deliveryStep);
-          const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
-          return o.status === 'pending' && !hasDriver && !isPickedUp;
-        });
-
-        // 1. AUTO-CLEAR banner if there are NO pending orders anywhere in the system!
-        if (genuinelyPending.length === 0) {
-          setNewIncomingOrderAlert(null);
-        } else {
-          // If the banner was showing an order, make sure that order is still pending
-          setNewIncomingOrderAlert(prev => {
-            if (!prev) return null;
-            const isStillPending = genuinelyPending.some(p => p.id === prev.id);
-            return isStillPending ? prev : null;
-          });
-        }
-
-        // 2. STRICT RULE: ONLY alert if there are incoming orders that are ACTUALLY PENDING!
-        if (newIncoming && newIncoming.length > 0) {
-          const pendingIncoming = newIncoming.filter(o => {
-            const hasDriver = Boolean(o.deliveryDriverId && o.deliveryDriverId.trim() !== '') ||
-                              Boolean(o.driverId && o.driverId.trim() !== '') ||
-                              Boolean(o.deliveryStep);
-            const isPickedUp = o.deliveryStep === 'picked_up' || o.deliveryStep === 'to_client' || o.deliveryStep === 'at_destination';
-            return o.status === 'pending' && !hasDriver && !isPickedUp;
-          });
-
-          // NEVER notify if there are no pending orders!
-          if (pendingIncoming.length > 0) {
-            triggerNewOrderAlert(pendingIncoming[0]);
-          }
-        }
+  useEffect(() => {
+    let current = true;
+    const timer = window.setTimeout(() => {
+      void fetchAdminOrderSummary().then(summary => {
+        if (current) setOrderSummary(summary);
+      }).catch(error => {
+        console.warn('No se pudieron cargar los indicadores de pedidos:', error);
       });
-    } catch (err) {
-      console.warn("Error setting up real-time orders listener:", err);
-    }
-
+    }, 250);
     return () => {
-      if (unsubscribe) unsubscribe();
+      current = false;
+      window.clearTimeout(timer);
     };
-  }, []);
+  }, [orderSummaryRevision]);
 
   // Intelligent lazy loading state for subscriptions (7 items per batch)
   const [lastSubDoc, setLastSubDoc] = useState<any | null>(null);
@@ -1134,15 +1099,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       const fetchedPayments = await fetchAllSubscriptionPayments();
       setAllPayments(fetchedPayments);
 
-      // 4. Load all orders from all stores (Global complete dataset for accurate metrics)
-      try {
-        const allFetchedOrders = await fetchAllOrders();
-        setAllOrders(allFetchedOrders);
-      } catch (err) {
-        console.error("Error al cargar todos los pedidos en admin panel:", err);
-      }
-
-      // 5. Load system settings
+      // 4. Load system settings
       try {
         const settings = await fetchSystemSettings();
         setSystemSettings(settings);
@@ -1154,6 +1111,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       console.error(e);
     }
     setLoading(false);
+  };
+
+  const handleRefreshAdminData = () => {
+    if (activeAdminTab === 'orders') {
+      setVisibleOrdersCount(ADMIN_ORDERS_PAGE_SIZE);
+      refreshOrders();
+    }
+    void loadAdminData();
   };
 
   const handleSaveSystemSettings = async (e?: React.FormEvent) => {
@@ -2490,7 +2455,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           : `Estado actualizado por administración a ${newStatus}`
       });
 
-      const currentOrder = allOrders.find(o => o.id === orderId);
+      const currentOrder = allOrders.find(o => o.id === orderId) ?? (viewingOrder?.id === orderId ? viewingOrder : undefined);
       if (currentOrder) {
         const timeUpdates = applyOrderTimeTransition(currentOrder, newStatus, {
           userRole: 'admin',
@@ -2520,6 +2485,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         setViewingOrder(prev => prev && prev.id === orderId ? { ...prev, status: newStatus } : prev);
       }
 
+      setOrderSummaryRevision(revision => revision + 1);
       setNotif(`¡Estado del pedido actualizado a ${newStatus.toUpperCase()} correctamente!`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err: any) {
@@ -2538,6 +2504,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       if (viewingOrder?.id === order.id) {
         setViewingOrder(null);
       }
+      setOrderSummaryRevision(revision => revision + 1);
       setNotif(`Pedido #${order.orderNumber || 'S/N'} eliminado permanentemente.`);
       setTimeout(() => setNotif(''), 4000);
     } catch (err) {
@@ -2607,10 +2574,10 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
       // 3. Search text (name, phone, email, notes, order number, driver info, or store name/username)
       if (orderSearchQuery.trim()) {
         const query = orderSearchQuery.toLowerCase();
-        const matchesName = order.customerName.toLowerCase().includes(query);
-        const matchesPhone = order.customerPhone.toLowerCase().includes(query);
+        const matchesName = order.customerName?.toLowerCase().includes(query);
+        const matchesPhone = order.customerPhone?.toLowerCase().includes(query);
         const matchesEmail = order.customerEmail?.toLowerCase().includes(query) || false;
-        const matchesNumber = order.orderNumber.toString().includes(query);
+        const matchesNumber = String(order.orderNumber ?? '').includes(query);
         const matchesNotes = order.notes?.toLowerCase().includes(query) || false;
         const matchesDriverName = order.deliveryDriverName?.toLowerCase().includes(query) || false;
         const matchesDriverPhone = order.deliveryDriverPhone?.toLowerCase().includes(query) || false;
@@ -2622,49 +2589,47 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         return matchesName || matchesPhone || matchesEmail || matchesNumber || matchesNotes || matchesDriverName || matchesDriverPhone || matchesDriverVehicle || matchesStore;
       }
       return true;
-    }).sort((a, b) => {
-      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      if (timeB !== timeA) return timeB - timeA;
-      return (b.orderNumber || 0) - (a.orderNumber || 0);
     });
   }, [allOrders, selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery, storesMap, users]);
 
-  // Progressive orders display (first 6, then loads more on scroll)
-  const displayedOrders = useMemo(() => {
-    return filteredOrders.slice(0, visibleOrdersCount);
-  }, [filteredOrders, visibleOrdersCount]);
+  const displayedOrders = filteredOrders.slice(0, visibleOrdersCount);
+  const canLoadMoreOrders = displayedOrders.length < filteredOrders.length || hasMoreOrders;
+  const filterKey = JSON.stringify([selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery]);
+  const currentOrderFilter = useRef(filterKey);
+  currentOrderFilter.current = filterKey;
+  const loadingNextOrders = useRef(false);
 
   useEffect(() => {
-    setVisibleOrdersCount(6);
-  }, [selectedOrderStoreFilter, selectedOrderStatusFilter, orderSearchQuery]);
+    setVisibleOrdersCount(ADMIN_ORDERS_PAGE_SIZE);
+  }, [filterKey]);
 
-  // Progressive display scroll trigger when reaching bottom of orders table
-  useEffect(() => {
-    if (activeAdminTab !== 'orders') return;
-    if (visibleOrdersCount >= filteredOrders.length) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const target = entries[0];
-        if (target.isIntersecting) {
-          setVisibleOrdersCount(prev => Math.min(prev + 6, filteredOrders.length));
-        }
-      },
-      { threshold: 0.1, rootMargin: '160px' }
-    );
-
-    const el = ordersSentinelRef.current;
-    if (el) {
-      observer.observe(el);
-    }
-
-    return () => {
-      if (el) {
-        observer.unobserve(el);
+  const handleLoadMoreOrders = useCallback(async (retry = false) => {
+    if (ordersLoading || loadingNextOrders.current || (!retry && (ordersError || !canLoadMoreOrders))) return;
+    loadingNextOrders.current = true;
+    try {
+      if (retry || (filteredOrders.length - visibleOrdersCount < ADMIN_ORDERS_PAGE_SIZE && hasMoreOrders)) {
+        const loaded = await (retry ? retryOrders() : loadNextOrders());
+        if (!loaded || currentOrderFilter.current !== filterKey) return;
       }
+      setVisibleOrdersCount(Math.min(filteredOrders.length, visibleOrdersCount) + ADMIN_ORDERS_PAGE_SIZE);
+    } finally {
+      loadingNextOrders.current = false;
+    }
+  }, [ordersLoading, ordersError, canLoadMoreOrders, filteredOrders.length, visibleOrdersCount, hasMoreOrders, loadNextOrders, retryOrders, filterKey]);
+
+  useEffect(() => {
+    if (activeAdminTab !== 'orders' || !canLoadMoreOrders || ordersError) return;
+    let lastScroll = window.scrollY;
+    const handleScroll = () => {
+      const position = window.scrollY;
+      const movingDown = position > lastScroll;
+      lastScroll = position;
+      const bottom = ordersSentinelRef.current?.getBoundingClientRect();
+      if (movingDown && bottom && bottom.top <= window.innerHeight + 160) void handleLoadMoreOrders();
     };
-  }, [activeAdminTab, visibleOrdersCount, filteredOrders.length]);
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [activeAdminTab, canLoadMoreOrders, ordersError, handleLoadMoreOrders]);
 
   // Helper to sort users with the most recently registered on top (el último registrado arriba)
   const sortUsersNewestFirst = (list: AdminUser[]): AdminUser[] => {
@@ -2817,7 +2782,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 <span>Mapa en Vivo</span>
               </button>
               <button 
-                onClick={loadAdminData}
+                onClick={handleRefreshAdminData}
                 title="Recargar"
                 className="flex items-center gap-1.5 px-3 py-2 bg-gray-900/80 border border-gray-800/80 rounded-xl text-xs font-bold font-mono text-gray-300 transition"
               >
@@ -2880,7 +2845,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                 </button>
 
                 <button 
-                  onClick={loadAdminData}
+                  onClick={handleRefreshAdminData}
                   title="Recargar"
                   className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gray-900/60 hover:bg-gray-850 border border-gray-800/60 rounded-xl text-xs font-bold font-mono text-gray-300 transition cursor-pointer"
                 >
@@ -3477,10 +3442,19 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
           <div className="animate-fade-in">
             <AdminDriversManager />
           </div>
+        ) : isOrderReport && reportStatus !== 'ready' ? (
+          <div className="py-8 text-center text-xs text-gray-400">
+            {reportStatus === 'error' ? (
+              <>
+                <p role="alert">No se pudo cargar el historial de pedidos.</p>
+                <button type="button" className="mt-2 text-indigo-300 underline" onClick={() => setReportAttempt(attempt => attempt + 1)}>Reintentar</button>
+              </>
+            ) : <p role="status">Cargando historial de pedidos…</p>}
+          </div>
         ) : activeAdminTab === 'sales_stats' ? (
           <div className="animate-fade-in">
             <AdminSalesStats
-              allOrders={allOrders}
+              allOrders={reportOrders}
               storesMap={storesMap}
               allStores={allStoresList}
               onGoToOrders={(storeUid) => {
@@ -3492,7 +3466,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ) : activeAdminTab === 'top_customers' ? (
           <div className="animate-fade-in">
             <AdminCustomersRanking
-              allOrders={allOrders}
+              allOrders={reportOrders}
               storesMap={storesMap}
               allStores={allStoresList}
               onGoToOrders={(storeUid) => {
@@ -3507,7 +3481,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               storesMap={storesMap}
               allStores={allStoresList}
               users={users}
-              allOrders={allOrders}
+              allOrders={reportOrders}
               onOpenScheduleModal={handleOpenScheduleModal}
               onSelectStoreOrders={(storeUid) => {
                 setSelectedOrderStoreFilter(storeUid);
@@ -4983,7 +4957,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             )}
 
             {/* New Incoming Order Floating Banner - Strictly only rendered when there are pending orders */}
-            {newIncomingOrderAlert && pendingOrdersCount > 0 && (
+            {newIncomingOrderAlert && (
               <div className="bg-gradient-to-r from-emerald-950/95 via-emerald-900/85 to-emerald-950/95 border-2 border-emerald-500/60 p-3.5 sm:p-4 rounded-2xl shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 animate-pulse">
                 <div className="flex items-start gap-3 min-w-0 flex-1">
                   <div className="p-2 sm:p-2.5 bg-emerald-500/20 rounded-xl text-emerald-400 border border-emerald-500/40 shrink-0 mt-0.5">
@@ -5053,28 +5027,28 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Total Pedidos (Últimos 30 días)</span>
                 <span className="text-xl font-black text-white">
-                  {ordersLast30Days.length}
+                  {orderSummary?.total ?? '—'}
                   {(selectedOrderStoreFilter !== 'all' || selectedOrderStatusFilter !== 'all' || Boolean(orderSearchQuery.trim())) && (
-                    <span className="text-xs text-gray-500 font-normal"> ({filteredOrders.length} en vista)</span>
+                    <span className="text-xs text-gray-500 font-normal"> ({displayedOrders.length} en vista)</span>
                   )}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Venta Total Estimada (Últimos 30 días)</span>
                 <span className="text-xl font-black text-emerald-400">
-                  ${ordersLast30Days.reduce((sum, o) => sum + (o.totalAmount || 0), 0).toLocaleString('es-CO')} COP
+                  {orderSummary ? `$${(orderSummary.sales ?? 0).toLocaleString('es-CO')} COP` : '—'}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Pendientes (Últimos 30 días)</span>
                 <span className="text-xl font-black text-amber-400">
-                  {pendingOrdersLast30DaysCount}
+                  {orderSummary?.pendingRecent ?? '—'}
                 </span>
               </div>
               <div className="bg-gray-950/60 border border-gray-900 p-4 rounded-xl">
                 <span className="text-[10px] font-bold text-gray-500 uppercase block">Entregados (Últimos 30 días)</span>
                 <span className="text-xl font-black text-emerald-400">
-                  {ordersLast30Days.filter(o => o.status === 'delivered').length}
+                  {orderSummary?.delivered ?? '—'}
                 </span>
               </div>
             </div>
@@ -5139,10 +5113,14 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
               </div>
             </div>
 
-            {filteredOrders.length === 0 ? (
-              <div className="text-center py-16 text-gray-500 font-semibold text-xs border border-dashed border-gray-800 rounded-2xl">
-                No se encontraron pedidos correspondientes a los filtros actuales.
-              </div>
+            {displayedOrders.length === 0 ? (
+              !ordersLoading && !ordersError && (
+                <div className="text-center py-16 text-gray-500 font-semibold text-xs border border-dashed border-gray-800 rounded-2xl">
+                  {hasMoreOrders
+                    ? 'Sin coincidencias en los pedidos cargados. Desplázate o carga los siguientes 4 pedidos.'
+                    : 'No se encontraron pedidos correspondientes a los filtros actuales.'}
+                </div>
+              )
             ) : (
               <div className="w-full space-y-4">
                 {/* Mobile View: Cards matching exact phone design from screenshot (md:hidden) */}
@@ -5745,40 +5723,31 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     </tbody>
                   </table>
                 </div>
-
-                {/* Sentinel and Progressive Load Controls for Orders */}
-                <div 
-                  ref={ordersSentinelRef} 
-                  className="py-6 flex flex-col items-center justify-center gap-2 border-t border-gray-850/60 mt-2"
-                >
-                  {displayedOrders.length < filteredOrders.length ? (
-                    <div className="flex flex-col sm:flex-row items-center gap-3">
-                      <span className="text-[11px] text-gray-400 font-medium flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping inline-block" />
-                        Mostrando <strong className="text-white font-mono">{displayedOrders.length}</strong> de <strong className="text-white font-mono">{filteredOrders.length}</strong> pedidos (Carga automática al hacer scroll)
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setVisibleOrdersCount(prev => Math.min(prev + 6, filteredOrders.length))}
-                        className="px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 font-extrabold text-xs rounded-xl border border-indigo-500/30 transition duration-150 cursor-pointer flex items-center gap-2 shadow-sm hover:scale-[1.01] active:scale-98"
-                      >
-                        <Download className="w-4 h-4" />
-                        <span>Cargar siguientes 6 pedidos</span>
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="text-[11px] font-bold text-gray-400 bg-gray-950/80 px-4 py-2 rounded-xl border border-gray-850 flex items-center gap-2">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>✓ Todos los pedidos sincronizados ({filteredOrders.length} pedidos)</span>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
+
+            <div ref={ordersSentinelRef} className="py-6 flex flex-col items-center justify-center gap-2 border-t border-gray-850/60 mt-2">
+              {ordersError ? (
+                <>
+                  <p role="alert" className="text-xs text-red-300">{ordersError}</p>
+                  <button type="button" onClick={() => void handleLoadMoreOrders(true)} className="text-xs font-bold text-indigo-300 underline">Reintentar</button>
+                </>
+              ) : ordersLoading ? (
+                <p role="status" className="text-xs text-gray-400">Cargando pedidos…</p>
+              ) : canLoadMoreOrders ? (
+                <button type="button" onClick={() => void handleLoadMoreOrders()}
+                  className="px-4 py-2 bg-indigo-600/20 hover:bg-indigo-600/35 text-indigo-300 font-extrabold text-xs rounded-xl border border-indigo-500/30 flex items-center gap-2">
+                  <Download className="w-4 h-4" />
+                  Cargar siguientes 4 pedidos
+                </button>
+              ) : displayedOrders.length > 0 ? (
+                <p className="text-[11px] font-bold text-gray-400">Todos los pedidos de esta vista están cargados ({displayedOrders.length}).</p>
+              ) : null}
+            </div>
           </div>
         ) : activeAdminTab === 'order_times' ? (
           <AdminOrderTimesManager
-            orders={allOrders}
+            orders={reportOrders}
             storesMap={storesMap}
             allStoresList={allStoresList}
             onViewOrder={(order) => setViewingOrder(order)}
