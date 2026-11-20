@@ -83,6 +83,7 @@ import {
 import StoreQRModal from './StoreQRModal';
 import { MapLocationPickerModal } from './MapLocationPickerModal';
 import { RestaurantDataTab } from './RestaurantDataTab';
+import WhatsAppPaymentNotice from './WhatsAppPaymentNotice';
 
 const ProveedoresModule = React.lazy(() => import('../modules/proveedores/App'));
 import { 
@@ -3093,8 +3094,12 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       </div>
                                       <div className="text-[10px] text-gray-550">{order.customerPhone}</div>
                                     </td>
-                                    <td className="py-3.5 px-2 text-[10px] uppercase font-bold text-gray-500 text-ellipsis max-w-[120px] truncate">
-                                      {order.paymentMethod === 'whatsapp' ? '🟢 WhatsApp' : order.paymentMethod === 'transfer' ? '🏦 Transf.' : '🚚 Pago Entrega'}
+                                    <td className="py-3.5 px-2 text-[10px] uppercase font-bold text-gray-500 max-w-[120px]">
+                                      {order.paymentMethod === 'whatsapp' ? (
+                                        <WhatsAppPaymentNotice paymentMethod={order.paymentMethod} />
+                                      ) : (
+                                        <span className="block truncate">{order.paymentMethod === 'transfer' ? '🏦 Transf.' : '🚚 Pago Entrega'}</span>
+                                      )}
                                     </td>
                                     <td className="py-3.5 px-4 text-center">
                                       <span className={`px-2 py-1 text-[9px] font-black uppercase rounded-lg border ${state.bg}`}>
@@ -5344,6 +5349,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                         )}
                                       </div>
                                       <div className="text-[10px] text-gray-500 truncate">{order.customerAddress || 'Retiro local'}</div>
+                                      <WhatsAppPaymentNotice paymentMethod={order.paymentMethod} />
                                       {order.deliveryDriverName ? (
                                         <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded text-[9px] font-bold" title={`Domiciliario RYYCO: ${order.deliveryDriverName} (${order.deliveryDriverPhone})`}>
                                           <Bike className="w-3 h-3 text-emerald-400 shrink-0" />
@@ -5492,6 +5498,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                                       )}
                                     </div>
                                     <div className="text-[10.5px] text-gray-500 leading-normal">{order.customerAddress || 'Retiro local'}</div>
+                                    <WhatsAppPaymentNotice paymentMethod={order.paymentMethod} />
                                     <div className="text-[10.5px] text-gray-400 font-medium flex items-center gap-1.5 flex-wrap">
                                       <span>Fecha: {new Date(order.createdAt).toLocaleDateString('es-CO')}</span>
                                       <span className="text-gray-600">•</span>
@@ -7108,6 +7115,7 @@ export default function Dashboard({ userProfile, onLogout, onNavigateAdmin }: Da
                 <div className="flex justify-between"><span className="text-gray-550">Email:</span> <span className="text-white">{viewingOrder.customerEmail}</span></div>
               )}
               <div className="flex justify-between"><span className="text-gray-550">Dirección:</span> <span className="text-white">{viewingOrder.customerAddress}</span></div>
+              <WhatsAppPaymentNotice paymentMethod={viewingOrder.paymentMethod} />
               {viewingOrder.notes && (
                 <div className="pt-2 border-t border-gray-900/80 mt-1"><span className="text-gray-550 italic">Notas: {viewingOrder.notes}</span></div>
               )}
