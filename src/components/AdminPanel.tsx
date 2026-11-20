@@ -6923,9 +6923,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                   </div>
                 )}
 
-                {/* RYYCO Official Order Times & Lifecycle Timeline */}
-                <OrderTimeTimeline order={viewingOrder} />
-
                 {/* Items List */}
                 <div className="p-4 bg-gray-900/60 border border-gray-850 rounded-2xl space-y-2.5">
                   <div className="flex items-center justify-between">
@@ -7038,6 +7035,8 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
                     );
                   })()}
                 </div>
+
+                <OrderTimeTimeline order={viewingOrder} />
               </div>
 
               {/* Modal Actions Footer */}
