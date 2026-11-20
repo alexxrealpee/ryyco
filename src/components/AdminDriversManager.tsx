@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import { 
   Bike, 
   Car, 
@@ -37,7 +37,8 @@ import {
   EyeOff,
   X
 } from 'lucide-react';
-import { fetchAllDrivers, updateDriverStatus, deleteDriverAccount } from '../lib/firebase';
+import { ADMIN_DRIVERS_PAGE_SIZE, fetchAdminDriversPage, updateDriverStatus, deleteDriverAccount } from '../lib/firebase';
+import type { QueryDocumentSnapshot } from 'firebase/firestore';
 import { DriverProfile, DriverStatus } from '../types';
 import { buildDriverRankings, selectPerformanceDrivers, type DriverPerformance, type DriverPerformanceSort } from '../lib/driverPerformance';
 import { fetchDriverPerformance } from '../lib/driverPerformanceData';
@@ -64,16 +65,29 @@ export default function AdminDriversManager() {
   const [performanceSort, setPerformanceSort] = useState<DriverPerformanceSort>('default');
   const [ascendingDeliveries, setAscendingDeliveries] = useState(false);
   const [performance, setPerformance] = useState<Record<string, DriverPerformance>>({});
-  const [performanceLoading, setPerformanceLoading] = useState(false);
+  const [pendingStats, setPendingStats] = useState(0);
+  const performanceLoading = pendingStats > 0;
   const [performanceErrors, setPerformanceErrors] = useState<string[]>([]);
   const [loadError, setLoadError] = useState('');
   const [showRanking, setShowRanking] = useState(false);
   const [minimumRatings, setMinimumRatings] = useState(5);
   const loadGeneration = useRef(0);
+  const pageCursor = useRef<QueryDocumentSnapshot | null>(null);
+  const pageInFlight = useRef(false);
+  const pageEnd = useRef<HTMLDivElement>(null);
+  const [hasMoreDrivers, setHasMoreDrivers] = useState(false);
+  const statsQueue = useRef(Promise.resolve());
+  const [rankingDrivers, setRankingDrivers] = useState<DriverProfile[]>([]);
+  const [rankingStats, setRankingStats] = useState<Record<string, DriverPerformance>>({});
+  const [rankingState, setRankingState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [rankingAttempt, setRankingAttempt] = useState(0);
 
   // FCM Driver Push Tokens State
   const [showFcmModal, setShowFcmModal] = useState<boolean>(false);
   const [driverTokens, setDriverTokens] = useState<DriverFCMTokenRecord[]>([]);
+  const [driverIdsWithPush, setDriverIdsWithPush] = useState<Set<string>>(new Set());
+  const hasFullTokenList = useRef(false);
+  const tokenRevision = useRef(0);
   const [loadingTokens, setLoadingTokens] = useState<boolean>(false);
   const [fcmFeedback, setFcmFeedback] = useState<string>('');
   const [broadcastTitle, setBroadcastTitle] = useState<string>('');
@@ -104,57 +118,130 @@ export default function AdminDriversManager() {
   const [actionLoading, setActionLoading] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
-  useEffect(() => {
-    loadDrivers();
-    loadDriverTokens();
-    return () => { loadGeneration.current += 1; };
-  }, []);
-
-  const loadDrivers = async (forceStats = false) => {
-    const generation = ++loadGeneration.current;
+  const loadDriverPage = useCallback(async (reset = false, forceStats = false) => {
+    if (!reset && (pageInFlight.current || !pageCursor.current)) return;
+    if (reset) {
+      loadGeneration.current += 1;
+      pageCursor.current = null;
+      setDrivers([]);
+      setPerformance({});
+      setPerformanceErrors([]);
+      setPendingStats(0);
+      setHasMoreDrivers(false);
+    }
+    const generation = loadGeneration.current;
+    pageInFlight.current = true;
     setLoading(true);
     setLoadError('');
     try {
-      const data = await fetchAllDrivers(false);
+      const page = await fetchAdminDriversPage(pageCursor.current);
       if (generation !== loadGeneration.current) return;
-      setDrivers(data);
-      setLoading(false);
-      setPerformanceLoading(true);
-      setPerformanceErrors([]);
-      setPerformance({});
-      // Four workers bound network concurrency. Cards appear before historical statistics.
-      let next = 0;
-      await Promise.all(Array.from({ length: Math.min(4, data.length) }, async () => {
-        while (next < data.length && generation === loadGeneration.current) {
-          const driver = data[next++];
-          try {
-            const stats = await fetchDriverPerformance(driver.id, forceStats);
-            if (generation === loadGeneration.current) setPerformance(previous => ({ ...previous, [driver.id]: stats }));
-          } catch {
-            if (generation === loadGeneration.current) setPerformanceErrors(previous => [...previous, driver.id]);
-          }
+      pageCursor.current = page.hasMore ? page.cursor : null;
+      setHasMoreDrivers(Boolean(pageCursor.current));
+      setDrivers(previous => {
+        const merged = new Map(previous.map(driver => [driver.id, driver]));
+        page.drivers.forEach(driver => merged.set(driver.id, driver));
+        return Array.from(merged.values());
+      });
+
+      if (page.drivers.length) {
+        setPendingStats(count => count + page.drivers.length);
+        statsQueue.current = statsQueue.current.then(async () => {
+          if (generation !== loadGeneration.current) return;
+          await Promise.all(page.drivers.map(async ({ id }) => {
+            try {
+              const stats = await fetchDriverPerformance(id, forceStats);
+              if (generation === loadGeneration.current) setPerformance(previous => ({ ...previous, [id]: stats }));
+            } catch {
+              if (generation === loadGeneration.current) setPerformanceErrors(previous => [...previous, id]);
+            } finally {
+              if (generation === loadGeneration.current) setPendingStats(count => count - 1);
+            }
+          }));
+        });
+
+        if (!hasFullTokenList.current) {
+          const revision = tokenRevision.current;
+          void fetchDriverFCMTokens(page.drivers.map(driver => driver.id)).then(tokens => {
+            if (generation === loadGeneration.current && revision === tokenRevision.current) {
+              setDriverIdsWithPush(previous => new Set([...previous, ...tokens.map(token => token.driverId)]));
+            }
+          });
         }
-      }));
-    } catch (e) {
-      console.error("Error loading drivers:", e);
-      if (generation === loadGeneration.current) setLoadError('No se pudieron cargar los domiciliarios. Pulsa Actualizar para reintentar.');
+      }
+    } catch (error) {
+      console.warn('No se pudo cargar la página de domiciliarios:', error);
+      if (generation === loadGeneration.current) setLoadError('No se pudieron cargar los domiciliarios.');
     } finally {
       if (generation === loadGeneration.current) {
+        pageInFlight.current = false;
         setLoading(false);
-        setPerformanceLoading(false);
       }
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    void loadDriverPage(true);
+    return () => { loadGeneration.current += 1; };
+  }, [loadDriverPage]);
+
+  useEffect(() => {
+    if (!hasMoreDrivers || loading || loadError || showFcmModal || showDriversMap || previewImage || rejectionTarget) return;
+    let previousPosition = window.scrollY;
+    const onScroll = () => {
+      const position = window.scrollY;
+      const movingDown = position > previousPosition;
+      previousPosition = position;
+      const bottom = pageEnd.current?.getBoundingClientRect();
+      if (movingDown && bottom && bottom.top <= window.innerHeight + 160) void loadDriverPage();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [hasMoreDrivers, loading, loadError, loadDriverPage, showFcmModal, showDriversMap, previewImage, rejectionTarget]);
+
+  useEffect(() => {
+    if (!showRanking) return;
+    let active = true;
+    const loadRanking = async () => {
+      setRankingState('loading');
+      try {
+        const roster: DriverProfile[] = [];
+        const results: Record<string, DriverPerformance> = {};
+        let cursor: QueryDocumentSnapshot | null = null;
+        do {
+          const page = await fetchAdminDriversPage(cursor);
+          if (!active) return;
+          roster.push(...page.drivers);
+          await Promise.all(page.drivers.filter(driver => driver.status === 'approved').map(async ({ id }) => {
+            results[id] = await fetchDriverPerformance(id, rankingAttempt > 0);
+          }));
+          cursor = page.hasMore ? page.cursor : null;
+        } while (active && cursor);
+        if (!active) return;
+        setRankingDrivers(roster);
+        setRankingStats(results);
+        setRankingState('ready');
+      } catch {
+        if (active) setRankingState('error');
+      }
+    };
+    void loadRanking();
+    return () => { active = false; };
+  }, [showRanking, rankingAttempt]);
 
   const loadDriverTokens = async () => {
+    const revision = ++tokenRevision.current;
     setLoadingTokens(true);
     try {
       const tokens = await fetchDriverFCMTokens();
+      if (revision !== tokenRevision.current) return;
+      hasFullTokenList.current = true;
       setDriverTokens(tokens);
+      setDriverIdsWithPush(new Set(tokens.map(token => token.driverId)));
     } catch (e) {
       console.warn("Error cargando tokens de domiciliarios:", e);
     } finally {
-      setLoadingTokens(false);
+      if (revision === tokenRevision.current) setLoadingTokens(false);
     }
   };
 
@@ -212,11 +299,19 @@ export default function AdminDriversManager() {
     }
   };
 
-  const handleApprove = async (driverId: string) => {
+  const handleStatusChange = async (driverId: string, status: DriverStatus, reason?: string) => {
     setActionLoading(true);
     try {
-      await updateDriverStatus(driverId, 'approved');
-      await loadDrivers();
+      const updates = await updateDriverStatus(driverId, status, reason);
+      const applyUpdates = (previous: DriverProfile[]) =>
+        previous.map(driver => driver.id === driverId ? { ...driver, ...updates } : driver);
+      setDrivers(applyUpdates);
+      setRankingDrivers(applyUpdates);
+      if (showRanking) setRankingAttempt(attempt => attempt + 1);
+      if (status === 'rejected') {
+        setRejectionTarget(null);
+        setRejectionReason('');
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -224,31 +319,8 @@ export default function AdminDriversManager() {
     }
   };
 
-  const handleSuspend = async (driverId: string) => {
-    setActionLoading(true);
-    try {
-      await updateDriverStatus(driverId, 'suspended');
-      await loadDrivers();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleConfirmRejection = async () => {
-    if (!rejectionTarget) return;
-    setActionLoading(true);
-    try {
-      await updateDriverStatus(rejectionTarget.id, 'rejected', rejectionReason.trim());
-      setRejectionTarget(null);
-      setRejectionReason('');
-      await loadDrivers();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setActionLoading(false);
-    }
+  const handleConfirmRejection = () => {
+    if (rejectionTarget) void handleStatusChange(rejectionTarget.id, 'rejected', rejectionReason.trim());
   };
 
   const handleDelete = async (driverId: string) => {
@@ -256,7 +328,9 @@ export default function AdminDriversManager() {
     setActionLoading(true);
     try {
       await deleteDriverAccount(driverId);
-      await loadDrivers();
+      setDrivers(previous => previous.filter(driver => driver.id !== driverId));
+      setRankingDrivers(previous => previous.filter(driver => driver.id !== driverId));
+      if (showRanking) setRankingAttempt(attempt => attempt + 1);
     } catch (e) {
       console.error(e);
     } finally {
@@ -266,7 +340,13 @@ export default function AdminDriversManager() {
 
   const filteredDrivers = useMemo(() => selectPerformanceDrivers(drivers, performance, searchTerm, statusFilter, availabilityFilter, performanceSort, ascendingDeliveries),
     [drivers, performance, searchTerm, statusFilter, availabilityFilter, performanceSort, ascendingDeliveries]);
-  const rankings = useMemo(() => buildDriverRankings(filteredDrivers, performance, minimumRatings), [filteredDrivers, performance, minimumRatings]);
+  const rankings = useMemo(() => {
+    const matched = selectPerformanceDrivers(rankingDrivers, rankingStats, searchTerm, statusFilter, availabilityFilter, 'default');
+    return buildDriverRankings(matched, rankingStats, minimumRatings);
+  }, [rankingDrivers, rankingStats, searchTerm, statusFilter, availabilityFilter, minimumRatings]);
+  const pushRecipients = Array.from(new Map<string, DriverFCMTokenRecord>(
+    driverTokens.filter(token => token.driverId).map(token => [token.driverId, token])
+  ).values());
   const oldestStats = Math.min(...Object.values<DriverPerformance>(performance).map(stats => stats.checkedAt));
 
   const getStatusBadge = (status: DriverStatus) => {
@@ -324,15 +404,16 @@ export default function AdminDriversManager() {
             title="Administrar notificaciones Push con Firebase para domiciliarios"
           >
             <Bell className="w-3.5 h-3.5 text-[#E63946] animate-bounce" />
-            <span>Alertas PUSH ({driverTokens.length})</span>
+            <span>Alertas PUSH{hasFullTokenList.current && ` (${driverTokens.length})`}</span>
           </button>
 
           <button
             onClick={() => {
-              loadDrivers(true);
-              loadDriverTokens();
+              void loadDriverPage(true, true);
+              if (hasFullTokenList.current) void loadDriverTokens();
+              if (showRanking) setRankingAttempt(attempt => attempt + 1);
             }}
-            disabled={loading || performanceLoading}
+            disabled={loading}
             className="px-4 py-2 bg-[#090B12] hover:bg-[#232B3A] text-white font-bold text-xs rounded-xl border border-[#232B3A] transition flex items-center gap-2 cursor-pointer"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -464,6 +545,8 @@ export default function AdminDriversManager() {
             </button>
           </div>
 
+          {hasMoreDrivers && <span className="text-[10px] text-gray-500">Conteos de perfiles cargados</span>}
+
           {/* Status Filter Toggle */}
           <div className="flex flex-wrap items-center gap-1">
             {['all', 'pending', 'approved', 'rejected', 'suspended'].map((st) => (
@@ -495,7 +578,7 @@ export default function AdminDriversManager() {
 
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Ordenar domiciliarios por rendimiento">
-          <span className="text-xs font-bold text-gray-400">Ordenar:</span>
+          <span className="text-xs font-bold text-gray-400">Ordenar perfiles cargados:</span>
           {([
             ['default', 'Registro'], ['deliveries', '🏆 Más pedidos'], ['rating', '⭐ Mejores calificaciones'],
           ] as const).map(([value, label]) => (
@@ -534,15 +617,19 @@ export default function AdminDriversManager() {
           </label>
         </div>
         <p className="text-xs text-gray-400">Solo aprobados que coinciden con los filtros. La valoración del ranking combina el promedio real con el promedio de este grupo, con un peso de 10 evaluaciones. La puntuación ajustada no es una calificación del cliente ni cambia la asignación de pedidos.</p>
-        {performanceLoading || loadError || performanceErrors.length > 0 ? <p className="text-xs text-amber-400">
-          {performanceLoading ? 'El ranking estará disponible cuando termine la consulta.' : 'Actualiza las estadísticas para mostrar un ranking completo.'}
-        </p> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {rankingState !== 'ready' ? (
+          <p className="text-xs text-amber-400" role={rankingState === 'error' ? 'alert' : 'status'}>
+            {rankingState === 'loading' ? 'Consultando el ranking completo…' : (
+              <>No se pudo verificar el ranking. <button type="button" className="underline" onClick={() => setRankingAttempt(attempt => attempt + 1)}>Reintentar</button></>
+            )}
+          </p>
+        ) : <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div className="bg-gray-950 border border-gray-800 rounded-xl p-3">
             <h4 className="text-sm font-bold text-amber-400 mb-3">🏆 Top 10 · Entregas completadas</h4>
             {rankings.deliveries.length === 0 ? <p className="text-xs text-gray-400">No hay entregas verificadas para estos filtros.</p> :
               <ol className="space-y-3">{rankings.deliveries.map((driver, index) => <li key={driver.id} className="text-xs flex justify-between gap-3">
                 <span className="min-w-0 break-words text-white">{index + 1}. {driver.firstName} {driver.lastName}</span>
-                <span className="text-emerald-400 shrink-0">{performance[driver.id].completed} entregas</span>
+                <span className="text-emerald-400 shrink-0">{rankingStats[driver.id].completed} entregas</span>
               </li>)}</ol>}
           </div>
           <div className="bg-gray-950 border border-gray-800 rounded-xl p-3">
@@ -550,22 +637,25 @@ export default function AdminDriversManager() {
             {rankings.ratings.length === 0 ? <p className="text-xs text-gray-400">Nadie cumple el mínimo de {minimumRatings} evaluaciones para estos filtros.</p> :
               <ol className="space-y-3">{rankings.ratings.map(({ driver, score }, index) => <li key={driver.id} className="text-xs space-y-1">
                 <div className="flex justify-between gap-3"><span className="min-w-0 break-words text-white">{index + 1}. {driver.firstName} {driver.lastName}</span><span className="text-amber-400 shrink-0">Índice: {score.toFixed(2)}</span></div>
-                <p className="text-gray-400">Promedio real: {performance[driver.id].average!.toFixed(2)}/5 · {performance[driver.id].ratingCount} evaluaciones</p>
+                <p className="text-gray-400">Promedio real: {rankingStats[driver.id].average!.toFixed(2)}/5 · {rankingStats[driver.id].ratingCount} evaluaciones</p>
               </li>)}</ol>}
           </div>
         </div>}
       </section>}
 
-      {loadError && <p role="alert" className="text-sm text-rose-400">{loadError}</p>}
       {/* Drivers List Grid / Cards */}
-      {loading ? (
-        <div className="text-center py-12 text-gray-500 text-xs">Cargando domiciliarios...</div>
-      ) : filteredDrivers.length === 0 ? (
-        <div className="bg-[#0d1322] border border-gray-850 rounded-2xl p-12 text-center text-gray-400 space-y-2">
-          <Bike className="w-10 h-10 text-gray-700 mx-auto" />
-          <p className="text-sm font-bold text-gray-300">No se encontraron domiciliarios</p>
-          <p className="text-xs text-gray-500">Prueba ajustando los filtros de búsqueda.</p>
-        </div>
+      {filteredDrivers.length === 0 ? (
+        !loading && !loadError && (
+          <div className="bg-[#0d1322] border border-gray-850 rounded-2xl p-12 text-center text-gray-400 space-y-2">
+            <Bike className="w-10 h-10 text-gray-700 mx-auto" />
+            <p className="text-sm font-bold text-gray-300">
+              {hasMoreDrivers ? 'Sin coincidencias en los perfiles cargados' : 'No se encontraron domiciliarios'}
+            </p>
+            <p className="text-xs text-gray-500">
+              {hasMoreDrivers ? 'Carga los siguientes domiciliarios para ampliar la búsqueda.' : 'Prueba ajustando los filtros de búsqueda.'}
+            </p>
+          </div>
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredDrivers.map((dr) => (
@@ -579,6 +669,8 @@ export default function AdminDriversManager() {
                   <img
                     src={dr.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(dr.firstName)}`}
                     alt="Foto Domiciliario"
+                    loading="lazy"
+                    decoding="async"
                     className="w-12 h-12 rounded-xl object-cover border border-emerald-500/30 bg-gray-950"
                   />
                   <div>
@@ -724,7 +816,7 @@ export default function AdminDriversManager() {
 
               {/* FCM Push Token Status for this driver */}
               <div className="pt-2 border-t border-gray-800/80 flex items-center justify-between text-[11px]">
-                {driverTokens.some(t => t.driverId === dr.id) ? (
+                {driverIdsWithPush.has(dr.id) ? (
                   <div className="flex items-center justify-between w-full">
                     <span className="inline-flex items-center gap-1 text-emerald-400 font-bold">
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -752,7 +844,7 @@ export default function AdminDriversManager() {
                 {dr.status === 'pending' && (
                   <>
                     <button
-                      onClick={() => handleApprove(dr.id)}
+                      onClick={() => handleStatusChange(dr.id, 'approved')}
                       disabled={actionLoading}
                       className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
                     >
@@ -772,7 +864,7 @@ export default function AdminDriversManager() {
 
                 {dr.status === 'approved' && (
                   <button
-                    onClick={() => handleSuspend(dr.id)}
+                    onClick={() => handleStatusChange(dr.id, 'suspended')}
                     disabled={actionLoading}
                     className="flex-1 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 font-bold text-xs rounded-xl border border-purple-500/30 transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
@@ -783,7 +875,7 @@ export default function AdminDriversManager() {
 
                 {(dr.status === 'suspended' || dr.status === 'rejected') && (
                   <button
-                    onClick={() => handleApprove(dr.id)}
+                    onClick={() => handleStatusChange(dr.id, 'approved')}
                     disabled={actionLoading}
                     className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-black text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5"
                   >
@@ -804,6 +896,22 @@ export default function AdminDriversManager() {
           ))}
         </div>
       )}
+
+      <div ref={pageEnd} className="flex flex-col items-center gap-2 py-4">
+        {loadError ? (
+          <>
+            <p role="alert" className="text-sm text-rose-400">{loadError}</p>
+            <button type="button" className="text-xs font-bold text-emerald-400 underline" onClick={() => void loadDriverPage(!pageCursor.current)}>Reintentar</button>
+          </>
+        ) : loading ? (
+          <p role="status" className="text-xs text-gray-400">Cargando domiciliarios…</p>
+        ) : hasMoreDrivers ? (
+          <button type="button" onClick={() => void loadDriverPage()}
+            className="rounded-xl border border-gray-800 bg-gray-950 px-4 py-2 text-xs font-bold text-white hover:border-emerald-500">
+            Cargar siguientes {ADMIN_DRIVERS_PAGE_SIZE} domiciliarios
+          </button>
+        ) : null}
+      </div>
 
       {/* Rejection Modal */}
       {rejectionTarget && (
@@ -943,9 +1051,9 @@ export default function AdminDriversManager() {
                     className="w-full bg-[#0d1322] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#E63946]"
                   >
                     <option value="all">📢 Todos los domiciliarios ({driverTokens.length} dispositivos)</option>
-                    {drivers.map(dr => (
-                      <option key={dr.id} value={dr.id}>
-                        🛵 {dr.firstName} {dr.lastName} ({dr.vehicleType}) {dr.isAvailable ? '• Online' : ''}
+                    {pushRecipients.map(recipient => (
+                      <option key={recipient.driverId} value={recipient.driverId}>
+                        🛵 {recipient.driverName || 'Domiciliario'}{recipient.vehicleType ? ` (${recipient.vehicleType})` : ''}
                       </option>
                     ))}
                   </select>
