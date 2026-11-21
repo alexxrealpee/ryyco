@@ -369,8 +369,11 @@ export function syncConfirmedCatalogFromPage(
   }
 
   rebuildAndPublishFromLiveMaps();
-  // Ensure real-time onSnapshot listeners are attached non-blockingly
-  initClientCatalogManager();
+  // RENDIMIENTO: aquí ya NO se abren las escuchas en tiempo real de las colecciones
+  // completas `profiles` y `products` ni se descarga /api/catalog/available.
+  // Solo las usa el asistente de voz, que llama a initClientCatalogManager() al abrirse.
+  // Abrirlas en la página de inicio descargaba todo el catálogo (con fotos base64)
+  // a cada visitante, aunque nunca usara el asistente.
 }
 
 /**

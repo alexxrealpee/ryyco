@@ -48,7 +48,8 @@
     <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700;1,400&family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" />
+    <!-- Outfit y Plus Jakarta Sans solo los usa el módulo de proveedores, que las carga en proveedores-fonts.css -->
     <link rel="preload" href="/ryyco_combo.webp" as="image" fetchpriority="high" />
     <script>
       // Start independent, small metadata requests while the application bundle downloads.
@@ -139,8 +140,20 @@
         var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
         ;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
 
-        ttq.load('DBHN4D3C77U4VUSMD9QG');
-        ttq.page();
+        // RENDIMIENTO: el píxel se descarga cuando la página ya cargó y el navegador
+        // está libre (igual que gtag). Los eventos llamados antes quedan en cola.
+        function loadTiktokPixel() {
+          if (w.__TTQ_LOADED__) return;
+          w.__TTQ_LOADED__ = true;
+          ttq.load('DBHN4D3C77U4VUSMD9QG');
+          ttq.page();
+        }
+        function scheduleTiktokPixel() {
+          if ('requestIdleCallback' in w) w.requestIdleCallback(function() { setTimeout(loadTiktokPixel, 1500); }, { timeout: 4000 });
+          else setTimeout(loadTiktokPixel, 2500);
+        }
+        if (d.readyState === 'complete') scheduleTiktokPixel();
+        else w.addEventListener('load', scheduleTiktokPixel, { once: true });
       }(window, document, 'ttq');
     </script>
     <!-- TikTok Pixel Code End -->
