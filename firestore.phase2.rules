@@ -1,0 +1,578 @@
+rules_version = '2';
+// =====================================================================
+// RYYCO — Reglas de Firestore (FASE 2)
+// ---------------------------------------------------------------------
+// Pedidos, chats, clientes y RYYCOS privados. Requiere:
+//   - la versión de la app que guarda customerUid en los pedidos,
+//   - las Cloud Functions ryyco* desplegadas,
+//   - scripts/backfill-order-owners.mjs ejecutado.
+// Ver PLAN-SEGURIDAD.md.
+//
+// Probar primero en el emulador antes de publicar:
+//   firebase emulators:start --only firestore
+// Publicar:
+//   firebase deploy --only firestore:rules --project studio-9002217802-13e05
+// =====================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------
+    // Funciones comunes
+    // ---------------------------------------------------------------
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    // CAMBIO: ya NO se confía en profiles/{uid}.role ni users/{uid}.role,
+    // porque el dueño de esos documentos podía escribirse role: 'admin'
+    // y volverse administrador. Solo cuentan: custom claim, el correo
+    // principal y la lista adminEmails de settings (que solo un admin edita).
+    function isAdmin() {
+      return isAuth() && (
+        request.auth.token.get('admin', false) == true ||
+        (request.auth.token.get('email_verified', false) == true && (
+          request.auth.token.get('email', '').lower() == 'alexxrealpee@gmail.com' ||
+          (exists(/databases/$(database)/documents/settings/system_settings) &&
+           request.auth.token.get('email', '').lower() in
+             get(/databases/$(database)/documents/settings/system_settings).data.get('adminEmails', []))
+        ))
+      );
+    }
+
+    // Se mantiene por compatibilidad: ahora es igual a isAdmin().
+    function driverAdmin() {
+      return isAdmin();
+    }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // ---------------------------------------------------------------
+    // Domiciliarios (sin cambios de lógica)
+    // ---------------------------------------------------------------
+    function verifiedDriverEmail(email) {
+      return isAuth() && request.auth.token.get('email_verified', false) == true &&
+        request.auth.token.firebase.sign_in_provider == 'google.com' &&
+        request.auth.token.get('email', '').lower() == email.lower();
+    }
+    function ownsDriver(driverId, data) {
+      return isAuth() && (verifiedDriverEmail(data.get('email', '')) ||
+        (request.auth.token.firebase.sign_in_provider == 'custom' && request.auth.uid == driverId) ||
+        (request.auth.token.get('email_verified', false) == true && data.get('uid', '') == request.auth.uid));
+    }
+    function driverDoc(driverId) {
+      return get(/databases/$(database)/documents/drivers/$(driverId)).data;
+    }
+    // El usuario actual es el domiciliario aprobado `driverId`.
+    function isApprovedDriver(driverId) {
+      return isAuth() && driverId is string && driverId != '' &&
+        exists(/databases/$(database)/documents/drivers/$(driverId)) &&
+        driverDoc(driverId).get('status', '') == 'approved' &&
+        ownsDriver(driverId, driverDoc(driverId));
+    }
+    function orderDriverId(data) {
+      return data.get('deliveryDriverId', data.get('driverId', ''));
+    }
+    // Id del documento drivers/{id} del usuario actual (mismo formato que al registrarse).
+    function currentDriverId() {
+      return request.auth.token.firebase.sign_in_provider == 'custom'
+        ? request.auth.uid
+        : 'driver_' + request.auth.token.get('email', '').lower().replace('[^a-z0-9]', '_');
+    }
+    // El usuario actual es un domiciliario aprobado.
+    function isApprovedDriverUser() {
+      return isAuth() && isApprovedDriver(currentDriverId());
+    }
+    // Pedido asignado al domiciliario actual (consultable con where deliveryDriverId == su id).
+    function isAssignedDriverUser(data) {
+      return isAuth() && (data.get('deliveryDriverId', '') == currentDriverId() ||
+        data.get('driverId', '') == currentDriverId());
+    }
+    // Pedido libre que los domiciliarios aprobados pueden ver para tomarlo.
+    function isOpenForDrivers(data) {
+      return data.get('status', '') == 'pending' && data.get('deliveryDriverId', 'x') == '';
+    }
+    // Cliente dueño del pedido.
+    function isOrderCustomer(data) {
+      return isAuth() && data.get('customerUid', '') == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------------
+    // Seguimiento de cobranza de suscripciones (sin cambios)
+    // ---------------------------------------------------------------
+    match /subscription_collection_followups/{restaurantId} {
+      allow read, create, update: if isAdmin();
+      match /periods/{periodId} {
+        allow read, create, update: if isAdmin();
+        match /messages/{messageId} {
+          allow read, create, update: if isAdmin();
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Usuarios
+    // CAMBIO: el dueño no puede cambiarse el campo `role`.
+    // ---------------------------------------------------------------
+    // Roles que un usuario puede ponerse a sí mismo (nunca 'admin').
+    function selfRoleOk(data) {
+      return data.get('role', 'user') in ['user', 'driver'];
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAdmin() || (isOwner(userId) && selfRoleOk(request.resource.data));
+      allow update: if isAdmin() || (isOwner(userId) && selfRoleOk(request.resource.data));
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Perfiles de restaurante (lectura pública para cargar las páginas)
+    // CAMBIO: el restaurante no puede darse rol admin, ni activarse la
+    // suscripción, ni extender fechas de pago/prueba. Eso lo hace el admin.
+    // ---------------------------------------------------------------
+    function safeProfileCreate() {
+      let d = request.resource.data;
+      return selfRoleOk(d) &&
+        d.get('subscriptionStatus', 'trial') in ['trial', 'under_review', 'pending_payment'] &&
+        !d.keys().hasAny(['subscriptionPaidUntil', 'subscriptionAnchorDay']);
+    }
+    function safeProfileUpdate() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return selfRoleOk(after) &&
+        !changedKeys().hasAny(['subscriptionPaidUntil', 'subscriptionAnchorDay']) &&
+        // Estado de suscripción: solo puede pasar a "en revisión"/"pendiente de pago",
+        // o a "trial" si antes no tenía estado.
+        (!changedKeys().hasAny(['subscriptionStatus']) ||
+          after.subscriptionStatus in ['under_review', 'pending_payment'] ||
+          (after.subscriptionStatus == 'trial' && !('subscriptionStatus' in before))) &&
+        // La fecha de fin de prueba solo se puede fijar una vez.
+        (!changedKeys().hasAny(['subscriptionTrialExpires']) ||
+          !('subscriptionTrialExpires' in before) || before.subscriptionTrialExpires == '');
+    }
+    match /profiles/{profileId} {
+      allow read: if true;
+      allow create: if isAdmin() || (isOwner(profileId) && safeProfileCreate());
+      allow update: if isAdmin() || (isOwner(profileId) && safeProfileUpdate());
+      allow delete: if isOwner(profileId) || isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Contenido público de tiendas (sin cambios)
+    // ---------------------------------------------------------------
+    match /links/{linkId} {
+      allow read: if true;
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    match /themes/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAuth() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuth() && ((request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid) || isAdmin());
+      allow delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /leads/{leadId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+
+    match /analytics/{docId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+
+    match /clicks/{docId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+
+    // ---------------------------------------------------------------
+    // Pedidos
+    // ---------------------------------------------------------------
+    function isStoreOwnerOf(data) {
+      return isAuth() && data.get('storeOwnerId', '') == request.auth.uid;
+    }
+
+    // Campos que el cliente y el chat pueden tocar sin estar autenticados
+    // (calificación, chat y contadores de no leídos).
+    function customerSafeOrderUpdate() {
+      return changedKeys().hasOnly([
+        'driverRatingGiven', 'driverRatingStars', 'driverRatingComment', 'driverRatedAt',
+        'lastChatMessage', 'lastChatAt', 'lastChatSenderRole',
+        'customerUnreadChatCount', 'driverUnreadChatCount'
+      ]) &&
+      (!changedKeys().hasAny(['driverRatingStars']) ||
+        (request.resource.data.driverRatingStars is number &&
+         request.resource.data.driverRatingStars >= 1 &&
+         request.resource.data.driverRatingStars <= 5));
+    }
+
+    // Un domiciliario aprobado toma un pedido a domicilio libre y pendiente.
+    function driverClaimsOrder() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return orderDriverId(before) == '' &&
+        before.get('status', '') == 'pending' &&
+        isApprovedDriver(orderDriverId(after)) &&
+        // No puede cambiar dinero, productos, tienda ni código de entrega.
+        !changedKeys().hasAny(['storeOwnerId', 'items', 'totalAmount', 'deliveryFee',
+          'deliveryCost', 'paymentMethodFee', 'packagingCost', 'deliveryCode',
+          'customerPhone', 'customerEmail', 'referralCommissionAmount', 'referralCreatorId']);
+    }
+
+    // El domiciliario ya asignado actualiza el avance de la entrega.
+    function assignedDriverUpdate() {
+      return isApprovedDriver(orderDriverId(resource.data)) &&
+        !changedKeys().hasAny(['storeOwnerId', 'items', 'totalAmount', 'deliveryCode',
+          'customerPhone', 'customerEmail', 'referralCommissionAmount', 'referralCreatorId']);
+    }
+
+    // Participante de un pedido: admin, restaurante, domiciliario asignado o cliente.
+    function isOrderParticipant(data) {
+      return isAdmin() || isStoreOwnerOf(data) || isAssignedDriverUser(data) || isOrderCustomer(data);
+    }
+
+    match /orders/{orderId} {
+      // FASE 2: solo los participantes, y los domiciliarios aprobados ven los
+      // pedidos pendientes sin domiciliario (para tomarlos).
+      // get de un pedido que aún no existe: saveOrder lo comprueba antes de crearlo
+      // (evita pedidos duplicados) y no revela ningún dato.
+      allow get: if resource == null || isOrderParticipant(resource.data) ||
+        (isApprovedDriverUser() && isOpenForDrivers(resource.data));
+      allow list: if isOrderParticipant(resource.data) ||
+        (isApprovedDriverUser() && isOpenForDrivers(resource.data));
+
+      // El pedido nace "limpio" y ligado a la cuenta del cliente que lo hace.
+      allow create: if isAuth() &&
+        request.resource.data.get('customerUid', '') == request.auth.uid &&
+        request.resource.data.get('status', '') == 'pending' &&
+        request.resource.data.get('storeOwnerId', '') is string &&
+        request.resource.data.get('storeOwnerId', '') != '' &&
+        request.resource.data.get('totalAmount', -1) is number &&
+        request.resource.data.get('totalAmount', -1) >= 0 &&
+        orderDriverId(request.resource.data) == '' &&
+        request.resource.data.get('referralCommissionStatus', 'pending') == 'pending' &&
+        !request.resource.data.keys().hasAny(['ryycoAwardedAt', 'ryycoPointsAwarded']);
+
+      allow update: if isAdmin() ||
+        (isStoreOwnerOf(resource.data) && request.resource.data.storeOwnerId == resource.data.storeOwnerId) ||
+        assignedDriverUpdate() ||
+        driverClaimsOrder() ||
+        // Calificación y chat: solo el cliente del pedido o su domiciliario.
+        ((isOrderCustomer(resource.data) || isAssignedDriverUser(resource.data)) && customerSafeOrderUpdate());
+
+      allow delete: if isAdmin() || isStoreOwnerOf(resource.data);
+
+      // Chat del pedido: solo sus participantes.
+      match /chat_messages/{messageId} {
+        function chatOrder() { return get(/databases/$(database)/documents/orders/$(orderId)).data; }
+        allow read: if isOrderParticipant(chatOrder());
+        allow create: if isOrderParticipant(chatOrder()) &&
+          request.resource.data.get('text', '') is string &&
+          request.resource.data.get('text', '').size() > 0 &&
+          request.resource.data.get('text', '').size() <= 1000 &&
+          request.resource.data.get('senderRole', '') in ['customer', 'driver', 'restaurant', 'admin'] &&
+          request.resource.data.get('orderId', '') == orderId;
+        // Solo marcar como leído; el texto no se puede editar.
+        allow update: if isOrderParticipant(chatOrder()) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readByCustomer', 'readByDriver']);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Colección antigua de chats: ya solo la usa el admin.
+    match /order_chats/{orderId} {
+      allow read, write: if isAdmin();
+      match /messages/{messageId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Domiciliarios: presencia y ficha (sin cambios de lógica)
+    // ---------------------------------------------------------------
+    match /driver_presence/{driverId} {
+      function driver() { return get(/databases/$(database)/documents/drivers/$(driverId)).data; }
+      allow read: if driverAdmin();
+      allow delete: if driverAdmin() || ownsDriver(driverId, driver());
+      allow create, update: if ownsDriver(driverId, driver()) &&
+        driver().status == 'approved' && driver().isAvailable == true &&
+        request.resource.data.keys().hasOnly(['lat', 'lng', 'accuracy', 'heading', 'speed', 'gpsTimestamp', 'updatedAt']) &&
+        request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90 &&
+        request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180 &&
+        request.resource.data.accuracy is number && request.resource.data.accuracy >= 0 && request.resource.data.accuracy <= 60 &&
+        request.resource.data.gpsTimestamp is number &&
+        request.resource.data.gpsTimestamp >= request.time.toMillis() - 45000 &&
+        request.resource.data.gpsTimestamp <= request.time.toMillis() + 5000 &&
+        request.resource.data.updatedAt == request.time;
+    }
+
+    match /drivers/{driverId} {
+      allow get: if driverAdmin() || (resource != null && ownsDriver(driverId, resource.data)) ||
+        (resource == null && isAuth() && request.auth.token.get('email_verified', false) == true &&
+         driverId == 'driver_' + request.auth.token.get('email', '').lower().replace('[^a-z0-9]', '_'));
+      allow list: if driverAdmin();
+      allow create: if verifiedDriverEmail(request.resource.data.email) &&
+        driverId == 'driver_' + request.auth.token.email.lower().replace('[^a-z0-9]', '_') &&
+        request.resource.data.id == driverId && request.resource.data.uid == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.isAvailable == false && request.resource.data.isOnline == false &&
+        request.resource.data.rating == 5 && request.resource.data.ratingCount == 0 &&
+        request.resource.data.completedDeliveriesCount == 0 && request.resource.data.totalEarnings == 0 &&
+        !('password' in request.resource.data);
+      allow update: if !('password' in request.resource.data) && (driverAdmin() ||
+        (ownsDriver(driverId, resource.data) &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+           'uid', 'password', 'firstName', 'lastName', 'phone', 'address', 'city', 'photoURL',
+           'docType', 'docNumber', 'birthDate', 'gender', 'vehicleType', 'vehicleBrand', 'vehiclePlate',
+           'hasDeliveryBag', 'vehiclePhotoUrl', 'vehicleOwnershipCardUrl', 'driverLicenseUrl',
+           'isAvailable', 'isOnline', 'lastActiveAt', 'updatedAt'
+         ]) &&
+         (request.resource.data.uid == resource.data.uid ||
+          (verifiedDriverEmail(resource.data.email) && request.resource.data.uid == request.auth.uid)) &&
+         (resource.data.status == 'approved' ||
+          (request.resource.data.isAvailable == false && request.resource.data.isOnline == false))));
+      allow delete: if driverAdmin();
+    }
+
+    // CAMBIO: la calificación debe ser de 1 a 5 y no se puede crear "aprobada".
+    match /driver_ratings/{ratingId} {
+      allow read: if true;
+      allow create: if request.resource.data.get('stars', 0) is number &&
+        request.resource.data.get('stars', 0) >= 1 &&
+        request.resource.data.get('stars', 0) <= 5 &&
+        request.resource.data.get('driverId', '') is string &&
+        request.resource.data.get('driverId', '') != '' &&
+        request.resource.data.get('orderId', '') is string &&
+        request.resource.data.get('orderId', '') != '';
+      allow update, delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Seguimiento en vivo (sin cambios de lógica)
+    // ---------------------------------------------------------------
+    match /delivery_tracking/{orderId} {
+      function trackingOrder() {
+        return get(/databases/$(database)/documents/orders/$(orderId)).data;
+      }
+      function orderOpen() {
+        return !(trackingOrder().get('status', '') in ['delivered', 'cancelled']) &&
+               trackingOrder().get('deliveryStep', '') != 'delivered';
+      }
+      function verifiedCustomer(data) {
+        return isAuth() && (
+          (request.auth.token.get('email_verified', false) == true &&
+           request.auth.token.get('email', '').lower() != '' &&
+           request.auth.token.get('email', '').lower() == data.get('customerEmail', '').lower()) ||
+          (request.auth.token.get('phone_number', '') != '' &&
+           request.auth.token.get('phone_number', '').replace('[^0-9]', '') == data.get('customerPhone', '').replace('[^0-9]', ''))
+        );
+      }
+      function assignedDriver(data) {
+        let driver = data.get('driverId', data.get('deliveryDriverId', ''));
+        return isAuth() && driver != '' && get(/databases/$(database)/documents/drivers/$(driver)).data.status == 'approved' && driver == trackingOrder().get('deliveryDriverId', trackingOrder().get('driverId', '')) &&
+          (driver == request.auth.uid ||
+           get(/databases/$(database)/documents/drivers/$(driver)).data.get('uid', '') == request.auth.uid);
+      }
+      function validPosition(data) {
+        return data.isTrackingActive == false ||
+          (data.lat is number && data.lng is number && data.lat >= -90 && data.lat <= 90 &&
+           data.lng >= -180 && data.lng <= 180 && data.gpsTimestamp is number);
+      }
+      allow get: if driverAdmin() || (isAuth() && orderOpen() && (
+        (resource == null && (verifiedCustomer(trackingOrder()) || assignedDriver(trackingOrder()))) ||
+        (resource != null &&
+          (resource.data.get('driverAuthUid', '') == request.auth.uid || verifiedCustomer(resource.data) ||
+           (assignedDriver(resource.data) && ownsDriver(resource.data.driverId,
+             get(/databases/$(database)/documents/drivers/$(resource.data.driverId)).data))))
+      ));
+      allow list: if driverAdmin();
+      allow create: if isAuth() && orderOpen() && assignedDriver(request.resource.data) &&
+        request.resource.data.driverAuthUid == request.auth.uid && request.resource.data.orderId == orderId &&
+        request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data);
+      allow update: if isAuth() &&
+        (resource.data.get('driverAuthUid', '') == request.auth.uid ||
+         (assignedDriver(resource.data) && ownsDriver(resource.data.driverId,
+           get(/databases/$(database)/documents/drivers/$(resource.data.driverId)).data))) &&
+        request.resource.data.driverAuthUid == request.auth.uid &&
+        request.resource.data.driverId == resource.data.driverId && request.resource.data.orderId == orderId &&
+        (!('driverAuthUid' in resource.data) ||
+          (request.resource.data.get('customerEmail', '') == resource.data.get('customerEmail', '') &&
+           request.resource.data.get('customerPhone', '') == resource.data.get('customerPhone', ''))) &&
+        request.resource.data.serverUpdatedAt == request.time && validPosition(request.resource.data) &&
+        (!(resource.data.get('status', '') in ['cancelled', 'delivered']) || request.resource.data.status == resource.data.status) &&
+        (request.resource.data.isTrackingActive == false ||
+          (orderOpen() && assignedDriver(resource.data) && !(resource.data.get('status', '') in ['cancelled', 'delivered']) &&
+           request.resource.data.gpsTimestamp >= resource.data.get('gpsTimestamp', 0)));
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Configuración global y tokens de notificaciones (sin cambios)
+    // ---------------------------------------------------------------
+    match /settings/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /admin_fcm_tokens/{tokenId} {
+      allow read: if driverAdmin();
+      allow create, update: if driverAdmin() && request.resource.data.adminUid == request.auth.uid;
+      allow delete: if driverAdmin();
+    }
+
+    match /seller_fcm_tokens/{tokenId} {
+      allow read: if isAuth() && (driverAdmin() || resource.data.storeOwnerId == request.auth.uid);
+      allow create: if isAuth() && request.resource.data.storeOwnerId == request.auth.uid && request.resource.data.sellerUid == request.auth.uid;
+      allow update: if isAuth() && resource.data.storeOwnerId == request.auth.uid && request.resource.data.storeOwnerId == request.auth.uid && request.resource.data.sellerUid == request.auth.uid;
+      allow delete: if isAuth() && (driverAdmin() || resource.data.storeOwnerId == request.auth.uid);
+    }
+
+    match /driver_fcm_tokens/{tokenId} {
+      function tokenOwner(data) {
+        return ownsDriver(data.driverId, get(/databases/$(database)/documents/drivers/$(data.driverId)).data);
+      }
+      allow read: if driverAdmin() || tokenOwner(resource.data);
+      allow create: if tokenOwner(request.resource.data);
+      allow update: if tokenOwner(resource.data) && tokenOwner(request.resource.data) &&
+        request.resource.data.driverId == resource.data.driverId;
+      allow delete: if driverAdmin() || tokenOwner(resource.data);
+    }
+
+    // ---------------------------------------------------------------
+    // Pagos de suscripción
+    // CAMBIO: cada restaurante ve y crea solo los suyos, y nunca puede
+    // marcarlos como aprobados. Aprobar/rechazar es solo del admin.
+    // ---------------------------------------------------------------
+    match /subscription_payments/{paymentId} {
+      allow read: if isAdmin() || (isAuth() && resource.data.get('userId', '') == request.auth.uid);
+      allow create: if isAdmin() || (isAuth() &&
+        request.resource.data.get('userId', '') == request.auth.uid &&
+        request.resource.data.get('status', '') in ['pending', 'review'] &&
+        !('resolvedAt' in request.resource.data));
+      allow update: if isAdmin() || (isAuth() &&
+        resource.data.get('userId', '') == request.auth.uid &&
+        resource.data.get('status', '') in ['pending', 'review'] &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.get('status', '') in ['pending', 'review'] &&
+        !changedKeys().hasAny(['amount', 'resolvedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Creadores de contenido (referidos)
+    // CAMBIO: solo el admin crea, edita y borra. El público solo puede
+    // sumar contadores (clics y ventas referidas), nunca restar ni editar
+    // datos de pago o comisión.
+    // ---------------------------------------------------------------
+    match /creators/{creatorId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        changedKeys().hasOnly(['totalClicks', 'totalOrdersCount', 'totalSalesAmount', 'totalEarnings', 'updatedAt']) &&
+        request.resource.data.get('totalClicks', 0) >= resource.data.get('totalClicks', 0) &&
+        request.resource.data.get('totalClicks', 0) <= resource.data.get('totalClicks', 0) + 1 &&
+        request.resource.data.get('totalOrdersCount', 0) >= resource.data.get('totalOrdersCount', 0) &&
+        request.resource.data.get('totalOrdersCount', 0) <= resource.data.get('totalOrdersCount', 0) + 1 &&
+        request.resource.data.get('totalSalesAmount', 0) >= resource.data.get('totalSalesAmount', 0) &&
+        request.resource.data.get('totalEarnings', 0) >= resource.data.get('totalEarnings', 0)
+      );
+    }
+
+    // CAMBIO: se crea "pendiente" al hacer un pedido referido; leer, pagar
+    // o borrar es solo del admin.
+    match /referral_commissions/{commissionId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.resource.data.get('status', '') == 'pending' &&
+        request.resource.data.get('commissionAmount', -1) is number &&
+        request.resource.data.get('commissionAmount', -1) >= 0 &&
+        !('paidAt' in request.resource.data) &&
+        exists(/databases/$(database)/documents/creators/$(request.resource.data.get('creatorId', '_')))
+      );
+    }
+
+    // ---------------------------------------------------------------
+    // Clientes y RYYCOS (FASE 2)
+    // Cada cliente solo lee y edita SU perfil (authUid). Saldo, giros,
+    // premios, movimientos y estadísticas solo los cambia el servidor
+    // (Cloud Functions ryyco*) o un admin. El dueño (authUid) lo asigna el
+    // servidor (ryycoClaimProfile).
+    // ---------------------------------------------------------------
+    function isCustomerOwner(data) {
+      return isAuth() && data.get('authUid', '') == request.auth.uid;
+    }
+    // Perfil con el mismo correo verificado (entrada con Google).
+    function isCustomerEmailOwner(data) {
+      return isAuth() && request.auth.token.get('email_verified', false) == true &&
+        data.get('email', '') != '' &&
+        data.get('email', '') == request.auth.token.get('email', '').lower();
+    }
+    function validNewCustomer(data) {
+      return isAuth() && data.get('authUid', '') == request.auth.uid &&
+        data.get('points', 0) is number && data.get('points', 0) >= 0 && data.get('points', 0) <= 500 &&
+        data.get('ryycos', 0) is number && data.get('ryycos', 0) <= 500 &&
+        data.get('spinsAvailable', 0) is number && data.get('spinsAvailable', 0) <= 1 &&
+        data.get('movements', []).size() <= 1 &&
+        data.get('wonPrizes', []).size() == 0 &&
+        data.get('totalOrdersCount', 0) == 0 && data.get('totalSpent', 0) == 0;
+    }
+    match /customers/{customerId} {
+      // get de un perfil que no existe: la app lo comprueba antes de crearlo.
+      allow get: if resource == null || isAdmin() || isCustomerOwner(resource.data) || isCustomerEmailOwner(resource.data);
+      allow list: if isAdmin() || isCustomerOwner(resource.data) || isCustomerEmailOwner(resource.data);
+      allow create: if isAdmin() || validNewCustomer(request.resource.data);
+      allow update: if isAdmin() || (isCustomerOwner(resource.data) &&
+        !changedKeys().hasAny(['authUid', 'points', 'ryycos', 'movements', 'spinsAvailable',
+          'wonPrizes', 'totalOrdersCount', 'totalSpent', 'createdAt']));
+      allow delete: if isAdmin();
+    }
+
+    // Registro de transferencias de RYYCOS: lo escribe solo el servidor.
+    match /ryyco_transactions/{transactionId} {
+      allow read: if isAdmin() || (isAuth() && resource.data.get('senderUid', '') == request.auth.uid);
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Recomendaciones ❤️
+    // CAMBIO: solo el autor (o admin) borra su recomendación.
+    // ---------------------------------------------------------------
+    match /recommendations/{recId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.storeId is string &&
+                              request.resource.data.userId is string &&
+                              request.resource.data.recommended is bool &&
+                              recId == request.resource.data.storeId + '_' + request.resource.data.userId;
+      allow delete: if isAdmin() || (isAuth() &&
+        (resource.data.get('userId', '') == request.auth.uid ||
+         resource.data.get('authUid', '') == request.auth.uid));
+    }
+
+    match /product_recommendations/{recId} {
+      allow read: if true;
+      allow create, update: if request.resource.data.productId is string &&
+                              request.resource.data.userId is string &&
+                              request.resource.data.recommended is bool &&
+                              recId == request.resource.data.productId + '_' + request.resource.data.userId;
+      allow delete: if isAdmin() || (isAuth() &&
+        (resource.data.get('userId', '') == request.auth.uid ||
+         resource.data.get('authUid', '') == request.auth.uid));
+    }
+  }
+}

@@ -344,6 +344,10 @@ export interface OrderItem {
 
   // Independent Delivery Driver fields
   deliveryDriverId?: string;
+  customerUid?: string; // Cuenta (Firebase Auth) del cliente que hizo el pedido
+  clientPlatform?: 'web' | 'android';
+  ryycoAwardedAt?: string; // Lo escribe la Cloud Function al premiar la compra
+  ryycoPointsAwarded?: number;
   deliveryDriverName?: string;
   deliveryDriverPhone?: string;
   deliveryDriverPhoto?: string;

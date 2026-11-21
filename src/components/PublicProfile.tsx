@@ -20,6 +20,8 @@ import {
   getStoreOperatingScheduleInfo,
   saveCustomerProfile,
   fetchCustomerProfileByPhone,
+  checkCustomerPhone,
+  auth,
   listenToCustomerProfile,
   subscribeStoreTheme,
   subscribeStoreProfile,
@@ -286,6 +288,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     phone: string;
     isExisting: boolean;
     existingProfile: CustomerProfile | null;
+    existingFirstName?: string;
+    existingHasAccount?: boolean;
   }>({
     isOpen: false,
     phone: '',
@@ -1149,8 +1153,9 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
 
-    // If customer is already logged in, allow them to freely change data for this order form
-    if (activeCustomer) {
+    // If customer is already logged in, allow them to freely change data for this order form.
+    // Debe haber una sesión real de Firebase: el pedido queda ligado a esa cuenta.
+    if (activeCustomer && auth.currentUser) {
       if (updateProfileWithOrderDetails) {
         try {
           const updatedProfileData: CustomerProfile = {
@@ -1169,12 +1174,15 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
     }
 
     try {
-      const existing = await fetchCustomerProfileByPhone(cleanedPhone);
+      // El servidor solo dice si el celular existe (sin exponer el perfil).
+      const existing = await checkCustomerPhone(cleanedPhone);
       setOrderAuthPromptData({
         isOpen: true,
         phone: cleanedPhone,
-        isExisting: !!existing,
-        existingProfile: existing
+        isExisting: existing.exists,
+        existingProfile: null,
+        existingFirstName: existing.firstName,
+        existingHasAccount: existing.hasAccount
       });
     } catch (err) {
       console.warn("Could not check customer profile:", err);
@@ -4239,6 +4247,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
         }}
         isExistingCustomer={orderAuthPromptData.isExisting}
         existingProfile={orderAuthPromptData.existingProfile}
+        existingFirstName={orderAuthPromptData.existingFirstName}
+        existingHasAccount={orderAuthPromptData.existingHasAccount}
         onAuthenticated={handleAuthPromptSuccess}
         onChangePhoneRequest={() => {
           setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));
