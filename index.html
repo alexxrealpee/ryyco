@@ -162,7 +162,48 @@
     <!-- TikTok Pixel Code End -->
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      RENDIMIENTO (celulares): "cascarón" que se ve al instante mientras descarga
+      el JavaScript (~1 MB). React lo reemplaza al montar la app. Solo CSS simple,
+      sin Tailwind ni fuentes externas, para que funcione igual en Chrome y Safari.
+    -->
+    <style>
+      html, body { background: #090B12; margin: 0; }
+      #ryyco-shell { min-height: 100vh; color: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; padding: 16px; }
+      #ryyco-shell .rs-top { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; }
+      #ryyco-shell .rs-logo { font-weight: 900; font-size: 22px; letter-spacing: 1px; color: #E63946; }
+      #ryyco-shell .rs-hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 1100px; margin: 18px auto 0; padding: 16px; border-radius: 20px; background: linear-gradient(135deg, #103E31, #0B1A16); border: 1px solid rgba(255, 217, 138, .25); }
+      #ryyco-shell .rs-copy { flex: 1 1 auto; min-width: 0; }
+      #ryyco-shell h1 { font-size: 26px; line-height: 1.1; margin: 0 0 8px; font-weight: 900; }
+      #ryyco-shell h1 span { color: #FFD98A; }
+      #ryyco-shell p { font-size: 13px; color: #cbd5e1; margin: 0; }
+      /* Igual o mayor que la imagen del hero de React (máx. 170 px en celular),
+         para que el contenido principal (LCP) se mida desde el cascarón. */
+      #ryyco-shell .rs-img { width: 180px; height: auto; flex: 0 0 auto; }
+      @media (min-width: 640px) { #ryyco-shell .rs-img { width: 340px; } }
+      #ryyco-shell .rs-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 1100px; margin: 18px auto 0; }
+      #ryyco-shell .rs-card { height: 170px; border-radius: 16px; background: #111827; border: 1px solid #232B3A; animation: rs-pulse 1.4s ease-in-out infinite; }
+      @media (min-width: 640px) { #ryyco-shell h1 { font-size: 40px; } #ryyco-shell .rs-cards { grid-template-columns: repeat(4, 1fr); } }
+      @keyframes rs-pulse { 50% { opacity: .55; } }
+      html.rs-not-home #ryyco-shell .rs-hero, html.rs-not-home #ryyco-shell .rs-cards { display: none; }
+    </style>
+    <script>
+      // El cascarón con la imagen del combo solo corresponde a la página de inicio.
+      if (!/^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname)) document.documentElement.className += ' rs-not-home';
+    </script>
+    <div id="root">
+      <div id="ryyco-shell" aria-hidden="true">
+        <div class="rs-top"><span class="rs-logo">RYYCO</span></div>
+        <div class="rs-hero">
+          <div class="rs-copy">
+            <h1>Pide comida <span>a domicilio</span></h1>
+            <p>Tus restaurantes favoritos de Ipiales con entrega rápida.</p>
+          </div>
+          <img class="rs-img" src="/ryyco_combo.webp" alt="" width="403" height="399" fetchpriority="high" decoding="async" />
+        </div>
+        <div class="rs-cards"><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
