@@ -2136,7 +2136,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       </section>
 
       {/* 3. Filtering & Dashboard Container */}
-      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
+      {/* min-h-screen: mientras cargan los productos el pie de página queda fuera de la
+          pantalla, así no "salta" hacia abajo cuando llegan (CLS en celulares). */}
+      <main className="flex-grow min-h-screen max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
         <div className="space-y-3">
           {/* BARRA DE SEGUIMIENTO PULSABLE (5 ETAPAS) - ENCIMA DEL BUSCADOR */}
           <AnimatePresence>
