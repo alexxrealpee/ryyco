@@ -1,0 +1,297 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTerms",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "totalOrders",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTerms",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "totalSpent",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTerms",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "totalSpent",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "lastOrderAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTerms",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "lastOrderAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ryycos",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "ryycos",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTerms",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "ryycos",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ryycos",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tags",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "ryycos",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "customerStats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "searchTerms",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "ryycos",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "totalOrders",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "storeOwnerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

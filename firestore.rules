@@ -508,6 +508,12 @@ service cloud.firestore {
         data.get('wonPrizes', []).size() == 0 &&
         data.get('totalOrdersCount', 0) == 0 && data.get('totalSpent', 0) == 0;
     }
+    // Resumen por cliente para el ranking del panel. Lo escriben solo las Cloud Functions.
+    match /customerStats/{customerKey} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     match /customers/{customerId} {
       allow read: if true;
       allow create: if isAdmin() || (
