@@ -53,6 +53,11 @@ try {
         $id = basename($doc['name']);
         $version = $doc['updateTime'] ?? '';
         $item[$kind === 'stores' ? 'photoURL' : 'imageURL'] = '/api/catalog-image.php?' . http_build_query(['kind'=>$kind,'id'=>$id,'v'=>$version]);
+        // QR de pago en base64 (~130 KB en total): se sirven como archivos cacheados
+        // en /catalog-images/ para que la consulta periódica de tiendas siga siendo liviana.
+        if ($kind === 'stores' && isset($item['bankAccounts'])) {
+            $item['bankAccounts'] = catalogExternalize($item['bankAccounts'], __DIR__ . '/../catalog-images');
+        }
     }
     unset($item);
     $count = count($items);

@@ -1,12 +1,38 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig, loadEnv, type Plugin} from 'vite';
+
+// RENDIMIENTO (celulares): Vite pone el CSS principal y el script de la app en
+// <head>, y el navegador no pinta nada hasta que llega el CSS. Este plugin los
+// mueve al final de <body>, después del "cascarón" de index.html: el cascarón
+// se pinta al instante, el CSS se sigue descargando pronto (preload en <head>)
+// y la app monta cuando el CSS ya llegó (sin parpadeo sin estilos).
+function shellFirstPaint(): Plugin {
+  return {
+    name: 'ryyco-shell-first-paint',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const css = html.match(/<link rel="stylesheet" crossorigin href="\/assets\/[^"]+\.css">/g) || [];
+        const entry = html.match(/<script type="module" crossorigin src="\/assets\/[^"]+\.js"><\/script>/);
+        if (!entry || css.length === 0) return html;
+        let out = html.replace(entry[0], '');
+        for (const link of css) {
+          const href = link.match(/href="([^"]+)"/)![1];
+          out = out.replace(link, `<link rel="preload" as="style" crossorigin href="${href}">`);
+        }
+        return out.replace('</body>', `${css.join('\n')}\n${entry[0]}\n</body>`);
+      },
+    },
+  };
+}
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), shellFirstPaint()],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
       'import.meta.env.VITE_GOOGLE_MAPS_API_KEY': JSON.stringify(
