@@ -1693,6 +1693,12 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
   const result = { ...order };
   result.id = docRef.id;
   result.status = 'pending';
+  // Dueño del pedido: la cuenta del cliente. Las reglas de Firestore usan este
+  // campo para que solo él (y restaurante, domiciliario y admin) pueda verlo.
+  result.customerUid = auth.currentUser?.uid || '';
+  // Campo siempre presente para que los domiciliarios consulten solo pedidos libres.
+  if (!result.deliveryDriverId) result.deliveryDriverId = '';
+  result.clientPlatform = isAndroidApp() ? 'android' : 'web';
   // Generate 4-digit delivery verification code for the customer to give to the driver
   result.deliveryCode = result.deliveryCode || generateOrderDeliveryCode();
   const orderCreatedAt = result.createdAt || new Date().toISOString();
@@ -1920,12 +1926,8 @@ export async function saveOrder(order: OrderItem): Promise<OrderItem> {
     localStorage.setItem(allKey, JSON.stringify(localAll));
   } catch (e) {}
 
-  // Automatically award customer loyalty points & free dish wheel spin
-  try {
-    if (result.customerPhone) {
-      awardCustomerPointsAndSpin(result).catch(err => console.warn("Failed background customer points awarding:", err));
-    }
-  } catch (e) {}
+  // Los RYYCOS y el giro de ruleta por compra ya no se suman desde el navegador:
+  // los otorga la Cloud Function ryycoAwardOnDelivered cuando el pedido se entrega.
 
   // Broadcast FCM push notification for General Administration
   try {
@@ -4900,8 +4902,15 @@ export async function deleteDriverAccount(driverId: string): Promise<void> {
  * Filters for orders where deliveryDriverId is not assigned yet.
  */
 export function listenToUnassignedOrders(onOrdersChanged: (orders: OrderItem[]) => void): () => void {
-  const ordersRef = collection(db, 'orders');
-  
+  // Solo pedidos pendientes y sin domiciliario: antes se escuchaba la colección
+  // completa de pedidos (con datos de todos los clientes) en cada teléfono.
+  // Las reglas de Firestore solo permiten a los domiciliarios esta consulta.
+  const ordersRef = query(
+    collection(db, 'orders'),
+    where('status', '==', 'pending'),
+    where('deliveryDriverId', '==', '')
+  );
+
   // Real-time listener for orders needing delivery
   const unsubscribe = onSnapshot(ordersRef, (snapshot) => {
     const unassigned: OrderItem[] = [];
@@ -6704,7 +6713,17 @@ export async function saveCustomerProfile(cust: Partial<CustomerProfile> & { pho
 
   // Save to Firestore. Las contraseñas las gestiona Firebase Auth: cualquier
   // contraseña antigua guardada en texto plano se elimina del documento.
-  const firestoreData = { ...cleanUndefined(customerData), password: deleteField() };
+  // Saldo, giros, premios, movimientos y estadísticas solo se escriben al CREAR
+  // el perfil (bono de bienvenida). Después los gestiona el servidor (Cloud
+  // Functions); reescribirlos desde una copia vieja del navegador borraría saldo.
+  const firestoreData: Record<string, unknown> = { ...cleanUndefined(customerData), password: deleteField() };
+  if (existing) {
+    for (const key of ['points', 'ryycos', 'movements', 'spinsAvailable', 'wonPrizes', 'totalOrdersCount', 'totalSpent', 'createdAt']) {
+      delete firestoreData[key];
+    }
+    // El dueño (authUid) solo lo asigna el servidor (ryycoClaimProfile) una vez creado el perfil.
+    if (existing.authUid) delete firestoreData.authUid;
+  }
   try {
     await setDoc(doc(db, 'customers', phone), firestoreData, { merge: true });
     if (cust.id && cust.id !== phone) {
@@ -6883,6 +6902,52 @@ export function describeCustomerAuthError(err: any): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Llamadas a Cloud Functions de clientes y RYYCOS (functions/customerRewards.cjs).
+// El SDK de Functions se carga solo cuando se usa.
+// ---------------------------------------------------------------------------
+async function callRyyco<T>(name: string, data: Record<string, unknown> = {}): Promise<T> {
+  const { getFunctions, httpsCallable } = await import('firebase/functions');
+  const fn = httpsCallable(getFunctions(app, 'us-central1'), name);
+  try {
+    return (await fn(data)).data as T;
+  } catch (err: any) {
+    // Los mensajes de HttpsError del servidor ya vienen en español.
+    throw new Error(err?.message || 'No se pudo completar la operación. Inténtalo de nuevo.');
+  }
+}
+
+/** ¿Hay un cliente con este celular? (sin exponer sus datos) */
+export async function checkCustomerPhone(rawPhone: string): Promise<{ exists: boolean; hasAccount?: boolean; firstName?: string }> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone || phone.length < 7) return { exists: false };
+  try {
+    return await callRyyco('ryycoCheckPhone', { phone });
+  } catch (err) {
+    // Respaldo mientras las reglas permitan la lectura directa.
+    const existing = await fetchCustomerProfileByPhone(phone).catch(() => null);
+    return existing ? { exists: true, hasAccount: Boolean(existing.authUid), firstName: (existing.name || '').split(' ')[0] } : { exists: false };
+  }
+}
+
+/**
+ * Vincula el perfil del celular a la cuenta con la que se inició sesión (en el
+ * servidor) y devuelve el perfil. null si el celular aún no tiene perfil.
+ */
+export async function claimCustomerProfile(rawPhone: string): Promise<CustomerProfile | null> {
+  const phone = sanitizeCustomerPhone(rawPhone);
+  if (!phone || phone.length < 7 || !auth.currentUser) return null;
+  const res = await callRyyco<{ claimed: boolean; exists: boolean }>('ryycoClaimProfile', { phone });
+  if (!res.exists) return null;
+  try { localStorage.removeItem(`ryyco_customer_${phone}`); } catch (e) {}
+  return (await fetchCustomerProfileByUid(auth.currentUser.uid)) || (await fetchCustomerProfileByPhone(phone));
+}
+
+/** Giro de la ruleta: el resultado lo decide el servidor. */
+export async function spinCustomerWheel(): Promise<{ result: 'lose' | 'win'; spinsAvailable: number }> {
+  return callRyyco('ryycoSpin');
+}
+
 // Limpia contraseñas antiguas que hayan quedado guardadas en este navegador.
 (function scrubLegacyCustomerPasswordsFromCache() {
   if (typeof window === 'undefined') return;
@@ -7043,22 +7108,45 @@ export function listenToCustomerOrders(
     onOrdersChanged(list);
   };
 
-  // Setup onSnapshot query with phone variants
-  try {
-    const q = query(ordersCol, where('customerPhone', 'in', phoneVariants.slice(0, 10)));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      processOrdersSnapshot(snapshot.docs);
-    }, (err) => {
-      console.warn("Real-time customer orders query failed, falling back to cached:", err);
-      fetchCustomerOrders(rawPhone, customerEmail).then(onOrdersChanged).catch(() => {});
-    });
+  // Dos fuentes que se combinan:
+  //  1) Pedidos de la cuenta del cliente (customerUid) — la que permiten las reglas nuevas.
+  //  2) Pedidos por celular — solo para pedidos antiguos mientras las reglas lo permitan;
+  //     si las reglas la rechazan, se ignora sin afectar a la primera.
+  const byUid = new Map<string, any>();
+  const byPhone = new Map<string, any>();
+  const publish = () => processOrdersSnapshot([...byPhone.values(), ...byUid.values()]);
+  const stops: Array<() => void> = [];
 
-    return unsubscribe;
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    try {
+      stops.push(onSnapshot(query(ordersCol, where('customerUid', '==', uid)), (snapshot) => {
+        byUid.clear();
+        snapshot.docs.forEach(d => byUid.set(d.id, d));
+        publish();
+      }, (err) => console.warn("Customer orders (account) query failed:", err)));
+    } catch (err) {
+      console.warn("Could not start customer orders (account) listener:", err);
+    }
+  }
+
+  try {
+    stops.push(onSnapshot(query(ordersCol, where('customerPhone', 'in', phoneVariants.slice(0, 10))), (snapshot) => {
+      byPhone.clear();
+      snapshot.docs.forEach(d => byPhone.set(d.id, d));
+      publish();
+    }, () => {
+      // Esperado cuando las reglas solo permiten consultar por cuenta.
+      if (!uid) fetchCustomerOrders(rawPhone, customerEmail).then(onOrdersChanged).catch(() => {});
+    }));
   } catch (err) {
     console.warn("Could not initiate real-time customer orders listener:", err);
-    fetchCustomerOrders(rawPhone, customerEmail).then(onOrdersChanged).catch(() => {});
-    return () => {};
   }
+
+  if (stops.length === 0) {
+    fetchCustomerOrders(rawPhone, customerEmail).then(onOrdersChanged).catch(() => {});
+  }
+  return () => stops.forEach(stop => stop());
 }
 
 /**
@@ -7082,6 +7170,17 @@ export async function fetchCustomerOrders(rawPhone: string, customerEmail?: stri
   ])).filter(p => p && p.length >= 7);
 
   const ordersMap = new Map<string, OrderItem>();
+
+  // Pedidos de la cuenta del cliente (lo que permiten las reglas nuevas).
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    try {
+      const snap = await getDocs(query(collection(db, 'orders'), where('customerUid', '==', uid)));
+      snap.forEach(docSnap => ordersMap.set(docSnap.id, { ...docSnap.data(), id: docSnap.id } as OrderItem));
+    } catch (err) {
+      console.warn("Customer orders (account) query failed:", err);
+    }
+  }
 
   try {
     const ordersCol = collection(db, 'orders');
@@ -7307,38 +7406,14 @@ export async function searchCustomerByPhone(
     return { success: false, error: "No puedes transferirte RYYCOS a ti mismo." };
   }
 
-  // Look up in Firestore & cache
-  let found = await fetchCustomerProfileByPhone(sanitized);
-  if (!found && !sanitized.startsWith('57') && sanitized.length === 10) {
-    found = await fetchCustomerProfileByPhone(`57${sanitized}`);
+  // La búsqueda la hace el servidor: el navegador ya no puede leer perfiles ajenos.
+  try {
+    const res = await callRyyco<{ found: boolean; name?: string; phone?: string; error?: string }>('ryycoFindRecipient', { phone: sanitized });
+    if (!res.found) return { success: false, error: res.error || `No encontramos ningún cliente registrado con el celular ${sanitized} en RYYCO.` };
+    return { success: true, customer: { name: res.name || 'Cliente', phone: res.phone || sanitized } };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'No se pudo buscar el destinatario.' };
   }
-  if (!found && sanitized.startsWith('57') && sanitized.length === 12) {
-    found = await fetchCustomerProfileByPhone(sanitized.slice(2));
-  }
-  if (!found) {
-    try {
-      const q = query(collection(db, 'customers'), where('phone', '==', sanitized), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        found = snap.docs[0].data() as CustomerProfile;
-      }
-    } catch (e) {}
-  }
-
-  if (!found) {
-    return {
-      success: false,
-      error: `No encontramos ningún cliente registrado con el celular ${sanitized} en RYYCO.`
-    };
-  }
-
-  return {
-    success: true,
-    customer: {
-      name: found.name,
-      phone: found.phone
-    }
-  };
 }
 
 export interface RyycoTransferReceipt {
@@ -7383,204 +7458,24 @@ export async function transferRyycosByPhone(
     throw new Error("La cantidad mínima a transferir es 1 RYYCO.");
   }
 
-  // 1. Locate recipient in Firestore
-  let recipientDocId = recipientPhone;
-  let recipientDocSnap = await getDoc(doc(db, 'customers', recipientPhone));
-  if (!recipientDocSnap.exists() && recipientPhone.length === 10) {
-    const altSnap = await getDoc(doc(db, 'customers', '57' + recipientPhone));
-    if (altSnap.exists()) {
-      recipientDocSnap = altSnap;
-      recipientDocId = '57' + recipientPhone;
-    }
+  // La transferencia la ejecuta el servidor (Cloud Function ryycoTransfer) de forma
+  // atómica. El remitente es siempre la cuenta con la que se inició sesión.
+  if (!auth.currentUser) {
+    throw new Error("Inicia sesión de nuevo para transferir RYYCOS.");
   }
-  if (!recipientDocSnap.exists() && recipientPhone.startsWith('57') && recipientPhone.length === 12) {
-    const altSnap = await getDoc(doc(db, 'customers', recipientPhone.slice(2)));
-    if (altSnap.exists()) {
-      recipientDocSnap = altSnap;
-      recipientDocId = recipientPhone.slice(2);
-    }
-  }
-  if (!recipientDocSnap.exists()) {
-    try {
-      const q = query(collection(db, 'customers'), where('phone', '==', recipientPhone), limit(1));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        recipientDocSnap = snap.docs[0];
-        recipientDocId = snap.docs[0].id;
-      }
-    } catch (e) {}
-  }
+  const receipt = await callRyyco<RyycoTransferReceipt>('ryycoTransfer', { recipientPhone, amount: numAmount });
 
-  if (!recipientDocSnap.exists()) {
-    throw new Error(`No encontramos ningún cliente registrado con el celular ${recipientPhone} en RYYCO.`);
-  }
-
-  // 2. Locate sender in Firestore
-  let senderDocId = senderPhone;
-  let senderDocSnap = await getDoc(doc(db, 'customers', senderPhone));
-  if (!senderDocSnap.exists() && senderPhone.length === 10) {
-    const altSnap = await getDoc(doc(db, 'customers', '57' + senderPhone));
-    if (altSnap.exists()) {
-      senderDocSnap = altSnap;
-      senderDocId = '57' + senderPhone;
-    }
-  }
-  if (!senderDocSnap.exists() && senderPhone.startsWith('57') && senderPhone.length === 12) {
-    const altSnap = await getDoc(doc(db, 'customers', senderPhone.slice(2)));
-    if (altSnap.exists()) {
-      senderDocSnap = altSnap;
-      senderDocId = senderPhone.slice(2);
-    }
-  }
-
-  if (!senderDocSnap.exists()) {
-    throw new Error("Perfil de cliente remitente no encontrado. Por favor verifica tu sesión.");
-  }
-
-  const now = new Date().toISOString();
-  const txRef = 'TRF-' + Date.now().toString().slice(-6) + '-' + Math.random().toString(36).substring(2, 6).toUpperCase();
-
-  const senderPrimaryRef = doc(db, 'customers', senderPhone);
-  const senderActualRef = doc(db, 'customers', senderDocId);
-  const recipientPrimaryRef = doc(db, 'customers', recipientPhone);
-  const recipientActualRef = doc(db, 'customers', recipientDocId);
-  const txLogRef = doc(db, 'ryyco_transactions', txRef);
-
-  // 3. Execute atomic Firestore Transaction: guarantees exact math and zero race conditions
-  const txOutcome = await runTransaction(db, async (transaction) => {
-    const [freshSenderDoc, freshRecipientDoc] = await Promise.all([
-      transaction.get(senderActualRef),
-      transaction.get(recipientActualRef)
-    ]);
-
-    if (!freshSenderDoc.exists()) {
-      throw new Error("Perfil de cliente remitente no encontrado.");
-    }
-    if (!freshRecipientDoc.exists()) {
-      throw new Error(`No encontramos ningún cliente registrado con el celular ${recipientPhone} en RYYCO.`);
-    }
-
-    const sData = freshSenderDoc.data() as CustomerProfile;
-    const rData = freshRecipientDoc.data() as CustomerProfile;
-
-    const sBalance = Number(sData.points !== undefined ? sData.points : (sData.ryycos !== undefined ? sData.ryycos : 0));
-    const rBalance = Number(rData.points !== undefined ? rData.points : (rData.ryycos !== undefined ? rData.ryycos : 0));
-
-    if (sBalance < numAmount) {
-      throw new Error(`Saldo insuficiente de RYYCOS. Tienes ${sBalance.toLocaleString('es-CO')} RYYCOS disponibles y deseas transferir ${numAmount.toLocaleString('es-CO')} RYYCOS.`);
-    }
-
-    // Exact mathematical deduction and addition
-    const senderBalanceAfter = Math.max(0, sBalance - numAmount);
-    const recipientBalanceAfter = rBalance + numAmount;
-
-    const senderMovement: RyycoMovement = {
-      id: 'mov_tx_' + txRef + '_out',
-      customerId: senderPhone,
-      type: 'transfer_sent',
-      amount: -numAmount,
-      balanceAfter: senderBalanceAfter,
-      description: `Envío de RYYCOS a ${rData.name || 'Cliente'} (${recipientPhone})`,
-      referenceId: txRef,
-      targetPhone: recipientPhone,
-      targetName: rData.name || 'Cliente',
-      createdAt: now
-    };
-
-    const recipientMovement: RyycoMovement = {
-      id: 'mov_tx_' + txRef + '_in',
-      customerId: recipientPhone,
-      type: 'transfer_received',
-      amount: numAmount,
-      balanceAfter: recipientBalanceAfter,
-      description: `Recibiste RYYCOS de ${sData.name || 'Cliente'} (${senderPhone})`,
-      referenceId: txRef,
-      senderPhone: senderPhone,
-      senderName: sData.name || 'Cliente',
-      createdAt: now
-    };
-
-    const sMovements = [senderMovement, ...(Array.isArray(sData.movements) ? sData.movements : [])].slice(0, 50);
-    const rMovements = [recipientMovement, ...(Array.isArray(rData.movements) ? rData.movements : [])].slice(0, 50);
-
-    const updatedSender: CustomerProfile = {
-      ...sData,
-      id: senderPhone,
-      phone: senderPhone,
-      points: senderBalanceAfter,
-      ryycos: senderBalanceAfter,
-      movements: sMovements,
-      updatedAt: now
-    };
-
-    const updatedRecipient: CustomerProfile = {
-      ...rData,
-      id: recipientPhone,
-      phone: recipientPhone,
-      points: recipientBalanceAfter,
-      ryycos: recipientBalanceAfter,
-      movements: rMovements,
-      updatedAt: now
-    };
-
-    // Atomic updates to Firestore
-    transaction.set(senderPrimaryRef, cleanUndefined(updatedSender), { merge: true });
-    if (senderDocId !== senderPhone) {
-      transaction.set(senderActualRef, cleanUndefined(updatedSender), { merge: true });
-    }
-
-    transaction.set(recipientPrimaryRef, cleanUndefined(updatedRecipient), { merge: true });
-    if (recipientDocId !== recipientPhone) {
-      transaction.set(recipientActualRef, cleanUndefined(updatedRecipient), { merge: true });
-    }
-
-    // Complete audit log
-    transaction.set(txLogRef, {
-      referenceId: txRef,
-      senderPhone,
-      senderName: sData.name || 'Cliente',
-      recipientPhone,
-      recipientName: rData.name || 'Cliente',
-      amount: numAmount,
-      senderBalanceBefore: sBalance,
-      senderBalanceAfter,
-      recipientBalanceBefore: rBalance,
-      recipientBalanceAfter,
-      status: 'completed',
-      createdAt: now
-    });
-
-    return {
-      updatedSender,
-      updatedRecipient,
-      senderName: sData.name || 'Cliente',
-      recipientName: rData.name || 'Cliente',
-      senderBalanceAfter
-    };
-  });
-
-  // 4. Update local caches and broadcast updates strictly for the sender (current session)
+  // Refrescar el perfil del remitente desde Firestore (saldo e historial reales).
   try {
-    localStorage.setItem(`ryyco_customer_${senderPhone}`, JSON.stringify(txOutcome.updatedSender));
-    localStorage.setItem(`ryyco_customer_${recipientPhone}`, JSON.stringify(txOutcome.updatedRecipient));
-    if (typeof window !== 'undefined') {
-      const active = localStorage.getItem('ryyco_active_customer_phone');
-      if (!active || sanitizeCustomerPhone(active) === senderPhone) {
-        window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: txOutcome.updatedSender }));
-      }
+    localStorage.removeItem(`ryyco_customer_${senderPhone}`);
+    const fresh = await fetchCustomerProfileByUid(auth.currentUser.uid);
+    if (fresh && typeof window !== 'undefined') {
+      localStorage.setItem(`ryyco_customer_${senderPhone}`, JSON.stringify(fresh));
+      window.dispatchEvent(new CustomEvent('ryyco:customer-profile-updated', { detail: fresh }));
     }
   } catch (e) {}
 
-  return {
-    referenceId: txRef,
-    senderPhone,
-    senderName: txOutcome.senderName,
-    recipientPhone,
-    recipientName: txOutcome.recipientName,
-    amount: numAmount,
-    senderBalanceAfter: txOutcome.senderBalanceAfter,
-    createdAt: now
-  };
+  return receipt;
 }
 
 /**
@@ -7616,27 +7511,10 @@ export async function fetchStoreRecommendations(storeId: string, currentUserId?:
       if (negativeRecs.length > 0) {
         percentage = Math.round((positiveRecs.length / totalVotes) * 100);
       } else {
-        // Query orders to calibrate ratio against real dining volume if applicable
-        let uniqueOrderCount = 0;
-        try {
-          const ordQuery = query(collection(db, 'orders'), where('storeOwnerId', '==', storeId));
-          const ordSnap = await getDocs(ordQuery);
-          const clients = new Set<string>();
-          ordSnap.forEach(od => {
-            const data = od.data();
-            const key = data.customerPhone || data.customerEmail || data.customerName;
-            if (key) clients.add(key);
-          });
-          uniqueOrderCount = clients.size;
-        } catch (err) {
-          // Graceful fallback
-        }
-
-        if (uniqueOrderCount > count) {
-          percentage = Math.max(85, Math.min(99, Math.round((count / uniqueOrderCount) * 100)));
-        } else {
-          percentage = 100;
-        }
+        // Antes se descargaban todos los pedidos del restaurante (con datos de
+        // clientes) en su página pública solo para ajustar este porcentaje.
+        // Sin votos negativos, el porcentaje es 100%.
+        percentage = 100;
       }
     }
 

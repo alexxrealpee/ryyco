@@ -33,6 +33,10 @@ export default defineConfig(({mode}) => {
               if (id.includes('@firebase/messaging') || id.includes('@firebase/installations') || /[\\/]firebase[\\/]messaging[\\/]/.test(id)) {
                 return 'vendor-firebase-messaging';
               }
+              // Cloud Functions (RYYCOS, transferencias): solo al usarlas.
+              if (id.includes('@firebase/functions') || /[\\/]firebase[\\/]functions[\\/]/.test(id)) {
+                return 'vendor-firebase-functions';
+              }
               if (id.includes('firebase')) {
                 return 'vendor-firebase';
               }

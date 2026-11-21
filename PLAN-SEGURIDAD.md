@@ -34,6 +34,27 @@ Se puede publicar sin cambiar el código de la app. Cierra:
 firebase deploy --only firestore:rules --project studio-9002217802-13e05
 ```
 
+## Estado (21 nov 2026)
+
+- Fase 1: **publicada** (reglas activas, contraseñas migradas a Firebase Auth).
+- Fase 2: código listo en la rama `fase-2-datos-privados`. Publicación paso a paso:
+
+| Paso | Qué | Cómo |
+|---|---|---|
+| 1 | Desplegar Cloud Functions `ryyco*` | `firebase deploy --only functions:order-notifications --project studio-9002217802-13e05` |
+| 2 | Publicar la app (fusionar el PR) | Hostinger despliega `main` |
+| 3 | Completar pedidos antiguos | `node scripts/backfill-order-owners.mjs` (simulación) y luego `--apply` |
+| 4 | Probar en producción | pedido nuevo, portal del cliente, domiciliario toma y entrega, RYYCOS al entregar, transferencia |
+| 5 | Activar reglas estrictas | publicar `firestore.phase2.rules` (y renombrarlo a `firestore.rules`) |
+
+Cambios de comportamiento de la fase 2:
+- Todo pedido exige cuenta: contraseña (nueva o existente) o Google en el checkout.
+- Los RYYCOS y el giro por compra se otorgan **al entregar** el pedido (antes al crearlo).
+- El porcentaje de recomendación de una tienda ya no se ajusta con sus pedidos (sin votos negativos = 100%).
+- Las transferencias muestran solo el primer nombre del destinatario.
+
+Riesgo que queda: el celular nunca se verifica por SMS. El primero que vincula un perfil sin dueño se queda con él.
+
 ## Fase 2 — requiere cambios en el código
 
 Lo que sigue abierto tras la fase 1, por orden de urgencia:
