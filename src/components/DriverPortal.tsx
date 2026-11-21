@@ -62,7 +62,8 @@ import {
 } from 'lucide-react';
 import OrderChatModal from './OrderChatModal';
 import { signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
-import { loadVerifiedDriver, signInDriverWithGoogle } from '../lib/driverAuth';
+import { loadVerifiedDriver } from '../lib/driverAuth';
+import { observeDriverSession } from '../lib/driverSessionObserver';
 import { getApiUrl } from '../lib/apiConfig';
 import { auth, signInWithGoogleUniversal } from '../lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -207,26 +208,27 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
   const [driver, setDriver] = useState<DriverProfile | null>(null);
   const [loginError, setLoginError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [sessionChecking, setSessionChecking] = useState(true);
+  const sessionChangeRef = useRef(onDriverSessionChange);
+  sessionChangeRef.current = onDriverSessionChange;
+  const portalMounted = useRef(false);
   useEffect(() => {
-    let generation = 0;
-    const unsubscribe = onAuthStateChanged(auth, async user => {
-      const request = ++generation;
-      setDriver(null);
-      if (!user) { clearDriverSessionStorage(); return; }
-      try {
-        const fresh = await loadVerifiedDriver(user);
-        if (request !== generation) return;
-        setDriver(fresh);
-        if (fresh) saveDriverSessionToStorage(fresh);
-        else clearDriverSessionStorage();
-        onDriverSessionChange?.(fresh);
-      } catch {
-        if (request !== generation) return;
-        clearDriverSessionStorage();
-        setLoginError('No se pudo verificar tu cuenta. Intenta ingresar nuevamente con Google.');
-      }
-    });
-    return () => { generation++; unsubscribe(); };
+    portalMounted.current = true;
+    const unsubscribe = observeDriverSession(
+      (next, error) => onAuthStateChanged(auth, next, error),
+      user => loadVerifiedDriver(user, undefined, true),
+      state => {
+        setSessionChecking(state.checking);
+        setDriver(state.driver);
+        setLoginError(state.error);
+        if (!state.checking) {
+          if (state.driver) saveDriverSessionToStorage(state.driver);
+          else clearDriverSessionStorage();
+          sessionChangeRef.current?.(state.driver);
+        }
+      },
+    );
+    return () => { portalMounted.current = false; unsubscribe(); };
   }, []);
 
   // Active view tab inside portal
@@ -986,14 +988,11 @@ export default function DriverPortal({ onNavigateHome, onNavigateRegister, initi
     setAuthLoading(true);
     setLoginError('');
     try {
-      const found = await signInDriverWithGoogle();
-      setDriver(found);
-      setIsAvailable(Boolean(found.isAvailable));
-      saveDriverSessionToStorage(found);
-      onDriverSessionChange?.(found);
+      // The auth observer verifies and opens the existing portal exactly once.
+      await signInWithGoogleUniversal();
     } catch (err) {
-      setLoginError((err as Error).message || 'No se pudo verificar tu cuenta con Google.');
-    } finally { setAuthLoading(false); }
+      if (portalMounted.current) setLoginError((err as Error).message || 'No se pudo verificar tu cuenta con Google.');
+    } finally { if (portalMounted.current) setAuthLoading(false); }
   };
 
   // Logout Handler - Clears persistent storage and offline status
@@ -1386,6 +1385,13 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
   /* ==========================================================================
      UNAUTHENTICATED LOGIN SCREEN
      ========================================================================== */
+  if (sessionChecking) {
+    return (
+      <div className="min-h-screen bg-[#090B12] flex items-center justify-center" role="status" aria-label="Verificando sesión">
+        <span className="w-6 h-6 border-2 border-[#E63946]/30 border-t-[#E63946] rounded-full animate-spin" />
+      </div>
+    );
+  }
   if (!driver) {
     return (
       <div className="min-h-screen bg-[#090B12] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-gray-100">

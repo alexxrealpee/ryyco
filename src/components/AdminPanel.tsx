@@ -402,7 +402,7 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
   const [reportAttempt, setReportAttempt] = useState(0);
   const [orderSummary, setOrderSummary] = useState<Awaited<ReturnType<typeof fetchAdminOrderSummary>> | null>(null);
   const [orderSummaryRevision, setOrderSummaryRevision] = useState(0);
-  const isOrderReport = ['sales_stats', 'top_customers', 'stores', 'order_times'].includes(activeAdminTab);
+  const isOrderReport = ['sales_stats', 'stores', 'order_times'].includes(activeAdminTab);
   const [viewingProofImg, setViewingProofImg] = useState<string | null>(null);
 
   // Live timer tick for active order elapsed time calculation without page reload (every 15s)
@@ -3469,7 +3469,6 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
         ) : activeAdminTab === 'top_customers' ? (
           <div className="animate-fade-in">
             <AdminCustomersRanking
-              allOrders={reportOrders}
               storesMap={storesMap}
               allStores={allStoresList}
               onGoToOrders={(storeUid) => {

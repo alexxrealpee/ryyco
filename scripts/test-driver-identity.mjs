@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-let profile, reads = 0;
+let profile, reads = 0, serverReads = 0, forcedRefresh = false;
 const writes = [];
 const code = ts.transpileModule(readFileSync('src/lib/driverAuth.ts', 'utf8'), {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS }
@@ -10,6 +10,7 @@ const code = ts.transpileModule(readFileSync('src/lib/driverAuth.ts', 'utf8'), {
 const modules = {
   'firebase/firestore': { doc: (_db, _collection, id) => id,
     getDoc: async id => { reads++; return { exists: () => Boolean(profile), data: () => profile }; },
+    getDocFromServer: async id => { serverReads++; return { exists: () => Boolean(profile), data: () => profile }; },
     updateDoc: async (id, data) => writes.push({id, data}), deleteField: () => 'DELETE' },
   './firebase': { withDriverDisplayStats: async data => data }
 };
@@ -33,3 +34,11 @@ assert.equal(result.password,undefined);
 assert.equal(writes[0].data.password,'DELETE');
 assert.equal(writes[0].id,'driver_test_example_com');
 console.log('PASS: verified driver identity, cache forgery rejection and legacy credential removal');
+const freshUser = user();
+freshUser.getIdTokenResult = async force => { forcedRefresh = force; return { signInProvider: 'google.com' }; };
+await loadVerifiedDriver(freshUser, undefined, true);
+assert.equal(forcedRefresh, true, 'automatic entry must refresh the authentication token');
+assert.equal(serverReads, 1, 'automatic entry must verify the profile on the server');
+profile.email = undefined;
+assert.equal(await loadVerifiedDriver(freshUser, undefined, true), null);
+console.log('PASS: automatic access requires a fresh token and server profile');

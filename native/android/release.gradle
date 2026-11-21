@@ -1,0 +1,48 @@
+// Applied by scripts/configure-android-release.mjs after Capacitor sync.
+// Keep the existing release behavior: no untested shrinking/obfuscation.
+android {
+    buildTypes {
+        release {
+            minifyEnabled false
+            ndk {
+                debugSymbolLevel 'SYMBOL_TABLE'
+            }
+        }
+    }
+}
+
+// Optional, explicit version for a candidate build. Confirm the highest code in
+// every Play track before using a candidate for publication.
+if (project.hasProperty('ryycoVersionCode')) {
+    def code = project.property('ryycoVersionCode').toString().toInteger()
+    if (code <= 13) throw new GradleException('The next Play release must have versionCode greater than 13.')
+    android.defaultConfig.versionCode = code
+}
+if (project.hasProperty('ryycoVersionName')) {
+    android.defaultConfig.versionName = project.property('ryycoVersionName').toString()
+}
+
+// A separate output directory prevents replacing any previous release artifact.
+if (project.hasProperty('ryycoReleaseBuildDir')) {
+    layout.buildDirectory.set(file(project.property('ryycoReleaseBuildDir')))
+}
+
+// Reuse the existing upload keystore. Never fall back to a debug or generated key.
+// Android Studio's injected signing configuration continues to work unchanged.
+def signingFile = rootProject.file('keystore.properties')
+if (signingFile.exists()) {
+    def values = new Properties()
+    signingFile.withInputStream { values.load(it) }
+    ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each { key ->
+        if (!values.getProperty(key)) throw new GradleException('Incomplete Android keystore.properties')
+    }
+    android.signingConfigs {
+        ryycoUpload {
+            storeFile rootProject.file(values.getProperty('storeFile'))
+            storePassword values.getProperty('storePassword')
+            keyAlias values.getProperty('keyAlias')
+            keyPassword values.getProperty('keyPassword')
+        }
+    }
+    android.buildTypes.release.signingConfig = android.signingConfigs.ryycoUpload
+}

@@ -32,7 +32,7 @@ export function saveDriverSessionToStorage(driverProfile: DriverProfile): void {
 export function clearDriverSessionStorage(): void {
   try {
     safeRemoveItem(DRIVER_SESSION_STORAGE_KEY);
-    safeRemoveItem('ryyco_auth_mode');
+    if (safeGetItem('ryyco_auth_mode') === 'driver') safeRemoveItem('ryyco_auth_mode');
   } catch (e) {
     console.warn("Could not clear driver session from storage:", e);
   }

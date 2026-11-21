@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Users, 
   MessageCircle, 
@@ -40,8 +40,10 @@ import {
   CheckCheck
 } from 'lucide-react';
 import { OrderItem, UserProfile, CustomerProfile } from '../types';
-import { subscribeToAllCustomerProfiles, adjustCustomerRyycosByAdmin, markCustomerWelcomeMessageSent } from '../lib/firebase';
+import { adjustCustomerRyycosByAdmin, markCustomerWelcomeMessageSent } from '../lib/firebase';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
+
+import { useAdminCustomerPages } from '../hooks/useAdminCustomerPages';
 
 // Mensaje de bienvenida oficial para clientes en la ciudad de Ipiales
 export const RYYCO_WELCOME_MESSAGE = `🎉 ¡Bienvenido a RYYCO! 💚
@@ -57,7 +59,6 @@ Nos alegra tenerte con nosotros. 😋
 RYYCO — Pide lo que se te antoje. 🚀`;
 
 interface AdminCustomersRankingProps {
-  allOrders: OrderItem[];
   storesMap: Record<string, UserProfile>;
   allStores: { uid: string; name: string; username: string; phone?: string; address?: string }[];
   onGoToOrders?: (storeUid?: string) => void;
@@ -198,7 +199,6 @@ function buildWhatsAppUrl(cleanPhone: string, customerName: string, orderCount: 
 }
 
 export default function AdminCustomersRanking({
-  allOrders,
   storesMap,
   allStores,
   onGoToOrders
@@ -226,22 +226,15 @@ export default function AdminCustomersRanking({
   const [showWelcomeMessageBanner, setShowWelcomeMessageBanner] = useState<boolean>(true);
   const [copiedWelcomeMessage, setCopiedWelcomeMessage] = useState<boolean>(false);
 
-  // Real-time customer profiles from Firestore
-  const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
+  // Profiles and related orders are loaded only on demand, four customers per page.
+  const { profiles: customerProfiles, setProfiles: setCustomerProfiles, orders: allOrders,
+    loading: customersLoading, hasMore: hasMoreCustomers, error: customersError, loadNext: loadNextCustomers } = useAdminCustomerPages();
   const [adjustingRyycosCustomer, setAdjustingRyycosCustomer] = useState<CustomerAggregated | null>(null);
   const [adjustmentAmount, setAdjustmentAmount] = useState<string>('500');
   const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set'>('add');
   const [adjustmentReason, setAdjustmentReason] = useState<string>('Bonificación de fidelidad RYYCO');
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState<boolean>(false);
   const [adjustmentSuccessMsg, setAdjustmentSuccessMsg] = useState<string | null>(null);
-
-  // Subscribe to all customer profiles
-  useEffect(() => {
-    const unsub = subscribeToAllCustomerProfiles((profiles) => {
-      setCustomerProfiles(profiles);
-    });
-    return () => unsub();
-  }, []);
 
   // Map of customer profiles for fast lookup by phone, name, email or ID
   const customerProfilesMap = useMemo(() => {
@@ -941,6 +934,7 @@ export default function AdminCustomersRanking({
         adjustmentMode,
         adjustmentReason.trim() || undefined
       );
+      setCustomerProfiles(previous => previous.map(p => getCanonicalPhone(p.phone || p.id) === getCanonicalPhone(updated.phone || updated.id) ? { ...p, ...updated } : p));
       setAdjustmentSuccessMsg(`¡Saldo de ${adjustingRyycosCustomer.name} actualizado con éxito a ${updated.points.toLocaleString('es-CO')} RYYCOS!`);
       setTimeout(() => {
         setAdjustingRyycosCustomer(null);
@@ -1026,19 +1020,20 @@ export default function AdminCustomersRanking({
               onClick={handleExportCSV}
               disabled={processedCustomers.length === 0}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition border border-gray-700 cursor-pointer shadow-sm hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Descargar lista completa en formato CSV/Excel"
+              title="Descargar clientes cargados en formato CSV/Excel"
             >
               <Download className="w-4 h-4 text-emerald-400" />
-              <span>Exportar Directorio (CSV)</span>
+              <span>Exportar cargados (CSV)</span>
             </button>
           </div>
         </div>
 
-        {/* Global Summary KPI Grid */}
+        <p className="text-xs text-gray-400 mt-4">Cifras, ranking, búsqueda y filtros sobre los clientes cargados. Usa «Cargar 4 más» para ampliar la lista.</p>
+        {/* Summary of loaded customers */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-400">Clientes Totales</span>
+              <span className="text-xs font-medium text-gray-400">Clientes cargados</span>
               <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
                 <Users className="w-4 h-4" />
               </div>
@@ -1054,7 +1049,7 @@ export default function AdminCustomersRanking({
 
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-gray-400">Cliente #1 Estrella</span>
+              <span className="text-xs font-medium text-gray-400">Destacado de esta lista</span>
               <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
                 <Crown className="w-4 h-4" />
               </div>
@@ -1454,13 +1449,13 @@ export default function AdminCustomersRanking({
       {/* Main Ranking List */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs text-gray-400 px-1">
-          <span>Mostrando <strong className="text-white font-mono">{processedCustomers.length}</strong> clientes ordenados</span>
+          <span>Mostrando <strong className="text-white font-mono">{processedCustomers.length}</strong> clientes cargados con estos filtros</span>
           <span className="text-gray-500 font-mono">
             {sortBy === 'orders_desc' ? 'Orden: De más a menos pedidos' : 'Orden personalizado'}
           </span>
         </div>
 
-        {processedCustomers.length === 0 ? (
+        {processedCustomers.length === 0 && !customersLoading ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center space-y-3">
             <Users className="w-12 h-12 text-gray-600 mx-auto" />
             <h3 className="text-base font-bold text-gray-300">No se encontraron clientes</h3>
@@ -2131,6 +2126,16 @@ export default function AdminCustomersRanking({
             );
           })
         )}
+      </div>
+
+      <div className="flex flex-col items-center gap-3 py-4" aria-live="polite">
+        {customersError && <p role="alert" className="text-sm text-red-400">{customersError}</p>}
+        {(hasMoreCustomers || customersError) && <button type="button" onClick={() => void loadNextCustomers()}
+          disabled={customersLoading}
+          className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-50 disabled:cursor-wait">
+          {customersLoading ? 'Cargando clientes…' : customersError ? 'Reintentar carga' : 'Cargar 4 más'}
+        </button>}
+        {!hasMoreCustomers && !customersLoading && <p className="text-xs text-gray-400">No hay más perfiles de clientes por cargar.</p>}
       </div>
 
       {/* Admin RYYCOS Adjustment Modal */}

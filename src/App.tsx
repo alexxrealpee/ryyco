@@ -439,6 +439,13 @@ export default function App() {
   // 3. Keep Auth listener continuously running so session is never lost or orphaned
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      // Driver routes own their authentication resolution; seller lookup must not
+      // redirect an authenticated driver to the restaurant login on a read error.
+      if (detectInitialRouteFromUrl().view === 'driver-portal') {
+        setUserProfile(null);
+        setInitLoading(false);
+        return;
+      }
       if (user) {
         // Distinguish active authentication mode: 'seller' (vendor dashboard) vs 'customer' (buyer on store) vs 'driver' (delivery portal)
         const authMode = localStorage.getItem('ryyco_auth_mode');

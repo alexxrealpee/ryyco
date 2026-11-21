@@ -27,7 +27,7 @@
     "postbuild": "node scripts/sanitize-public-build.mjs",
     "postbuild:client": "node scripts/sanitize-public-build.mjs",
     "postbuild:web": "node scripts/sanitize-public-build.mjs",
-    "capacitor:sync:after": "node scripts/configure-android-push.mjs"
+    "capacitor:sync:after": "node scripts/configure-android-push.mjs && node scripts/configure-android-release.mjs"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.5.2",
