@@ -1,4 +1,4 @@
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
@@ -36,3 +36,14 @@ exports.orderReassignmentNotifications = onDocumentUpdated({
   if (!after?.reassignmentId || after.reassignmentId === before?.reassignmentId || after.status !== 'pending') return;
   return deliverOrder(getFirestore(database), getMessaging(), event.params.orderId, after.reassignmentId);
 });
+
+// Categorías globales de productos (página de inicio): reglas + IA opcional en el servidor.
+const classification = require('./productClassification.cjs');
+const classifierAi = () => classification.createAiClassifier(); // null si no hay llave configurada
+const classifierTrigger = { database, region: 'us-central1', retry: true, timeoutSeconds: 120, maxInstances: 5 };
+exports.productClassificationOnProduct = onDocumentWritten({ ...classifierTrigger, document: 'products/{productId}' },
+  event => classification.onProductWritten(db(), event, classifierAi()));
+exports.productClassificationOnReview = onDocumentWritten({ ...classifierTrigger, document: 'productClassifications/{productId}' },
+  event => classification.onClassificationWritten(db(), event, classifierAi()));
+exports.productClassificationRun = onDocumentWritten({ ...classifierTrigger, timeoutSeconds: 300, maxInstances: 1, document: 'classifierRuns/{runId}' },
+  event => classification.onRunWritten(db(), event, classifierAi()));

@@ -45,6 +45,7 @@ import AdminReferralsManager from './AdminReferralsManager';
 import AdminStoresManager from './AdminStoresManager';
 import AdminSalesStats from './AdminSalesStats';
 import AdminCustomersRanking from './AdminCustomersRanking';
+import AdminProductClassification from './AdminProductClassification';
 import AdminWhatsAppDriversModal from './AdminWhatsAppDriversModal';
 import AdminOrderTimesManager from './AdminOrderTimesManager';
 import AdminProductImagesOptimizer from './AdminProductImagesOptimizer';
@@ -5953,10 +5954,13 @@ export default function AdminPanel({ onBack }: AdminPanelProps) {
             </div>
           </div>
         ) : activeAdminTab === 'product_images' ? (
-          <AdminProductImagesOptimizer 
-            storesMap={storesMap}
-            allStores={allStoresList}
-          />
+          <>
+            <AdminProductImagesOptimizer 
+              storesMap={storesMap}
+              allStores={allStoresList}
+            />
+            <AdminProductClassification storesMap={storesMap} />
+          </>
         ) : activeAdminTab === 'general' ? (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-gray-900/30 border border-gray-800 rounded-3xl p-6 backdrop-blur-sm space-y-6">

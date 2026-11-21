@@ -64,6 +64,8 @@
       if (/^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname)) {
         window.__RYYCO_STORES__ = prefetchHomePage('stores');
         window.__RYYCO_PRODUCTS__ = prefetchHomePage('products');
+        // Categorías globales con productos (resumen liviano, sin productos completos).
+        window.__RYYCO_CATEGORIES__ = prefetchHomePage('categories');
       }
     </script>
 

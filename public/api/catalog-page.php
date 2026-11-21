@@ -5,7 +5,50 @@ header('Cache-Control: no-store');
 header('Access-Control-Allow-Origin: *');
 try {
     $kind = $_GET['kind'] ?? 'products';
-    if (!in_array($kind, ['stores', 'products'], true)) throw new InvalidArgumentException('kind');
+    if (!in_array($kind, ['stores', 'products', 'categories'], true)) throw new InvalidArgumentException('kind');
+    // Categoría global (ej. desayunos): solo productos ya clasificados en ella.
+    $globalCategory = (string)($_GET['category'] ?? '');
+    if ($globalCategory !== '' && ($kind !== 'products' || !preg_match('/^[a-z-]{2,40}$/D', $globalCategory))) throw new InvalidArgumentException('category');
+    if ($kind === 'categories') {
+        // Qué categorías globales tienen productos activos y de qué restaurantes (sin fotos, sin
+        // descargar productos completos). El navegador cruza esto con los restaurantes abiertos.
+        $cacheFile = sys_get_temp_dir() . '/ryyco-global-categories.json';
+        if (is_file($cacheFile) && time() - filemtime($cacheFile) < 60) {
+            header('Cache-Control: no-store');
+            readfile($cacheFile);
+            exit;
+        }
+        $baseUrl = 'https://firestore.googleapis.com/v1/projects/studio-9002217802-13e05/databases/ai-studio-be9196c8-7041-4ba9-b337-ca71c1485d15/documents';
+        $map = [];
+        $after = null;
+        for ($page = 0; $page < 20; $page++) {
+            $query = ['from' => [['collectionId' => 'products']],
+                'select' => ['fields' => [['fieldPath' => 'globalCategoryIds'], ['fieldPath' => 'userId'], ['fieldPath' => 'active']]],
+                'where' => ['fieldFilter' => ['field' => ['fieldPath' => 'classificationStatus'], 'op' => 'EQUAL',
+                    'value' => ['stringValue' => 'classified']]],
+                'orderBy' => [['field' => ['fieldPath' => '__name__'], 'direction' => 'ASCENDING']], 'limit' => 500];
+            if ($after) $query['startAt'] = ['before' => false, 'values' => [['referenceValue' => $after]]];
+            $rows = catalogHttpJson($baseUrl . ':runQuery', ['structuredQuery' => $query]);
+            $docs = array_values(array_filter($rows, fn($r) => isset($r['document'])));
+            foreach ($docs as $row) {
+                $fields = catalogDecodeFields($row['document']['fields'] ?? []);
+                if (($fields['active'] ?? true) === false || empty($fields['userId'])) continue;
+                foreach ((array)($fields['globalCategoryIds'] ?? []) as $id) {
+                    if (is_string($id) && preg_match('/^[a-z-]{2,40}$/D', $id)) $map[$id][$fields['userId']] = true;
+                }
+            }
+            if (count($docs) < 500) break;
+            $after = $docs[count($docs) - 1]['document']['name'];
+        }
+        $out = [];
+        foreach ($map as $id => $stores) $out[$id] = array_keys($stores);
+        $json = json_encode(['source' => 'firestore-server', 'kind' => 'categories', 'categories' => (object)$out,
+            'confirmedAt' => gmdate('c')], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        @file_put_contents($cacheFile, $json, LOCK_EX);
+        header('Cache-Control: no-store');
+        echo $json;
+        exit;
+    }
     $collection = $kind === 'stores' ? 'profiles' : 'products';
     $limit = min(24, max(1, (int)($_GET['limit'] ?? 12)));
     $after = (string)($_GET['after'] ?? '');
@@ -26,7 +69,9 @@ try {
         'bankAccounts','location','latitude','longitude'];
     $productFields = ['userId','name','description','price','compareAtPrice','packagingCost','category','stock',
         'variantsText','variantsList','variantPrices','hasFlavors','allowsHalfAndHalf','flavorsText','flavorsList',
-        'allowSingleFlavor','addons','active','storeName','storeUsername','createdAt','imageFileName'];
+        'allowSingleFlavor','addons','active','storeName','storeUsername','createdAt','imageFileName',
+        // Categorías globales del inicio (las asigna el clasificador; no cambian la categoría interna).
+        'globalCategoryIds','globalMealTags','classificationStatus'];
     $query = ['from'=>[['collectionId'=>$collection]],
         'select'=>['fields'=>array_map(fn($f)=>['fieldPath'=>$f], $kind === 'stores' ? $profileFields : $productFields)],
         'orderBy'=>[['field'=>['fieldPath'=>'__name__'],'direction'=>'ASCENDING']]];
@@ -34,7 +79,10 @@ try {
     if ($kind === 'products') {
         $query['limit'] = $limit;
         if ($after !== '') $query['startAt'] = ['before'=>false,'values'=>[['referenceValue'=>substr($base, strlen('https://firestore.googleapis.com/v1/')) . '/products/' . $after]]];
-        if ($storeId !== '') {
+        if ($globalCategory !== '') {
+            $query['where'] = ['fieldFilter'=>['field'=>['fieldPath'=>'globalCategoryIds'], 'op'=>'ARRAY_CONTAINS', 'value'=>['stringValue'=>$globalCategory]]];
+        }
+        if ($storeId !== '' && $globalCategory === '') {
             $equals = fn($field, $value) => ['fieldFilter'=>['field'=>['fieldPath'=>$field], 'op'=>'EQUAL', 'value'=>['stringValue'=>$value]]];
             $filters = [$equals('userId', $storeId)];
             foreach (array_unique([$storeUsername, strtolower(trim($storeUsername))]) as $username) {
@@ -64,6 +112,7 @@ try {
     $last = $count ? basename($documents[$count-1]['document']['name']) : null;
     echo json_encode(['source'=>'firestore-server','kind'=>$kind,'items'=>$items,
         ...($storeId !== '' ? ['storeId'=>$storeId] : []),
+        ...($globalCategory !== '' ? ['category'=>$globalCategory] : []),
         'hasMore'=>$kind === 'products' && $count === $limit,'cursor'=>$last,'confirmedAt'=>gmdate('c')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
 } catch (Throwable $e) {
     http_response_code($e instanceof InvalidArgumentException ? 400 : 503);
