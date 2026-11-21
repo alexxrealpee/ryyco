@@ -1436,24 +1436,6 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
               </button>
             </form>
 
-            {/* Descarga de la app Android (solo en la web; dentro de la app no se muestra) */}
-            {!isAndroidApp() && (
-              <div className="mt-6 p-4 bg-[#090B12] border border-emerald-500/30 rounded-xl space-y-2 text-left">
-                <a
-                  href={DRIVER_APK_URL}
-                  download="ryyco-domiciliarios.apk"
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
-                >
-                  <DownloadIcon className="w-4 h-4" />
-                  <span>Descargar app Android para domiciliarios</span>
-                </a>
-                <p className="text-[11px] text-[#A9B2C3] leading-relaxed">
-                  Versión {DRIVER_APK_VERSION}. Con la app el GPS sigue funcionando con la pantalla apagada y recibes avisos de pedidos nuevos.
-                  Al abrir el archivo, Android puede pedirte permitir <strong>“Instalar apps desconocidas”</strong> para tu navegador: acéptalo y luego toca <strong>Instalar</strong>.
-                </p>
-              </div>
-            )}
-
             <div className="mt-6 pt-6 border-t border-[#232B3A] text-center space-y-3">
               <p className="text-xs text-[#A9B2C3]">
                 ¿Aún no estás registrado como domiciliario?
@@ -1602,6 +1584,28 @@ Quedo atento a su autorización para que puedan reasignar el pedido a otro compa
 
       {/* Main Content Area */}
       <main className={`max-w-6xl mx-auto w-full p-4 sm:p-6 flex-1 space-y-6 ${activeDelivery ? 'pb-56 sm:pb-48' : 'pb-28 sm:pb-12'}`}>
+
+        {/* Descarga de la app Android para domiciliarios: se muestra al ingresar
+            desde la web (dentro de la app no aparece). */}
+        {!isAndroidApp() && (
+          <div className="bg-[#111827] border border-emerald-500/30 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5">
+            <div className="flex-1 space-y-1">
+              <p className="text-sm font-black text-white">Descarga la app de Ryyco para domiciliarios</p>
+              <p className="text-[11px] text-[#A9B2C3] leading-relaxed">
+                Versión {DRIVER_APK_VERSION} para Android. Con la app el GPS sigue funcionando con la pantalla apagada y recibes avisos de pedidos nuevos.
+                Al abrir el archivo, Android puede pedirte permitir <strong>“Instalar apps desconocidas”</strong> para tu navegador: acéptalo y luego toca <strong>Instalar</strong>.
+              </p>
+            </div>
+            <a
+              href={DRIVER_APK_URL}
+              download="ryyco-domiciliarios.apk"
+              className="shrink-0 px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm rounded-xl transition cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30"
+            >
+              <DownloadIcon className="w-4 h-4" />
+              <span>Descargar app Android</span>
+            </a>
+          </div>
+        )}
 
         {/* ------------------------------------------------------------------
             STATUS 1: PENDING APPROVAL
