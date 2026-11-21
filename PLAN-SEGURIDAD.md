@@ -37,7 +37,15 @@ firebase deploy --only firestore:rules --project studio-9002217802-13e05
 ## Estado (21 nov 2026)
 
 - Fase 1: **publicada** (reglas activas, contraseñas migradas a Firebase Auth).
-- Fase 2: código listo en la rama `fase-2-datos-privados`. Publicación paso a paso:
+- Fase 2: pasos 1–3 **hechos** (funciones desplegadas, PR #9 publicado, 762 pedidos completados).
+- Fase 1.5 **activa** (`firestore.rules`): saldos, giros, premios y movimientos de RYYCOS
+  solo los cambia el servidor o un admin; el registro de transferencias es solo del servidor.
+- **Bloqueo del paso 5:** la app Android lleva el código web dentro del APK. Hasta que los
+  domiciliarios y clientes instalen un APK nuevo (`npm run cap:sync` + firmar en Android
+  Studio con JDK 21), las reglas estrictas romperían la app antigua (los domiciliarios
+  dejarían de ver pedidos). Pedidos y perfiles siguen legibles sin sesión hasta entonces.
+
+Publicación paso a paso:
 
 | Paso | Qué | Cómo |
 |---|---|---|
