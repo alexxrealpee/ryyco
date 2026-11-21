@@ -121,17 +121,25 @@
         document.head.appendChild(s);
       }
 
-      if (typeof window !== 'undefined') {
-        if ('requestIdleCallback' in window) {
-          window.requestIdleCallback(function() {
-            setTimeout(loadGtagScript, 1200);
-          }, { timeout: 3000 });
-        } else {
-          window.addEventListener('load', function() {
-            setTimeout(loadGtagScript, 1200);
-          }, { once: true });
+      // RENDIMIENTO (celulares): las analíticas de terceros (Google y TikTok) se cargan
+      // en la primera interacción (toque, scroll, tecla) o 5 s después de cargar la
+      // página, lo que ocurra primero. Así no compiten con la carga inicial.
+      // Los eventos registrados antes quedan en cola (dataLayer / ttq).
+      window.__ryycoWhenIdleForAnalytics = function(fn) {
+        var done = false;
+        var events = ['pointerdown', 'touchstart', 'scroll', 'keydown'];
+        function run() {
+          if (done) return;
+          done = true;
+          events.forEach(function(e) { window.removeEventListener(e, run, true); });
+          setTimeout(fn, 0);
         }
-      }
+        events.forEach(function(e) { window.addEventListener(e, run, { capture: true, passive: true, once: true }); });
+        function afterLoad() { setTimeout(run, 5000); }
+        if (document.readyState === 'complete') afterLoad();
+        else window.addEventListener('load', afterLoad, { once: true });
+      };
+      window.__ryycoWhenIdleForAnalytics(loadGtagScript);
     </script>
     <!-- TikTok Pixel Code Start -->
     <script>
@@ -140,20 +148,15 @@
         var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
         ;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
 
-        // RENDIMIENTO: el píxel se descarga cuando la página ya cargó y el navegador
-        // está libre (igual que gtag). Los eventos llamados antes quedan en cola.
+        // RENDIMIENTO: el píxel se descarga en la primera interacción o 5 s después
+        // de cargar (igual que gtag). Los eventos llamados antes quedan en cola.
         function loadTiktokPixel() {
           if (w.__TTQ_LOADED__) return;
           w.__TTQ_LOADED__ = true;
           ttq.load('DBHN4D3C77U4VUSMD9QG');
           ttq.page();
         }
-        function scheduleTiktokPixel() {
-          if ('requestIdleCallback' in w) w.requestIdleCallback(function() { setTimeout(loadTiktokPixel, 1500); }, { timeout: 4000 });
-          else setTimeout(loadTiktokPixel, 2500);
-        }
-        if (d.readyState === 'complete') scheduleTiktokPixel();
-        else w.addEventListener('load', scheduleTiktokPixel, { once: true });
+        w.__ryycoWhenIdleForAnalytics(function() { setTimeout(loadTiktokPixel, 300); });
       }(window, document, 'ttq');
     </script>
     <!-- TikTok Pixel Code End -->

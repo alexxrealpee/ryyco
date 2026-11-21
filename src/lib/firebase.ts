@@ -25,6 +25,12 @@ import {
   sendPasswordResetEmail,
   onAuthStateChanged,
   updatePassword,
+  initializeAuth,
+  indexedDBLocalPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  browserPopupRedirectResolver,
+  getRedirectResult,
   User as FirebaseUser
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
@@ -82,8 +88,27 @@ const firebaseConfig = {
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+// RENDIMIENTO: getAuth() carga al iniciar, en celulares y Safari, el iframe de
+// Google (~100 KB + gapi) y retrasa la sesión hasta que termina. Se inicializa
+// sin él y se precarga después de que la página carga (o al primer toque), con
+// tiempo de sobra antes de que alguien pulse "Entrar con Google".
+export const auth = initializeAuth(app, {
+  persistence: [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence]
+});
 auth.languageCode = 'es';
+
+let googlePopupWarm: Promise<unknown> | null = null;
+/** Precarga el iframe de Google para que el popup abra al instante (Safari lo exige). */
+export function warmGoogleSignIn(): void {
+  if (googlePopupWarm || typeof window === 'undefined' || Capacitor.isNativePlatform()) return;
+  googlePopupWarm = getRedirectResult(auth, browserPopupRedirectResolver).catch(() => null);
+}
+if (typeof window !== 'undefined' && !Capacitor.isNativePlatform()) {
+  const warmSoon = () => setTimeout(warmGoogleSignIn, 1500);
+  if (document.readyState === 'complete') warmSoon();
+  else window.addEventListener('load', warmSoon, { once: true });
+  window.addEventListener('pointerdown', warmGoogleSignIn, { once: true, passive: true });
+}
 
 // Surface transport warnings during local validation; keep production logging quiet.
 setLogLevel(import.meta.env?.DEV ? 'warn' : 'silent');
@@ -214,7 +239,7 @@ export async function signInWithGoogleUniversal() {
     const credential = GoogleAuthProvider.credential(idToken);
     return await signInWithCredential(auth, credential);
   } else {
-    return await signInWithPopup(auth, googleProvider);
+    return await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
   }
 }
 
