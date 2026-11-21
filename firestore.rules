@@ -471,30 +471,40 @@ service cloud.firestore {
     }
 
     // ---------------------------------------------------------------
-    // Clientes y RYYCOS
-    // FASE 2 (URGENTE): esta colección guarda contraseñas en texto plano
-    // y saldos que el propio navegador modifica. No se puede asegurar
-    // solo con reglas sin romper el portal actual. Ver PLAN-SEGURIDAD.md.
-    // Mejora parcial ahora: una cuenta ya vinculada a un usuario de Google
-    // (authUid) no puede ser "secuestrada" cambiando su authUid o correo.
+    // Clientes y RYYCOS (FASE 1.5)
+    // Saldo, giros, premios, movimientos y estadísticas solo los cambia el
+    // servidor (Cloud Functions ryyco*) o un admin. Un perfil nuevo solo
+    // puede nacer con el bono de bienvenida (máx. 500 RYYCOS y 1 giro).
+    // La lectura sigue abierta mientras haya teléfonos con la app Android
+    // antigua (busca perfiles por celular sin sesión). FASE 2 la cierra
+    // (firestore.phase2.rules).
     // ---------------------------------------------------------------
+    function validNewCustomerBalance(data) {
+      return data.get('points', 0) is number && data.get('points', 0) >= 0 && data.get('points', 0) <= 500 &&
+        data.get('ryycos', 0) is number && data.get('ryycos', 0) <= 500 &&
+        data.get('spinsAvailable', 0) is number && data.get('spinsAvailable', 0) <= 1 &&
+        data.get('movements', []).size() <= 1 &&
+        data.get('wonPrizes', []).size() == 0 &&
+        data.get('totalOrdersCount', 0) == 0 && data.get('totalSpent', 0) == 0;
+    }
     match /customers/{customerId} {
       allow read: if true;
-      allow create: if request.resource.data.get('authUid', '') == '' ||
-        isOwner(request.resource.data.get('authUid', '')) || isAdmin();
-      allow update: if isAdmin() ||
-        !changedKeys().hasAny(['authUid', 'email']) ||
-        resource.data.get('authUid', '') == '' ||
-        isOwner(resource.data.get('authUid', ''));
+      allow create: if isAdmin() || (
+        (request.resource.data.get('authUid', '') == '' || isOwner(request.resource.data.get('authUid', ''))) &&
+        validNewCustomerBalance(request.resource.data));
+      allow update: if isAdmin() || (
+        !changedKeys().hasAny(['points', 'ryycos', 'movements', 'spinsAvailable', 'wonPrizes',
+          'totalOrdersCount', 'totalSpent']) &&
+        (!changedKeys().hasAny(['authUid', 'email']) ||
+          resource.data.get('authUid', '') == '' ||
+          isOwner(resource.data.get('authUid', ''))));
       allow delete: if isAdmin();
     }
 
-    // CAMBIO: los movimientos de RYYCOS son un registro: se pueden crear,
-    // pero no editar ni borrar (solo admin).
+    // Registro de transferencias de RYYCOS: lo escribe solo el servidor.
     match /ryyco_transactions/{transactionId} {
-      allow read: if true; // FASE 2: limitar al dueño
-      allow create: if true; // FASE 2: solo desde Cloud Function
-      allow update, delete: if isAdmin();
+      allow read: if isAdmin() || (isAuth() && resource.data.get('senderUid', '') == request.auth.uid);
+      allow create, update, delete: if isAdmin();
     }
 
     // ---------------------------------------------------------------
