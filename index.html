@@ -168,40 +168,101 @@
       sin Tailwind ni fuentes externas, para que funcione igual en Chrome y Safari.
     -->
     <style>
-      html, body { background: #090B12; margin: 0; }
-      #ryyco-shell { min-height: 100vh; color: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; padding: 16px; }
-      #ryyco-shell .rs-top { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; }
-      #ryyco-shell .rs-logo { font-weight: 900; font-size: 22px; letter-spacing: 1px; color: #E63946; }
-      #ryyco-shell .rs-hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 1100px; margin: 18px auto 0; padding: 16px; border-radius: 20px; background: linear-gradient(135deg, #103E31, #0B1A16); border: 1px solid rgba(255, 217, 138, .25); }
-      #ryyco-shell .rs-copy { flex: 1 1 auto; min-width: 0; }
-      #ryyco-shell h1 { font-size: 26px; line-height: 1.1; margin: 0 0 8px; font-weight: 900; }
-      #ryyco-shell h1 span { color: #FFD98A; }
-      #ryyco-shell p { font-size: 13px; color: #cbd5e1; margin: 0; }
-      /* Igual o mayor que la imagen del hero de React (máx. 170 px en celular),
-         para que el contenido principal (LCP) se mida desde el cascarón. */
-      #ryyco-shell .rs-img { width: 180px; height: auto; flex: 0 0 auto; }
-      @media (min-width: 640px) { #ryyco-shell .rs-img { width: 340px; } }
-      #ryyco-shell .rs-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 1100px; margin: 18px auto 0; }
-      #ryyco-shell .rs-card { height: 170px; border-radius: 16px; background: #111827; border: 1px solid #232B3A; animation: rs-pulse 1.4s ease-in-out infinite; }
-      @media (min-width: 640px) { #ryyco-shell h1 { font-size: 40px; } #ryyco-shell .rs-cards { grid-template-columns: repeat(4, 1fr); } }
-      @keyframes rs-pulse { 50% { opacity: .55; } }
-      html.rs-not-home #ryyco-shell .rs-hero, html.rs-not-home #ryyco-shell .rs-cards { display: none; }
+      html, body { background: #090D16; margin: 0; }
+      /* El cascarón copia las medidas del header y del hero reales (TiendaGeneral.tsx)
+         para que al montar React no haya salto ni cambio visual. */
+      #ryyco-shell { min-height: 100vh; color: #fff; font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; }
+      #ryyco-shell *, #ryyco-shell *::before, #ryyco-shell *::after { box-sizing: border-box; }
+      /* Header: igual a la barra real (64 px, fondo #0F172A, menú · logo · carrito) */
+      #ryyco-shell .rs-top { background: rgba(15, 23, 42, .95); border-bottom: 1px solid #1F2937; box-shadow: 0 4px 6px -1px rgba(0,0,0,.4); }
+      #ryyco-shell .rs-top-in { max-width: 1280px; margin: 0 auto; padding: 12px 16px; min-height: 64px; display: flex; align-items: center; justify-content: space-between; }
+      #ryyco-shell .rs-btn { width: 40px; height: 40px; border-radius: 12px; border: 1px solid #232B3A; background: #111827; display: flex; align-items: center; justify-content: center; }
+      #ryyco-shell .rs-btn.rs-cart { background: #0F172A; border-color: rgba(51, 65, 85, .8); }
+      #ryyco-shell .rs-btn svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+      #ryyco-shell .rs-logo { height: 32px; width: auto; display: block; }
+      /* Hero: sin tarjeta, mismo degradado radial que el real */
+      #ryyco-shell .rs-hero { position: relative; overflow: hidden; padding: 24px 12px 8px;
+        background: radial-gradient(ellipse at 85% 40%, #164536 0%, transparent 58%), radial-gradient(ellipse at 4% 0%, #51232b 0%, transparent 45%); }
+      #ryyco-shell .rs-grid { max-width: 1152px; margin: 0 auto; display: grid; grid-template-columns: 7fr 5fr; align-items: center; gap: 8px; }
+      #ryyco-shell .rs-copy { min-width: 0; }
+      #ryyco-shell .rs-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+      #ryyco-shell .rs-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 999px; background: #D62839; border: 1px solid #D62839; font-size: 10px; font-weight: 900; letter-spacing: .05em; box-shadow: 0 10px 15px -3px rgba(214, 40, 57, .3); }
+      #ryyco-shell .rs-dots { display: flex; gap: 6px; }
+      #ryyco-shell .rs-dot { width: 28px; height: 28px; border-radius: 50%; background: rgba(15, 23, 42, .9); border: 1px solid rgba(51, 65, 85, .8); }
+      #ryyco-shell h1 { font-size: 30px; line-height: 1.08; letter-spacing: -.025em; margin: 0 0 8px; font-weight: 900; }
+      #ryyco-shell h1 span { display: block; }
+      #ryyco-shell h1 .rs-gold { color: #FFD98A; }
+      #ryyco-shell p { font-size: 12px; line-height: 1.35; font-weight: 500; color: #D1D5DB; margin: 0; max-width: 28rem; }
+      #ryyco-shell .rs-art { position: relative; width: 100%; max-width: 170px; margin: 0 auto; padding: 8px 0; display: flex; align-items: center; justify-content: center; }
+      #ryyco-shell .rs-circle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 110px; height: 110px; border-radius: 50%; border: 1px solid rgba(255, 217, 138, .5); background: linear-gradient(135deg, #24775D, #103E31); }
+      #ryyco-shell .rs-img { position: relative; width: 100%; height: auto; max-height: 170px; object-fit: contain; filter: drop-shadow(0 15px 25px rgba(0,0,0,.7)); }
+      /* Bloque del buscador / tarjetas mientras llegan los datos */
+      #ryyco-shell .rs-main { max-width: 1280px; margin: 0 auto; padding: 8px 16px 40px; }
+      #ryyco-shell .rs-panel { height: 340px; border-radius: 24px; background: #111827; border: 1px solid #232B3A; animation: rs-pulse 1.6s ease-in-out infinite; }
+      #ryyco-shell .rs-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 32px; }
+      #ryyco-shell .rs-card { height: 170px; border-radius: 16px; background: #111827; border: 1px solid #232B3A; animation: rs-pulse 1.6s ease-in-out infinite; }
+      @keyframes rs-pulse { 50% { opacity: .6; } }
+      @media (min-width: 640px) {
+        #ryyco-shell .rs-top-in { padding: 14px 24px; }
+        #ryyco-shell .rs-logo { height: 38px; }
+        #ryyco-shell .rs-hero { padding: 40px 24px 16px; }
+        #ryyco-shell .rs-grid { gap: 24px; }
+        #ryyco-shell .rs-pill { font-size: 12px; }
+        #ryyco-shell .rs-dot { width: 32px; height: 32px; }
+        #ryyco-shell h1 { font-size: 36px; }
+        #ryyco-shell p { font-size: 14px; }
+        #ryyco-shell .rs-art { max-width: 270px; margin: 0 0 0 auto; }
+        #ryyco-shell .rs-circle { width: 180px; height: 180px; right: 8px; }
+        #ryyco-shell .rs-img { max-height: 250px; }
+        #ryyco-shell .rs-main { padding: 8px 24px 40px; }
+        #ryyco-shell .rs-cards { grid-template-columns: repeat(4, 1fr); }
+      }
+      @media (min-width: 768px) {
+        #ryyco-shell .rs-top-in { padding: 14px 32px; }
+        #ryyco-shell .rs-logo { height: 42px; }
+        #ryyco-shell .rs-hero { padding-left: 32px; padding-right: 32px; }
+        #ryyco-shell h1 { font-size: 48px; }
+        #ryyco-shell .rs-art { max-width: 340px; }
+        #ryyco-shell .rs-circle { width: 220px; height: 220px; }
+        #ryyco-shell .rs-img { max-height: 300px; }
+      }
+      @media (min-width: 1024px) { #ryyco-shell h1 { font-size: 60px; } }
+      @media (prefers-reduced-motion: reduce) { #ryyco-shell .rs-panel, #ryyco-shell .rs-card { animation: none; } }
+      html.rs-not-home #ryyco-shell .rs-hero, html.rs-not-home #ryyco-shell .rs-main { display: none; }
     </style>
     <script>
-      // El cascarón con la imagen del combo solo corresponde a la página de inicio.
+      // El cascarón con el hero solo corresponde a la página de inicio.
       if (!/^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname)) document.documentElement.className += ' rs-not-home';
     </script>
     <div id="root">
       <div id="ryyco-shell" aria-hidden="true">
-        <div class="rs-top"><span class="rs-logo">RYYCO</span></div>
-        <div class="rs-hero">
-          <div class="rs-copy">
-            <h1>Pide comida <span>a domicilio</span></h1>
-            <p>Tus restaurantes favoritos de Ipiales con entrega rápida.</p>
+        <div class="rs-top">
+          <div class="rs-top-in">
+            <span class="rs-btn"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></span>
+            <img class="rs-logo" src="/logo.svg" alt="" width="107" height="32" fetchpriority="high" />
+            <span class="rs-btn rs-cart"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span>
           </div>
-          <img class="rs-img" src="/ryyco_combo.webp" alt="" width="403" height="399" fetchpriority="high" decoding="async" />
         </div>
-        <div class="rs-cards"><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div></div>
+        <div class="rs-hero">
+          <div class="rs-grid">
+            <div class="rs-copy">
+              <div class="rs-row">
+                <span class="rs-pill">&#128293; REELS DE COMIDA</span>
+                <span class="rs-dots"><span class="rs-dot"></span><span class="rs-dot"></span><span class="rs-dot"></span><span class="rs-dot"></span></span>
+              </div>
+              <h1><span>Antojos de</span><span class="rs-gold">Navidad</span></h1>
+              <p>Pide a tus restaurantes favoritos de Ipiales con entrega rápida a domicilio.</p>
+            </div>
+            <div class="rs-art">
+              <span class="rs-circle"></span>
+              <img class="rs-img" src="/ryyco_combo.webp" alt="" width="400" height="260" fetchpriority="high" decoding="async" />
+            </div>
+          </div>
+        </div>
+        <div class="rs-main">
+          <div class="rs-panel"></div>
+          <div class="rs-cards"><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div></div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
