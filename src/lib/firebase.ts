@@ -1011,11 +1011,29 @@ export function resolveProductPackagingCost(
 }
 
 // Helper to load profile relations (links, products, custom theme) with failover
-async function loadProfileRelations(profile: UserProfile, searchKey: string) {
-  if (profile.email && checkIsAdminEmail(profile.email) && profile.role !== 'admin') {
-    profile.role = 'admin';
-  }
+type RelationRows = { forEach: (fn: (d: { id: string; data: () => any }) => void) => void } | null;
+type ThemeRow = { exists: () => boolean; data: () => any } | null;
 
+/**
+ * Página de un restaurante con datos ya descargados por /api/store-page.php
+ * (index.html los pide en paralelo con el JavaScript). Mismo procesamiento que
+ * la carga normal, sin consultas a Firestore.
+ */
+export function buildProfileFromPrefetch(
+  profile: UserProfile,
+  searchKey: string,
+  links: { id: string; data: any }[],
+  products: { id: string; data: any }[],
+  theme: any | null
+) {
+  const rows = (items: { id: string; data: any }[]): RelationRows => ({
+    forEach: fn => items.forEach(item => fn({ id: item.id, data: () => item.data })),
+  });
+  const themeRow: ThemeRow = { exists: () => !!theme, data: () => theme };
+  return buildProfileRelations(profile, searchKey, rows(links), rows(products), themeRow);
+}
+
+async function loadProfileRelations(profile: UserProfile, searchKey: string) {
   // Fetch links, products, and custom theme in parallel
   const lQuery = query(collection(db, 'links'), where('userId', '==', profile.uid));
   const pQuery = query(collection(db, 'products'), where('userId', '==', profile.uid));
@@ -1035,6 +1053,14 @@ async function loadProfileRelations(profile: UserProfile, searchKey: string) {
       return null;
     })
   ]);
+
+  return buildProfileRelations(profile, searchKey, lSnapshot as RelationRows, pSnapshot as RelationRows, tDoc as ThemeRow);
+}
+
+function buildProfileRelations(profile: UserProfile, searchKey: string, lSnapshot: RelationRows, pSnapshot: RelationRows, tDoc: ThemeRow) {
+  if (profile.email && checkIsAdminEmail(profile.email) && profile.role !== 'admin') {
+    profile.role = 'admin';
+  }
 
   const links: LinkItem[] = [];
   if (lSnapshot) {

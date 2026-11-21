@@ -50,8 +50,43 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" />
     <!-- Outfit y Plus Jakarta Sans solo los usa el módulo de proveedores, que las carga en proveedores-fonts.css -->
-    <link rel="preload" href="/ryyco_combo.webp" as="image" fetchpriority="high" />
     <script>
+      // Página de inicio: la imagen del combo se precarga solo aquí (antes se
+      // descargaba también en las páginas de cada restaurante sin usarse).
+      window.__RYYCO_IS_HOME__ = /^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname);
+      if (window.__RYYCO_IS_HOME__) {
+        var comboPreload = document.createElement('link');
+        comboPreload.rel = 'preload'; comboPreload.as = 'image'; comboPreload.href = '/ryyco_combo.webp';
+        comboPreload.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(comboPreload);
+      }
+
+      // Página de un restaurante (/usuario): sus datos (perfil, productos, tema) se piden
+      // YA a /api/store-page.php, en paralelo con la descarga de la app. Fotos como
+      // archivos cacheados. Si falla, la app los carga como antes con Firebase.
+      (function () {
+        var reserved = ['login','ingresar','signup','registro','dashboard','admin','landing','vender','crear-tienda',
+          'tienda','tiendas','catalogo','domiciliario','driver-register','driver-portal','domiciliarios','driver',
+          'carruselproduc','carrusel-productos','reels','reel','historias','historia','api','assets',
+          'registro-cliente','privacidad','politica-de-privacidad','privacy','privacy-policy','legal',
+          'restaurante','restaurantes','admin-restaurante','pedidos-restaurante','panel-restaurante','pedidos',
+          'proveedores','proveedores-login','acceso-proveedores','portal-proveedor',
+          'postular-proveedor','registro-proveedor','vender-proveedor','proveedores-landing','index.html'];
+        var path = location.pathname;
+        try { path = decodeURIComponent(path); } catch (e) {}
+        var user = path.replace(/^\/+|\/+$/g, '').replace(/^@/, '').toLowerCase();
+        if (!/^[a-z0-9._-]{1,60}$/.test(user) || reserved.indexOf(user) !== -1 || location.search.indexOf('view=') !== -1) return;
+        document.documentElement.className += ' rs-store';
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, 10000);
+        var entry = { u: user, t: Date.now() };
+        entry.p = fetch('/api/store-page.php?username=' + encodeURIComponent(user), { cache: 'no-store', priority: 'high', signal: controller.signal })
+          .then(function (r) { return r.ok && (r.headers.get('content-type') || '').indexOf('json') !== -1 ? r.json() : null; })
+          .catch(function () { return null; })
+          .then(function (data) { clearTimeout(timer); entry.data = data; return data; });
+        window.__RYYCO_STORE__ = entry;
+      })();
+
       // Start independent, small metadata requests while the application bundle downloads.
       // No image bytes, static availability or full-catalog request belongs on this path.
       function prefetchHomePage(kind) {
@@ -61,7 +96,7 @@
           .then(function(r) { return r.ok && (r.headers.get('content-type') || '').indexOf('json') !== -1 ? r.json() : null; })
           .catch(function() { return null; }).finally(function() { clearTimeout(timer); });
       }
-      if (/^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname)) {
+      if (window.__RYYCO_IS_HOME__) {
         window.__RYYCO_STORES__ = prefetchHomePage('stores');
         window.__RYYCO_PRODUCTS__ = prefetchHomePage('products');
       }
@@ -229,6 +264,8 @@
       @media (min-width: 1024px) { #ryyco-shell h1 { font-size: 60px; } }
       @media (prefers-reduced-motion: reduce) { #ryyco-shell .rs-panel, #ryyco-shell .rs-card { animation: none; } }
       html.rs-not-home #ryyco-shell .rs-hero, html.rs-not-home #ryyco-shell .rs-main { display: none; }
+      /* Página de un restaurante: sin barra ni bloques de carga, solo el fondo hasta que aparece la tienda. */
+      html.rs-store #ryyco-shell { display: none; }
     </style>
     <script>
       // El cascarón con el hero solo corresponde a la página de inicio.
@@ -255,7 +292,8 @@
             </div>
             <div class="rs-art">
               <span class="rs-circle"></span>
-              <img class="rs-img" src="/ryyco_combo.webp" alt="" width="400" height="260" fetchpriority="high" decoding="async" />
+              <img class="rs-img" alt="" width="400" height="260" decoding="async" />
+              <script>if (window.__RYYCO_IS_HOME__) document.currentScript.previousElementSibling.src = '/ryyco_combo.webp';</script>
             </div>
           </div>
         </div>
