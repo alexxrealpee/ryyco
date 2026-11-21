@@ -312,9 +312,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const isStoreSelected = selectedStore !== 'all';
   // Inicio con todos los restaurantes: categorías GLOBALES de RYYCO (clasificador del servidor).
   // Con un restaurante elegido se siguen usando sus categorías internas, como antes.
-  const isGlobalCategoryMode = !isStoreSelected;
-  const selectedGlobalCategory = isGlobalCategoryMode && isGlobalCategoryId(selectedCategory) ? selectedCategory : null;
-  const globalCatalog = useGlobalCategoryCatalog(selectedGlobalCategory);
+  // Mientras no haya productos clasificados (antes de la clasificación inicial), el inicio
+  // usa también las categorías de los restaurantes, para no quedar solo con "Ver todo".
+  const globalCandidate = !isStoreSelected && isGlobalCategoryId(selectedCategory) ? selectedCategory : null;
+  const globalCatalog = useGlobalCategoryCatalog(globalCandidate);
+  const hasGlobalClassification = useMemo(() =>
+    (globalCatalog.availability !== null && Object.keys(globalCatalog.availability).length > 0) ||
+    products.some(product => (product.globalCategoryIds || []).length > 0),
+  [globalCatalog.availability, products]);
+  const isGlobalCategoryMode = !isStoreSelected && hasGlobalClassification;
+  const selectedGlobalCategory = isGlobalCategoryMode ? globalCandidate : null;
   const storeMenu = useSelectedStoreMenu(openRestaurants.find(store => store.uid === selectedStore));
   const { loadMore: loadMoreStoreProducts } = storeMenu;
   const isCatalogLoadingMore = isStoreSelected ? storeMenu.loading : isProgressiveLoadingMore;
