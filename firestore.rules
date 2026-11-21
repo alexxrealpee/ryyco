@@ -160,6 +160,27 @@ service cloud.firestore {
       allow delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
+    // Categorías globales del inicio. Las clasificaciones las escriben las Cloud Functions;
+    // el administrador general solo puede corregir a mano o pedir reclasificar.
+    match /productClassifications/{productId} {
+      allow read: if isAdmin();
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['manual', 'reclassifyRequestedAt']);
+      allow create, delete: if false;
+    }
+
+    // Procesos de clasificación por lotes (iniciar, pausar, reanudar desde el panel).
+    match /classifierRuns/{runId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.status == 'queued' &&
+        request.resource.data.mode in ['missing', 'all'] &&
+        request.resource.data.keys().hasOnly(['mode', 'status', 'createdAt', 'createdBy', 'processed', 'batch', 'maxAiCalls']);
+      allow update: if isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resumeAt', 'leaseUntil']) &&
+        request.resource.data.status in ['paused', 'running', 'cancelled'];
+      allow delete: if isAdmin();
+    }
+
     match /leads/{leadId} {
       allow create: if true;
       allow read: if isAuth() && (resource.data.userId == request.auth.uid);

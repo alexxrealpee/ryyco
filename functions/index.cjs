@@ -44,3 +44,14 @@ exports.customerStatsOnOrder = onDocumentWritten({ ...statsTrigger, document: 'o
   event => customerStats.onOrderWritten(db(), event));
 exports.customerStatsOnProfile = onDocumentWritten({ ...statsTrigger, document: 'customers/{customerId}' },
   event => customerStats.onCustomerWritten(db(), event));
+
+// Categorías globales de productos (página de inicio): reglas + IA opcional en el servidor.
+const classification = require('./productClassification.cjs');
+const classifierAi = () => classification.createAiClassifier(); // null si no hay llave configurada
+const classifierTrigger = { database, region: 'us-central1', retry: true, timeoutSeconds: 120, maxInstances: 5 };
+exports.productClassificationOnProduct = onDocumentWritten({ ...classifierTrigger, document: 'products/{productId}' },
+  event => classification.onProductWritten(db(), event, classifierAi()));
+exports.productClassificationOnReview = onDocumentWritten({ ...classifierTrigger, document: 'productClassifications/{productId}' },
+  event => classification.onClassificationWritten(db(), event, classifierAi()));
+exports.productClassificationRun = onDocumentWritten({ ...classifierTrigger, timeoutSeconds: 300, maxInstances: 1, document: 'classifierRuns/{runId}' },
+  event => classification.onRunWritten(db(), event, classifierAi()));

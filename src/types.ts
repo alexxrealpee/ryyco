@@ -208,6 +208,15 @@ export interface ProductAddon {
 export interface ProductItem {
   id: string;
   userId: string; // Store Owner UID
+  // Categorías GLOBALES del inicio (las asigna el clasificador del servidor; `category` sigue
+  // siendo la categoría interna del restaurante y no se modifica).
+  globalCategoryIds?: string[];
+  globalMealTags?: string[];
+  classificationSource?: 'rules' | 'ai' | 'manual';
+  classificationConfidence?: number;
+  classificationVersion?: number;
+  classificationUpdatedAt?: string;
+  classificationStatus?: 'classified' | 'needs_review' | 'hidden';
   name: string;
   description: string;
   price: number;

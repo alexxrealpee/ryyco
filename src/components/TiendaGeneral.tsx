@@ -105,6 +105,8 @@ import {
   CART_UPDATED_EVENT 
 } from '../lib/cartHelper';
 import { isFoodCategory, isFoodProduct, isDrinkProduct, orderProductBatch } from '../lib/productUtils';
+import { GLOBAL_CATEGORIES, globalCategoryLabel, isGlobalCategoryId } from '../lib/globalCategories';
+import { useGlobalCategoryCatalog } from '../hooks/useGlobalCategoryCatalog';
 import { syncConfirmedCatalogFromPage } from '../lib/catalogManager';
 export { isFoodCategory, isFoodProduct, isDrinkProduct, orderProductBatch };
 
@@ -308,6 +310,11 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
   const [selectedStore, setSelectedStore] = useState('all');
   const [sortBy, setSortBy] = useState<'latest' | 'price_asc' | 'price_desc'>('latest');
   const isStoreSelected = selectedStore !== 'all';
+  // Inicio con todos los restaurantes: categorías GLOBALES de RYYCO (clasificador del servidor).
+  // Con un restaurante elegido se siguen usando sus categorías internas, como antes.
+  const isGlobalCategoryMode = !isStoreSelected;
+  const selectedGlobalCategory = isGlobalCategoryMode && isGlobalCategoryId(selectedCategory) ? selectedCategory : null;
+  const globalCatalog = useGlobalCategoryCatalog(selectedGlobalCategory);
   const storeMenu = useSelectedStoreMenu(openRestaurants.find(store => store.uid === selectedStore));
   const { loadMore: loadMoreStoreProducts } = storeMenu;
   const isCatalogLoadingMore = isStoreSelected ? storeMenu.loading : isProgressiveLoadingMore;
@@ -967,22 +974,52 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     // Availability comes exclusively from the confirmed profiles listener.
     if (isLoadingRestaurants || restaurantsError) return [];
     let knownProducts = products;
+    if (selectedGlobalCategory && globalCatalog.items.length > 0) {
+      knownProducts = Array.from(new Map([...products, ...globalCatalog.items].map(product => [product.id, product])).values());
+    }
     if (selectedStoreProducts) {
       knownProducts = isStoreMenuComplete ? selectedStoreProducts
         : Array.from(new Map([...products, ...selectedStoreProducts].map(product => [product.id, product])).values());
     }
     return knownProducts.filter(product => {
-      if (product.active === false || (selectedStore === 'all' && isDrinkProduct(product))) return false;
+      // Las bebidas siguen ocultas en "Ver todo"; se muestran al elegir la categoría Bebidas.
+      if (product.active === false || (selectedStore === 'all' && selectedGlobalCategory !== 'bebidas' && isDrinkProduct(product))) return false;
       const owner = resolveProductStore(product, storeProfiles);
       if (!owner || !openRestaurants.some(store => store.uid === owner.uid)) return false;
       return selectedStore === 'all' || owner.uid === selectedStore;
     });
   }, [products, storeProfiles, selectedStore, selectedStoreProducts, isStoreMenuComplete,
-      openRestaurants, isLoadingRestaurants, restaurantsError]);
+      openRestaurants, isLoadingRestaurants, restaurantsError, selectedGlobalCategory, globalCatalog.items]);
+
+  // Categorías globales con productos de restaurantes ABIERTOS. Se usa el resumen del servidor
+  // (sin descargar productos); si no está disponible, los productos ya cargados.
+  const globalCategoriesPresent = useMemo(() => {
+    const present = new Set<string>();
+    if (!isGlobalCategoryMode || isLoadingRestaurants || restaurantsError) return present;
+    const openIds = new Set(openRestaurants.map(store => store.uid));
+    if (globalCatalog.availability) {
+      Object.entries(globalCatalog.availability as Record<string, string[]>).forEach(([id, storeIds]) => {
+        if (storeIds.some(uid => openIds.has(uid))) present.add(id);
+      });
+    } else {
+      [...products, ...globalCatalog.items].forEach(product => {
+        if (product.active === false) return;
+        const owner = resolveProductStore(product, storeProfiles);
+        if (owner && openIds.has(owner.uid)) (product.globalCategoryIds || []).forEach(id => present.add(id));
+      });
+    }
+    return present;
+  }, [isGlobalCategoryMode, isLoadingRestaurants, restaurantsError, openRestaurants, globalCatalog.availability,
+      globalCatalog.items, products, storeProfiles]);
 
   // Get list of unique categories ONLY from products that actually exist and are available (food categories first)
   // If a category has no available products, it will NOT be displayed!
   const categories = useMemo(() => {
+    if (isGlobalCategoryMode) {
+      // Orden fijo de RYYCO; la categoría elegida se mantiene visible mientras carga.
+      return ['all', ...GLOBAL_CATEGORIES.map(c => c.id as string)
+        .filter(id => globalCategoriesPresent.has(id) || id === selectedGlobalCategory)];
+    }
     const map = new Map<string, { label: string; count: number }>();
 
     availableBaseProducts.forEach(p => {
@@ -1007,17 +1044,26 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     const nonFoodList = validCategories.filter(c => !isFoodCategory(c)).sort((a, b) => a.localeCompare(b));
 
     return ['all', ...foodList, ...nonFoodList];
-  }, [availableBaseProducts]);
+  }, [availableBaseProducts, isGlobalCategoryMode, globalCategoriesPresent, selectedGlobalCategory]);
 
   // Auto-reset category filter if currently selected category has no products in the active view
   useEffect(() => {
+    if (selectedCategory !== 'all' && isGlobalCategoryMode) {
+      // Categoría global vacía (o de restaurantes cerrados): volver a "Ver todo", como antes.
+      if (!isGlobalCategoryId(selectedCategory)) { setSelectedCategory('all'); return; }
+      if (isLoadingRestaurants || globalCatalog.isLoading || globalCatalog.hasMore) return;
+      const hasProducts = availableBaseProducts.some(p => (p.globalCategoryIds || []).includes(selectedCategory));
+      if (!hasProducts && !globalCategoriesPresent.has(selectedCategory)) setSelectedCategory('all');
+      return;
+    }
     if (selectedCategory !== 'all') {
       const hasProducts = availableBaseProducts.some(p => matchesCategoryFilter(p.category, selectedCategory));
       if (!hasProducts) {
         setSelectedCategory('all');
       }
     }
-  }, [availableBaseProducts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableBaseProducts, isGlobalCategoryMode, globalCatalog.isLoading, globalCatalog.hasMore, globalCategoriesPresent]);
 
   // If currently filtered store closes, automatically reset filter to all open stores
   useEffect(() => {
@@ -1144,7 +1190,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         (profile?.displayName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (profile?.username || '').toLowerCase().includes(searchTerm.toLowerCase());
         
-      const matchesCategory = matchesCategoryFilter(product.category, selectedCategory);
+      const matchesCategory = selectedGlobalCategory
+        ? (product.globalCategoryIds || []).includes(selectedGlobalCategory)
+        : matchesCategoryFilter(product.category, selectedCategory);
 
       return matchesSearch && matchesCategory;
     });
@@ -1157,7 +1205,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
 
     const prefix = committedProductsRef.current.filter === catalogFilter ? committedProductsRef.current.ids : [];
     return balanceCatalog(matched, openRestaurants, prefix);
-  }, [availableBaseProducts, profiles, searchTerm, selectedCategory, sortBy, catalogFilter, openRestaurants]);
+  }, [availableBaseProducts, profiles, searchTerm, selectedCategory, selectedGlobalCategory, sortBy, catalogFilter, openRestaurants]);
 
   // Progressive loading: show six products and reveal six more near the viewport
   const [visibleLimit, setVisibleLimit] = useState(6);
@@ -1180,6 +1228,19 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       const requestedFilter = currentFilterRef.current;
       const loaded = await loadMoreStoreProducts();
       if (loaded && currentFilterRef.current === requestedFilter) setVisibleLimit(previous => previous + 6);
+      return;
+    }
+    // Categoría global: los siguientes productos vienen ya filtrados del servidor.
+    if (selectedGlobalCategory && visibleLimit >= filteredProducts.length) {
+      if (!globalCatalog.hasMore || globalCatalog.isLoading || globalCatalog.error) return;
+      isFetchingNextBatchRef.current = true;
+      const requestedFilter = currentFilterRef.current;
+      try {
+        const fresh = await globalCatalog.loadMore();
+        if (fresh.length > 0 && currentFilterRef.current === requestedFilter) setVisibleLimit(previous => previous + 6);
+      } finally {
+        isFetchingNextBatchRef.current = false;
+      }
       return;
     }
     isFetchingNextBatchRef.current = true;
@@ -1210,7 +1271,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     } else {
       isFetchingNextBatchRef.current = false;
     }
-  }, [visibleLimit, filteredProducts.length, isStoreSelected, loadMoreStoreProducts, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length]);
+  }, [visibleLimit, filteredProducts.length, isStoreSelected, loadMoreStoreProducts, hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, isLoadingRestaurants, restaurantsError, openRestaurants.length,
+      selectedGlobalCategory, globalCatalog.hasMore, globalCatalog.isLoading, globalCatalog.error, globalCatalog.loadMore]);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
 
@@ -1224,6 +1286,14 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       }
       return;
     }
+    if (selectedGlobalCategory) {
+      // Categoría global: completar la pantalla con la consulta filtrada (no recorrer todo el catálogo).
+      if (!isLoadingRestaurants && !restaurantsError && openRestaurants.length > 0 &&
+          globalCatalog.hasMore && !globalCatalog.isLoading && !globalCatalog.error && filteredProducts.length < visibleLimit) {
+        void globalCatalog.loadMore();
+      }
+      return;
+    }
     if (!isLoadingRestaurants && !restaurantsError && openRestaurants.length > 0 && !isLoadingProducts &&
         products.length >= loadedProducts.length &&
         hasMoreProgressive && !isProgressiveLoadingMore && !productsError &&
@@ -1232,7 +1302,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
   }, [isStoreSelected, isLoadingRestaurants, restaurantsError, openRestaurants.length, isLoadingProducts, filteredProducts.length, products.length, loadedProducts.length,
       hasMoreProgressive, isProgressiveLoadingMore, loadNextFourProducts, productsError, visibleLimit, searchTerm, selectedCategory, sortBy,
-      hasMoreCatalogProducts, isCatalogLoadingMore, catalogError, loadMoreStoreProducts]);
+      hasMoreCatalogProducts, isCatalogLoadingMore, catalogError, loadMoreStoreProducts,
+      selectedGlobalCategory, globalCatalog.hasMore, globalCatalog.isLoading, globalCatalog.error, globalCatalog.loadMore]);
 
   useEffect(() => { isFetchingNextBatchRef.current = false; }, [visibleLimit, currentFilter]);
 
@@ -2718,7 +2789,7 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
                           : 'bg-slate-900 border border-slate-700/80 text-white hover:border-[#D62839]/60 hover:text-red-200'
                       }`}
                     >
-                      {isAll ? 'VER TODO' : cat}
+                      {isAll ? 'VER TODO' : (isGlobalCategoryMode ? globalCategoryLabel(cat) : cat)}
                     </button>
                   );
                 })}
@@ -2729,6 +2800,16 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
         </div>
 
         {/* 4. Products Display */}
+        {selectedGlobalCategory && globalCatalog.isLoading && filteredProducts.length === 0 && (
+          <div role="status" className="py-3 text-center text-xs text-gray-400">Cargando productos…</div>
+        )}
+        {selectedGlobalCategory && globalCatalog.error && (
+          <div role="alert" className="py-3 text-center text-xs text-gray-400">
+            <p>{globalCatalog.error}</p>
+            <button type="button" onClick={() => void globalCatalog.loadMore()} disabled={globalCatalog.isLoading}
+              className="mt-2 underline disabled:opacity-50">Reintentar productos</button>
+          </div>
+        )}
         {!isStoreSelected && isCatalogLoadingMore && filteredProducts.length === 0 && !isProductsLoading && (
           <div role="status" className="py-3 text-center text-xs text-gray-400">Cargando productos…</div>
         )}
