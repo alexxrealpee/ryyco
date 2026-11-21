@@ -21,7 +21,9 @@ try {
         'subscriptionStatus','subscriptionTrialExpires','subscriptionPaidUntil','scheduleEnabled','openTime','closeTime',
         'restaurantDaysOpen','weeklySchedule','phone','whatsapp','customerServiceWhatsapp','ownerWhatsapp','address','mapUrl','restaurantReference',
         'lat','lng','restaurantAcceptsDelivery','restaurantAcceptsTakeaway','restaurantPaymentMethods','restaurantDeliveryTime',
-        'restaurantAddress','restaurantCity','rating','ratingCount'];
+        'restaurantAddress','restaurantCity','rating','ratingCount',
+        // Checkout (cuentas bancarias) y seguimiento (ubicación) de la tienda general.
+        'bankAccounts','location','latitude','longitude'];
     $productFields = ['userId','name','description','price','compareAtPrice','packagingCost','category','stock',
         'variantsText','variantsList','variantPrices','hasFlavors','allowsHalfAndHalf','flavorsText','flavorsList',
         'allowSingleFlavor','addons','active','storeName','storeUsername','createdAt','imageFileName'];
@@ -51,6 +53,11 @@ try {
         $id = basename($doc['name']);
         $version = $doc['updateTime'] ?? '';
         $item[$kind === 'stores' ? 'photoURL' : 'imageURL'] = '/api/catalog-image.php?' . http_build_query(['kind'=>$kind,'id'=>$id,'v'=>$version]);
+        // QR de pago en base64 (~130 KB en total): se sirven como archivos cacheados
+        // en /catalog-images/ para que la consulta periódica de tiendas siga siendo liviana.
+        if ($kind === 'stores' && isset($item['bankAccounts'])) {
+            $item['bankAccounts'] = catalogExternalize($item['bankAccounts'], __DIR__ . '/../catalog-images');
+        }
     }
     unset($item);
     $count = count($items);

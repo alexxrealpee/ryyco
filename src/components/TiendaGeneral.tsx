@@ -59,7 +59,9 @@ import {
   fetchSystemSettings, 
   checkIsStoreClosed, 
   findStoreForProduct, 
-  fetchCustomerProfileByPhone, 
+  fetchCustomerProfileByPhone,
+  checkCustomerPhone,
+  auth,
   listenToCustomerProfile, 
   listenToCustomerOrders,
   getActiveCustomerSession,
@@ -526,6 +528,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     phone: string;
     isExisting: boolean;
     existingProfile: CustomerProfile | null;
+    existingFirstName?: string;
+    existingHasAccount?: boolean;
   }>({
     isOpen: false,
     phone: '',
@@ -1735,8 +1739,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     orderSubmittingRef.current = true;
     setOrderSubmitting(true);
 
-    // If customer is already logged in, allow them to freely change data for this order form
-    if (activeCustomer) {
+    // If customer is already logged in, allow them to freely change data for this order form.
+    // Debe haber una sesión real de Firebase: el pedido queda ligado a esa cuenta.
+    if (activeCustomer && auth.currentUser) {
       if (updateProfileWithOrderDetails) {
         try {
           const updatedProfileData: CustomerProfile = {
@@ -1755,12 +1760,15 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
     }
 
     try {
-      const existing = await fetchCustomerProfileByPhone(cleanedPhone);
+      // El servidor solo dice si el celular existe (sin exponer el perfil).
+      const existing = await checkCustomerPhone(cleanedPhone);
       setOrderAuthPromptData({
         isOpen: true,
         phone: cleanedPhone,
-        isExisting: !!existing,
-        existingProfile: existing
+        isExisting: existing.exists,
+        existingProfile: null,
+        existingFirstName: existing.firstName,
+        existingHasAccount: existing.hasAccount
       });
     } catch (err) {
       console.warn("Could not check customer profile:", err);
@@ -2128,7 +2136,9 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
       </section>
 
       {/* 3. Filtering & Dashboard Container */}
-      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
+      {/* min-h-screen: mientras cargan los productos el pie de página queda fuera de la
+          pantalla, así no "salta" hacia abajo cuando llegan (CLS en celulares). */}
+      <main className="flex-grow min-h-screen max-w-7xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-2 pb-10 space-y-8">
         <div className="space-y-3">
           {/* BARRA DE SEGUIMIENTO PULSABLE (5 ETAPAS) - ENCIMA DEL BUSCADOR */}
           <AnimatePresence>
@@ -4372,6 +4382,8 @@ export default function TiendaGeneral({ onNavigateHome, onNavigateToStore }: Tie
             }}
             isExistingCustomer={orderAuthPromptData.isExisting}
             existingProfile={orderAuthPromptData.existingProfile}
+            existingFirstName={orderAuthPromptData.existingFirstName}
+            existingHasAccount={orderAuthPromptData.existingHasAccount}
             onAuthenticated={handleAuthPromptSuccess}
             onChangePhoneRequest={() => {
               setOrderAuthPromptData(prev => ({ ...prev, isOpen: false }));

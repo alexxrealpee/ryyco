@@ -35,7 +35,6 @@ import {
   fetchCustomerOrders, 
   listenToCustomerOrders,
   addCustomerWonPrize, 
-  consumeCustomerSpin,
   redeemCustomerPrize, 
   sanitizeCustomerPhone,
   searchCustomerByPhone,
@@ -47,7 +46,15 @@ import {
   auth,
   googleProvider,
   signInWithGoogleUniversal,
-  getOrderDeliveryCode
+  getOrderDeliveryCode,
+  signInCustomerWithPassword,
+  registerCustomerWithPassword,
+  changeCustomerPassword,
+  describeCustomerAuthError,
+  CUSTOMER_MIN_PASSWORD_LENGTH,
+  checkCustomerPhone,
+  claimCustomerProfile,
+  spinCustomerWheel
 } from '../lib/firebase';
 import { isAndroidApp } from '../lib/capacitor';
 import OrderChatModal from './OrderChatModal';
@@ -463,24 +470,19 @@ export default function CustomerPortalModal({
         avatarUrl: gAvatar
       });
 
-      // 1. Try finding existing customer by uid first, then email, then phone
+      // 1. Perfil ya vinculado a esta cuenta; si no, uno con el mismo correo o
+      //    celular que aún no tenga dueño (el servidor lo vincula: claimCustomerProfile).
       let existingProfile: CustomerProfile | null = null;
       if (user.uid) {
         existingProfile = await fetchCustomerProfileByUid(user.uid);
       }
       if (!existingProfile && gEmail) {
-        existingProfile = await fetchCustomerProfileByEmail(gEmail);
+        const byEmail = await fetchCustomerProfileByEmail(gEmail).catch(() => null);
+        if (byEmail?.phone) existingProfile = await claimCustomerProfile(byEmail.phone).catch(() => null);
       }
-      // 2. Or by user's phone if attached to Google account
-      if (!existingProfile && gPhone) {
-        existingProfile = await fetchCustomerProfileByPhone(gPhone);
-      }
-      // 3. Or by input phone if user already typed it
-      if (!existingProfile && phoneInput) {
-        const pClean = sanitizeCustomerPhone(phoneInput);
-        if (pClean && pClean.length >= 7) {
-          existingProfile = await fetchCustomerProfileByPhone(pClean);
-        }
+      const candidatePhone = gPhone || sanitizeCustomerPhone(phoneInput || '');
+      if (!existingProfile && candidatePhone && candidatePhone.length >= 7) {
+        existingProfile = await claimCustomerProfile(candidatePhone).catch(() => null);
       }
 
       if (existingProfile && existingProfile.phone) {
@@ -557,17 +559,29 @@ export default function CustomerPortalModal({
     setAuthError('');
     try {
       localStorage.setItem('ryyco_auth_mode', 'customer');
-      const created = await saveCustomerProfile({
-        phone: cleanPhone,
-        name: nameInput.trim(),
-        email: emailInput.trim() || googleTempUser?.email || '',
-        avatarUrl: googleTempUser?.avatarUrl || customer?.avatarUrl || '',
-        authUid: googleTempUser?.uid || customer?.authUid || '',
-        address: addressInput.trim(),
-        notes: notesInput.trim(),
-        points: customer?.points || 500,
-        spinsAvailable: customer?.spinsAvailable !== undefined ? customer.spinsAvailable : 1
-      });
+      // Si el celular ya tiene perfil (de pedidos anteriores), el servidor lo vincula
+      // a esta cuenta; si pertenece a otra cuenta, muestra el error.
+      const claimed = await claimCustomerProfile(cleanPhone);
+      const created = await saveCustomerProfile(claimed
+        ? {
+            ...claimed,
+            name: nameInput.trim() || claimed.name,
+            email: emailInput.trim() || googleTempUser?.email || claimed.email || '',
+            avatarUrl: googleTempUser?.avatarUrl || claimed.avatarUrl || '',
+            address: addressInput.trim(),
+            notes: notesInput.trim()
+          }
+        : {
+            phone: cleanPhone,
+            name: nameInput.trim(),
+            email: emailInput.trim() || googleTempUser?.email || '',
+            avatarUrl: googleTempUser?.avatarUrl || customer?.avatarUrl || '',
+            authUid: googleTempUser?.uid || customer?.authUid || '',
+            address: addressInput.trim(),
+            notes: notesInput.trim(),
+            points: 500,
+            spinsAvailable: 1
+          });
 
       setCustomer(created);
       setActiveCustomerSession(created);
@@ -598,23 +612,30 @@ export default function CustomerPortalModal({
     setLoading(true);
     setAuthError('');
     try {
-      const existing = await fetchCustomerProfileByPhone(cleaned);
-      if (existing) {
-        // Verify password if already configured on the profile
-        if (existing.password && existing.password.trim().length > 0) {
-          if (existing.password !== passwordInput.trim()) {
-            setAuthError("Contraseña incorrecta. Por favor verifica tu clave o ingresa con Google.");
-            setLoading(false);
-            return;
-          }
+      // Firebase Auth verifica la contraseña; nunca se compara en el navegador.
+      let user;
+      try {
+        user = await signInCustomerWithPassword(cleaned, passwordInput.trim());
+      } catch (authErr: any) {
+        const known = await checkCustomerPhone(cleaned).catch(() => ({ exists: true }));
+        if (!known.exists && ['auth/invalid-credential', 'auth/user-not-found', 'auth/invalid-login-credentials'].includes(authErr?.code)) {
+          // Número sin cuenta: pasar al registro, como antes.
+          setIsRegisterMode(true);
+          setAuthError(isAndroid ? "Este número celular aún no está registrado. Completa tu registro para hacer y rastrear tus pedidos." : "Este número celular aún no está registrado. Completa tu registro para ganar 500 RYYCOS ($500 COP) de bienvenida y 1 giro en la ruleta.");
         } else {
-          // If customer existed from previous orders or Google, set this password for their phone access
-          await saveCustomerProfile({
-            ...existing,
-            password: passwordInput.trim()
-          });
+          setAuthError(describeCustomerAuthError(authErr));
         }
+        return;
+      }
 
+      // El servidor vincula el perfil del celular a esta cuenta (si no tiene otro dueño).
+      let existing = await claimCustomerProfile(cleaned);
+      if (!existing) {
+        // Cuenta de acceso sin perfil (caso raro): crear el perfil básico.
+        existing = await saveCustomerProfile({ phone: cleaned, name: 'Cliente Ryyco', authUid: user.uid });
+      }
+
+      if (existing) {
         setCustomer(existing);
         setNameInput(existing.name || '');
         setAddressInput(existing.address && !isPickupOrInvalidAddress(existing.address) ? existing.address : '');
@@ -650,8 +671,8 @@ export default function CustomerPortalModal({
       setAuthError("Por favor ingresa tu nombre completo.");
       return;
     }
-    if (!passwordInput.trim() || passwordInput.trim().length < 4) {
-      setAuthError("Por favor crea una contraseña de al menos 4 caracteres.");
+    if (!passwordInput.trim() || passwordInput.trim().length < CUSTOMER_MIN_PASSWORD_LENGTH) {
+      setAuthError(`Por favor crea una contraseña de al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`);
       return;
     }
     if (!acceptedBuyerTerms) {
@@ -662,25 +683,45 @@ export default function CustomerPortalModal({
     setLoading(true);
     setAuthError('');
     try {
-      // Safeguard: Check if phone is already registered to avoid accidental overwrites
-      const existing = await fetchCustomerProfileByPhone(cleaned);
-      if (existing) {
+      // Safeguard: un número ya vinculado a una cuenta (Google o contraseña) no se puede volver a registrar.
+      const check = await checkCustomerPhone(cleaned);
+      if (check.exists && check.hasAccount) {
         setAuthError("Este número de celular ya tiene una cuenta registrada. Por favor ingresa tu contraseña o usa tu cuenta de Google.");
         setIsRegisterMode(false);
-        setLoading(false);
         return;
       }
 
-      const newCust = await saveCustomerProfile({
-        phone: cleaned,
-        name: nameInput.trim(),
-        password: passwordInput.trim(),
-        address: addressInput.trim(),
-        email: emailInput.trim(),
-        notes: notesInput.trim(),
-        points: 500, // Welcome bonus (500 RYYCOS = $500 COP)!
-        spinsAvailable: 1
-      });
+      // Firebase Auth crea la cuenta y guarda la contraseña cifrada.
+      let user;
+      try {
+        user = await registerCustomerWithPassword(cleaned, passwordInput.trim());
+      } catch (authErr: any) {
+        setAuthError(describeCustomerAuthError(authErr));
+        if (authErr?.code === 'auth/email-already-in-use') setIsRegisterMode(false);
+        return;
+      }
+
+      // Cliente que ya había pedido sin cuenta: el servidor vincula su perfil
+      // (conserva saldo e historial).
+      const existing = check.exists ? await claimCustomerProfile(cleaned) : null;
+      const newCust = await saveCustomerProfile(existing
+        ? {
+            ...existing,
+            name: nameInput.trim() || existing.name,
+            address: addressInput.trim() || existing.address,
+            email: emailInput.trim() || existing.email,
+            notes: notesInput.trim() || existing.notes
+          }
+        : {
+            phone: cleaned,
+            name: nameInput.trim(),
+            address: addressInput.trim(),
+            email: emailInput.trim(),
+            notes: notesInput.trim(),
+            points: 500, // Welcome bonus (500 RYYCOS = $500 COP)!
+            spinsAvailable: 1,
+            authUid: user.uid
+          });
       setCustomer(newCust);
       setActiveCustomerSession(newCust);
       onCustomerUpdate?.(newCust);
@@ -697,12 +738,24 @@ export default function CustomerPortalModal({
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customer) return;
+    const newPassword = newPasswordInput.trim();
+    if (newPassword && newPassword.length < CUSTOMER_MIN_PASSWORD_LENGTH) {
+      alert(`La nueva contraseña debe tener al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`);
+      return;
+    }
     setLoading(true);
     try {
+      if (newPassword) {
+        try {
+          await changeCustomerPassword(customer.phone, newPassword);
+        } catch (pwErr: any) {
+          alert(describeCustomerAuthError(pwErr));
+          return;
+        }
+      }
       const updated = await saveCustomerProfile({
         ...customer,
         name: nameInput.trim() || customer.name,
-        password: newPasswordInput.trim() ? newPasswordInput.trim() : (customer.password || ''),
         address: addressInput.trim(),
         email: emailInput.trim(),
         notes: notesInput.trim(),
@@ -711,7 +764,7 @@ export default function CustomerPortalModal({
       setActiveCustomerSession(updated);
       onCustomerUpdate?.(updated);
       setNewPasswordInput('');
-      setActionSuccessMsg("Datos y contraseña actualizados correctamente ✅");
+      setActionSuccessMsg(newPassword ? "Datos y contraseña actualizados correctamente ✅" : "Datos actualizados correctamente ✅");
       setTimeout(() => setActionSuccessMsg(null), 4000);
     } catch (err) {
       alert("Error al actualizar datos.");
@@ -802,11 +855,9 @@ export default function CustomerPortalModal({
           // Show celebration modal
           setWonPrizeModal(newPrize);
         } else {
-          // Did not win -> Sigue Intentando
-          await consumeCustomerSpin(customer.phone);
-          // Refresh customer profile
-          const fresh = await fetchCustomerProfileByPhone(customer.phone);
-          if (fresh) setCustomer(fresh);
+          // Did not win -> Sigue Intentando. El servidor descuenta el giro.
+          const res = await spinCustomerWheel();
+          setCustomer(prev => prev ? { ...prev, spinsAvailable: res.spinsAvailable } : prev);
 
           // Show Try Again modal
           setTryAgainModal({
@@ -815,8 +866,9 @@ export default function CustomerPortalModal({
             icon: targetSlice.icon
           });
         }
-      } catch (err) {
+      } catch (err: any) {
         console.warn("Error procesando giro de ruleta:", err);
+        if (err?.message) alert(err.message);
       } finally {
         setIsSpinning(false);
       }
@@ -1536,7 +1588,7 @@ export default function CustomerPortalModal({
                               required
                               value={passwordInput}
                               onChange={(e) => setPasswordInput(e.target.value)}
-                              placeholder="Mínimo 4 caracteres"
+                              placeholder={`Mínimo ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres`}
                               className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-10 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
                             />
                             <button

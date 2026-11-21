@@ -2,12 +2,21 @@ import { memo, useCallback, useState } from 'react';
 import { ShoppingBag } from 'lucide-react';
 import { useImageDownload } from '../hooks/useNearViewport';
 
+// Las tarjetas miden ~300 px: se pide una miniatura de 480 px (pantallas de alta
+// densidad) en lugar de la foto original, que pesa 130–170 KB.
+const CARD_THUMB_WIDTH = 480;
+export function cardImageUrl(src: string): string {
+  if (!src || !src.startsWith('/api/catalog-image.php?') || /[?&]w=/.test(src)) return src;
+  return `${src}&w=${CARD_THUMB_WIDTH}`;
+}
+
 // Only the photograph waits for its download. The card's content stays mounted.
-export default memo(function ProductCardImage({ src, name, priority = false }: {
+export default memo(function ProductCardImage({ src: originalSrc, name, priority = false }: {
   src: string;
   name: string;
   priority?: boolean;
 }) {
+  const src = cardImageUrl(originalSrc);
   const [result, setResult] = useState({ src, status: 'loading' });
   const { element, enabled, finish } = useImageDownload(src, priority);
   const status = result.src === src ? result.status : 'loading';

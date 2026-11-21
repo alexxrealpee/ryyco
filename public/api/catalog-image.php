@@ -4,10 +4,12 @@ try {
     $kind = $_GET['kind'] ?? '';
     $id = (string)($_GET['id'] ?? '');
     $version = (string)($_GET['v'] ?? '');
-    if (!in_array($kind,['stores','products'],true) || !preg_match('/^[A-Za-z0-9_.@ -]{1,150}$/D',$id) || strlen($version)>80) throw new InvalidArgumentException('image');
+    // Ancho opcional de miniatura (?w=480). Sin w se entrega la foto original.
+    $width = (int)($_GET['w'] ?? 0);
+    if (!in_array($kind,['stores','products'],true) || !preg_match('/^[A-Za-z0-9_.@ -]{1,150}$/D',$id) || strlen($version)>80 || ($width !== 0 && !in_array($width, CATALOG_THUMB_WIDTHS, true))) throw new InvalidArgumentException('image');
     $collection = $kind === 'stores' ? 'profiles' : 'products';
     $field = $kind === 'stores' ? 'photoURL' : 'imageURL';
-    $key = hash('sha256', $kind . '/' . $id . '/' . $version);
+    $key = hash('sha256', $kind . '/' . $id . '/' . $version . ($width ? '/w' . $width : ''));
     $directory = __DIR__ . '/../catalog-images';
     $cache = $directory . '/' . $key . '.json';
     $cached = is_file($cache) ? json_decode(file_get_contents($cache),true) : null;
@@ -16,6 +18,7 @@ try {
     $doc = catalogHttpJson($base . $collection . '/' . rawurlencode($id) . '?mask.fieldPaths=' . $field);
     $original = $doc['fields'][$field]['stringValue'] ?? '';
     $url = catalogExternalize($original, $directory);
+    if ($width && is_string($url)) $url = catalogThumbnail($url, $width, $directory);
     $sameVersion = $version !== '' && ($doc['updateTime'] ?? '') === $version;
     if (preg_match('~^/(?!/)[^\r\n]*$~D',$url) || preg_match('~^https://[^\s\r\n]+$~D',$url)) {
         if ($sameVersion && is_dir($directory)) @file_put_contents($cache,json_encode(['url'=>$url]),LOCK_EX);

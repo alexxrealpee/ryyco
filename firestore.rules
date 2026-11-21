@@ -1,123 +1,58 @@
 rules_version = '2';
+// =====================================================================
+// RYYCO — Reglas de Firestore propuestas (FASE 1)
+// ---------------------------------------------------------------------
+// Objetivo: cerrar los huecos graves SIN cambiar el código de la app.
+// Lo que sigue abierto en esta fase está marcado con "FASE 2" y
+// requiere cambios en el código (ver PLAN-SEGURIDAD.md).
+//
+// Probar primero en el emulador antes de publicar:
+//   firebase emulators:start --only firestore
+// Publicar:
+//   firebase deploy --only firestore:rules --project studio-9002217802-13e05
+// =====================================================================
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Check if the request is authenticated
+
+    // ---------------------------------------------------------------
+    // Funciones comunes
+    // ---------------------------------------------------------------
     function isAuth() {
       return request.auth != null;
     }
-    
-    // Check if the user owns the record
+
     function isOwner(userId) {
       return isAuth() && request.auth.uid == userId;
     }
 
-    // Check if the authenticated user is an administrator
+    // CAMBIO: ya NO se confía en profiles/{uid}.role ni users/{uid}.role,
+    // porque el dueño de esos documentos podía escribirse role: 'admin'
+    // y volverse administrador. Solo cuentan: custom claim, el correo
+    // principal y la lista adminEmails de settings (que solo un admin edita).
     function isAdmin() {
       return isAuth() && (
         request.auth.token.get('admin', false) == true ||
-        request.auth.token.get('email', '').lower() == 'alexxrealpee@gmail.com' ||
-        request.auth.token.email == 'alexxrealpee@gmail.com' ||
-        (exists(/databases/$(database)/documents/settings/system_settings) &&
-         request.auth.token.get('email', '').lower() in get(/databases/$(database)/documents/settings/system_settings).data.get('adminEmails', [])) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin') ||
-        (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.get('role', '') == 'admin')
+        (request.auth.token.get('email_verified', false) == true && (
+          request.auth.token.get('email', '').lower() == 'alexxrealpee@gmail.com' ||
+          (exists(/databases/$(database)/documents/settings/system_settings) &&
+           request.auth.token.get('email', '').lower() in
+             get(/databases/$(database)/documents/settings/system_settings).data.get('adminEmails', []))
+        ))
       );
     }
-    
-    // Private collection follow-up metadata. Existing subscription documents remain authoritative.
-    match /subscription_collection_followups/{restaurantId} {
-      allow read, create, update: if isAdmin();
-      match /periods/{periodId} {
-        allow read, create, update: if isAdmin();
-        match /messages/{messageId} {
-          allow read, create, update: if isAdmin();
-        }
-      }
-    }
 
-    // Users collection rules
-    match /users/{userId} {
-      allow read: if isAuth();
-      allow write: if isOwner(userId) || isAdmin();
-    }
-    
-    // Profiles collection rules (Read is public so pages load)
-    match /profiles/{profileId} {
-      allow read: if true;
-      allow write: if isOwner(profileId) || isAdmin();
-    }
-    
-    // Custom Links rules (Read is public, write is author-only)
-    match /links/{linkId} {
-      allow read: if true;
-      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuth() && (request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid);
-      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
-    }
-    
-    // Themes rules (Publicly readable, write is owner-only or admin)
-    match /themes/{userId} {
-      allow read: if true;
-      allow write: if isOwner(userId) || isAdmin();
-    }
-    
-    // Products rules (Public read, author writes or admin)
-    match /products/{productId} {
-      allow read: if true;
-      allow create: if isAuth() && (request.resource.data.userId == request.auth.uid || isAdmin());
-      allow update: if isAuth() && ((request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid) || isAdmin());
-      allow delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
-    }
-    
-    // Leads Rules (Anyone can submit, author reads/manages)
-    match /leads/{leadId} {
-      allow create: if true;
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
-      allow delete: if isAuth() && (resource.data.userId == request.auth.uid);
-    }
-    
-    // Analytics & Click tracking collections
-    match /analytics/{docId} {
-      allow create: if true;
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
-    }
-    
-    match /clicks/{docId} {
-      allow create: if true;
-      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
-    }
-    
-    // Orders collection rules (Anyone can create/submit, owner, driver & admin can read/update/delete)
-    match /orders/{orderId} {
-      allow create: if true;
-      allow read: if true;
-      allow update: if true;
-      allow delete: if true;
-
-      // Real-Time Chat subcollection between Driver and Customer for the active order
-      match /chat_messages/{messageId} {
-        allow read, create, update: if true;
-        allow delete: if isAdmin();
-      }
-    }
-
-    // Direct collection fallback for order chats: order_chats/{orderId}/messages/{messageId}
-    match /order_chats/{orderId} {
-      allow read, write: if true;
-      match /messages/{messageId} {
-        allow read, create, update: if true;
-        allow delete: if isAdmin();
-      }
-    }
-
-    // Driver privileges are independent of editable profile roles.
+    // Se mantiene por compatibilidad: ahora es igual a isAdmin().
     function driverAdmin() {
-      return isAuth() && (request.auth.token.get('admin', false) == true ||
-        request.auth.token.get('email', '').lower() == 'alexxrealpee@gmail.com' ||
-        (exists(/databases/$(database)/documents/settings/system_settings) &&
-         request.auth.token.get('email', '').lower() in get(/databases/$(database)/documents/settings/system_settings).data.get('adminEmails', [])));
+      return isAdmin();
     }
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // ---------------------------------------------------------------
+    // Domiciliarios (sin cambios de lógica)
+    // ---------------------------------------------------------------
     function verifiedDriverEmail(email) {
       return isAuth() && request.auth.token.get('email_verified', false) == true &&
         request.auth.token.firebase.sign_in_provider == 'google.com' &&
@@ -128,7 +63,212 @@ service cloud.firestore {
         (request.auth.token.firebase.sign_in_provider == 'custom' && request.auth.uid == driverId) ||
         (request.auth.token.get('email_verified', false) == true && data.get('uid', '') == request.auth.uid));
     }
-    // Private latest position, never exposed to customers or other drivers.
+    function driverDoc(driverId) {
+      return get(/databases/$(database)/documents/drivers/$(driverId)).data;
+    }
+    // El usuario actual es el domiciliario aprobado `driverId`.
+    function isApprovedDriver(driverId) {
+      return isAuth() && driverId is string && driverId != '' &&
+        exists(/databases/$(database)/documents/drivers/$(driverId)) &&
+        driverDoc(driverId).get('status', '') == 'approved' &&
+        ownsDriver(driverId, driverDoc(driverId));
+    }
+    function orderDriverId(data) {
+      return data.get('deliveryDriverId', data.get('driverId', ''));
+    }
+
+    // ---------------------------------------------------------------
+    // Seguimiento de cobranza de suscripciones (sin cambios)
+    // ---------------------------------------------------------------
+    match /subscription_collection_followups/{restaurantId} {
+      allow read, create, update: if isAdmin();
+      match /periods/{periodId} {
+        allow read, create, update: if isAdmin();
+        match /messages/{messageId} {
+          allow read, create, update: if isAdmin();
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Usuarios
+    // CAMBIO: el dueño no puede cambiarse el campo `role`.
+    // ---------------------------------------------------------------
+    // Roles que un usuario puede ponerse a sí mismo (nunca 'admin').
+    function selfRoleOk(data) {
+      return data.get('role', 'user') in ['user', 'driver'];
+    }
+
+    match /users/{userId} {
+      allow read: if isAuth();
+      allow create: if isAdmin() || (isOwner(userId) && selfRoleOk(request.resource.data));
+      allow update: if isAdmin() || (isOwner(userId) && selfRoleOk(request.resource.data));
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Perfiles de restaurante (lectura pública para cargar las páginas)
+    // CAMBIO: el restaurante no puede darse rol admin, ni activarse la
+    // suscripción, ni extender fechas de pago/prueba. Eso lo hace el admin.
+    // ---------------------------------------------------------------
+    function safeProfileCreate() {
+      let d = request.resource.data;
+      return selfRoleOk(d) &&
+        d.get('subscriptionStatus', 'trial') in ['trial', 'under_review', 'pending_payment'] &&
+        !d.keys().hasAny(['subscriptionPaidUntil', 'subscriptionAnchorDay']);
+    }
+    function safeProfileUpdate() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return selfRoleOk(after) &&
+        !changedKeys().hasAny(['subscriptionPaidUntil', 'subscriptionAnchorDay']) &&
+        // Estado de suscripción: solo puede pasar a "en revisión"/"pendiente de pago",
+        // o a "trial" si antes no tenía estado.
+        (!changedKeys().hasAny(['subscriptionStatus']) ||
+          after.subscriptionStatus in ['under_review', 'pending_payment'] ||
+          (after.subscriptionStatus == 'trial' && !('subscriptionStatus' in before))) &&
+        // La fecha de fin de prueba solo se puede fijar una vez.
+        (!changedKeys().hasAny(['subscriptionTrialExpires']) ||
+          !('subscriptionTrialExpires' in before) || before.subscriptionTrialExpires == '');
+    }
+    match /profiles/{profileId} {
+      allow read: if true;
+      allow create: if isAdmin() || (isOwner(profileId) && safeProfileCreate());
+      allow update: if isAdmin() || (isOwner(profileId) && safeProfileUpdate());
+      allow delete: if isOwner(profileId) || isAdmin();
+    }
+
+    // ---------------------------------------------------------------
+    // Contenido público de tiendas (sin cambios)
+    // ---------------------------------------------------------------
+    match /links/{linkId} {
+      allow read: if true;
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuth() && (request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+
+    match /themes/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAuth() && (request.resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAuth() && ((request.resource.data.userId == request.auth.uid && resource.data.userId == request.auth.uid) || isAdmin());
+      allow delete: if isAuth() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /leads/{leadId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+      allow delete: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+
+    match /analytics/{docId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+
+    match /clicks/{docId} {
+      allow create: if true;
+      allow read: if isAuth() && (resource.data.userId == request.auth.uid);
+    }
+
+    // ---------------------------------------------------------------
+    // Pedidos
+    // ---------------------------------------------------------------
+    function isStoreOwnerOf(data) {
+      return isAuth() && data.get('storeOwnerId', '') == request.auth.uid;
+    }
+
+    // Campos que el cliente y el chat pueden tocar sin estar autenticados
+    // (calificación, chat y contadores de no leídos).
+    function customerSafeOrderUpdate() {
+      return changedKeys().hasOnly([
+        'driverRatingGiven', 'driverRatingStars', 'driverRatingComment', 'driverRatedAt',
+        'lastChatMessage', 'lastChatAt', 'lastChatSenderRole',
+        'customerUnreadChatCount', 'driverUnreadChatCount'
+      ]) &&
+      (!changedKeys().hasAny(['driverRatingStars']) ||
+        (request.resource.data.driverRatingStars is number &&
+         request.resource.data.driverRatingStars >= 1 &&
+         request.resource.data.driverRatingStars <= 5));
+    }
+
+    // Un domiciliario aprobado toma un pedido a domicilio libre y pendiente.
+    function driverClaimsOrder() {
+      let before = resource.data;
+      let after = request.resource.data;
+      return orderDriverId(before) == '' &&
+        before.get('status', '') == 'pending' &&
+        isApprovedDriver(orderDriverId(after)) &&
+        // No puede cambiar dinero, productos, tienda ni código de entrega.
+        !changedKeys().hasAny(['storeOwnerId', 'items', 'totalAmount', 'deliveryFee',
+          'deliveryCost', 'paymentMethodFee', 'packagingCost', 'deliveryCode',
+          'customerPhone', 'customerEmail', 'referralCommissionAmount', 'referralCreatorId']);
+    }
+
+    // El domiciliario ya asignado actualiza el avance de la entrega.
+    function assignedDriverUpdate() {
+      return isApprovedDriver(orderDriverId(resource.data)) &&
+        !changedKeys().hasAny(['storeOwnerId', 'items', 'totalAmount', 'deliveryCode',
+          'customerPhone', 'customerEmail', 'referralCommissionAmount', 'referralCreatorId']);
+    }
+
+    match /orders/{orderId} {
+      // FASE 2: hoy la lectura sigue pública porque el portal del cliente busca
+      // pedidos solo por número de celular (sin sesión) y el portal del
+      // domiciliario escucha la colección completa. Ver PLAN-SEGURIDAD.md.
+      allow read: if true;
+
+      // Se puede crear sin sesión, pero el pedido debe nacer "limpio".
+      allow create: if request.resource.data.get('status', '') == 'pending' &&
+        request.resource.data.get('storeOwnerId', '') is string &&
+        request.resource.data.get('storeOwnerId', '') != '' &&
+        request.resource.data.get('totalAmount', -1) is number &&
+        request.resource.data.get('totalAmount', -1) >= 0 &&
+        orderDriverId(request.resource.data) == '' &&
+        request.resource.data.get('referralCommissionStatus', 'pending') == 'pending';
+
+      // CAMBIO: antes cualquiera podía modificar cualquier pedido.
+      allow update: if isAdmin() ||
+        (isStoreOwnerOf(resource.data) && request.resource.data.storeOwnerId == resource.data.storeOwnerId) ||
+        assignedDriverUpdate() ||
+        driverClaimsOrder() ||
+        customerSafeOrderUpdate();
+
+      // CAMBIO: antes cualquiera podía borrar pedidos.
+      allow delete: if isAdmin() || isStoreOwnerOf(resource.data);
+
+      // Chat del pedido. FASE 2: limitar a participantes cuando el pedido
+      // guarde el uid del cliente.
+      match /chat_messages/{messageId} {
+        allow read: if true;
+        allow create: if request.resource.data.get('text', '') is string &&
+          request.resource.data.get('text', '').size() > 0 &&
+          request.resource.data.get('text', '').size() <= 1000 &&
+          request.resource.data.get('senderRole', '') in ['customer', 'driver', 'restaurant', 'admin'] &&
+          request.resource.data.get('orderId', '') == orderId;
+        // Solo marcar como leído; el texto no se puede editar.
+        allow update: if request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['readByCustomer', 'readByDriver']);
+        allow delete: if isAdmin();
+      }
+    }
+
+    // Colección antigua de chats: ya solo la usa el admin.
+    match /order_chats/{orderId} {
+      allow read, write: if isAdmin();
+      match /messages/{messageId} {
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // Domiciliarios: presencia y ficha (sin cambios de lógica)
+    // ---------------------------------------------------------------
     match /driver_presence/{driverId} {
       function driver() { return get(/databases/$(database)/documents/drivers/$(driverId)).data; }
       allow read: if driverAdmin();
@@ -173,19 +313,22 @@ service cloud.firestore {
       allow delete: if driverAdmin();
     }
 
-    // Driver ratings rules
+    // CAMBIO: la calificación debe ser de 1 a 5 y no se puede crear "aprobada".
     match /driver_ratings/{ratingId} {
-      allow create: if true;
       allow read: if true;
+      allow create: if request.resource.data.get('stars', 0) is number &&
+        request.resource.data.get('stars', 0) >= 1 &&
+        request.resource.data.get('stars', 0) <= 5 &&
+        request.resource.data.get('driverId', '') is string &&
+        request.resource.data.get('driverId', '') != '' &&
+        request.resource.data.get('orderId', '') is string &&
+        request.resource.data.get('orderId', '') != '';
       allow update, delete: if isAdmin();
     }
 
-    // Delivery Real-Time Tracking rules (Live Courier Geolocation)
-    // Cada domiciliario edita solo su propia ubicación para el pedido asignado
-    // Cada cliente consulta el seguimiento de su pedido directamente por su orderId
-    // GPS is private to authenticated participants, and inaccessible after the order ends.
-    // Legacy non-Auth driver IDs require a trusted migration; public profile fields
-    // are not sufficient proof to take ownership of an existing tracking document.
+    // ---------------------------------------------------------------
+    // Seguimiento en vivo (sin cambios de lógica)
+    // ---------------------------------------------------------------
     match /delivery_tracking/{orderId} {
       function trackingOrder() {
         return get(/databases/$(database)/documents/orders/$(orderId)).data;
@@ -242,20 +385,20 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Global System Settings rules (Public read for delivery fees, write is admin-only)
+    // ---------------------------------------------------------------
+    // Configuración global y tokens de notificaciones (sin cambios)
+    // ---------------------------------------------------------------
     match /settings/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Admin FCM Tokens collection rules for real-time Push Notifications
     match /admin_fcm_tokens/{tokenId} {
       allow read: if driverAdmin();
       allow create, update: if driverAdmin() && request.resource.data.adminUid == request.auth.uid;
       allow delete: if driverAdmin();
     }
 
-    // Seller FCM Tokens collection rules for Merchant Store Push Notifications
     match /seller_fcm_tokens/{tokenId} {
       allow read: if isAuth() && (driverAdmin() || resource.data.storeOwnerId == request.auth.uid);
       allow create: if isAuth() && request.resource.data.storeOwnerId == request.auth.uid && request.resource.data.sellerUid == request.auth.uid;
@@ -263,7 +406,6 @@ service cloud.firestore {
       allow delete: if isAuth() && (driverAdmin() || resource.data.storeOwnerId == request.auth.uid);
     }
 
-    // Driver FCM Tokens collection rules for Delivery Driver Push Notifications
     match /driver_fcm_tokens/{tokenId} {
       function tokenOwner(data) {
         return ownsDriver(data.driverId, get(/databases/$(database)/documents/drivers/$(data.driverId)).data);
@@ -275,57 +417,120 @@ service cloud.firestore {
       allow delete: if driverAdmin() || tokenOwner(resource.data);
     }
 
-    // Subscription payments collection rules (Merchants create and read theirs, administrators approve/reject)
+    // ---------------------------------------------------------------
+    // Pagos de suscripción
+    // CAMBIO: cada restaurante ve y crea solo los suyos, y nunca puede
+    // marcarlos como aprobados. Aprobar/rechazar es solo del admin.
+    // ---------------------------------------------------------------
     match /subscription_payments/{paymentId} {
-      allow read, create, update: if true;
+      allow read: if isAdmin() || (isAuth() && resource.data.get('userId', '') == request.auth.uid);
+      allow create: if isAdmin() || (isAuth() &&
+        request.resource.data.get('userId', '') == request.auth.uid &&
+        request.resource.data.get('status', '') in ['pending', 'review'] &&
+        !('resolvedAt' in request.resource.data));
+      allow update: if isAdmin() || (isAuth() &&
+        resource.data.get('userId', '') == request.auth.uid &&
+        resource.data.get('status', '') in ['pending', 'review'] &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.get('status', '') in ['pending', 'review'] &&
+        !changedKeys().hasAny(['amount', 'resolvedAt']));
       allow delete: if isAdmin();
     }
 
-    // Content Creators collection rules (Public read for referral lookups & clicks, write management)
+    // ---------------------------------------------------------------
+    // Creadores de contenido (referidos)
+    // CAMBIO: solo el admin crea, edita y borra. El público solo puede
+    // sumar contadores (clics y ventas referidas), nunca restar ni editar
+    // datos de pago o comisión.
+    // ---------------------------------------------------------------
     match /creators/{creatorId} {
       allow read: if true;
-      allow create, update, delete: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        changedKeys().hasOnly(['totalClicks', 'totalOrdersCount', 'totalSalesAmount', 'totalEarnings', 'updatedAt']) &&
+        request.resource.data.get('totalClicks', 0) >= resource.data.get('totalClicks', 0) &&
+        request.resource.data.get('totalClicks', 0) <= resource.data.get('totalClicks', 0) + 1 &&
+        request.resource.data.get('totalOrdersCount', 0) >= resource.data.get('totalOrdersCount', 0) &&
+        request.resource.data.get('totalOrdersCount', 0) <= resource.data.get('totalOrdersCount', 0) + 1 &&
+        request.resource.data.get('totalSalesAmount', 0) >= resource.data.get('totalSalesAmount', 0) &&
+        request.resource.data.get('totalEarnings', 0) >= resource.data.get('totalEarnings', 0)
+      );
     }
 
-    // Referral Commissions collection rules
+    // CAMBIO: se crea "pendiente" al hacer un pedido referido; leer, pagar
+    // o borrar es solo del admin.
     match /referral_commissions/{commissionId} {
-      allow read, create, update, delete: if true;
+      allow read, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        request.resource.data.get('status', '') == 'pending' &&
+        request.resource.data.get('commissionAmount', -1) is number &&
+        request.resource.data.get('commissionAmount', -1) >= 0 &&
+        !('paidAt' in request.resource.data) &&
+        exists(/databases/$(database)/documents/creators/$(request.resource.data.get('creatorId', '_')))
+      );
     }
 
-    // Customers collection rules (Customers look up their RYYCOS, account & roulette spins by phone)
+    // ---------------------------------------------------------------
+    // Clientes y RYYCOS (FASE 1.5)
+    // Saldo, giros, premios, movimientos y estadísticas solo los cambia el
+    // servidor (Cloud Functions ryyco*) o un admin. Un perfil nuevo solo
+    // puede nacer con el bono de bienvenida (máx. 500 RYYCOS y 1 giro).
+    // La lectura sigue abierta mientras haya teléfonos con la app Android
+    // antigua (busca perfiles por celular sin sesión). FASE 2 la cierra
+    // (firestore.phase2.rules).
+    // ---------------------------------------------------------------
+    function validNewCustomerBalance(data) {
+      return data.get('points', 0) is number && data.get('points', 0) >= 0 && data.get('points', 0) <= 500 &&
+        data.get('ryycos', 0) is number && data.get('ryycos', 0) <= 500 &&
+        data.get('spinsAvailable', 0) is number && data.get('spinsAvailable', 0) <= 1 &&
+        data.get('movements', []).size() <= 1 &&
+        data.get('wonPrizes', []).size() == 0 &&
+        data.get('totalOrdersCount', 0) == 0 && data.get('totalSpent', 0) == 0;
+    }
     match /customers/{customerId} {
-      allow read, create, update: if true;
+      allow read: if true;
+      allow create: if isAdmin() || (
+        (request.resource.data.get('authUid', '') == '' || isOwner(request.resource.data.get('authUid', ''))) &&
+        validNewCustomerBalance(request.resource.data));
+      allow update: if isAdmin() || (
+        !changedKeys().hasAny(['points', 'ryycos', 'movements', 'spinsAvailable', 'wonPrizes',
+          'totalOrdersCount', 'totalSpent']) &&
+        (!changedKeys().hasAny(['authUid', 'email']) ||
+          resource.data.get('authUid', '') == '' ||
+          isOwner(resource.data.get('authUid', ''))));
       allow delete: if isAdmin();
     }
 
-    // RYYCOS transaction audit logs
+    // Registro de transferencias de RYYCOS: lo escribe solo el servidor.
     match /ryyco_transactions/{transactionId} {
-      allow read, create, update: if true;
-      allow delete: if isAdmin();
+      allow read: if isAdmin() || (isAuth() && resource.data.get('senderUid', '') == request.auth.uid);
+      allow create, update, delete: if isAdmin();
     }
 
-    // Store Recommendations rules (❤️ recommendation system)
-    // Allows public read for all recommendations & stats
-    // Protects against duplicates by enforcing docId == storeId + '_' + userId
+    // ---------------------------------------------------------------
+    // Recomendaciones ❤️
+    // CAMBIO: solo el autor (o admin) borra su recomendación.
+    // ---------------------------------------------------------------
     match /recommendations/{recId} {
       allow read: if true;
       allow create, update: if request.resource.data.storeId is string &&
                               request.resource.data.userId is string &&
                               request.resource.data.recommended is bool &&
                               recId == request.resource.data.storeId + '_' + request.resource.data.userId;
-      allow delete: if true;
+      allow delete: if isAdmin() || (isAuth() &&
+        (resource.data.get('userId', '') == request.auth.uid ||
+         resource.data.get('authUid', '') == request.auth.uid));
     }
 
-    // Product Recommendations rules (❤️ recommendation system for dishes/products)
-    // Allows public read for all product recommendations & stats
-    // Protects against duplicates by enforcing recId == productId + '_' + userId
     match /product_recommendations/{recId} {
       allow read: if true;
       allow create, update: if request.resource.data.productId is string &&
                               request.resource.data.userId is string &&
                               request.resource.data.recommended is bool &&
                               recId == request.resource.data.productId + '_' + request.resource.data.userId;
-      allow delete: if true;
+      allow delete: if isAdmin() || (isAuth() &&
+        (resource.data.get('userId', '') == request.auth.uid ||
+         resource.data.get('authUid', '') == request.auth.uid));
     }
   }
 }

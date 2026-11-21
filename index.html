@@ -48,7 +48,8 @@
     <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700;1,400&family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,700;1,400&display=swap" />
+    <!-- Outfit y Plus Jakarta Sans solo los usa el módulo de proveedores, que las carga en proveedores-fonts.css -->
     <link rel="preload" href="/ryyco_combo.webp" as="image" fetchpriority="high" />
     <script>
       // Start independent, small metadata requests while the application bundle downloads.
@@ -120,17 +121,25 @@
         document.head.appendChild(s);
       }
 
-      if (typeof window !== 'undefined') {
-        if ('requestIdleCallback' in window) {
-          window.requestIdleCallback(function() {
-            setTimeout(loadGtagScript, 1200);
-          }, { timeout: 3000 });
-        } else {
-          window.addEventListener('load', function() {
-            setTimeout(loadGtagScript, 1200);
-          }, { once: true });
+      // RENDIMIENTO (celulares): las analíticas de terceros (Google y TikTok) se cargan
+      // en la primera interacción (toque, scroll, tecla) o 5 s después de cargar la
+      // página, lo que ocurra primero. Así no compiten con la carga inicial.
+      // Los eventos registrados antes quedan en cola (dataLayer / ttq).
+      window.__ryycoWhenIdleForAnalytics = function(fn) {
+        var done = false;
+        var events = ['pointerdown', 'touchstart', 'scroll', 'keydown'];
+        function run() {
+          if (done) return;
+          done = true;
+          events.forEach(function(e) { window.removeEventListener(e, run, true); });
+          setTimeout(fn, 0);
         }
-      }
+        events.forEach(function(e) { window.addEventListener(e, run, { capture: true, passive: true, once: true }); });
+        function afterLoad() { setTimeout(run, 5000); }
+        if (document.readyState === 'complete') afterLoad();
+        else window.addEventListener('load', afterLoad, { once: true });
+      };
+      window.__ryycoWhenIdleForAnalytics(loadGtagScript);
     </script>
     <!-- TikTok Pixel Code Start -->
     <script>
@@ -139,14 +148,62 @@
         var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script")
         ;n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};
 
-        ttq.load('DBHN4D3C77U4VUSMD9QG');
-        ttq.page();
+        // RENDIMIENTO: el píxel se descarga en la primera interacción o 5 s después
+        // de cargar (igual que gtag). Los eventos llamados antes quedan en cola.
+        function loadTiktokPixel() {
+          if (w.__TTQ_LOADED__) return;
+          w.__TTQ_LOADED__ = true;
+          ttq.load('DBHN4D3C77U4VUSMD9QG');
+          ttq.page();
+        }
+        w.__ryycoWhenIdleForAnalytics(function() { setTimeout(loadTiktokPixel, 300); });
       }(window, document, 'ttq');
     </script>
     <!-- TikTok Pixel Code End -->
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      RENDIMIENTO (celulares): "cascarón" que se ve al instante mientras descarga
+      el JavaScript (~1 MB). React lo reemplaza al montar la app. Solo CSS simple,
+      sin Tailwind ni fuentes externas, para que funcione igual en Chrome y Safari.
+    -->
+    <style>
+      html, body { background: #090B12; margin: 0; }
+      #ryyco-shell { min-height: 100vh; color: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; box-sizing: border-box; padding: 16px; }
+      #ryyco-shell .rs-top { display: flex; align-items: center; justify-content: space-between; max-width: 1100px; margin: 0 auto; }
+      #ryyco-shell .rs-logo { font-weight: 900; font-size: 22px; letter-spacing: 1px; color: #E63946; }
+      #ryyco-shell .rs-hero { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 1100px; margin: 18px auto 0; padding: 16px; border-radius: 20px; background: linear-gradient(135deg, #103E31, #0B1A16); border: 1px solid rgba(255, 217, 138, .25); }
+      #ryyco-shell .rs-copy { flex: 1 1 auto; min-width: 0; }
+      #ryyco-shell h1 { font-size: 26px; line-height: 1.1; margin: 0 0 8px; font-weight: 900; }
+      #ryyco-shell h1 span { color: #FFD98A; }
+      #ryyco-shell p { font-size: 13px; color: #cbd5e1; margin: 0; }
+      /* Igual o mayor que la imagen del hero de React (máx. 170 px en celular),
+         para que el contenido principal (LCP) se mida desde el cascarón. */
+      #ryyco-shell .rs-img { width: 180px; height: auto; flex: 0 0 auto; }
+      @media (min-width: 640px) { #ryyco-shell .rs-img { width: 340px; } }
+      #ryyco-shell .rs-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; max-width: 1100px; margin: 18px auto 0; }
+      #ryyco-shell .rs-card { height: 170px; border-radius: 16px; background: #111827; border: 1px solid #232B3A; animation: rs-pulse 1.4s ease-in-out infinite; }
+      @media (min-width: 640px) { #ryyco-shell h1 { font-size: 40px; } #ryyco-shell .rs-cards { grid-template-columns: repeat(4, 1fr); } }
+      @keyframes rs-pulse { 50% { opacity: .55; } }
+      html.rs-not-home #ryyco-shell .rs-hero, html.rs-not-home #ryyco-shell .rs-cards { display: none; }
+    </style>
+    <script>
+      // El cascarón con la imagen del combo solo corresponde a la página de inicio.
+      if (!/^\/(?:tienda|tiendas|catalogo)?\/?$/.test(location.pathname)) document.documentElement.className += ' rs-not-home';
+    </script>
+    <div id="root">
+      <div id="ryyco-shell" aria-hidden="true">
+        <div class="rs-top"><span class="rs-logo">RYYCO</span></div>
+        <div class="rs-hero">
+          <div class="rs-copy">
+            <h1>Pide comida <span>a domicilio</span></h1>
+            <p>Tus restaurantes favoritos de Ipiales con entrega rápida.</p>
+          </div>
+          <img class="rs-img" src="/ryyco_combo.webp" alt="" width="403" height="399" fetchpriority="high" decoding="async" />
+        </div>
+        <div class="rs-cards"><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div><div class="rs-card"></div></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

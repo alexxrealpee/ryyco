@@ -30,11 +30,14 @@ import {
   googleProvider,
   signInWithGoogleUniversal,
   saveCustomerProfile,
-  fetchCustomerProfileByPhone,
-  fetchCustomerProfileByEmail,
   fetchCustomerProfileByUid,
   setActiveCustomerSession,
-  sanitizeCustomerPhone
+  sanitizeCustomerPhone,
+  signInCustomerWithPassword,
+  registerCustomerWithPassword,
+  describeCustomerAuthError,
+  claimCustomerProfile,
+  CUSTOMER_MIN_PASSWORD_LENGTH
 } from '../lib/firebase';
 import { CustomerProfile } from '../types';
 import BuyerTermsModal from './BuyerTermsModal';
@@ -53,6 +56,9 @@ export interface CustomerOrderAuthPromptModalProps {
   };
   isExistingCustomer: boolean;
   existingProfile: CustomerProfile | null;
+  // Datos mínimos que devuelve el servidor (checkCustomerPhone) sin leer el perfil.
+  existingFirstName?: string;
+  existingHasAccount?: boolean;
   onAuthenticated: (customer: CustomerProfile) => void;
   onChangePhoneRequest?: () => void;
 }
@@ -88,9 +94,12 @@ export default function CustomerOrderAuthPromptModal({
   cartSummary,
   isExistingCustomer,
   existingProfile,
+  existingFirstName,
+  existingHasAccount: existingHasAccountProp,
   onAuthenticated,
   onChangePhoneRequest
 }: CustomerOrderAuthPromptModalProps) {
+  const existingHasAccount = Boolean(existingHasAccountProp ?? existingProfile?.authUid);
   const isAndroid = isAndroidApp();
   const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -112,7 +121,7 @@ export default function CustomerOrderAuthPromptModal({
   if (!isOpen) return null;
 
   const cleanedPhone = sanitizeCustomerPhone(phone);
-  const displayName = existingProfile?.name || customerName;
+  const displayName = existingProfile?.name || existingFirstName || customerName;
 
   // 1. Submit (Login or Registration without password)
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -128,33 +137,92 @@ export default function CustomerOrderAuthPromptModal({
     setIsSubmitting(true);
     setAuthError('');
 
+    const fail = (message: string) => {
+      setAuthError(message);
+      submittingLockRef.current = false;
+      setIsSubmitting(false);
+    };
+
     try {
-      if (isExistingCustomer && existingProfile) {
-        const updatedProfile: CustomerProfile = {
-          ...existingProfile,
-          name: customerName.trim() || existingProfile.name,
-          address: customerAddress.trim() || existingProfile.address,
-          notes: customerNotes?.trim() || existingProfile.notes
-        };
-
-        const saved = await saveCustomerProfile(updatedProfile);
-        setActiveCustomerSession(saved);
-        await onAuthenticated(saved);
-      } else {
-        // Register new customer profile!
-        const newProfile = await saveCustomerProfile({
-          phone: cleanedPhone,
-          name: customerName.trim(),
-          password: passwordInput.trim(),
-          address: customerAddress.trim(),
-          notes: customerNotes?.trim() || '',
-          points: 500, // 500 RYYCOS ($500 COP) welcome bonus!
-          spinsAvailable: 1
-        });
-
-        setActiveCustomerSession(newProfile);
-        await onAuthenticated(newProfile);
+      // Todo pedido queda ligado a una cuenta: el cliente entra con su contraseña
+      // (verificada por Firebase Auth), crea una si es nuevo, o usa Google.
+      const password = passwordInput.trim();
+      if (!password) {
+        fail(isExistingCustomer
+          ? 'Ingresa tu contraseña para confirmar tu pedido, o entra con Google.'
+          : `Crea una contraseña de al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres, o usa Google.`);
+        return;
       }
+      const badCredentials = (code?: string) => ['auth/invalid-credential', 'auth/user-not-found', 'auth/invalid-login-credentials', 'auth/wrong-password'].includes(code || '');
+
+      let user;
+      if (isExistingCustomer) {
+        try {
+          user = await signInCustomerWithPassword(cleanedPhone, password);
+        } catch (authErr: any) {
+          if (!badCredentials(authErr?.code) || existingHasAccount) {
+            // Cuenta con contraseña o con Google: no se crea nada nuevo.
+            fail(describeCustomerAuthError(authErr));
+            return;
+          }
+          // Cliente que pidió antes sin crear cuenta: esta es su primera contraseña.
+          if (password.length < CUSTOMER_MIN_PASSWORD_LENGTH) {
+            fail(`Aún no tienes contraseña. Crea una de al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`);
+            return;
+          }
+          try {
+            user = await registerCustomerWithPassword(cleanedPhone, password);
+          } catch (regErr: any) {
+            fail(regErr?.code === 'auth/email-already-in-use'
+              ? describeCustomerAuthError({ code: 'auth/invalid-credential' })
+              : describeCustomerAuthError(regErr));
+            return;
+          }
+        }
+      } else {
+        if (password.length < CUSTOMER_MIN_PASSWORD_LENGTH) {
+          fail(`La contraseña debe tener al menos ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres.`);
+          return;
+        }
+        try {
+          user = await registerCustomerWithPassword(cleanedPhone, password);
+        } catch (regErr: any) {
+          if (regErr?.code !== 'auth/email-already-in-use') {
+            fail(describeCustomerAuthError(regErr));
+            return;
+          }
+          // Ya tenía contraseña para este celular: intentar entrar con ella.
+          try {
+            user = await signInCustomerWithPassword(cleanedPhone, password);
+          } catch (authErr: any) {
+            fail(describeCustomerAuthError(authErr));
+            return;
+          }
+        }
+      }
+
+      // El servidor vincula el perfil del celular a esta cuenta (si existe y no
+      // tiene otro dueño). Si no existe, se crea uno nuevo.
+      const claimed = await claimCustomerProfile(cleanedPhone);
+      const saved = await saveCustomerProfile(claimed
+        ? {
+            ...claimed,
+            name: customerName.trim() || claimed.name,
+            address: customerAddress.trim() || claimed.address,
+            notes: customerNotes?.trim() || claimed.notes
+          }
+        : {
+            phone: cleanedPhone,
+            name: customerName.trim(),
+            address: customerAddress.trim(),
+            notes: customerNotes?.trim() || '',
+            authUid: user.uid,
+            points: 500, // 500 RYYCOS ($500 COP) welcome bonus!
+            spinsAvailable: 1
+          });
+
+      setActiveCustomerSession(saved);
+      await onAuthenticated(saved);
     } catch (err: any) {
       console.error("Auth error in checkout prompt:", err);
       setAuthError(err.message || "Ocurrió un error al verificar tu cuenta. Intenta de nuevo.");
@@ -188,16 +256,14 @@ export default function CustomerOrderAuthPromptModal({
       setGoogleAuthStage('loading_profile');
       setLoadingProfileStatusText('Cargando y sincronizando tu perfil...');
 
-      // Check if profile exists by uid, phone, or email
+      // Perfil ya vinculado a esta cuenta; si no, el del celular del pedido (el
+      // servidor lo vincula si no tiene otro dueño).
       let profile: CustomerProfile | null = null;
       if (user.uid) {
         profile = await fetchCustomerProfileByUid(user.uid);
       }
       if (!profile) {
-        profile = await fetchCustomerProfileByPhone(cleanedPhone);
-      }
-      if (!profile && gEmail) {
-        profile = await fetchCustomerProfileByEmail(gEmail);
+        profile = await claimCustomerProfile(cleanedPhone);
       }
 
       setLoadingProfileStatusText(
@@ -206,18 +272,28 @@ export default function CustomerOrderAuthPromptModal({
           : (profile ? 'Cargando saldo de RYYCOS y datos guardados...' : 'Creando tu perfil de cliente y activando bono de 500 RYYCOS...')
       );
 
-      const saved = await saveCustomerProfile({
-        ...(profile || {}),
-        phone: cleanedPhone,
-        name: profile?.name || customerName || gName,
-        email: gEmail,
-        avatarUrl: gAvatar || profile?.avatarUrl || '',
-        authUid: user.uid,
-        address: customerAddress.trim() || profile?.address || '',
-        notes: customerNotes?.trim() || profile?.notes || '',
-        points: profile ? (profile.points || 0) : 500,
-        spinsAvailable: profile ? (profile.spinsAvailable || 1) : 1
-      });
+      // Perfil existente: se actualizan solo datos de contacto (saldo y giros
+      // no se tocan; los gestiona el servidor). Nuevo: bono de bienvenida.
+      const saved = await saveCustomerProfile(profile
+        ? {
+            ...profile,
+            name: profile.name || customerName || gName,
+            email: profile.email || gEmail,
+            avatarUrl: gAvatar || profile.avatarUrl || '',
+            address: customerAddress.trim() || profile.address || '',
+            notes: customerNotes?.trim() || profile.notes || ''
+          }
+        : {
+            phone: cleanedPhone,
+            name: customerName || gName,
+            email: gEmail,
+            avatarUrl: gAvatar,
+            authUid: user.uid,
+            address: customerAddress.trim(),
+            notes: customerNotes?.trim() || '',
+            points: 500,
+            spinsAvailable: 1
+          });
 
       setActiveCustomerSession(saved);
 
@@ -476,6 +552,43 @@ export default function CustomerOrderAuthPromptModal({
 
             {/* Direct Confirmation Form */}
             <form onSubmit={handlePasswordSubmit} className="space-y-3">
+
+              {/* Contraseña obligatoria: entrar (cliente registrado) o crearla (cliente nuevo) */}
+              {(
+                <div>
+                  <label htmlFor="order-auth-password" className="text-[11px] font-black uppercase text-gray-300 block mb-1">
+                    {isExistingCustomer ? 'Tu contraseña *' : 'Crea tu contraseña *'}
+                  </label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+                      <Lock className="w-4 h-4 text-[#E63946]" />
+                    </div>
+                    <input
+                      id="order-auth-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete={isExistingCustomer ? 'current-password' : 'new-password'}
+                      value={passwordInput}
+                      onChange={(e) => setPasswordInput(e.target.value)}
+                      placeholder={isExistingCustomer ? 'Contraseña de tu cuenta Ryyco' : `Mínimo ${CUSTOMER_MIN_PASSWORD_LENGTH} caracteres`}
+                      className="w-full h-11 bg-[#0d1322] border border-[#232E42] focus:border-[#E63946] rounded-xl pl-9 pr-10 text-xs font-semibold text-white placeholder:text-gray-500 outline-none transition"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white cursor-pointer z-10"
+                      title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-1 leading-snug">
+                    {isExistingCustomer
+                      ? <>¿Es tu primer pedido con contraseña? Escribe una nueva de al menos {CUSTOMER_MIN_PASSWORD_LENGTH} caracteres y quedará guardada. Si te registraste con Google, usa el botón de arriba.</>
+                      : <>Con tu celular y esta contraseña podrás ver y rastrear tus pedidos desde cualquier teléfono.</>}
+                  </p>
+                </div>
+              )}
 
               {/* Buyer terms for registration */}
               {!isExistingCustomer && (

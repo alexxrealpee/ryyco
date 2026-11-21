@@ -344,6 +344,10 @@ export interface OrderItem {
 
   // Independent Delivery Driver fields
   deliveryDriverId?: string;
+  customerUid?: string; // Cuenta (Firebase Auth) del cliente que hizo el pedido
+  clientPlatform?: 'web' | 'android';
+  ryycoAwardedAt?: string; // Lo escribe la Cloud Function al premiar la compra
+  ryycoPointsAwarded?: number;
   deliveryDriverName?: string;
   deliveryDriverPhone?: string;
   deliveryDriverPhoto?: string;
@@ -589,7 +593,8 @@ export interface CustomerProfile {
   id: string; // Phone number or unique ID
   phone: string;
   name: string;
-  password?: string;
+  // La contraseña ya no se guarda aquí: la gestiona Firebase Auth
+  // (ver signInCustomerWithPassword en lib/firebase.ts).
   email?: string;
   avatarUrl?: string;
   authUid?: string;
