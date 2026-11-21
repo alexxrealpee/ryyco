@@ -27,7 +27,11 @@ import PwaLoadingScreen from './components/PwaLoadingScreen';
 const LandingPage = React.lazy(() => import('./components/LandingPage'));
 const AuthPage = React.lazy(() => import('./components/AuthPage'));
 const Dashboard = React.lazy(() => import('./components/Dashboard'));
-const PublicProfile = React.lazy(() => import('./components/PublicProfile'));
+const loadPublicProfile = () => import('./components/PublicProfile');
+const PublicProfile = React.lazy(loadPublicProfile);
+// Página de un restaurante: index.html ya pidió sus datos; el código de la página
+// se empieza a descargar ya mismo, sin esperar al primer render.
+if (typeof window !== 'undefined' && (window as any).__RYYCO_STORE__) void loadPublicProfile();
 const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
 const DriverRegister = React.lazy(() => import('./components/DriverRegister'));
 const DriverPortal = React.lazy(() => import('./components/DriverPortal'));
@@ -645,7 +649,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#090B12] text-gray-100">
-      <React.Suspense fallback={<PwaLoadingScreen />}>
+      {/* En la página de un restaurante no se muestra spinner: solo el fondo hasta que aparece la tienda. */}
+      <React.Suspense fallback={view === 'profile' ? null : <PwaLoadingScreen />}>
         {view === 'landing' && (
           <LandingPage 
           onNavigate={(targetView, customUser) => {

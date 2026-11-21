@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { awaitPrefetchedStore, takeReadyStore } from '../lib/storePrefetch';
 import { useReceiptUpload } from '../hooks/useReceiptUpload';
 import { useCheckoutField } from '../hooks/useCheckoutField';
 import { finishCheckoutAttempt } from '../lib/pendingCheckout';
@@ -162,11 +163,15 @@ interface PublicProfileProps {
 }
 
 export default function PublicProfile({ username, onNavigateHome }: PublicProfileProps) {
-  const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [links, setLinks] = useState<LinkItem[]>([]);
-  const [products, setProducts] = useState<ProductItem[]>([]);
-  const [theme, setTheme] = useState<CustomTheme | null>(null);
+  // Si index.html ya descargó la tienda (/api/store-page.php), se pinta de una vez,
+  // sin pantalla de carga.
+  const [readyStore] = useState(() => takeReadyStore(username));
+  const pendingReadyStore = useRef(readyStore);
+  const [loading, setLoading] = useState(!readyStore?.profile);
+  const [profile, setProfile] = useState<UserProfile | null>(readyStore?.profile ?? null);
+  const [links, setLinks] = useState<LinkItem[]>(() => (readyStore?.links || []).filter(l => l && l.active));
+  const [products, setProducts] = useState<ProductItem[]>(() => (readyStore?.products || []).filter(p => p && p.active));
+  const [theme, setTheme] = useState<CustomTheme | null>(readyStore?.customTheme ?? null);
   
   // Unified Cart state - synchronized with general cart across the entire app
   const [cart, setCart] = useState<GeneralCartItem[]>(() => {
@@ -599,10 +604,16 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
   useEffect(() => {
     let isSubscribed = true;
     async function loadData() {
-      setLoading(true);
       const clean = username.trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+      // 1) Datos ya listos al montar  2) descarga anticipada en curso  3) carga normal con Firebase.
+      const ready = pendingReadyStore.current;
+      pendingReadyStore.current = null;
+      if (!ready?.profile) setLoading(true);
       try {
-        let res = await fetchProfileByUsername(username);
+        let res = ready?.profile ? ready : await awaitPrefetchedStore(username);
+        if (!res?.profile && isSubscribed) {
+          res = await fetchProfileByUsername(username);
+        }
         
         // Auto-retry once after 1 second if profile wasn't found on cold initial load
         if (!res?.profile && isSubscribed) {
@@ -705,13 +716,14 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
           setProfile(null);
         }
 
-        // Fetch system delivery fee setting
-        try {
-          const sysSettings = await fetchSystemSettings();
-          if (sysSettings?.defaultDeliveryFee && isSubscribed) {
-            setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
-          }
-        } catch (e) {}
+        // Tarifa de domicilio del sistema: en segundo plano, sin retrasar la página.
+        fetchSystemSettings()
+          .then(sysSettings => {
+            if (sysSettings?.defaultDeliveryFee && isSubscribed) {
+              setSystemDeliveryFee(sysSettings.defaultDeliveryFee);
+            }
+          })
+          .catch(() => {});
       } catch (err) {
         console.error("Error fetching public shop storefront", err);
       } finally {
@@ -2851,8 +2863,8 @@ export default function PublicProfile({ username, onNavigateHome }: PublicProfil
 
         {/* Humble system credits footer */}
         <div className="text-center opacity-40 hover:opacity-100 transition-opacity z-10 mt-10 border-t border-white/5 pt-6">
-          <a href={window.location.origin} className="text-[9px] font-black tracking-widest uppercase flex items-center justify-center gap-1 text-current">
-            TIENDA PRO POR <span className="text-red-500">♥</span> ryyco.com
+          <a href={window.location.origin} className="text-[9px] font-black tracking-widest flex items-center justify-center text-current">
+            ryyco.com
           </a>
         </div>
       </footer>
