@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   Users, 
   MessageCircle, 
@@ -43,7 +43,12 @@ import { OrderItem, UserProfile, CustomerProfile } from '../types';
 import { adjustCustomerRyycosByAdmin, markCustomerWelcomeMessageSent } from '../lib/firebase';
 import { getPersonalWhatsAppUrl, openPersonalWhatsApp } from '../lib/whatsappUtils';
 
-import { useAdminCustomerPages } from '../hooks/useAdminCustomerPages';
+import { useCustomerStatsPages, useScopedCustomerOrders } from '../hooks/useAdminCustomerPages';
+import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
+import {
+  ADMIN_CUSTOMER_PAGE_SIZE, fetchAllCustomerStats, fetchCustomerSummary, fetchNextPendingWelcome, fetchOrdersByIds,
+} from '../lib/adminCustomerPage';
+import type { CustomerStatsDoc } from '../lib/adminCustomerPage';
 
 // Mensaje de bienvenida oficial para clientes en la ciudad de Ipiales
 export const RYYCO_WELCOME_MESSAGE = `🎉 ¡Bienvenido a RYYCO! 💚
@@ -226,9 +231,34 @@ export default function AdminCustomersRanking({
   const [showWelcomeMessageBanner, setShowWelcomeMessageBanner] = useState<boolean>(true);
   const [copiedWelcomeMessage, setCopiedWelcomeMessage] = useState<boolean>(false);
 
-  // Profiles and related orders are loaded only on demand, four customers per page.
-  const { profiles: customerProfiles, setProfiles: setCustomerProfiles, orders: allOrders,
-    loading: customersLoading, hasMore: hasMoreCustomers, error: customersError, loadNext: loadNextCustomers } = useAdminCustomerPages();
+  // Carga inteligente de clientes:
+  // - Sin filtro de tienda ni de periodo: customerStats, de 4 en 4 desde Firestore
+  //   (orden, segmento y búsqueda se resuelven en la consulta).
+  // - Con tienda o periodo: solo los pedidos de ese alcance; la lista se muestra de 4 en 4.
+  const isScoped = selectedStore !== 'all' || timeRange !== 'all';
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 350);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+  const statsPages = useCustomerStatsPages({ sortBy, segment: segmentFilter, search: debouncedSearch }, !isScoped);
+  const scopedData = useScopedCustomerOrders(selectedStore, timeRange, isScoped);
+  const customerProfiles = scopedData.profiles;
+  const setCustomerProfiles = scopedData.setProfiles;
+  const allOrders = scopedData.orders;
+  // Cambios de "En visto" hechos en esta sesión (se ven al instante, antes de que el servidor actualice).
+  const [welcomeOverrides, setWelcomeOverrides] = useState<Record<string, string | null>>({});
+  const [platformSummary, setPlatformSummary] = useState<Awaited<ReturnType<typeof fetchCustomerSummary>> | null>(null);
+  const [historyCache, setHistoryCache] = useState<Record<string, OrderItem[] | 'loading' | 'error'>>({});
+  const [visibleCount, setVisibleCount] = useState(ADMIN_CUSTOMER_PAGE_SIZE);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const refreshPlatformSummary = useCallback(() => {
+    fetchCustomerSummary()
+      .then(setPlatformSummary)
+      .catch(err => console.warn('[Clientes] No se pudo cargar el resumen', err));
+  }, []);
+  useEffect(() => { refreshPlatformSummary(); }, [refreshPlatformSummary]);
   const [adjustingRyycosCustomer, setAdjustingRyycosCustomer] = useState<CustomerAggregated | null>(null);
   const [adjustmentAmount, setAdjustmentAmount] = useState<string>('500');
   const [adjustmentMode, setAdjustmentMode] = useState<'add' | 'set'>('add');
@@ -296,8 +326,11 @@ export default function AdminCustomersRanking({
       return next;
     });
 
+    setWelcomeOverrides(prev => ({ ...prev, [canonical]: nowIso }));
+
     // 2. Persistir en Firestore en segundo plano
     markCustomerWelcomeMessageSent(canonical, nowIso).catch(() => {});
+    setTimeout(refreshPlatformSummary, 4000);
 
     // 3. Abrir WhatsApp personal con el mensaje oficial de bienvenida
     openPersonalWhatsApp(phone, RYYCO_WELCOME_MESSAGE);
@@ -323,7 +356,9 @@ export default function AdminCustomersRanking({
       return next;
     });
 
+    setWelcomeOverrides(prev => ({ ...prev, [canonical]: null }));
     markCustomerWelcomeMessageSent(canonical, '').catch(() => {});
+    setTimeout(refreshPlatformSummary, 4000);
     setToastFeedback(`Se ha desmarcado como visto para ${customer.name || customer.formattedPhone}.`);
     setTimeout(() => setToastFeedback(null), 3000);
     setConfirmResendCustomer(null);
@@ -339,8 +374,25 @@ export default function AdminCustomersRanking({
   };
 
   // Enviar mensaje de bienvenida al siguiente cliente pendiente
-  const handleSendNextPendingCustomer = () => {
-    const nextPending = aggregatedCustomers.find(c => !c.isWelcomeSent && c.cleanPhone.length >= 7);
+  const handleSendNextPendingCustomer = async () => {
+    let nextPending: CustomerAggregated | undefined;
+    if (isScoped) {
+      nextPending = aggregatedCustomers.map(applyWelcomeOverride).find(c => !c.isWelcomeSent && c.cleanPhone.length >= 7);
+    } else {
+      // Busca en el servidor (no solo entre los clientes cargados) saltando los ya marcados aquí.
+      const skip = new Set<string>([
+        ...Object.keys(welcomeSentMap),
+        ...Object.entries(welcomeOverrides).filter(([, v]) => !!v).map(([k]) => k),
+      ]);
+      try {
+        const doc = await fetchNextPendingWelcome(skip);
+        nextPending = doc ? statsToAggregated(doc) : undefined;
+      } catch (err) {
+        setToastFeedback('No se pudo buscar el siguiente cliente pendiente. Revisa tu conexión.');
+        setTimeout(() => setToastFeedback(null), 4000);
+        return;
+      }
+    }
     if (!nextPending) {
       setToastFeedback('🎉 ¡Excelente! Todos los clientes con WhatsApp registrado ya tienen el mensaje de bienvenida enviado.');
       setTimeout(() => setToastFeedback(null), 4000);
@@ -887,8 +939,8 @@ export default function AdminCustomersRanking({
     return result;
   }, [aggregatedCustomers, searchTerm, segmentFilter, sortBy]);
 
-  // Overall KPIs
-  const summaryStats = useMemo(() => {
+  // Overall KPIs (filtro por tienda o periodo: calculados con los pedidos de ese alcance)
+  const scopedSummaryStats = useMemo(() => {
     const totalCustomers = aggregatedCustomers.length;
     const withWhatsApp = aggregatedCustomers.filter(c => c.cleanPhone.length >= 7).length;
     const recurringCustomers = aggregatedCustomers.filter(c => c.totalOrders > 1).length;
@@ -915,6 +967,148 @@ export default function AdminCustomersRanking({
     };
   }, [aggregatedCustomers]);
 
+  // "En visto" marcado o desmarcado en esta sesión tiene prioridad sobre lo cargado.
+  function applyWelcomeOverride(c: CustomerAggregated): CustomerAggregated {
+    const override = welcomeOverrides[getCanonicalPhone(c.cleanPhone || c.rawPhone)];
+    if (override === undefined) return c;
+    return { ...c, welcomeMessageSentAt: override || undefined, isWelcomeSent: !!override };
+  }
+
+  // Documento de customerStats -> mismo formato que usan las tarjetas.
+  function statsToAggregated(doc: CustomerStatsDoc): CustomerAggregated {
+    const phoneForDisplay = doc.cleanPhone || doc.rawPhone;
+    const canonical = getCanonicalPhone(phoneForDisplay);
+    const storeBreakdown = Object.entries(doc.stores || {})
+      .map(([storeId, st]) => ({
+        storeId,
+        storeName: st.name || storesMap[storeId]?.storeName || 'Tienda',
+        count: st.count,
+        totalSpent: st.spent,
+      }))
+      .sort((a, b) => b.count - a.count);
+    const favoriteStoreName = doc.favoriteStoreId
+      ? (storesMap[doc.favoriteStoreId]?.storeName || doc.favoriteStoreName || 'Tienda')
+      : doc.favoriteStoreName;
+    const history = historyCache[doc.key];
+    const welcomeMessageSentAt = doc.welcomeMessageSentAt || welcomeSentMap[canonical]?.sentAt || undefined;
+    return applyWelcomeOverride({
+      key: doc.key,
+      name: doc.name,
+      rawPhone: doc.rawPhone,
+      cleanPhone: doc.cleanPhone,
+      formattedPhone: formatPhoneDisplay(phoneForDisplay),
+      whatsappUrl: buildWhatsAppUrl(phoneForDisplay, doc.name, doc.totalOrders, undefined, doc.ryycos),
+      addresses: doc.addresses || [],
+      totalOrders: doc.totalOrders,
+      completedOrders: doc.completedOrders,
+      cancelledOrders: doc.cancelledOrders,
+      activeOrders: doc.activeOrders,
+      totalSpent: doc.totalSpent,
+      averageTicket: doc.averageTicket,
+      firstOrderDate: doc.firstOrderAt,
+      lastOrderDate: doc.lastOrderAt,
+      favoriteStoreName,
+      favoriteStoreId: doc.favoriteStoreId || undefined,
+      storeBreakdown,
+      orders: Array.isArray(history) ? history : [],
+      ryycos: doc.ryycos,
+      spinsAvailable: doc.spinsAvailable,
+      isRegisteredProfile: doc.isRegisteredProfile,
+      welcomeMessageSentAt,
+      isWelcomeSent: !!welcomeMessageSentAt,
+    });
+  }
+
+  const statsCustomers = useMemo(
+    () => statsPages.clients.map(statsToAggregated),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [statsPages.clients, storesMap, historyCache, welcomeSentMap, welcomeOverrides]
+  );
+  const scopedCustomers = useMemo(
+    () => processedCustomers.map(applyWelcomeOverride),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [processedCustomers, welcomeOverrides]
+  );
+
+  // Al cambiar búsqueda, filtros u orden se vuelve a empezar desde los primeros 4.
+  useEffect(() => {
+    setVisibleCount(ADMIN_CUSTOMER_PAGE_SIZE);
+  }, [isScoped, selectedStore, timeRange, searchTerm, segmentFilter, sortBy]);
+
+  const displayedCustomers = isScoped ? scopedCustomers.slice(0, visibleCount) : statsCustomers;
+  const totalCustomersCount = isScoped ? scopedCustomers.length : statsPages.total;
+  const listHasMore = isScoped ? visibleCount < scopedCustomers.length : statsPages.hasMore;
+  const listIsLoading = isScoped ? scopedData.isLoading : statsPages.isLoading;
+  const listIsLoadingMore = isScoped ? false : statsPages.isLoadingMore;
+  const listError = isScoped ? scopedData.error : statsPages.error;
+  const isSearchPending = !isScoped && searchTerm !== debouncedSearch;
+
+  const loadMoreCustomers = useCallback(() => {
+    if (isScoped) setVisibleCount(count => count + ADMIN_CUSTOMER_PAGE_SIZE);
+    else void statsPages.loadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScoped, statsPages.loadMore]);
+
+  const sentinelRef = useInfiniteScroll<HTMLDivElement>({
+    enabled: listHasMore && !listError && !statsPages.isPaused,
+    busy: listIsLoading || listIsLoadingMore || isSearchPending,
+    itemCount: displayedCustomers.length,
+    onLoadMore: loadMoreCustomers,
+  });
+
+  // Historial de pedidos: se pide solo al abrir el detalle de un cliente.
+  // Solo depende de qué cliente se abre: si falló, se reintenta al volver a abrirlo.
+  useEffect(() => {
+    const cached = expandedCustomerKey ? historyCache[expandedCustomerKey] : undefined;
+    if (isScoped || !expandedCustomerKey || Array.isArray(cached) || cached === 'loading') return;
+    const doc = statsPages.clients.find(c => c.key === expandedCustomerKey);
+    const ids = doc ? Object.keys(doc.orders || {}) : [];
+    if (ids.length === 0) return;
+    const key = expandedCustomerKey;
+    setHistoryCache(prev => ({ ...prev, [key]: 'loading' }));
+    fetchOrdersByIds(ids)
+      .then(orders => setHistoryCache(prev => ({ ...prev, [key]: orders })))
+      .catch(() => setHistoryCache(prev => ({ ...prev, [key]: 'error' })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScoped, expandedCustomerKey]);
+
+  const summaryStats = useMemo(() => {
+    if (isScoped) return scopedSummaryStats;
+    const s = platformSummary;
+    const topCustomer = s?.top ? statsToAggregated(s.top) : null;
+    const totalCustomers = s?.totalCustomers ?? 0;
+    const recurringCustomers = s?.recurringCustomers ?? 0;
+    return {
+      totalCustomers,
+      withWhatsApp: s?.withWhatsApp ?? 0,
+      recurringCustomers,
+      retentionRate: totalCustomers > 0 ? Math.round((recurringCustomers / totalCustomers) * 100) : 0,
+      totalPlatformSpent: s?.totalPlatformSpent ?? 0,
+      totalPlatformRyycos: s?.totalPlatformRyycos ?? 0,
+      topCustomer,
+      maxOrders: topCustomer ? topCustomer.totalOrders : 1,
+      welcomeSentCount: s?.welcomeSentCount ?? 0,
+      welcomePendingCount: s?.welcomePendingCount ?? 0,
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScoped, scopedSummaryStats, platformSummary, storesMap]);
+
+  // Contadores de los botones de segmento.
+  const segmentCounts = useMemo(() => {
+    if (!isScoped) {
+      const s = platformSummary;
+      return { all: s?.totalCustomers ?? 0, vip: s?.vipCount ?? 0, frequent: s?.frequentCount ?? 0,
+        hasRyycos: s?.hasRyycosCount ?? 0, newCount: s?.newCount ?? 0 };
+    }
+    return {
+      all: aggregatedCustomers.length,
+      vip: aggregatedCustomers.filter(c => c.totalOrders >= 5).length,
+      frequent: aggregatedCustomers.filter(c => c.totalOrders >= 2 && c.totalOrders < 5).length,
+      hasRyycos: aggregatedCustomers.filter(c => c.ryycos > 0).length,
+      newCount: aggregatedCustomers.filter(c => c.totalOrders === 1).length,
+    };
+  }, [isScoped, platformSummary, aggregatedCustomers]);
+
   // Submit RYYCOS adjustment / bonus
   const handleAdjustmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -935,6 +1129,8 @@ export default function AdminCustomersRanking({
         adjustmentReason.trim() || undefined
       );
       setCustomerProfiles(previous => previous.map(p => getCanonicalPhone(p.phone || p.id) === getCanonicalPhone(updated.phone || updated.id) ? { ...p, ...updated } : p));
+      statsPages.patchClient(adjustingRyycosCustomer.key, { ryycos: Number(updated.points) || 0, isRegisteredProfile: true });
+      setTimeout(refreshPlatformSummary, 4000);
       setAdjustmentSuccessMsg(`¡Saldo de ${adjustingRyycosCustomer.name} actualizado con éxito a ${updated.points.toLocaleString('es-CO')} RYYCOS!`);
       setTimeout(() => {
         setAdjustingRyycosCustomer(null);
@@ -948,8 +1144,23 @@ export default function AdminCustomersRanking({
   };
 
   // Export to CSV
-  const handleExportCSV = () => {
-    if (processedCustomers.length === 0) return;
+  // Exporta TODOS los clientes del filtro actual (no solo los cargados en pantalla).
+  const handleExportCSV = async () => {
+    let customersToExport: CustomerAggregated[] = scopedCustomers;
+    if (!isScoped) {
+      setIsExporting(true);
+      try {
+        const docs = await fetchAllCustomerStats({ sortBy, segment: segmentFilter, search: debouncedSearch });
+        customersToExport = docs.map(statsToAggregated);
+      } catch (err) {
+        setToastFeedback('No se pudo exportar. Revisa tu conexión e intenta de nuevo.');
+        setTimeout(() => setToastFeedback(null), 4000);
+        return;
+      } finally {
+        setIsExporting(false);
+      }
+    }
+    if (customersToExport.length === 0) return;
 
     const headers = [
       'Posición',
@@ -966,7 +1177,7 @@ export default function AdminCustomersRanking({
       'Dirección Principal'
     ];
 
-    const rows = processedCustomers.map((c, idx) => [
+    const rows = customersToExport.map((c, idx) => [
       idx + 1,
       `"${c.name.replace(/"/g, '""')}"`,
       `"${c.cleanPhone.length === 10 && c.cleanPhone.startsWith('3') ? '+57' + c.cleanPhone : c.rawPhone || c.cleanPhone}"`,
@@ -1017,10 +1228,10 @@ export default function AdminCustomersRanking({
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             <button
-              onClick={handleExportCSV}
-              disabled={processedCustomers.length === 0}
+              onClick={() => void handleExportCSV()}
+              disabled={displayedCustomers.length === 0 || isExporting}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition border border-gray-700 cursor-pointer shadow-sm hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Descargar clientes cargados en formato CSV/Excel"
+              title="Descargar todos los clientes de este filtro en formato CSV/Excel"
             >
               <Download className="w-4 h-4 text-emerald-400" />
               <span>Exportar cargados (CSV)</span>
@@ -1028,7 +1239,6 @@ export default function AdminCustomersRanking({
           </div>
         </div>
 
-        <p className="text-xs text-gray-400 mt-4">Cifras, ranking, búsqueda y filtros sobre los clientes cargados. Usa «Cargar 4 más» para ampliar la lista.</p>
         {/* Summary of loaded customers */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mt-6 pt-6 border-t border-gray-800/80">
           <div className="bg-gray-900/80 border border-gray-800/90 rounded-xl p-3.5 sm:p-4">
@@ -1335,7 +1545,7 @@ export default function AdminCustomersRanking({
                 : 'bg-gray-950 text-gray-400 hover:text-white border border-gray-800'
             }`}
           >
-            Todos ({aggregatedCustomers.length})
+            Todos ({segmentCounts.all})
           </button>
 
           <button
@@ -1349,7 +1559,7 @@ export default function AdminCustomersRanking({
             <Crown className="w-3.5 h-3.5 text-amber-400" />
             <span>VIP (5+ pedidos)</span>
             <span className="text-[10px] font-mono opacity-80">
-              ({aggregatedCustomers.filter(c => c.totalOrders >= 5).length})
+              ({segmentCounts.vip})
             </span>
           </button>
 
@@ -1364,7 +1574,7 @@ export default function AdminCustomersRanking({
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
             <span>Frecuentes (2-4 pedidos)</span>
             <span className="text-[10px] font-mono opacity-80">
-              ({aggregatedCustomers.filter(c => c.totalOrders >= 2 && c.totalOrders < 5).length})
+              ({segmentCounts.frequent})
             </span>
           </button>
 
@@ -1379,7 +1589,7 @@ export default function AdminCustomersRanking({
             <Coins className="w-3.5 h-3.5" />
             <span>Con RYYCOS</span>
             <span className="text-[10px] font-mono font-bold opacity-80">
-              ({aggregatedCustomers.filter(c => c.ryycos > 0).length})
+              ({segmentCounts.hasRyycos})
             </span>
           </button>
 
@@ -1393,7 +1603,7 @@ export default function AdminCustomersRanking({
           >
             <span>Nuevos (1 pedido)</span>
             <span className="text-[10px] font-mono opacity-80">
-              ({aggregatedCustomers.filter(c => c.totalOrders === 1).length})
+              ({segmentCounts.newCount})
             </span>
           </button>
 
@@ -1449,13 +1659,13 @@ export default function AdminCustomersRanking({
       {/* Main Ranking List */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs text-gray-400 px-1">
-          <span>Mostrando <strong className="text-white font-mono">{processedCustomers.length}</strong> clientes cargados con estos filtros</span>
+          <span>Mostrando <strong className="text-white font-mono">{totalCustomersCount === null ? '…' : `${!isScoped && statsPages.totalIsApproximate ? '~' : ''}${totalCustomersCount}`}</strong> clientes ordenados</span>
           <span className="text-gray-500 font-mono">
             {sortBy === 'orders_desc' ? 'Orden: De más a menos pedidos' : 'Orden personalizado'}
           </span>
         </div>
 
-        {processedCustomers.length === 0 && !customersLoading ? (
+        {displayedCustomers.length === 0 && !listIsLoading && !isSearchPending && !listError && !listHasMore ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center space-y-3">
             <Users className="w-12 h-12 text-gray-600 mx-auto" />
             <h3 className="text-base font-bold text-gray-300">No se encontraron clientes</h3>
@@ -1464,7 +1674,7 @@ export default function AdminCustomersRanking({
             </p>
           </div>
         ) : (
-          processedCustomers.map((customer, index) => {
+          displayedCustomers.map((customer, index) => {
             const isTop1 = index === 0 && sortBy === 'orders_desc';
             const isTop2 = index === 1 && sortBy === 'orders_desc';
             const isTop3 = index === 2 && sortBy === 'orders_desc';
@@ -2063,6 +2273,15 @@ export default function AdminCustomersRanking({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gray-800/50">
+                            {customer.orders.length === 0 && (historyCache[customer.key] === 'loading' || historyCache[customer.key] === 'error') && (
+                              <tr>
+                                <td colSpan={6} className="py-3 px-3 text-center text-[11px] text-gray-500">
+                                  {historyCache[customer.key] === 'loading'
+                                    ? 'Cargando historial…'
+                                    : 'No se pudo cargar el historial. Cierra y vuelve a abrir el detalle para reintentar.'}
+                                </td>
+                              </tr>
+                            )}
                             {customer.orders.map((ord) => {
                               const orderDate = ord.createdAt ? new Date(ord.createdAt) : null;
                               return (
@@ -2128,14 +2347,32 @@ export default function AdminCustomersRanking({
         )}
       </div>
 
-      <div className="flex flex-col items-center gap-3 py-4" aria-live="polite">
-        {customersError && <p role="alert" className="text-sm text-red-400">{customersError}</p>}
-        {(hasMoreCustomers || customersError) && <button type="button" onClick={() => void loadNextCustomers()}
-          disabled={customersLoading}
-          className="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-50 disabled:cursor-wait">
-          {customersLoading ? 'Cargando clientes…' : customersError ? 'Reintentar carga' : 'Cargar 4 más'}
-        </button>}
-        {!hasMoreCustomers && !customersLoading && <p className="text-xs text-gray-400">No hay más perfiles de clientes por cargar.</p>}
+      {/* Scroll infinito: al acercarse a este punto (~250 px) se cargan 4 clientes más. */}
+      <div ref={sentinelRef} className="flex flex-col items-center gap-2 py-3 min-h-[1px]" aria-live="polite">
+        {(listIsLoading || listIsLoadingMore || isSearchPending) && (
+          <span className="inline-flex items-center gap-2 text-[11px] text-gray-500">
+            <span className="w-3 h-3 rounded-full border-2 border-gray-600 border-t-emerald-400 animate-spin" aria-hidden="true" />
+            Cargando clientes…
+          </span>
+        )}
+        {listError && !listIsLoading && !listIsLoadingMore && (
+          <span role="alert" className="inline-flex items-center gap-2 text-[11px] text-red-400">
+            {listError}
+            <button type="button" onClick={() => (isScoped ? scopedData.retry() : void statsPages.loadMore(true))}
+              className="underline font-bold text-red-300 hover:text-red-200 cursor-pointer">
+              Reintentar
+            </button>
+          </span>
+        )}
+        {!isScoped && statsPages.isPaused && !statsPages.isLoadingMore && (
+          <span className="inline-flex items-center gap-2 text-[11px] text-gray-500">
+            Pocos resultados coinciden con la búsqueda.
+            <button type="button" onClick={() => void statsPages.loadMore(true)}
+              className="underline font-bold text-gray-300 hover:text-white cursor-pointer">
+              Seguir buscando
+            </button>
+          </span>
+        )}
       </div>
 
       {/* Admin RYYCOS Adjustment Modal */}
