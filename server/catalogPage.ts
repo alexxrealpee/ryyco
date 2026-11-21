@@ -5,7 +5,8 @@ const profiles = ['uid','email','createdAt','role','plan','subscriptionPlan','su
   'subscriptionStatus','subscriptionTrialExpires','subscriptionPaidUntil','scheduleEnabled','openTime','closeTime',
   'restaurantDaysOpen','weeklySchedule','phone','whatsapp','customerServiceWhatsapp','ownerWhatsapp','address','mapUrl','restaurantReference',
   'lat','lng','restaurantAcceptsDelivery','restaurantAcceptsTakeaway','restaurantPaymentMethods','restaurantDeliveryTime',
-  'restaurantAddress','restaurantCity','rating','ratingCount'];
+  'restaurantAddress','restaurantCity','rating','ratingCount',
+  'bankAccounts','location','latitude','longitude'];
 const products = ['userId','name','description','price','compareAtPrice','packagingCost','category','stock',
   'variantsText','variantsList','variantPrices','hasFlavors','allowsHalfAndHalf','flavorsText','flavorsList',
   'allowSingleFlavor','addons','active','storeName','storeUsername','createdAt','imageFileName'];

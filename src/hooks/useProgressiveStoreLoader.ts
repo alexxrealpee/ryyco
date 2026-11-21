@@ -11,6 +11,18 @@ import {
   checkIsStoreClosed
 } from '../lib/firebase';
 import { orderProductBatch } from '../lib/productUtils';
+import { Capacitor } from '@capacitor/core';
+
+// RENDIMIENTO (web): la disponibilidad de restaurantes se consulta al servidor
+// (/api/catalog-page.php?kind=stores: solo los campos necesarios, sin fotos)
+// cada STORE_POLL_MS. Antes se escuchaba en tiempo real la colección completa
+// `profiles`, que incluye las fotos en base64 (~5,8 MB) y bloqueaba el
+// navegador en celulares. La app nativa conserva la escucha en tiempo real
+// porque no tiene el endpoint PHP en una ruta relativa.
+const STORE_POLL_MODE = typeof window !== 'undefined' && !Capacitor.isNativePlatform();
+const STORE_POLL_MS = 30000;
+// Sin una respuesta confirmada en este tiempo se deja de mostrar disponibilidad.
+const STORE_LEASE_MS = 95000;
 
 export type ProgressiveLoadingStage = 
   | 'fetching_open_restaurants'
@@ -141,7 +153,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     let active = true;
     let confirmed = false;
     let listenerConfirmed = false;
-    let allowBootstrap = listenerAttempt === 0;
+    let allowBootstrap = STORE_POLL_MODE || listenerAttempt === 0;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const startedAt = Date.now();
     let liveProfiles: Record<string, UserProfile> = {};
@@ -157,7 +169,9 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     };
     const fail = (code: string) => {
       if (!active) return;
-      allowBootstrap = false;
+      // En modo consulta periódica se sigue reintentando: al volver la conexión
+      // la siguiente respuesta confirmada restaura la disponibilidad sola.
+      if (!STORE_POLL_MODE) allowBootstrap = false;
       clearTimeout(deadline);
       deadline = undefined;
       clearAvailability();
@@ -210,23 +224,38 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     let subscribeTimer: ReturnType<typeof setTimeout> | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     const refreshController = new AbortController();
+    // Web: si el endpoint ligero falla varias veces seguidas, se vuelve a la
+    // escucha en tiempo real de Firestore para no dejar la página sin restaurantes.
+    let pollFailures = 0;
+    let forceListener = false;
     const renewAvailability = async () => {
       if (!active || listenerConfirmed || !allowBootstrap) return;
       try {
         const response = await fetch('/api/catalog-page.php?kind=stores', {
           cache: 'no-store', priority: 'high', signal: refreshController.signal
         });
-        if (response.ok) {
-          acceptBootstrap(await response.json());
+        if (response.ok && acceptBootstrap(await response.json())) {
+          pollFailures = 0;
           return;
         }
       } catch { /* A failed renewal never extends freshness. */ }
-      if (active && allowBootstrap && !listenerConfirmed) refreshTimer = setTimeout(renewAvailability, 2000);
+      if (STORE_POLL_MODE && active && navigator.onLine !== false && ++pollFailures >= 3 && !forceListener) {
+        forceListener = true;
+        subscribed = false;
+        subscribe();
+        return;
+      }
+      if (active && allowBootstrap && !listenerConfirmed) refreshTimer = setTimeout(renewAvailability, STORE_POLL_MODE ? 5000 : 2000);
     };
     const subscribe = () => {
       if (!active || subscribed) return;
       subscribed = true;
       clearTimeout(subscribeTimer);
+      if (STORE_POLL_MODE && !forceListener) {
+        // Sin escucha de Firestore: si la respuesta inicial no llegó, consultar ya.
+        if (!confirmed) void renewAvailability();
+        return;
+      }
       unsubscribe = onSnapshot(collection(db, 'profiles'),
       { includeMetadataChanges: true }, snapshot => {
         if (!active) return;
@@ -271,25 +300,34 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
     else subscribe();
     // The server response contains fresh availability, unlike the old static JSON.
     // It can publish the whole restaurant list before the multi-megabyte SDK snapshot.
-    const acceptBootstrap = (response: any) => {
+    const acceptBootstrap = (response: any): boolean => {
       if (!active || !allowBootstrap || navigator.onLine === false ||
           response?.source !== 'firestore-server' || response.kind !== 'stores' ||
-          !Array.isArray(response.items)) return;
+          !Array.isArray(response.items)) return false;
       (window as any).__RYYCO_STORES__ = null;
       clearTimeout(deadline);
       deadline = undefined;
       liveProfiles = Object.fromEntries(response.items.map((store: UserProfile) => [store.uid, store]));
       confirmed = true;
       publish();
-      // Keep confirmation bounded if the live listener never connects.
-      deadline = setTimeout(() => fail('deadline-exceeded'), 15000);
-      // Until the large legacy realtime snapshot connects, renew with a fresh
-      // projected server query. A failed renewal never extends the 15s lease.
-      refreshTimer = setTimeout(renewAvailability, 8000);
+      // Keep confirmation bounded if no newer confirmed response arrives.
+      deadline = setTimeout(() => fail('deadline-exceeded'), STORE_POLL_MODE ? STORE_LEASE_MS : 15000);
+      // Renew with a fresh projected server query (web: periodically; native:
+      // until the realtime listener connects). A failed renewal never extends the lease.
+      clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(renewAvailability, STORE_POLL_MODE ? STORE_POLL_MS : 8000);
+      return true;
     };
+    // Web: al volver a la pestaña o recuperar la conexión, refrescar de inmediato.
+    const refreshNow = () => {
+      if (!STORE_POLL_MODE || !active || document.visibilityState === 'hidden') return;
+      clearTimeout(refreshTimer);
+      void renewAvailability();
+    };
+    document.addEventListener('visibilitychange', refreshNow);
     void storeBootstrapRef.current?.then(acceptBootstrap).catch(() => {}).finally(subscribe);
     const offline = () => fail('offline');
-    const online = () => waitForServer();
+    const online = () => { waitForServer(); refreshNow(); };
     window.addEventListener('offline', offline);
     window.addEventListener('online', online);
     // Re-evaluate schedules from raw flags; never freeze a computed closure in isClosed.
@@ -306,6 +344,7 @@ export function useProgressiveStoreLoader(): UseProgressiveStoreLoaderResult {
       clearInterval(timer);
       window.removeEventListener('offline', offline);
       window.removeEventListener('online', online);
+      document.removeEventListener('visibilitychange', refreshNow);
     };
   }, [listenerAttempt]);
 
