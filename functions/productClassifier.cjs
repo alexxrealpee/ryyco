@@ -75,15 +75,18 @@ const RULES = {
     T('caldo de huevo', 1.3), T('caldo de pajarilla', 1.3), T('changua', 1.2), T('calentado', 1.2), T('tamal', 1),
     T('huevos pericos', 1.2), T('huevos revueltos', 1.2), T('huevos rancheros', 1.2), T('huevos al gusto', 1),
     T('huevo frito', 0.8), T('omelette', 1), T('tortilla de huevo', 1), T('arepa con huevo', 1.2), T('pancakes', 1),
-    T('tostadas francesas', 1), T('granola', 0.8), T('parfait', 0.8), T('mute', 0.6),
+    T('tostadas francesas', 1), T('granola', 0.8), T('parfait', 0.8), T('mute', 0.6), T('huevos', 0.8),
   ],
   almuerzos: [
     T('almuerzo', 1.2), T('almuerzos', 1.2), T('bandeja paisa', 1.4), T('bandeja', 0.9), T('corrientazo', 1.2), T('ejecutivo', 1),
     T('menu del dia', 1.2), T('plato del dia', 1.2), T('sancocho', 1.2), T('ajiaco', 1.2), T('sopa', 0.8),
     T('seco de', 1), T('arroz con pollo', 1.2), T('arroz atollado', 1.2), T('sudado', 1), T('fritanga', 1),
     T('lentejas', 0.9), T('frijolada', 1), T('frijoles', 0.8), T('mondongo', 1.2), T('cazuela de frijoles', 1.2),
+    T('principio', 1.3), T('consome', 0.9), T('arroces', 1), T('arroz valenciana', 1.3), T('arroz paisa', 1.3),
+    T('arroz ranchero', 1.2), T('arroz mixto', 1.1), T('arroz especial', 1), T('plato tipico', 1), T('platos fuertes', 1),
   ],
-  hamburguesas: [T('hamburguesa', 1.4), T('hamburguesas', 1.4), T('burger', 1.3), T('burgers', 1.3), T('smash', 0.8)],
+  hamburguesas: [T('hamburguesa', 1.4), T('hamburguesas', 1.4), T('amburguesa', 1.4), T('amburguesas', 1.4),
+    T('amburgesa', 1.4), T('amburgesas', 1.4), T('hamburgesa', 1.4), T('hamburgesas', 1.4), T('burger', 1.3), T('burgers', 1.3), T('smash', 0.8)],
   pizzas: [T('pizza', 1.4), T('pizzas', 1.4), T('calzone', 1.2), T('pizzeta', 1.2), T('panzerotti', 1)],
   'comidas-rapidas': [
     T('salchipapa', 1.4), T('salchipapas', 1.4), T('perro caliente', 1.4), T('perros calientes', 1.4), T('hot dog', 1.4),
@@ -91,19 +94,21 @@ const RULES = {
     T('empanadas', 1.1), T('papas fritas', 0.9), T('papas a la francesa', 0.9), T('choripapa', 1.3), T('chorizo', 0.7),
     T('mazorcada', 1.3), T('patacon con todo', 1.3), T('arepa rellena', 1.1), T('arepa de choclo', 1), T('pepito', 1),
     T('wrap', 0.9), T('nuggets', 1), T('comidas rapidas', 1.2), T('comida rapida', 1.2), T('fast food', 1.2),
-    T('picada', 0.6), T('papa rellena', 1), T('dedos de queso', 1), T('deditos', 0.9), T('aborrajado', 1),
+    T('picada', 0.6), T('papa rellena', 1), T('papas', 1.1), T('papitas', 1), T('papa', 0.6), T('dedos de queso', 1), T('deditos', 0.9), T('aborrajado', 1),
   ],
-  alitas: [T('alitas', 1.5), T('alas de pollo', 1.4), T('wings', 1.4), T('alita', 1.4)],
+  alitas: [T('alitas', 1.5), T('alas de pollo', 1.4), T('wings', 1.4), T('alita', 1.4), T('ala', 1.1), T('alas', 1.2)],
   pollo: [
     T('pollo asado', 1.4), T('pollo broaster', 1.4), T('broaster', 1.3), T('pollo apanado', 1.2), T('pollo frito', 1.2),
-    T('pollo a la brasa', 1.4), T('1 4 de pollo', 1.3), T('medio pollo', 1.3), T('pollo entero', 1.3), T('pechuga', 0.9),
-    T('pollo', 0.6, ['arroz con pollo', 'caldo de pollo', 'alas de pollo', 'pizza', 'hamburguesa', 'pasta', 'ensalada', 'sandwich', 'wrap', 'crepe', 'empanada']),
+    T('pollo a la brasa', 1.4), T('1 4 de pollo', 1.3), T('1 8 de pollo', 1.3), T('1 8 pollo', 1.3), T('1 4 pollo', 1.3),
+    T('1 2 pollo', 1.3), T('presa', 0.8), T('presas', 0.8), T('medio pollo', 1.3), T('pollo entero', 1.3), T('pechuga', 0.9),
+    T('pollo', 0.75, ['arroz con pollo', 'caldo de pollo', 'alas de pollo', 'pizza', 'hamburguesa', 'pasta', 'ensalada', 'sandwich', 'wrap', 'crepe', 'empanada']),
   ],
   asados: [
     T('carne asada', 1.3), T('churrasco', 1.3), T('punta de anca', 1.3), T('lomo', 0.9), T('baby beef', 1.3), T('costillas', 1),
     T('costilla bbq', 1.2), T('parrilla', 1.1), T('parrillada', 1.3), T('asado', 1), T('asados', 1), T('chuleta', 1), T('cerdo', 0.8),
     T('hornado', 1.3), T('cuy', 1.3), T('cuy asado', 1.4), T('chicharron', 1), T('lechona', 1.2), T('carne', 0.6, ['carne molida', 'hamburguesa', 'empanada']),
-    T('bbq', 0.4), T('picada', 0.9),
+    T('bbq', 0.4), T('picada', 0.9), T('picadas', 1.2), T('carnes', 1.2), T('a la plancha', 1), T('al barril', 1.1),
+    T('costilla', 1), T('chunchullo', 1.3), T('cuero', 0.6), T('tabla', 0.6), T('maduro con queso', 0.5),
   ],
   'pescados-mariscos': [
     T('pescado', 1.3), T('trucha', 1.4), T('mojarra', 1.4), T('tilapia', 1.4), T('salmon', 1.2), T('robalo', 1.4), T('bagre', 1.3),
@@ -137,7 +142,7 @@ const RULES = {
     T('postre', 1.3), T('postres', 1.3), T('torta', 1.2), T('pastel', 1, ['pastel de pollo', 'pastel de carne']),
     T('cheesecake', 1.4), T('brownie', 1.4), T('helado', 1.3), T('helados', 1.3), T('cono', 0.8), T('fresas con crema', 1.5),
     T('ensalada de frutas', 1.5), T('obleas', 1.4), T('oblea', 1.4), T('gelatina', 1.2), T('flan', 1.3), T('tres leches', 1.4),
-    T('waffle', 1.2), T('crepe', 0.8), T('arroz con leche', 1.4), T('mousse', 1.3), T('cupcake', 1.3), T('galletas', 1),
+    T('waffle', 1.2), T('wafle', 1.2), T('waffles', 1.2), T('crepe', 0.8), T('crepes', 0.9), T('yogurt', 1), T('yogur', 1), T('arroz con leche', 1.4), T('mousse', 1.3), T('cupcake', 1.3), T('galletas', 1),
     T('cholado', 1.3), T('salpicon', 0.8, ['salpicon de mariscos']), T('tiramisu', 1.4), T('pie de', 1.1), T('merengon', 1.3),
     T('postre de natas', 1.4), T('trufas', 1.2), T('donas', 1.2), T('dona', 1.2), T('banana split', 1.4),
   ],
@@ -152,12 +157,25 @@ const RULES = {
     T('tequila', 1.4), T('vino', 1.3), T('coctel', 1.4), T('cocteles', 1.4), T('michelada', 1.5), T('mojito', 1.5),
     T('malteada', 1.3), T('malteadas', 1.3), T('smoothie', 1.4), T('batido', 1.3), T('frappe', 1.4), T('kumis', 1.3),
     T('avena', 0.9, ['galleta', 'pan']), T('champus', 1.3), T('lulada', 1.4), T('hervido', 1.2), T('canelazo', 1.4),
-    T('hit', 1.1), T('red bull', 1.5), T('energizante', 1.4), T('refresco', 1.3), T('soda', 1.2), T('jarra', 0.8), T('ml', 0.5), T('litro', 0.6),
+    T('hit', 1.1), T('red bull', 1.5), T('granizado', 1.4), T('granizados', 1.4), T('licor', 1.4), T('licores', 1.4),
+    T('vinos', 1.4), T('micheladas', 1.5), T('champagne', 1.4), T('sangria', 1.4), T('botella', 1), T('hervidos', 1.3),
+    T('sodas', 1.3), T('budweiser', 1.5), T('corona', 1.2, ['corona de']), T('aguila', 1.3), T('poker', 1.3), T('club colombia', 1.5),
+    T('heineken', 1.5), T('stella artois', 1.5), T('costena', 1.4), T('andina', 1.2), T('jarra', 0.8), T('margarita', 0.8, ['pizza']), T('energizante', 1.4), T('refresco', 1.3), T('soda', 1.2), T('jarra', 0.8), T('ml', 0.5), T('litro', 0.6),
   ],
 };
 
 /** Peso de cada campo: el nombre manda; la descripción solo da contexto. */
-const FIELD_WEIGHT = { name: 3, category: 2, description: 1 };
+const FIELD_WEIGHT = { name: 3, category: 2, description: 1.5 };
+/** Mínimo de evidencia para publicar (una coincidencia razonable en el nombre o en la descripción). */
+const MIN_SCORE = 1.8;
+
+/**
+ * Acompañamientos: en la DESCRIPCIÓN ("con papa a la francesa y ensalada") no definen el producto
+ * si la descripción menciona además otra cosa. Se quitan antes de puntuar en ese caso.
+ */
+const SIDE_PHRASES = ['papas fritas', 'papa frita', 'papas a la francesa', 'papa a la francesa', 'papas a la frances', 'papa a la frances',
+  'papa francesa', 'papa al vapor', 'papa salada', 'ensalada', 'arroz', 'pan artesanal', 'pan', 'jugo', 'gaseosa', 'bebida', 'cafe',
+  'aromatica', 'te', 'guacamole', 'aji', 'maduro', 'patacon', 'patacones', 'yuca', 'tostadas', 'papas', 'papa'];
 
 /** Categorías que son comida (si el NOMBRE es comida, una bebida en la descripción no cambia nada). */
 const FOOD_CATEGORIES = new Set([...CATEGORY_IDS].filter(id => id !== 'bebidas'));
@@ -222,10 +240,14 @@ function inputHash(product) {
  */
 function classifyWithRules(product) {
   const input = inputOf(product);
+  let description = scoreText(input.description);
+  const stripped = SIDE_PHRASES.reduce((text, phrase) => (' ' + text + ' ').split(' ' + phrase + ' ').join(' ').trim(), input.description);
+  const withoutSides = scoreText(stripped);
+  if (Object.keys(withoutSides).length > 0) description = withoutSides;
   const perField = {
     name: scoreText(input.name),
     category: scoreText(input.category),
-    description: scoreText(input.description),
+    description,
   };
   const totals = {};
   for (const [field, scores] of Object.entries(perField)) {
@@ -256,8 +278,11 @@ function classifyWithRules(product) {
   const categoryIds = top ? [top[0], ...secondary] : [];
   // La confianza baja solo por categorías que compiten y NO quedaron incluidas.
   const competitor = ranked.find(([c]) => !categoryIds.includes(c));
-  const s2 = competitor ? competitor[1] : 0;
-  const confidence = s1 > 0 ? Math.min(0.99, 0.5 * (1 - s2 / s1) + 0.5 * Math.min(1, s1 / 4)) : 0;
+  // Si el que compite solo viene de la categoría interna (ej. un sándwich en la sección
+  // "Hamburguesas" del restaurante) y el nombre dice otra cosa, compite a medias.
+  let s2 = competitor ? competitor[1] : 0;
+  if (competitor && perField.name[top[0]] && !perField.name[competitor[0]] && !perField.description[competitor[0]]) s2 *= 0.5;
+  const confidence = s1 > 0 ? Math.min(0.99, 0.5 * (1 - s2 / s1) + 0.5 * Math.min(1, s1 / 3)) : 0;
 
   const allText = `${input.name} ${input.category} ${input.description}`;
   const nameAndCategory = `${input.name} ${input.category}`;
@@ -269,7 +294,7 @@ function classifyWithRules(product) {
     if (phrases.some(p => hasPhrase(source, p))) tags.add(tag);
   }
 
-  const confident = s1 >= 2 && confidence >= AUTO_CONFIDENCE;
+  const confident = s1 >= MIN_SCORE && confidence >= AUTO_CONFIDENCE;
   return {
     status: confident ? 'classified' : 'needs_review',
     globalCategoryIds: confident ? categoryIds : [],
