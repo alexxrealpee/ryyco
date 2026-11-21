@@ -44,6 +44,10 @@
   RewriteCond %{DOCUMENT_ROOT}/api/index.php -f
   RewriteRule ^api/(.*)$ api/index.php [QSA,L]
   
+  # App Android de domiciliarios: siempre la última versión publicada en GitHub Releases
+  # (el APK pesa ~50 MB y no se guarda dentro del repositorio).
+  RewriteRule ^descargas/ryyco-domiciliarios\.apk$ https://github.com/alexxrealpee/ryyco/releases/latest/download/ryyco-domiciliarios.apk [R=302,L]
+
   # 2. Serve existing physical files, directories, and symlinks directly
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d [OR]

@@ -16,12 +16,19 @@ if (fs.existsSync(manifestPath)) {
   if (!xml.includes(`android.permission.${permission}`)) xml = xml.replace('</manifest>', `<uses-permission android:name="android.permission.${permission}" /></manifest>`);
  }
  fs.writeFileSync(manifestPath, xml);
- const gpsPermissions = ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_LOCATION'];
+ const gpsPermissions = ['FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_LOCATION', 'ACCESS_COARSE_LOCATION', 'ACCESS_FINE_LOCATION'];
  for (const permission of gpsPermissions) {
   if (!xml.includes(`android.permission.${permission}`)) xml = xml.replace('</manifest>', `<uses-permission android:name="android.permission.${permission}" /></manifest>`);
  }
  if (!xml.includes('.DriverLocationService')) xml = xml.replace('</application>', '<service android:name=".DriverLocationService" android:exported="false" android:foregroundServiceType="location" android:stopWithTask="false" /></application>');
  fs.writeFileSync(manifestPath, xml);
+ // "Ingresar con Google" en la app nativa (@capacitor-firebase/authentication).
+ const variablesPath = 'android/variables.gradle';
+ if (fs.existsSync(variablesPath)) {
+  let vars = fs.readFileSync(variablesPath, 'utf8');
+  if (!vars.includes('rgcfaIncludeGoogle')) vars = vars.replace(/\}\s*$/, '    rgcfaIncludeGoogle = true\n}\n');
+  fs.writeFileSync(variablesPath, vars);
+ }
  const base = 'android/app/src/main';
  fs.mkdirSync(`${base}/res/raw`, {recursive:true});
  fs.copyFileSync('public/sounds/ryyco-notificacion-3-segundos.mp3', `${base}/res/raw/ryyco_order.mp3`);
