@@ -90,11 +90,11 @@ const RULES = {
   pizzas: [T('pizza', 1.4), T('pizzas', 1.4), T('calzone', 1.2), T('pizzeta', 1.2), T('panzerotti', 1)],
   'comidas-rapidas': [
     T('salchipapa', 1.4), T('salchipapas', 1.4), T('perro caliente', 1.4), T('perros calientes', 1.4), T('hot dog', 1.4),
-    T('perro', 0.9, ['pollo']), T('sandwich', 1.2), T('sanduche', 1.2), T('sandwiches', 1.2), T('empanada', 1.1),
-    T('empanadas', 1.1), T('papas fritas', 0.9), T('papas a la francesa', 0.9), T('choripapa', 1.3), T('chorizo', 0.7),
+    T('perro', 1.1, ['pollo']), T('perra', 1.2), T('perros', 1.1), T('salchi', 1.2), T('sandwich', 1.2), T('sanduche', 1.2), T('sandwiches', 1.2), T('empanada', 1.1),
+    T('empanadas', 1.1), T('papas fritas', 0.9), T('papas a la francesa', 0.9), T('choripapa', 1.3),
     T('mazorcada', 1.3), T('patacon con todo', 1.3), T('arepa rellena', 1.1), T('arepa de choclo', 1), T('pepito', 1),
     T('wrap', 0.9), T('nuggets', 1), T('comidas rapidas', 1.2), T('comida rapida', 1.2), T('fast food', 1.2),
-    T('picada', 0.6), T('papa rellena', 1), T('papas', 1.1), T('papitas', 1), T('papa', 0.6), T('dedos de queso', 1), T('deditos', 0.9), T('aborrajado', 1),
+    T('papa rellena', 1), T('papas', 1.1), T('papitas', 1), T('papa', 0.6), T('dedos de queso', 1), T('deditos', 0.9), T('aborrajado', 1),
   ],
   alitas: [T('alitas', 1.5), T('alas de pollo', 1.4), T('wings', 1.4), T('alita', 1.4), T('ala', 1.1), T('alas', 1.2)],
   pollo: [
@@ -104,11 +104,11 @@ const RULES = {
     T('pollo', 0.75, ['arroz con pollo', 'caldo de pollo', 'alas de pollo', 'pizza', 'hamburguesa', 'pasta', 'ensalada', 'sandwich', 'wrap', 'crepe', 'empanada']),
   ],
   asados: [
-    T('carne asada', 1.3), T('churrasco', 1.3), T('punta de anca', 1.3), T('lomo', 0.9), T('baby beef', 1.3), T('costillas', 1),
-    T('costilla bbq', 1.2), T('parrilla', 1.1), T('parrillada', 1.3), T('asado', 1), T('asados', 1), T('chuleta', 1), T('cerdo', 0.8),
+    T('carne asada', 1.3), T('churrasco', 1.3), T('punta de anca', 1.3), T('lomo', 0.9), T('baby beef', 1.3), T('costillas', 1, ['caldo']),
+    T('costilla bbq', 1.2), T('parrilla', 1.1), T('parrillada', 1.3), T('asado', 1), T('asados', 1), T('chuleta', 1), T('cerdo', 0.8, ['caldo']),
     T('hornado', 1.3), T('cuy', 1.3), T('cuy asado', 1.4), T('chicharron', 1), T('lechona', 1.2), T('carne', 0.6, ['carne molida', 'hamburguesa', 'empanada']),
     T('bbq', 0.4), T('picada', 0.9), T('picadas', 1.2), T('carnes', 1.2), T('a la plancha', 1), T('al barril', 1.1),
-    T('costilla', 1), T('chunchullo', 1.3), T('cuero', 0.6), T('tabla', 0.6), T('maduro con queso', 0.5),
+    T('costilla', 1, ['caldo']), T('chorizo', 0.9), T('parrilladas', 1.3), T('honado', 1.2), T('chunchullo', 1.3), T('cuero', 0.6), T('tabla', 0.6), T('maduro con queso', 0.5),
   ],
   'pescados-mariscos': [
     T('pescado', 1.3), T('trucha', 1.4), T('mojarra', 1.4), T('tilapia', 1.4), T('salmon', 1.2), T('robalo', 1.4), T('bagre', 1.3),
@@ -123,6 +123,8 @@ const RULES = {
   'comida-oriental': [
     T('sushi', 1.5), T('ramen', 1.5), T('arroz chino', 1.4), T('arroz oriental', 1.3), T('chow mein', 1.4), T('wok', 1.2),
     T('teriyaki', 1.2), T('makis', 1.4), T('rollos', 0.6), T('kimchi', 1.2), T('chop suey', 1.4), T('lumpias', 1.3), T('poke', 1.1),
+    T('comida coreana', 1.3), T('coreana', 1.2), T('coreano', 1.2), T('comida china', 1.3), T('japonesa', 1.2), T('banderilla', 1.2),
+    T('buldak', 1.3), T('oriental', 1),
   ],
   'comida-mexicana': [
     T('tacos', 1.4), T('taco', 1.3), T('burrito', 1.4), T('burritos', 1.4), T('quesadilla', 1.3), T('quesadillas', 1.3),
@@ -140,7 +142,7 @@ const RULES = {
   ],
   postres: [
     T('postre', 1.3), T('postres', 1.3), T('torta', 1.2), T('pastel', 1, ['pastel de pollo', 'pastel de carne']),
-    T('cheesecake', 1.4), T('brownie', 1.4), T('helado', 1.3), T('helados', 1.3), T('cono', 0.8), T('fresas con crema', 1.5),
+    T('cheesecake', 1.4), T('brownie', 1.4), T('helado', 1.3), T('helados', 1.3), T('cono', 1.2), T('conos', 1.2), T('gelato', 1.3), T('fresas con crema', 1.5),
     T('ensalada de frutas', 1.5), T('obleas', 1.4), T('oblea', 1.4), T('gelatina', 1.2), T('flan', 1.3), T('tres leches', 1.4),
     T('waffle', 1.2), T('wafle', 1.2), T('waffles', 1.2), T('crepe', 0.8), T('crepes', 0.9), T('yogurt', 1), T('yogur', 1), T('arroz con leche', 1.4), T('mousse', 1.3), T('cupcake', 1.3), T('galletas', 1),
     T('cholado', 1.3), T('salpicon', 0.8, ['salpicon de mariscos']), T('tiramisu', 1.4), T('pie de', 1.1), T('merengon', 1.3),
