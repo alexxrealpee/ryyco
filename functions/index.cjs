@@ -1,10 +1,11 @@
-const { onDocumentCreated, onDocumentUpdated } = require('firebase-functions/v2/firestore');
+const { onDocumentCreated, onDocumentUpdated, onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { onCall } = require('firebase-functions/v2/https');
 const { initializeApp } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 const { deliverOrder } = require('./orderPush.cjs');
 const rewards = require('./customerRewards.cjs');
+const customerStats = require('./customerStats.cjs');
 initializeApp();
 const database = 'ai-studio-be9196c8-7041-4ba9-b337-ca71c1485d15';
 
@@ -36,3 +37,10 @@ exports.orderReassignmentNotifications = onDocumentUpdated({
   if (!after?.reassignmentId || after.reassignmentId === before?.reassignmentId || after.status !== 'pending') return;
   return deliverOrder(getFirestore(database), getMessaging(), event.params.orderId, after.reassignmentId);
 });
+
+// Resumen por cliente (customerStats) para paginar el ranking de Clientes de 4 en 4.
+const statsTrigger = { database, region: 'us-central1', retry: true, timeoutSeconds: 120, maxInstances: 10 };
+exports.customerStatsOnOrder = onDocumentWritten({ ...statsTrigger, document: 'orders/{orderId}' },
+  event => customerStats.onOrderWritten(db(), event));
+exports.customerStatsOnProfile = onDocumentWritten({ ...statsTrigger, document: 'customers/{customerId}' },
+  event => customerStats.onCustomerWritten(db(), event));
